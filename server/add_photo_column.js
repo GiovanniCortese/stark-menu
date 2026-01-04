@@ -1,4 +1,3 @@
-// server/add_photo_column.js
 require('dotenv').config();
 const { Pool } = require('pg');
 
@@ -9,15 +8,14 @@ const pool = new Pool({
 
 const updateDB = async () => {
   try {
-    console.log("📸 Aggiunta colonna immagini...");
-    // Aggiungiamo la colonna immagine_url se non esiste
+    console.log("📸 Tentativo creazione colonna immagini...");
     await pool.query(`
       ALTER TABLE prodotti 
       ADD COLUMN IF NOT EXISTS immagine_url TEXT;
     `);
-    console.log("✅ Fatto! Il database ora supporta le foto.");
+    console.log("✅ SUCCESSO: La colonna 'immagine_url' è presente!");
   } catch (err) {
-    console.error("❌ Errore:", err);
+    console.error("❌ ERRORE DATABASE:", err);
   } finally {
     pool.end();
   }

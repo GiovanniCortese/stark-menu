@@ -13,7 +13,7 @@ app.use(express.json());
 
 // Configurazione Database AGGIORNATA PER IL CLOUD
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL, // <--- CORRETTO: Legge solo dal .env
+  connectionString: process.env.DATABASE_URL, 
   ssl: {
     rejectUnauthorized: false, // Necessario per le connessioni sicure al cloud
   },
@@ -56,11 +56,6 @@ app.get('/api/menu/:slug', async (req, res) => {
 app.post('/api/ordine', async (req, res) => {
     const { tavolo, prodotti, totale } = req.body;
     
-    // Per ora ID fisso, dopo lo renderemo dinamico cercando lo slug
-    // Nota: Assicurati che l'ID 3 esista nel nuovo DB Cloud! (Lo vedremo con seed.js)
-    // Se seed.js ha ricreato tutto da zero, l'ID potrebbe essere 1.
-    // Per sicurezza, cerchiamo l'ID del ristorante "pizzeria-stark" prima di inserire.
-    
     try {
         // CERCHIAMO L'ID GIUSTO (Miglioria di sicurezza)
         const ristCheck = await pool.query("SELECT id FROM ristoranti WHERE slug = 'pizzeria-stark'");
@@ -86,9 +81,6 @@ app.post('/api/ordine', async (req, res) => {
 
 // 3. POLLING (Cucina)
 app.get('/api/polling/:ristorante_id', async (req, res) => {
-    // Nota: anche qui il frontend manda l'ID. Se l'ID è cambiato nel cloud, 
-    // il frontend dovrà essere aggiornato o dovremo usare lo slug anche qui.
-    // Per ora lasciamo così, ma tieni a mente che l'ID potrebbe essere 1 invece di 3.
     const { ristorante_id } = req.params;
 
     try {
@@ -126,7 +118,6 @@ app.post('/api/ordine/completato', async (req, res) => {
 app.post('/api/login', async (req, res) => {
     const { email, password } = req.body;
     try {
-        // Cerchiamo l'utente nel DB
         const result = await pool.query(
             'SELECT * FROM ristoranti WHERE email_titolare = $1 AND password = $2',
             [email, password]
@@ -134,7 +125,6 @@ app.post('/api/login', async (req, res) => {
 
         if (result.rows.length > 0) {
             const user = result.rows[0];
-            // Login successo! Restituiamo i dati (senza password)
             res.json({ 
                 success: true, 
                 user: { id: user.id, nome: user.nome, slug: user.slug } 
@@ -148,23 +138,25 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// 6. AGGIUNGI PIATTO (Aggiornato con Foto)
+// 6. AGGIUNGI PIATTO (CORRETTO E SICURO)
 app.post('/api/prodotti', async (req, res) => {
-    // Aggiungiamo immagine_url qui sotto
     const { nome, prezzo, categoria, ristorante_id, immagine_url } = req.body;
+    
     try {
         const result = await pool.query(
-            'INSERT INTO prodotti (nome, prezzo, categoria, ristorante_id, immagine_url) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-            [nome, prezzo, categoria, ristorante_id, immagine_url]
+            `INSERT INTO prodotti (nome, prezzo, categoria, ristorante_id, immagine_url) 
+             VALUES ($1, $2, $3, $4, $5) 
+             RETURNING *`,
+            [nome, prezzo, categoria, ristorante_id, immagine_url || ""] // <--- PROTEZIONE ANTI-BLOCCO
         );
         res.json(result.rows[0]);
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: "Errore aggiunta prodotto" });
+        console.error("❌ Errore Backend:", err);
+        res.status(500).json({ error: "Errore inserimento nel database" });
     }
 });
 
-// 7. CANCELLA PIATTO (Solo Admin)
+// 7. CANCELLA PIATTO
 app.delete('/api/prodotti/:id', async (req, res) => {
     const { id } = req.params;
     try {
