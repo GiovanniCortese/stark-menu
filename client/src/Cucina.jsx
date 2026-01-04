@@ -6,7 +6,7 @@ function Cucina() {
 
   // Scarica gli ordini
   const aggiornaOrdini = () => {
-    fetch('http://192.168.106.161:3000/api/polling/1')
+    fetch('https://stark-backend-gg17.onrender.com/api/polling/1')
       .then(res => res.json())
       .then(data => setOrdini(data.nuovi_ordini))
       .catch(err => console.error("Errore polling:", err));
@@ -15,7 +15,7 @@ function Cucina() {
   // NUOVO: Gestisce il click su "Pronto"
   const segnaComePronto = async (ordineId) => {
     try {
-      const response = await fetch('http://192.168.106.161:3000/api/ordine/completato', {
+      const response = await fetch('https://stark-backend-gg17.onrender.com/api/ordine/completato', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: ordineId })

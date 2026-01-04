@@ -16,7 +16,7 @@ function Menu() {
   const numeroTavolo = searchParams.get('tavolo') || 'Banco';
 
   // Sostituisci con il TUO IP locale (es. 192.168.1.50)
-  const API_URL = "http://192.168.106.161:3000"; 
+  const API_URL = "https://stark-backend-gg17.onrender.com";
 
   useEffect(() => {
     fetch(`${API_URL}/api/menu/pizzeria-stark`)
