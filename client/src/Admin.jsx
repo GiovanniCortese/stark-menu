@@ -63,12 +63,12 @@ function Admin() {
         <button onClick={esci} style={{background: 'red', fontSize: '12px'}}>Esci</button>
       </header>
 
-      {/* FORM AGGIUNTA */}
+      {/* FORM AGGIUNTA AGGIORNATO */}
       <div className="card" style={{background: '#f0f0f0', border: '2px dashed #ccc'}}>
         <h3>➕ Aggiungi Piatto</h3>
-        <form onSubmit={handleAggiungi} style={{display: 'flex', flexDirection: 'column', gap: '5px'}}>
+        <form onSubmit={handleAggiungi} style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
           <input 
-            placeholder="Nome Piatto (es. Carbonara)" 
+            placeholder="Nome Piatto" 
             value={nuovoPiatto.nome}
             onChange={e => setNuovoPiatto({...nuovoPiatto, nome: e.target.value})}
           />
@@ -76,6 +76,12 @@ function Admin() {
             type="number" step="0.50" placeholder="Prezzo" 
             value={nuovoPiatto.prezzo}
             onChange={e => setNuovoPiatto({...nuovoPiatto, prezzo: e.target.value})}
+          />
+          {/* NUOVO CAMPO FOTO */}
+          <input 
+            placeholder="Link Immagine (URL)" 
+            value={nuovoPiatto.immagine_url}
+            onChange={e => setNuovoPiatto({...nuovoPiatto, immagine_url: e.target.value})}
           />
           <select 
             value={nuovoPiatto.categoria}

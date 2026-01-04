@@ -2,22 +2,21 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useSearchParams } from 'react-router-dom';
 import Cucina from './Cucina';
-import Login from './Login';   // <--- NUOVO
-import Admin from './Admin';   // <--- NUOVO
+import Login from './Login';
+import Admin from './Admin';
 import './App.css';
 
-// --- COMPONENTE MENU AGGIORNATO ---
+// --- COMPONENTE MENU AGGIORNATO CON FOTO ---
 function Menu() {
   const [menu, setMenu] = useState([]);
   const [ristorante, setRistorante] = useState("");
   const [carrello, setCarrello] = useState([]); 
   
-  // NUOVO: Leggiamo il parametro ?tavolo=X dall'URL
+  // Leggiamo il parametro ?tavolo=X dall'URL
   const [searchParams] = useSearchParams();
-  // Se non c'è scritto nulla, usiamo "Banco" come default
   const numeroTavolo = searchParams.get('tavolo') || 'Banco';
 
-  // Sostituisci con il TUO IP locale (es. 192.168.1.50)
+  // URL del Backend Cloud (Render)
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
   useEffect(() => {
@@ -37,7 +36,7 @@ function Menu() {
 
   const inviaOrdine = async () => {
     const ordine = {
-      tavolo: numeroTavolo, // <--- ORA È DINAMICO!
+      tavolo: numeroTavolo,
       prodotti: carrello.map(p => p.nome),
       totale: totale
     };
@@ -62,14 +61,31 @@ function Menu() {
     <div className="container">
       <header>
         <h1>🍕 {ristorante}</h1>
-        <p>Tavolo: <strong>{numeroTavolo}</strong></p> {/* Mostriamo dove si trova il cliente */}
+        <p>Tavolo: <strong>{numeroTavolo}</strong></p>
         <Link to="/cucina" style={{fontSize: '10px', color: '#666'}}>Vai in Cucina</Link>
       </header>
 
-      {/* ... Il resto del codice (menu-list) rimane UGUALE a prima ... */}
       <div className="menu-list">
         {menu.map((prodotto) => (
           <div key={prodotto.id} className="card">
+            
+            {/* --- NUOVO: SEZIONE FOTO --- */}
+            {/* Se il prodotto ha un link immagine, la mostriamo */}
+            {prodotto.immagine_url && (
+              <img 
+                src={prodotto.immagine_url} 
+                alt={prodotto.nome} 
+                style={{
+                  width: '100%', 
+                  height: '150px', 
+                  objectFit: 'cover', 
+                  borderRadius: '8px',
+                  marginBottom: '10px'
+                }} 
+              />
+            )}
+            {/* --------------------------- */}
+
             <div className="info">
               <h3>{prodotto.nome}</h3>
               <span className="categoria">{prodotto.categoria}</span>
@@ -95,18 +111,15 @@ function Menu() {
   );
 }
 
-// ... Il resto del file (function App) rimane UGUALE ...
+// --- ROTTE DELL'APP ---
 function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Menu />} />
         <Route path="/cucina" element={<Cucina />} />
-        
-        {/* --- NUOVE ROTTE --- */}
         <Route path="/login" element={<Login />} />
         <Route path="/admin" element={<Admin />} />
-        
       </Routes>
     </BrowserRouter>
   );
