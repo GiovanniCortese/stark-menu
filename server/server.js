@@ -148,13 +148,14 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// 6. AGGIUNGI PIATTO (Solo Admin)
+// 6. AGGIUNGI PIATTO (Aggiornato con Foto)
 app.post('/api/prodotti', async (req, res) => {
-    const { nome, prezzo, categoria, ristorante_id } = req.body;
+    // Aggiungiamo immagine_url qui sotto
+    const { nome, prezzo, categoria, ristorante_id, immagine_url } = req.body;
     try {
         const result = await pool.query(
-            'INSERT INTO prodotti (nome, prezzo, categoria, ristorante_id) VALUES ($1, $2, $3, $4) RETURNING *',
-            [nome, prezzo, categoria, ristorante_id]
+            'INSERT INTO prodotti (nome, prezzo, categoria, ristorante_id, immagine_url) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+            [nome, prezzo, categoria, ristorante_id, immagine_url]
         );
         res.json(result.rows[0]);
     } catch (err) {
