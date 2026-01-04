@@ -122,6 +122,59 @@ app.post('/api/ordine/completato', async (req, res) => {
     }
 });
 
+// 5. LOGIN PROPRIETARIO
+app.post('/api/login', async (req, res) => {
+    const { email, password } = req.body;
+    try {
+        // Cerchiamo l'utente nel DB
+        const result = await pool.query(
+            'SELECT * FROM ristoranti WHERE email_titolare = $1 AND password = $2',
+            [email, password]
+        );
+
+        if (result.rows.length > 0) {
+            const user = result.rows[0];
+            // Login successo! Restituiamo i dati (senza password)
+            res.json({ 
+                success: true, 
+                user: { id: user.id, nome: user.nome, slug: user.slug } 
+            });
+        } else {
+            res.status(401).json({ success: false, error: "Credenziali errate" });
+        }
+    } catch (err) {
+        console.error("Errore login:", err);
+        res.status(500).json({ error: "Errore server" });
+    }
+});
+
+// 6. AGGIUNGI PIATTO (Solo Admin)
+app.post('/api/prodotti', async (req, res) => {
+    const { nome, prezzo, categoria, ristorante_id } = req.body;
+    try {
+        const result = await pool.query(
+            'INSERT INTO prodotti (nome, prezzo, categoria, ristorante_id) VALUES ($1, $2, $3, $4) RETURNING *',
+            [nome, prezzo, categoria, ristorante_id]
+        );
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Errore aggiunta prodotto" });
+    }
+});
+
+// 7. CANCELLA PIATTO (Solo Admin)
+app.delete('/api/prodotti/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        await pool.query('DELETE FROM prodotti WHERE id = $1', [id]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Errore cancellazione" });
+    }
+});
+
 app.listen(port, () => {
   console.log(`Server attivo sulla porta ${port}`);
 });
