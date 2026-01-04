@@ -1,7 +1,9 @@
 // client/src/App.jsx
 import { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Link, useSearchParams } from 'react-router-dom'; // <--- AGGIUNTO useSearchParams
-import Cucina from './Cucina'; 
+import { BrowserRouter, Routes, Route, Link, useSearchParams } from 'react-router-dom';
+import Cucina from './Cucina';
+import Login from './Login';   // <--- NUOVO
+import Admin from './Admin';   // <--- NUOVO
 import './App.css';
 
 // --- COMPONENTE MENU AGGIORNATO ---
@@ -100,6 +102,11 @@ function App() {
       <Routes>
         <Route path="/" element={<Menu />} />
         <Route path="/cucina" element={<Cucina />} />
+        
+        {/* --- NUOVE ROTTE --- */}
+        <Route path="/login" element={<Login />} />
+        <Route path="/admin" element={<Admin />} />
+        
       </Routes>
     </BrowserRouter>
   );
