@@ -1,0 +1,133 @@
+/* client/src/App.css */
+#root {
+  max-width: 600px; /* Larghezza tipo cellulare */
+  margin: 0 auto;
+  padding: 20px;
+  font-family: system-ui, sans-serif;
+  text-align: left; /* Reset del default di vite */
+}
+
+header {
+  text-align: center;
+  margin-bottom: 30px;
+  border-bottom: 2px solid #ff9f43;
+  padding-bottom: 10px;
+}
+
+.card {
+  background: #2b2b2b;
+  color: white;
+  padding: 15px;
+  margin-bottom: 10px;
+  border-radius: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+}
+
+.info h3 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.categoria {
+  font-size: 0.8rem;
+  background: #444;
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: #ccc;
+}
+
+.prezzo {
+  font-weight: bold;
+  font-size: 1.2rem;
+  color: #ff9f43;
+  margin: 0 15px;
+}
+
+button {
+  background: #ff9f43;
+  color: #222;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.menu-list {
+  padding-bottom: 80px; /* Spazio per non coprire l'ultima pizza con il carrello */
+}
+
+.carrello-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background: #222;
+  border-top: 2px solid #ff9f43;
+  padding: 15px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-sizing: border-box; /* Importante per i margini */
+  box-shadow: 0 -5px 10px rgba(0,0,0,0.5);
+}
+
+.totale {
+  display: flex;
+  flex-direction: column;
+  color: white;
+}
+
+.btn-invia {
+  background: #28a745; /* Verde conferma */
+  color: white;
+  padding: 12px 20px;
+  font-size: 1rem;
+}
+
+/* Stile Cucina */
+.cucina-container {
+  background-color: #f4f4f4;
+  min-height: 100vh;
+  padding: 20px;
+  color: #333;
+}
+
+.ordini-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.ticket {
+  background: white;
+  border: 1px solid #ccc;
+  width: 100%;
+  max-width: 300px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.ticket-header {
+  background: #d63031; /* Rosso allarme */
+  color: white;
+  padding: 10px;
+  display: flex;
+  justify-content: space-between;
+  font-weight: bold;
+}
+
+.ticket-body {
+  padding: 20px;
+  font-size: 1.2rem;
+  line-height: 1.5;
+}
+
+.btn-completato {
+  width: 100%;
+  border-radius: 0;
+  background: #00b894;
+  padding: 15px;
+}
