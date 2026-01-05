@@ -1,4 +1,4 @@
-// client/src/App.jsx - VERSIONE V6 (FIX SPAZI ESTREMI + SUPPORTO GRAFICA) 🎨
+// client/src/App.jsx - VERSIONE V7 (FULL WIDTH ESTESO + GRAFICA) ↔️
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useSearchParams, useParams } from 'react-router-dom';
 import Cucina from './Cucina';
@@ -85,7 +85,6 @@ function Menu() {
   };
 
   // --- STILI DINAMICI (Useremo questi per colorare tutto) ---
-  // Se 'style' è null (non ancora configurato), usa i default scuri.
   const appStyle = {
       backgroundColor: style?.bg || '#222',
       color: style?.text || '#ccc',
@@ -94,19 +93,35 @@ function Menu() {
       backgroundSize: 'cover',
       backgroundAttachment: 'fixed',
       minHeight: '100vh',
-      padding: '20px'
+      
+      // FULL WIDTH FIX:
+      width: '100%',
+      maxWidth: '100%',
+      margin: 0,
+      padding: '10px', // Solo un piccolo margine ai lati per non toccare il bordo schermo
+      boxSizing: 'border-box'
   };
 
   const titleColor = style?.title || '#fff';
   const priceColor = style?.price || '#27ae60';
 
   return (
-    <div style={appStyle}> {/* APPLICA SFONDO QUI */}
+    // RIMOSSO className="container" per evitare che il CSS lo stringa
+    <div style={appStyle}> 
       
       <header style={{textAlign:'center', marginBottom:'20px'}}>
-        {/* LOGO DINAMICO: Se c'è un logo URL, mostra img, altrimenti testo */}
+        {/* LOGO DINAMICO: Reso molto più grande e largo */}
         {style?.logo ? (
-            <img src={style.logo} alt={ristorante} style={{maxWidth:'250px', maxHeight:'120px', objectFit:'contain'}} />
+            <img 
+                src={style.logo} 
+                alt={ristorante} 
+                style={{
+                    width: '100%',
+                    maxWidth: '90%', // Occupa quasi tutta la larghezza
+                    maxHeight: '150px', 
+                    objectFit: 'contain'
+                }} 
+            />
         ) : (
             <h1 style={{color: titleColor, fontSize:'2.5rem', margin:'0 0 10px 0'}}>{ristorante}</h1>
         )}
@@ -122,10 +137,10 @@ function Menu() {
       )}
 
       {/* FIX SPAZI: Ridotto marginTop a 0 */}
-      <div style={{paddingBottom: '80px', marginTop: '0'}}> 
+      <div style={{paddingBottom: '80px', marginTop: '0', width: '100%'}}> 
         {categorieOrdinate.map(catNome => (
             // FIX SPAZI: Margine minimo (2px) tra le categorie chiuse
-            <div key={catNome} className="accordion-item" style={{marginBottom: '2px', borderRadius: '5px', overflow: 'hidden'}}>
+            <div key={catNome} className="accordion-item" style={{marginBottom: '2px', borderRadius: '5px', overflow: 'hidden', width: '100%'}}>
                 
                 <div 
                     onClick={() => toggleAccordion(catNome)}
@@ -139,13 +154,13 @@ function Menu() {
                         borderBottom: activeCategory === catNome ? `1px solid ${priceColor}` : 'none'
                     }}
                 >
-                    <h2 style={{margin:0, fontSize:'18px', color: titleColor}}>{catNome}</h2>
+                    <h2 style={{margin:0, fontSize:'18px', color: titleColor, width:'100%'}}>{catNome}</h2>
                     <span style={{color: titleColor}}>{activeCategory === catNome ? '▼' : '▶'}</span>
                 </div>
 
                 {/* CONTENUTO */}
                 {activeCategory === catNome && (
-                    <div className="accordion-content" style={{padding: '0', background: 'rgba(0,0,0,0.2)'}}>
+                    <div className="accordion-content" style={{padding: '0', background: 'rgba(0,0,0,0.2)', width: '100%'}}>
                         {(() => {
                             const piattiCat = menu.filter(p => p.categoria === catNome);
                             const sottoCats = piattiCat.reduce((acc, p) => {
@@ -159,7 +174,7 @@ function Menu() {
                             const isSingleGroup = subKeys.length === 1 && subKeys[0] === "Generale";
 
                             return subKeys.map(scKey => (
-                                <div key={scKey}>
+                                <div key={scKey} style={{width: '100%'}}>
                                     
                                     {!isSingleGroup && (
                                         <div 
@@ -170,6 +185,8 @@ function Menu() {
                                                 padding: '10px', 
                                                 // FIX SPAZI: Margine 1px per separare le sottocategorie
                                                 margin: '1px 0', 
+                                                width: '100%',
+                                                boxSizing: 'border-box',
                                                 cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
                                             }}
                                         >
@@ -183,7 +200,7 @@ function Menu() {
                                     )}
 
                                     {(isSingleGroup || activeSubCategory === scKey) && (
-                                        <div className="menu-list" style={{padding: '0'}}>
+                                        <div className="menu-list" style={{padding: '0', width: '100%'}}>
                                             {sottoCats[scKey].map((prodotto) => (
                                                 <div 
                                                     key={prodotto.id} 
@@ -195,6 +212,8 @@ function Menu() {
                                                         alignItems: 'center',
                                                         gap: '15px',
                                                         padding: '10px',
+                                                        width: '100%',
+                                                        boxSizing: 'border-box',
                                                         cursor: prodotto.immagine_url ? 'pointer' : 'default',
                                                         // FIX SPAZI: Sfondo bianco pulito per i piatti, margine minimo
                                                         backgroundColor: 'white',
