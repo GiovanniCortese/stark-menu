@@ -1,68 +1,66 @@
-/* client/src/App.css - VERSIONE FULL WIDTH (ESTESA) */
+/* client/src/App.css - VERSIONE DEFINITIVA FULL WIDTH */
 
-/* RESET GENERALE */
-body {
+/* 1. SETUP GENERALE */
+html, body {
   margin: 0;
   padding: 0;
   width: 100%;
-  overflow-x: hidden; /* Evita scroll laterale */
-  background-color: #222; /* Colore di sicurezza finché non carica il DB */
+  height: 100%;
+  overflow-x: hidden; /* Blocca lo scroll orizzontale indesiderato */
+  background-color: #222;
 }
 
 #root {
-  width: 100%;        /* Ocupa tutto lo schermo */
-  max-width: 100%;    /* RIMOSSO IL LIMITE DI 600px */
-  margin: 0;          /* Niente margini laterali */
-  padding: 0;         /* Niente padding esterno */
-  font-family: system-ui, sans-serif;
+  width: 100%;
+  max-width: 100%;  /* RIMOSSO IL LIMITE: Occupa tutto lo schermo */
+  margin: 0;
+  padding: 0;
   text-align: left;
+  font-family: system-ui, -apple-system, sans-serif;
 }
 
-/* HEADER */
+/* 2. HEADER E LOGO */
 header {
   text-align: center;
-  padding: 20px 10px; /* Un po' di spazio interno */
+  padding: 20px 0; /* Padding laterale a 0 per far toccare i bordi */
   width: 100%;
   box-sizing: border-box;
 }
 
-/* CARDS */
+/* Assicura che l'immagine del logo non abbia margini strani */
+header img {
+  display: block;
+  margin: 0 auto;
+}
+
+/* 3. CARD PIATTI */
 .card {
-  background: white; /* Default, poi sovrascritto da React */
+  background: white;
   color: #333;
   padding: 15px;
-  /* Margini gestiti ora da React per eliminare i buchi */
-  margin: 0; 
+  margin: 0; /* Gestito da React */
   display: flex;
   justify-content: space-between;
   align-items: center;
-  /* Rimuovi ombra pesante per stile più piatto/moderno se vuoi, o lasciala */
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1); 
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
   width: 100%;
-  box-sizing: border-box; /* Fondamentale per non sforare la larghezza */
+  box-sizing: border-box; /* Fondamentale */
+  border-radius: 0; /* Squadrato per sembrare una lista continua */
 }
 
 .info h3 {
-  margin: 0;
+  margin: 0 0 5px 0;
   font-size: 1.1rem;
-}
-
-/* ETICHETTE */
-.categoria {
-  font-size: 0.8rem;
-  background: #eee;
-  padding: 2px 8px;
-  border-radius: 4px;
-  color: #555;
 }
 
 .prezzo {
   font-weight: bold;
   font-size: 1.1rem;
+  white-space: nowrap; /* Evita che il prezzo vada a capo */
   margin: 0 10px;
 }
 
-/* BOTTONI */
+/* 4. BOTTONI */
 button {
   border: none;
   padding: 8px 12px;
@@ -71,21 +69,22 @@ button {
   font-weight: bold;
 }
 
-/* CARRELLO */
+/* 5. CARRELLO BAR (FISSO IN BASSO) */
 .carrello-bar {
   position: fixed;
   bottom: 0;
   left: 0;
-  width: 100%; /* Larghezza totale */
+  right: 0;
+  width: 100%;
   background: #222;
   border-top: 2px solid #ff9f43;
   padding: 15px 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  box-sizing: border-box; 
-  box-shadow: 0 -5px 10px rgba(0,0,0,0.5);
-  z-index: 999; /* Sta sempre sopra */
+  box-sizing: border-box;
+  box-shadow: 0 -5px 15px rgba(0,0,0,0.5);
+  z-index: 9999;
 }
 
 .totale {
@@ -95,52 +94,22 @@ button {
 }
 
 .btn-invia {
-  background: #28a745; 
+  background: #28a745;
   color: white;
-  padding: 12px 20px;
+  padding: 12px 25px;
   font-size: 1rem;
+  border-radius: 30px; /* Più moderno */
 }
 
-/* CUCINA (Resta invariato) */
+/* 6. CUCINA (NON TOCCARE) */
 .cucina-container {
   background-color: #f4f4f4;
   min-height: 100vh;
   padding: 20px;
   color: #333;
 }
-
-.ordini-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 20px;
-}
-
-.ticket {
-  background: white;
-  border: 1px solid #ccc;
-  width: 100%;
-  max-width: 300px;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-}
-
-.ticket-header {
-  background: #d63031; 
-  color: white;
-  padding: 10px;
-  display: flex;
-  justify-content: space-between;
-  font-weight: bold;
-}
-
-.ticket-body {
-  padding: 20px;
-  font-size: 1.2rem;
-  line-height: 1.5;
-}
-
-.btn-completato {
-  width: 100%;
-  border-radius: 0;
-  background: #00b894;
-  padding: 15px;
-}
+.ordini-grid { display: flex; flex-wrap: wrap; gap: 20px; }
+.ticket { background: white; border: 1px solid #ccc; width: 100%; max-width: 300px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+.ticket-header { background: #d63031; color: white; padding: 10px; display: flex; justify-content: space-between; font-weight: bold; }
+.ticket-body { padding: 20px; font-size: 1.2rem; line-height: 1.5; }
+.btn-completato { width: 100%; border-radius: 0; background: #00b894; padding: 15px; }

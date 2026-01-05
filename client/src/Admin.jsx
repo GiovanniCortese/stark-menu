@@ -1,4 +1,4 @@
-// client/src/Admin.jsx - VERSIONE V4 (STYLE EDITOR + DUPLICA) 🎨
+// client/src/Admin.jsx - VERSIONE V5 (CON RIMozione FOTO) 🗑️
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
@@ -203,21 +203,44 @@ function Admin() {
                       <p><small>Sostituisce il titolo testuale in alto.</small></p>
                       <input type="file" onChange={handleUploadLogo} />
                       {uploading && <span>Caricamento...</span>}
-                      {config.logo_url && <img src={config.logo_url} style={{height:'60px', marginTop:'10px', display:'block', border:'1px solid #ccc'}} />}
+                      
+                      {/* ANTEPRIMA LOGO + TASTO RIMUOVI */}
+                      {config.logo_url && (
+                          <div style={{marginTop:'10px'}}>
+                              <img src={config.logo_url} style={{height:'60px', marginBottom:'5px', display:'block', border:'1px solid #ccc'}} />
+                              <button 
+                                onClick={() => setConfig({...config, logo_url: ''})}
+                                style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}
+                              >
+                                🗑️ Rimuovi Logo
+                              </button>
+                          </div>
+                      )}
                   </div>
 
                   {/* SFONDO */}
                   <div style={{borderBottom:'1px solid #ccc', paddingBottom:'10px'}}>
-                      <h4>Sfondo (Colore o Immagine)</h4>
-                      <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+                      <h4>Sfondo</h4>
+                      <div style={{display:'flex', alignItems:'center', gap:'10px', marginBottom:'10px'}}>
                         <input type="color" value={config.colore_sfondo} onChange={e => setConfig({...config, colore_sfondo: e.target.value})} />
                         <span>Colore Sfondo</span>
                       </div>
-                      <div style={{marginTop:'10px'}}>
-                          <p><small>Oppure carica immagine di sfondo:</small></p>
-                          <input type="file" onChange={handleUploadCover} />
-                          {config.cover_url && <img src={config.cover_url} style={{height:'60px', marginTop:'10px', display:'block', border:'1px solid #ccc'}} />}
-                      </div>
+                      
+                      <p><small>Oppure immagine sfondo:</small></p>
+                      <input type="file" onChange={handleUploadCover} />
+                      
+                      {/* ANTEPRIMA SFONDO + TASTO RIMUOVI */}
+                      {config.cover_url && (
+                          <div style={{marginTop:'10px'}}>
+                              <img src={config.cover_url} style={{height:'60px', marginBottom:'5px', display:'block', border:'1px solid #ccc'}} />
+                              <button 
+                                onClick={() => setConfig({...config, cover_url: ''})}
+                                style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}
+                              >
+                                🗑️ Rimuovi Sfondo
+                              </button>
+                          </div>
+                      )}
                   </div>
 
                   {/* COLORI */}
@@ -238,16 +261,16 @@ function Admin() {
 
                   {/* FONT */}
                   <div>
-                      <h4>Font (Carattere)</h4>
+                      <h4>Font</h4>
                       <select value={config.font_style} onChange={e => setConfig({...config, font_style: e.target.value})} style={{width:'100%', padding:'10px'}}>
-                          <option value="sans-serif">Moderno (Sans-Serif)</option>
-                          <option value="serif">Classico (Serif)</option>
+                          <option value="sans-serif">Moderno</option>
+                          <option value="serif">Classico</option>
                           <option value="'Courier New', monospace">Macchina da scrivere</option>
-                          <option value="'Brush Script MT', cursive">Corsivo / Elegante</option>
+                          <option value="'Brush Script MT', cursive">Corsivo</option>
                       </select>
                   </div>
 
-                  <button onClick={handleSaveStyle} className="btn-invia" style={{background:'#9b59b6', marginTop:'10px'}}>💾 SALVA GRAFICA</button>
+                  <button onClick={handleSaveStyle} className="btn-invia" style={{background:'#9b59b6', marginTop:'10px'}}>💾 SALVA MODIFICHE</button>
               </div>
           </div>
       )}
