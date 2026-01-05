@@ -1,4 +1,4 @@
-// client/src/App.jsx - VERSIONE SAAS MULTI-RISTORANTE 🌍
+// client/src/App.jsx - VERSIONE AGGIORNATA PER SAAS (ID + SLUG) 🌍
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useSearchParams, useParams } from 'react-router-dom';
 import Cucina from './Cucina';
@@ -10,12 +10,13 @@ import './App.css';
 function Menu() {
   const [menu, setMenu] = useState([]);
   const [ristorante, setRistorante] = useState("");
+  const [ristoranteId, setRistoranteId] = useState(null); // <--- NUOVO: Salviamo l'ID del ristorante
   const [carrello, setCarrello] = useState([]); 
   const [error, setError] = useState(false);
   
   // 1. LEGGIAMO LO SLUG DALL'URL (es. "da-luigi")
   const { slug } = useParams();
-  // Se non c'è slug nell'URL, usiamo "pizzeria-stark" come default
+  // Se non c'è slug nell'URL (siamo sulla home), usiamo "pizzeria-stark" come default
   const currentSlug = slug || 'pizzeria-stark';
 
   const [searchParams] = useSearchParams();
@@ -34,13 +35,15 @@ function Menu() {
       .then(data => {
         setRistorante(data.ristorante);
         setMenu(data.menu);
+        // Salviamo l'ID ricevuto dal server (Modifica fondamentale per il multi-ristorante)
+        setRistoranteId(data.id); 
         setError(false);
       })
       .catch(err => {
         console.error(err);
         setError(true);
       });
-  }, [currentSlug]); // Si aggiorna se cambia lo slug
+  }, [currentSlug]);
 
   const aggiungiAlCarrello = (prodotto) => {
     setCarrello([...carrello, prodotto]); 
@@ -49,17 +52,19 @@ function Menu() {
   const totale = carrello.reduce((acc, item) => acc + parseFloat(item.prezzo), 0);
 
   const inviaOrdine = async () => {
+    if (!ristoranteId) {
+      alert("Errore: Ristorante non identificato. Ricarica la pagina.");
+      return;
+    }
+
     const ordine = {
+      ristorante_id: ristoranteId, // <--- ORA MANDIAMO L'ID GIUSTO!
       tavolo: numeroTavolo,
       prodotti: carrello.map(p => p.nome),
       totale: totale
     };
 
     try {
-      // Nota: Per perfezione dovremmo mandare anche l'ID ristorante, 
-      // ma il backend lo recupera dallo slug o lo fissiamo per ora.
-      // Per questo test rapido, il backend userà l'ID di Stark di default se non modificato,
-      // ma per la visualizzazione menu questo funziona già!
       const response = await fetch(`${API_URL}/api/ordine`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -69,6 +74,8 @@ function Menu() {
       if(data.success) {
         alert(`✅ Ordine inviato a ${ristorante}!`);
         setCarrello([]); 
+      } else {
+        alert("Errore server: " + data.error);
       }
     } catch (error) {
       alert("❌ Errore di connessione");
@@ -126,16 +133,16 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Le pagine speciali vanno PRIMA delle rotte dinamiche */}
         <Route path="/login" element={<Login />} />
         <Route path="/admin" element={<Admin />} />
-        <Route path="/cucina" element={<Cucina />} />
         
-        {/* Rotta Dinamica: cattura qualsiasi cosa dopo lo slash */}
-        {/* Esempio: /da-luigi attiverà Menu con slug="da-luigi" */}
+        {/* ROTTA CUCINA DINAMICA (es. /cucina/da-luigi) */}
+        <Route path="/cucina/:slug" element={<Cucina />} />
+        
+        {/* MENU PUBBLICO DINAMICO (es. /da-luigi) */}
         <Route path="/:slug" element={<Menu />} />
         
-        {/* Rotta Base: se non scrivi nulla, vai al default (Stark) */}
+        {/* MENU DEFAULT (Pizzeria Stark) */}
         <Route path="/" element={<Menu />} />
       </Routes>
     </BrowserRouter>
