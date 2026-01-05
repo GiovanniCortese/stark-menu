@@ -1,4 +1,4 @@
-// client/src/App.jsx - VERSIONE FIXED SOTTOCATEGORIE & ACCORDION 🍷
+// client/src/App.jsx - VERSIONE DEFINITIVA
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useSearchParams, useParams } from 'react-router-dom';
 import Cucina from './Cucina';
@@ -15,7 +15,7 @@ function Menu() {
   const [carrello, setCarrello] = useState([]); 
   const [error, setError] = useState(false);
   
-  // STATO PER ACCORDION (Quale categoria è aperta?)
+  // STATO PER ACCORDION
   const [activeCategory, setActiveCategory] = useState(null);
 
   const { slug } = useParams();
@@ -32,7 +32,7 @@ function Menu() {
         setMenu(data.menu);
         setRistoranteId(data.id);
         setCanOrder(data.ordini_abilitati && data.servizio_attivo);
-        // Apriamo la prima categoria di default se presente
+        // Apre la prima categoria di default
         if (data.menu && data.menu.length > 0) {
            setActiveCategory(data.menu[0].categoria);
         }
@@ -84,7 +84,7 @@ function Menu() {
         {categorieOrdinate.map(catNome => (
             <div key={catNome} className="accordion-item">
                 
-                {/* TITOLO CATEGORIA (CLICKABILE) */}
+                {/* TITOLO CATEGORIA */}
                 <div 
                     onClick={() => toggleAccordion(catNome)}
                     style={{
@@ -102,16 +102,15 @@ function Menu() {
                     <span>{activeCategory === catNome ? '▼' : '▶'}</span>
                 </div>
 
-                {/* CONTENUTO (VISIBILE SOLO SE APERTO) */}
+                {/* CONTENUTO */}
                 {activeCategory === catNome && (
                     <div className="accordion-content" style={{padding: '10px 0'}}>
                         {(() => {
-                            // 1. Filtriamo piatti della categoria
+                            // 1. Filtra piatti della categoria
                             const piattiCat = menu.filter(p => p.categoria === catNome);
                             
-                            // 2. Raggruppiamo per sottocategoria (Gestione migliorata spazi vuoti)
+                            // 2. Raggruppa per sottocategoria
                             const sottoCats = piattiCat.reduce((acc, p) => {
-                                // Se null, undefined o stringa vuota/spazi -> "Generale"
                                 const sc = (p.sottocategoria && p.sottocategoria.trim().length > 0) 
                                            ? p.sottocategoria 
                                            : "Generale";
@@ -120,12 +119,11 @@ function Menu() {
                                 return acc;
                             }, {});
 
-                            // 3. Ordiniamo le chiavi per visualizzazione pulita
+                            // 3. Renderizza i gruppi
                             return Object.keys(sottoCats).sort().map(scKey => (
                                 <div key={scKey} style={{marginBottom: '20px'}}>
                                     
-                                    {/* TITOLO SOTTOCATEGORIA */}
-                                    {/* Lo mostriamo se NON è "Generale" OPPURE se ci sono più gruppi (così si capisce la divisione) */}
+                                    {/* Titolo Sottocategoria (mostrato solo se serve) */}
                                     {(scKey !== "Generale" || Object.keys(sottoCats).length > 1) && (
                                         <h3 style={{
                                             borderLeft: '4px solid #ff9f43', 
