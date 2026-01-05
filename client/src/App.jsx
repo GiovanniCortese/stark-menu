@@ -1,4 +1,4 @@
-// client/src/App.jsx - VERSIONE ACCORDION & SOTTOCATEGORIE 🍷
+// client/src/App.jsx - VERSIONE FIXED SOTTOCATEGORIE & ACCORDION 🍷
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useSearchParams, useParams } from 'react-router-dom';
 import Cucina from './Cucina';
@@ -45,7 +45,7 @@ function Menu() {
     setCarrello([...carrello, prodotto]); 
   };
 
-  const inviaOrdine = async () => { /* Logica ordine uguale a prima */ 
+  const inviaOrdine = async () => { 
      if (!ristoranteId) return;
      const totale = carrello.reduce((acc, i) => acc + parseFloat(i.prezzo), 0);
      try {
@@ -58,18 +58,11 @@ function Menu() {
   if (error) return <div className="container"><h1>🚫 404</h1></div>;
 
   // RAGGRUPPAMENTO MENU
-  // 1. Categorie uniche
   const categorieOrdinate = [...new Set(menu.map(p => p.categoria))];
 
-  // Funzione per gestire il click sull'accordion
   const toggleAccordion = (catNome) => {
-      // Se clicco quella aperta, la chiudo? No, hai chiesto "si chiude la precedente e si apre la nuova"
-      // Se è già aperta, non faccio nulla. Se è diversa, cambio.
       if (activeCategory !== catNome) {
           setActiveCategory(catNome);
-      } else {
-          // Opzionale: se vuoi poter chiudere tutto cliccando di nuovo, scommenta:
-          // setActiveCategory(null);
       }
   };
 
@@ -112,31 +105,38 @@ function Menu() {
                 {/* CONTENUTO (VISIBILE SOLO SE APERTO) */}
                 {activeCategory === catNome && (
                     <div className="accordion-content" style={{padding: '10px 0'}}>
-                        {/* Qui dobbiamo gestire le SOTTOCATEGORIE */}
                         {(() => {
-                            // Filtriamo i piatti di questa categoria
+                            // 1. Filtriamo piatti della categoria
                             const piattiCat = menu.filter(p => p.categoria === catNome);
                             
-                            // Raggruppiamo per sottocategoria
+                            // 2. Raggruppiamo per sottocategoria (Gestione migliorata spazi vuoti)
                             const sottoCats = piattiCat.reduce((acc, p) => {
-                                const sc = p.sottocategoria || "Generale"; // "Generale" per chi non ne ha
+                                // Se null, undefined o stringa vuota/spazi -> "Generale"
+                                const sc = (p.sottocategoria && p.sottocategoria.trim().length > 0) 
+                                           ? p.sottocategoria 
+                                           : "Generale";
                                 if(!acc[sc]) acc[sc] = [];
                                 acc[sc].push(p);
                                 return acc;
                             }, {});
 
-                            return Object.keys(sottoCats).map(scKey => (
+                            // 3. Ordiniamo le chiavi per visualizzazione pulita
+                            return Object.keys(sottoCats).sort().map(scKey => (
                                 <div key={scKey} style={{marginBottom: '20px'}}>
-                                    {/* Titolo Sottocategoria (solo se non è "Generale" o se ci sono più gruppi) */}
-                                    {scKey !== "Generale" && (
+                                    
+                                    {/* TITOLO SOTTOCATEGORIA */}
+                                    {/* Lo mostriamo se NON è "Generale" OPPURE se ci sono più gruppi (così si capisce la divisione) */}
+                                    {(scKey !== "Generale" || Object.keys(sottoCats).length > 1) && (
                                         <h3 style={{
                                             borderLeft: '4px solid #ff9f43', 
                                             paddingLeft: '10px', 
                                             marginLeft: '5px',
                                             color: '#555', 
-                                            fontSize: '16px'
+                                            fontSize: '16px',
+                                            textTransform: 'uppercase',
+                                            marginTop: '15px'
                                         }}>
-                                            {scKey}
+                                            {scKey === "Generale" ? "Altri Piatti" : scKey}
                                         </h3>
                                     )}
 
