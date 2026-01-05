@@ -1,4 +1,4 @@
-// client/src/Admin.jsx - VERSIONE V5 (CON RIMozione FOTO) 🗑️
+// client/src/Admin.jsx - VERSIONE V6 (EDIT CATEGORIE ATTIVO) ✏️
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
@@ -8,7 +8,7 @@ function Admin() {
   const [menu, setMenu] = useState([]); 
   const [categorie, setCategorie] = useState([]); 
   
-  // STATO CONFIG AGGIORNATO CON CAMPI GRAFICI
+  // STATO CONFIG
   const [config, setConfig] = useState({ 
       ordini_abilitati: false, 
       servizio_attivo: false,
@@ -23,8 +23,11 @@ function Admin() {
 
   const [uploading, setUploading] = useState(false);
   const [nuovoPiatto, setNuovoPiatto] = useState({ nome: '', prezzo: '', categoria: '', sottocategoria: '', descrizione: '', immagine_url: '' });
-  const [nuovaCat, setNuovaCat] = useState({ nome: '', descrizione: '' });
   
+  // --- MODIFICA QUI: Aggiunto stato per sapere se stiamo modificando una categoria ---
+  const [nuovaCat, setNuovaCat] = useState({ nome: '', descrizione: '' });
+  const [editCatId, setEditCatId] = useState(null); 
+
   const [editId, setEditId] = useState(null); 
   const [fileExcel, setFileExcel] = useState(null);
 
@@ -39,7 +42,6 @@ function Admin() {
 
   const caricaTutto = () => {
     fetch(`${API_URL}/api/menu/${user.slug}`).then(r=>r.json()).then(d=>{if(d.menu) setMenu(d.menu)});
-    // Merge della configurazione esistente con i nuovi campi
     fetch(`${API_URL}/api/ristorante/config/${user.id}`).then(r=>r.json()).then(d=>setConfig(prev => ({...prev, ...d}))); 
     caricaCategorie();
   };
@@ -53,7 +55,6 @@ function Admin() {
       });
   };
 
-  // --- LOGICA SALVATAGGIO GRAFICA ---
   const handleSaveStyle = async () => {
       try {
         await fetch(`${API_URL}/api/ristorante/style/${user.id}`, {
@@ -67,7 +68,6 @@ function Admin() {
       }
   };
 
-  // UPLOAD LOGO
   const handleUploadLogo = async (e) => {
       const f = e.target.files[0]; if(!f) return;
       setUploading(true);
@@ -78,7 +78,6 @@ function Admin() {
       setUploading(false);
   };
   
-  // UPLOAD SFONDO (COVER)
   const handleUploadCover = async (e) => {
       const f = e.target.files[0]; if(!f) return;
       setUploading(true);
@@ -89,7 +88,6 @@ function Admin() {
       setUploading(false);
   };
 
-  // --- LOGICA EXCEL ---
   const handleImportExcel = async () => {
     if(!fileExcel) return alert("Seleziona un file .xlsx prima!");
     const formData = new FormData(); formData.append('file', fileExcel); formData.append('ristorante_id', user.id);
@@ -104,7 +102,6 @@ function Admin() {
 
   const handleExportExcel = () => { window.open(`${API_URL}/api/export-excel/${user.id}`, '_blank'); };
 
-  // --- DRAG & DROP LOGIC ---
   const handleOnDragEnd = async (result) => {
     if (!result.destination) return;
     if (result.type === 'CATEGORY') {
@@ -135,8 +132,42 @@ function Admin() {
     }
   };
   
-  // --- FUNZIONI CRUD ---
-  const aggiungiCategoria = async () => { if(!nuovaCat.nome) return; await fetch(`${API_URL}/api/categorie`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ nome: nuovaCat.nome, descrizione: nuovaCat.descrizione, ristorante_id: user.id}) }); setNuovaCat({ nome: '', descrizione: '' }); caricaCategorie(); };
+  // --- MODIFICA QUI: LOGICA CATEGORIE (CREA O AGGIORNA) ---
+  const handleSalvaCategoria = async () => { 
+      if(!nuovaCat.nome) return; 
+      
+      if (editCatId) {
+          // UPDATE
+          await fetch(`${API_URL}/api/categorie/${editCatId}`, { 
+              method:'PUT', 
+              headers:{'Content-Type':'application/json'}, 
+              body:JSON.stringify({ nome: nuovaCat.nome, descrizione: nuovaCat.descrizione }) 
+          });
+          alert("Categoria modificata!");
+          setEditCatId(null);
+      } else {
+          // CREATE
+          await fetch(`${API_URL}/api/categorie`, { 
+              method:'POST', 
+              headers:{'Content-Type':'application/json'}, 
+              body:JSON.stringify({ nome: nuovaCat.nome, descrizione: nuovaCat.descrizione, ristorante_id: user.id}) 
+          });
+      }
+      setNuovaCat({ nome: '', descrizione: '' }); 
+      caricaCategorie(); 
+  };
+
+  const avviaModificaCat = (cat) => {
+      setEditCatId(cat.id);
+      setNuovaCat({ nome: cat.nome, descrizione: cat.descrizione || '' });
+  };
+
+  const annullaModificaCat = () => {
+      setEditCatId(null);
+      setNuovaCat({ nome: '', descrizione: '' });
+  };
+
+  const cancellaCategoria = async (id) => { if(confirm("Eliminare categoria?")) { await fetch(`${API_URL}/api/categorie/${id}`, {method:'DELETE'}); caricaCategorie(); }};
 
   const handleSalvaPiatto = async (e) => { 
       e.preventDefault(); 
@@ -155,25 +186,11 @@ function Admin() {
       caricaTutto(); 
   };
   
-  const avviaModifica = (piatto) => {
-      setEditId(piatto.id);
-      setNuovoPiatto({nome: piatto.nome, prezzo: piatto.prezzo, categoria: piatto.categoria, sottocategoria: piatto.sottocategoria || '', descrizione: piatto.descrizione || '', immagine_url: piatto.immagine_url || ''});
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  const avviaModifica = (piatto) => { setEditId(piatto.id); setNuovoPiatto({nome: piatto.nome, prezzo: piatto.prezzo, categoria: piatto.categoria, sottocategoria: piatto.sottocategoria || '', descrizione: piatto.descrizione || '', immagine_url: piatto.immagine_url || ''}); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const annullaModifica = () => { setEditId(null); setNuovoPiatto({nome:'', prezzo:'', categoria:categorie[0]?.nome || '', sottocategoria: '', descrizione:'', immagine_url:''}); };
-
-  // DUPLICA PIATTO
-  const duplicaPiatto = async (piattoOriginale) => {
-      if(!confirm(`Vuoi duplicare "${piattoOriginale.nome}"?`)) return;
-      const piattoCopia = { ...piattoOriginale, nome: `${piattoOriginale.nome} (Copia)`, ristorante_id: user.id };
-      try { await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(piattoCopia) }); caricaTutto(); } catch(e) { alert("Errore duplicazione"); }
-  };
-
-  const cancellaCategoria = async (id) => { if(confirm("Eliminare categoria?")) { await fetch(`${API_URL}/api/categorie/${id}`, {method:'DELETE'}); caricaCategorie(); }};
+  const duplicaPiatto = async (piattoOriginale) => { if(!confirm(`Vuoi duplicare "${piattoOriginale.nome}"?`)) return; const copia = { ...piattoOriginale, nome: `${piattoOriginale.nome} (Copia)`, ristorante_id: user.id }; try { await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(piattoCopia) }); caricaTutto(); } catch(e) { alert("Errore duplicazione"); } };
   const handleFileChange = async (e) => { const f=e.target.files[0]; if(!f)return; setUploading(true); const fd=new FormData(); fd.append('photo',f); const r=await fetch(`${API_URL}/api/upload`,{method:'POST',body:fd}); const d=await r.json(); if(d.url) setNuovoPiatto(p=>({...p, immagine_url:d.url})); setUploading(false); };
-  
   const toggleServizio = async () => { const n=!config.servizio_attivo; setConfig({...config, servizio_attivo:n}); await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({servizio_attivo:n})}); };
-  
   const cancellaPiatto = async (id) => { if(confirm("Eliminare piatto?")) { await fetch(`${API_URL}/api/prodotti/${id}`, {method:'DELETE'}); caricaTutto(); }};
 
   if (!user) return null;
@@ -185,7 +202,6 @@ function Admin() {
         <div style={{display:'flex', gap:'5px', flexWrap:'wrap'}}>
             <button onClick={() => setTab('menu')} style={{background: tab==='menu'?'#333':'#ccc', flex:1}}>🍔 Menu</button>
             <button onClick={() => setTab('categorie')} style={{background: tab==='categorie'?'#333':'#ccc', flex:1}}>📂 Categorie</button>
-            {/* NUOVO TASTO GRAFICA */}
             <button onClick={() => setTab('style')} style={{background: tab==='style'?'#9b59b6':'#ccc', flex:1}}>🎨 Grafica</button>
             <button onClick={() => setTab('excel')} style={{background: tab==='excel'?'#27ae60':'#ccc', flex:1}}>📊 Excel</button>
         </div>
@@ -356,16 +372,24 @@ function Admin() {
         </DragDropContext>
       )}
 
-      {/* --- TAB CATEGORIE --- */}
+      {/* --- TAB CATEGORIE (MODIFICATO QUI PER EDIT) --- */}
       {tab === 'categorie' && (
         <DragDropContext onDragEnd={handleOnDragEnd}>
             <div className="card">
-                <h3>Gestisci Categorie</h3>
+                <h3>{editCatId ? "✏️ Modifica Categoria" : "➕ Gestisci Categorie"}</h3>
+                
                 <div style={{display:'flex', flexDirection:'column', gap:'10px', marginBottom:'20px'}}>
                     <input placeholder="Nome Categoria" value={nuovaCat.nome} onChange={e=>setNuovaCat({...nuovaCat, nome: e.target.value})} />
                     <input placeholder="Descrizione" value={nuovaCat.descrizione} onChange={e=>setNuovaCat({...nuovaCat, descrizione: e.target.value})} style={{fontSize: '14px'}}/>
-                    <button onClick={aggiungiCategoria} className="btn-invia">Crea</button>
+                    
+                    <div style={{display:'flex', gap:'5px'}}>
+                        <button onClick={handleSalvaCategoria} className="btn-invia" style={{flex:1, background: editCatId ? '#f1c40f' : '#333'}}>
+                            {editCatId ? "AGGIORNA CATEGORIA" : "CREA CATEGORIA"}
+                        </button>
+                        {editCatId && <button onClick={annullaModificaCat} style={{background:'#777', color:'white', border:'none', padding:'10px', borderRadius:'5px', cursor:'pointer'}}>Annulla</button>}
+                    </div>
                 </div>
+                
                 <Droppable droppableId="all-categories" type="CATEGORY">
                     {(provided) => (
                         <div {...provided.droppableProps} ref={provided.innerRef} style={{display:'flex', flexDirection:'column', gap:'10px'}}>
@@ -373,8 +397,15 @@ function Admin() {
                                 <Draggable key={cat.id} draggableId={String(cat.id)} index={index}>
                                     {(provided) => (
                                         <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className="card" style={{...provided.draggableProps.style, padding:'15px', flexDirection:'row', justifyContent:'space-between', borderLeft:'5px solid #333'}}>
-                                            <div><span>☰ <strong>{cat.nome}</strong></span>{cat.descrizione && <div style={{fontSize:'12px', color:'#666', marginLeft:'20px'}}>{cat.descrizione}</div>}</div>
-                                            <button onClick={()=>cancellaCategoria(cat.id)} style={{background:'red', padding:'5px 10px'}}>X</button>
+                                            <div>
+                                                <span>☰ <strong>{cat.nome}</strong></span>
+                                                {cat.descrizione && <div style={{fontSize:'12px', color:'#666', marginLeft:'20px'}}>{cat.descrizione}</div>}
+                                            </div>
+                                            <div style={{display:'flex', gap:'5px'}}>
+                                                {/* MODIFICA: TASTO MATITA PER CATEGORIA */}
+                                                <button onClick={() => avviaModificaCat(cat)} style={{background:'#f1c40f', padding:'5px 10px', borderRadius:'4px', border:'none', cursor:'pointer'}}>✏️</button>
+                                                <button onClick={()=>cancellaCategoria(cat.id)} style={{background:'red', padding:'5px 10px', color:'white'}}>X</button>
+                                            </div>
                                         </div>
                                     )}
                                 </Draggable>

@@ -298,9 +298,20 @@ app.delete('/api/prodotti/:id', async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Err" }); } 
 });
 
-// SUPER ADMIN
+// 20. UPDATE CATEGORIA (NUOVA ROTTA PER MODIFICA) ✏️
+app.put('/api/categorie/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { nome, descrizione } = req.body;
+        await pool.query('UPDATE categorie SET nome = $1, descrizione = $2 WHERE id = $3', [nome, descrizione || "", id]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Errore aggiornamento categoria" });
+    }
+});
+
 app.get('/api/super/ristoranti', async (req, res) => { try { const r = await pool.query('SELECT id, nome, slug, ordini_abilitati FROM ristoranti ORDER BY id ASC'); res.json(r.rows); } catch (e) { res.status(500).json({error:"Err"}); } });
 app.put('/api/super/ristoranti/:id', async (req, res) => { try { await pool.query('UPDATE ristoranti SET ordini_abilitati = $1 WHERE id = $2', [req.body.ordini_abilitati, req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({error:"Err"}); } });
 
-// UPDATE FORZATO: V11
-app.listen(port, () => console.log(`SERVER UPDATE V11 (FULL) - Porta ${port}`));
+app.listen(port, () => console.log(`SERVER UPDATE V12 (EDIT CATEGORIES) - Porta ${port}`));
