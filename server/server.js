@@ -194,4 +194,4 @@ app.post('/api/ordine/completato', async (req, res) => { try { await pool.query(
 app.delete('/api/prodotti/:id', async (req, res) => { try { await pool.query('DELETE FROM prodotti WHERE id = $1', [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
 
 // MODIFICA FORZATA: cambiato il console.log per attivare git
-app.listen(port, () => console.log(`SERVER UPDATE V5 - Porta ${port}`));
+app.listen(port, () => console.log(`SERVER UPDATE V6 - Porta ${port}`));
