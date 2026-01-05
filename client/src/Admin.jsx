@@ -1,35 +1,61 @@
-// client/src/Admin.jsx
+// client/src/Admin.jsx - VERSIONE UPLOAD FILE 📂
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 function Admin() {
   const [menu, setMenu] = useState([]);
-  const [nuovoPiatto, setNuovoPiatto] = useState({ nome: '', prezzo: '', categoria: 'Pizze' });
-  const navigate = useNavigate();
+  const [uploading, setUploading] = useState(false); // Per mostrare "Caricamento..."
+  const [nuovoPiatto, setNuovoPiatto] = useState({ 
+    nome: '', prezzo: '', categoria: 'Pizze', immagine_url: '' 
+  });
   
-  // Recuperiamo l'utente salvato
+  const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem('user'));
+  // URL BACKEND
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
-  // Se non sei loggato, ti calcio via
   useEffect(() => {
-    if (!user) {
-      navigate('/login');
-    } else {
-      caricaMenu();
-    }
+    if (!user) navigate('/login');
+    else caricaMenu();
   }, []);
 
   const caricaMenu = () => {
-    // Usiamo lo slug dell'utente loggato
     fetch(`${API_URL}/api/menu/${user.slug}`)
       .then(res => res.json())
-      .then(data => setMenu(data.menu));
+      .then(data => { if(data.menu) setMenu(data.menu); });
   };
+
+  // --- FUNZIONE MAGICA PER CARICARE FOTO ---
+  const handleFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploading(true); // Attiva spinner
+    const formData = new FormData();
+    formData.append('photo', file);
+
+    try {
+      const res = await fetch(`${API_URL}/api/upload`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      
+      if (data.url) {
+        // Cloudinary ci ha dato il link! Lo salviamo nello stato
+        setNuovoPiatto({ ...nuovoPiatto, immagine_url: data.url });
+      }
+    } catch (error) {
+      alert("Errore caricamento foto");
+    } finally {
+      setUploading(false); // Spegni spinner
+    }
+  };
+  // -----------------------------------------
 
   const handleAggiungi = async (e) => {
     e.preventDefault();
-    if(!nuovoPiatto.nome || !nuovoPiatto.prezzo) return;
+    if(!nuovoPiatto.nome || !nuovoPiatto.prezzo) return alert("Manca nome o prezzo");
 
     await fetch(`${API_URL}/api/prodotti`, {
       method: 'POST',
@@ -37,20 +63,17 @@ function Admin() {
       body: JSON.stringify({ ...nuovoPiatto, ristorante_id: user.id })
     });
     
-    setNuovoPiatto({ nome: '', prezzo: '', categoria: 'Pizze' }); // Resetta form
-    caricaMenu(); // Ricarica la lista
+    // Reset form
+    setNuovoPiatto({ nome: '', prezzo: '', categoria: 'Pizze', immagine_url: '' });
+    caricaMenu();
+    alert("Piatto aggiunto!");
   };
 
   const handleCancella = async (id) => {
-    if(!confirm("Sicuro di voler cancellare questo piatto?")) return;
-    
-    await fetch(`${API_URL}/api/prodotti/${id}`, { method: 'DELETE' });
-    caricaMenu();
-  };
-
-  const esci = () => {
-    localStorage.removeItem('user');
-    navigate('/login');
+    if(confirm("Eliminare?")) {
+        await fetch(`${API_URL}/api/prodotti/${id}`, { method: 'DELETE' });
+        caricaMenu();
+    }
   };
 
   if (!user) return null;
@@ -58,58 +81,53 @@ function Admin() {
   return (
     <div className="container">
       <header>
-        <h1>⚙️ Pannello Admin</h1>
-        <p>Ciao, {user.nome}</p>
-        <button onClick={esci} style={{background: 'red', fontSize: '12px'}}>Esci</button>
+        <h1>📸 Admin Pro</h1>
+        <button onClick={() => {localStorage.removeItem('user'); navigate('/login')}} style={{background:'red'}}>Esci</button>
       </header>
 
-      {/* FORM AGGIUNTA AGGIORNATO */}
-      <div className="card" style={{background: '#f0f0f0', border: '2px dashed #ccc'}}>
+      <div className="card" style={{background: '#f8f9fa', border: '2px dashed #ccc'}}>
         <h3>➕ Aggiungi Piatto</h3>
-        <form onSubmit={handleAggiungi} style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
-          <input 
-            placeholder="Nome Piatto" 
-            value={nuovoPiatto.nome}
-            onChange={e => setNuovoPiatto({...nuovoPiatto, nome: e.target.value})}
-          />
-          <input 
-            type="number" step="0.50" placeholder="Prezzo" 
-            value={nuovoPiatto.prezzo}
-            onChange={e => setNuovoPiatto({...nuovoPiatto, prezzo: e.target.value})}
-          />
-          {/* NUOVO CAMPO FOTO */}
-          <input 
-            placeholder="Link Immagine (URL)" 
-            value={nuovoPiatto.immagine_url}
-            onChange={e => setNuovoPiatto({...nuovoPiatto, immagine_url: e.target.value})}
-          />
-          <select 
-            value={nuovoPiatto.categoria}
-            onChange={e => setNuovoPiatto({...nuovoPiatto, categoria: e.target.value})}
-          >
-            <option>Pizze</option>
-            <option>Bibite</option>
-            <option>Dolci</option>
+        <form onSubmit={handleAggiungi} style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+          <input placeholder="Nome" value={nuovoPiatto.nome} onChange={e => setNuovoPiatto({...nuovoPiatto, nome: e.target.value})} />
+          <input type="number" placeholder="Prezzo" value={nuovoPiatto.prezzo} onChange={e => setNuovoPiatto({...nuovoPiatto, prezzo: e.target.value})} />
+          
+          {/* INPUT FILE PER LA FOTO */}
+          <div style={{background: 'white', padding: '10px', borderRadius: '5px'}}>
+            <label>Foto Piatto:</label>
+            <input type="file" onChange={handleFileChange} accept="image/*" />
+            
+            {uploading && <p>⏳ Caricamento foto in corso...</p>}
+            
+            {nuovoPiatto.immagine_url && (
+                <div>
+                    <p>✅ Foto caricata!</p>
+                    <img src={nuovoPiatto.immagine_url} style={{height: '100px', borderRadius: '5px'}} />
+                </div>
+            )}
+          </div>
+
+          <select value={nuovoPiatto.categoria} onChange={e => setNuovoPiatto({...nuovoPiatto, categoria: e.target.value})}>
+            <option>Pizze</option><option>Bibite</option><option>Dolci</option>
           </select>
-          <button type="submit" className="btn-invia" style={{background: '#28a745'}}>AGGIUNGI</button>
+
+          <button type="submit" className="btn-invia" disabled={uploading}>
+            {uploading ? "Aspetta..." : "SALVA PIATTO"}
+          </button>
         </form>
       </div>
 
-      {/* LISTA PIATTI ESISTENTI */}
-      <h3>📋 Menu Attuale</h3>
       <div className="menu-list">
         {menu.map((p) => (
-          <div key={p.id} className="card" style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
-            <div>
-              <strong>{p.nome}</strong>
-              <div style={{fontSize: '12px', color: '#666'}}>{p.categoria} - {p.prezzo}€</div>
-            </div>
-            <button onClick={() => handleCancella(p.id)} style={{background: 'darkred', padding: '5px 10px'}}>🗑️</button>
+          <div key={p.id} className="card" style={{flexDirection:'row', alignItems:'center', justifyContent:'space-between'}}>
+             <div style={{display:'flex', gap:'10px', alignItems:'center'}}>
+                {p.immagine_url && <img src={p.immagine_url} style={{width:'50px', height:'50px', objectFit:'cover', borderRadius:'4px'}} />}
+                <div><strong>{p.nome}</strong><br/><small>{p.prezzo}€</small></div>
+             </div>
+             <button onClick={() => handleCancella(p.id)} style={{background:'darkred'}}>🗑️</button>
           </div>
         ))}
       </div>
     </div>
   );
 }
-
 export default Admin;
