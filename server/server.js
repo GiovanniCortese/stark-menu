@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE EXCEL & SOTTOCATEGORIE 📊
+// server/server.js - VERSIONE COMPLETA (EXCEL + DRAG&DROP + SOTTOCATEGORIE) 🚀
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -6,7 +6,7 @@ const { Pool } = require('pg');
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require('multer');
-const xlsx = require('xlsx'); // <--- NUOVA LIBRERIA
+const xlsx = require('xlsx'); // Assicurati di aver fatto 'npm install xlsx'
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -19,7 +19,7 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
-// CLOUDINARY
+// CLOUDINARY CONFIG (Per le FOTO)
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -30,7 +30,8 @@ const storage = new CloudinaryStorage({
   params: { folder: 'menu-pizzeria', allowed_formats: ['jpg', 'png', 'jpeg', 'webp'] },
 });
 const upload = multer({ storage: storage });
-// Multer per file generici (Excel) - usiamo memoria temporanea
+
+// MULTER MEMORY (Per i file EXCEL)
 const uploadFile = multer({ storage: multer.memoryStorage() });
 
 // --- ROTTE ---
@@ -44,7 +45,7 @@ app.get('/api/menu/:slug', async (req, res) => {
         if (rist.rows.length === 0) return res.status(404).json({ error: "Ristorante non trovato" });
         const ristID = rist.rows[0].id;
 
-        // Selezioniamo anche la sottocategoria
+        // Selezioniamo tutto, inclusa descrizione categoria e sottocategoria
         const query = `
             SELECT p.*, c.descrizione as categoria_descrizione 
             FROM prodotti p
@@ -68,34 +69,31 @@ app.get('/api/menu/:slug', async (req, res) => {
 // 2. EXCEL IMPORT 📥
 app.post('/api/import-excel', uploadFile.single('file'), async (req, res) => {
     const { ristorante_id } = req.body;
-    if (!req.file || !ristorante_id) return res.status(400).json({ error: "File o ID mancante" });
+    if (!req.file || !ristorante_id) return res.status(400).json({ error: "Dati mancanti." });
 
     try {
-        // Leggiamo il file Excel dalla memoria
         const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
         const sheetName = workbook.SheetNames[0];
         const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
 
-        // data è un array di oggetti: [{ Nome: 'Margherita', Prezzo: 6, Categoria: 'Pizze', Sottocategoria: '' }, ...]
-        
-        // Loop per inserire/aggiornare
+        console.log("Importazione Excel avviata. Righe:", data.length);
+
         for (const row of data) {
-            const nome = row['Nome'];
-            const prezzo = row['Prezzo'];
-            const categoria = row['Categoria'];
-            const sottocategoria = row['Sottocategoria'] || "";
-            const descrizione = row['Descrizione'] || "";
-            
-            // 1. Assicuriamoci che la Categoria esista, se no la creiamo
+            // Leggiamo i dati rispettando le Maiuscole delle intestazioni Excel
+            const nome = row['Nome'] ? String(row['Nome']).trim() : "Senza Nome";
+            const prezzo = row['Prezzo'] ? parseFloat(String(row['Prezzo']).replace(',', '.')) : 0;
+            const categoria = row['Categoria'] ? String(row['Categoria']).trim() : "Generale";
+            const sottocategoria = row['Sottocategoria'] ? String(row['Sottocategoria']).trim() : "";
+            const descrizione = row['Descrizione'] ? String(row['Descrizione']).trim() : "";
+
+            // A. Gestione Categoria
             let catCheck = await pool.query('SELECT * FROM categorie WHERE nome = $1 AND ristorante_id = $2', [categoria, ristorante_id]);
             if (catCheck.rows.length === 0) {
                 const maxPos = await pool.query('SELECT MAX(posizione) as max FROM categorie WHERE ristorante_id = $1', [ristorante_id]);
-                await pool.query('INSERT INTO categorie (nome, posizione, ristorante_id) VALUES ($1, $2, $3)', [categoria, (maxPos.rows[0].max||0)+1, ristorante_id]);
+                await pool.query('INSERT INTO categorie (nome, posizione, ristorante_id, descrizione) VALUES ($1, $2, $3, $4)', [categoria, (maxPos.rows[0].max||0)+1, ristorante_id, ""]);
             }
 
-            // 2. Inseriamo il prodotto (o aggiorniamo se vogliamo fare cose complesse, qui inseriamo e basta per semplicità)
-            // Nota: Per evitare duplicati, idealmente dovremmo controllare se esiste già.
-            // Facciamo una pulizia preventiva? No, aggiungiamo in coda.
+            // B. Inserimento Prodotto
             await pool.query(
                 `INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, posizione) 
                  VALUES ($1, $2, $3, $4, $5, $6, 999)`,
@@ -106,15 +104,27 @@ app.post('/api/import-excel', uploadFile.single('file'), async (req, res) => {
         res.json({ success: true, message: `Importati ${data.length} piatti!` });
     } catch (err) {
         console.error(err);
-        res.status(500).json({ error: "Errore Importazione Excel" });
+        res.status(500).json({ error: "Errore Import: " + err.message });
     }
 });
 
-// 3. EXCEL EXPORT 📤
+// 3. EXCEL EXPORT 📤 (QUESTA È QUELLA CHE TI MANCAVA!)
 app.get('/api/export-excel/:ristorante_id', async (req, res) => {
     try {
         const { ristorante_id } = req.params;
-        const result = await pool.query('SELECT nome as "Nome", prezzo as "Prezzo", categoria as "Categoria", sottocategoria as "Sottocategoria", descrizione as "Descrizione" FROM prodotti WHERE ristorante_id = $1 ORDER BY categoria, nome', [ristorante_id]);
+        
+        // Scarichiamo i dati con i nomi delle colonne GIUSTI per l'Excel
+        const result = await pool.query(`
+            SELECT 
+                nome as "Nome", 
+                prezzo as "Prezzo", 
+                categoria as "Categoria", 
+                sottocategoria as "Sottocategoria", 
+                descrizione as "Descrizione" 
+            FROM prodotti 
+            WHERE ristorante_id = $1 
+            ORDER BY categoria, nome
+        `, [ristorante_id]);
         
         const workbook = xlsx.utils.book_new();
         const worksheet = xlsx.utils.json_to_sheet(result.rows);
@@ -122,29 +132,33 @@ app.get('/api/export-excel/:ristorante_id', async (req, res) => {
         
         const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
         
-        res.setHeader('Content-Disposition', 'attachment; filename="menu.xlsx"');
+        res.setHeader('Content-Disposition', 'attachment; filename="menu_export.xlsx"');
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.send(buffer);
-    } catch (err) { res.status(500).json({ error: "Errore Export" }); }
+        
+    } catch (err) { 
+        console.error(err);
+        res.status(500).json({ error: "Errore Export" }); 
+    }
 });
 
-// 4. CREA PRODOTTO (Aggiornato con Sottocategoria)
+// 4. CREA PRODOTTO (Manuale)
 app.post('/api/prodotti', async (req, res) => { 
     try { 
         await pool.query(
-            'INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, ristorante_id, immagine_url, posizione, descrizione) VALUES ($1, $2, $3, $4, $5, $6, 999, $7)', 
-            [req.body.nome, req.body.prezzo, req.body.categoria, req.body.sottocategoria||"", req.body.ristorante_id, req.body.immagine_url||"", req.body.descrizione||""]
+            'INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, immagine_url, posizione) VALUES ($1, $2, $3, $4, $5, $6, $7, 999)', 
+            [req.body.nome, req.body.prezzo, req.body.categoria, req.body.sottocategoria||"", req.body.descrizione||"", req.body.ristorante_id, req.body.immagine_url||""]
         ); 
         res.json({success:true}); 
     } catch(e){ res.status(500).json({error:"Err"}); } 
 });
 
-// 5. RIORDINA (Supporta sottocategorie anche se non le usiamo nel drag & drop del server esplicitamente)
+// 5. RIORDINA PRODOTTI (Drag & Drop)
 app.put('/api/prodotti/riordina', async (req, res) => {
     const { prodotti } = req.body; 
     try {
         for (const prod of prodotti) {
-            // Aggiorniamo posizione e categoria. La sottocategoria non cambia col drag & drop standard per ora
+            // Aggiorniamo posizione e categoria
             if(prod.categoria) {
                 await pool.query('UPDATE prodotti SET posizione = $1, categoria = $2 WHERE id = $3', [prod.posizione, prod.categoria, prod.id]);
             } else {
@@ -155,7 +169,7 @@ app.put('/api/prodotti/riordina', async (req, res) => {
     } catch (err) { res.status(500).json({ error: "Err" }); }
 });
 
-// ... ALTRE ROTTE STANDARD (Config, Categorie, Login, Upload, Ordine) ...
+// --- ALTRE ROTTE STANDARD ---
 app.put('/api/categorie/riordina', async (req, res) => {
     const { categorie } = req.body; 
     try {
