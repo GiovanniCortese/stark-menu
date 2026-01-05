@@ -1,4 +1,4 @@
-// client/src/App.jsx - VERSIONE FIXED SOTTOCATEGORIE & ACCORDION 🍷
+// client/src/App.jsx - VERSIONE FIXED DISPLAY
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useSearchParams, useParams } from 'react-router-dom';
 import Cucina from './Cucina';
@@ -14,10 +14,7 @@ function Menu() {
   const [canOrder, setCanOrder] = useState(true); 
   const [carrello, setCarrello] = useState([]); 
   const [error, setError] = useState(false);
-  
-  // STATO PER ACCORDION (Quale categoria è aperta?)
   const [activeCategory, setActiveCategory] = useState(null);
-
   const { slug } = useParams();
   const currentSlug = slug || 'pizzeria-stark';
   const [searchParams] = useSearchParams();
@@ -25,26 +22,16 @@ function Menu() {
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
   useEffect(() => {
-    fetch(`${API_URL}/api/menu/${currentSlug}`)
-      .then(res => res.json())
-      .then(data => {
+    fetch(`${API_URL}/api/menu/${currentSlug}`).then(res => res.json()).then(data => {
         setRistorante(data.ristorante);
         setMenu(data.menu);
         setRistoranteId(data.id);
         setCanOrder(data.ordini_abilitati && data.servizio_attivo);
-        // Apriamo la prima categoria di default se presente
-        if (data.menu && data.menu.length > 0) {
-           setActiveCategory(data.menu[0].categoria);
-        }
-      })
-      .catch(err => setError(true));
+        if (data.menu && data.menu.length > 0) setActiveCategory(data.menu[0].categoria);
+      }).catch(err => setError(true));
   }, [currentSlug]);
 
-  const aggiungiAlCarrello = (prodotto) => {
-    if (!canOrder) return alert("Il servizio ordini è chiuso.");
-    setCarrello([...carrello, prodotto]); 
-  };
-
+  const aggiungiAlCarrello = (prodotto) => { if (!canOrder) return alert("Il servizio ordini è chiuso."); setCarrello([...carrello, prodotto]); };
   const inviaOrdine = async () => { 
      if (!ristoranteId) return;
      const totale = carrello.reduce((acc, i) => acc + parseFloat(i.prezzo), 0);
@@ -56,15 +43,8 @@ function Menu() {
   };
 
   if (error) return <div className="container"><h1>🚫 404</h1></div>;
-
-  // RAGGRUPPAMENTO MENU
   const categorieOrdinate = [...new Set(menu.map(p => p.categoria))];
-
-  const toggleAccordion = (catNome) => {
-      if (activeCategory !== catNome) {
-          setActiveCategory(catNome);
-      }
-  };
+  const toggleAccordion = (catNome) => { if (activeCategory !== catNome) setActiveCategory(catNome); };
 
   return (
     <div className="container">
@@ -72,74 +52,39 @@ function Menu() {
         <h1>🍕 {ristorante}</h1>
         {canOrder ? <p>Tavolo: <strong>{numeroTavolo}</strong></p> : <div className="badge-digital">📖 Menu Digitale</div>}
       </header>
-
       {canOrder && carrello.length > 0 && (
         <div className="carrello-bar">
           <div className="totale"><span>{carrello.length} ordini</span><strong>{carrello.reduce((a,b)=>a+Number(b.prezzo),0).toFixed(2)} €</strong></div>
           <button onClick={inviaOrdine} className="btn-invia">INVIA 🚀</button>
         </div>
       )}
-
       <div style={{paddingBottom: '80px', marginTop: '20px'}}> 
         {categorieOrdinate.map(catNome => (
             <div key={catNome} className="accordion-item">
-                
-                {/* TITOLO CATEGORIA (CLICKABILE) */}
-                <div 
-                    onClick={() => toggleAccordion(catNome)}
-                    style={{
-                        background: activeCategory === catNome ? '#333' : '#f8f9fa',
-                        color: activeCategory === catNome ? '#fff' : '#333',
-                        padding: '15px',
-                        borderRadius: '8px',
-                        marginBottom: '5px',
-                        cursor: 'pointer',
-                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        boxShadow: '0 2px 5px rgba(0,0,0,0.05)'
-                    }}
-                >
+                <div onClick={() => toggleAccordion(catNome)} style={{background: activeCategory === catNome ? '#333' : '#f8f9fa', color: activeCategory === catNome ? '#fff' : '#333', padding: '15px', borderRadius: '8px', marginBottom: '5px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.05)'}}>
                     <h2 style={{margin:0, fontSize:'18px'}}>{catNome}</h2>
                     <span>{activeCategory === catNome ? '▼' : '▶'}</span>
                 </div>
-
-                {/* CONTENUTO (VISIBILE SOLO SE APERTO) */}
                 {activeCategory === catNome && (
                     <div className="accordion-content" style={{padding: '10px 0'}}>
                         {(() => {
-                            // 1. Filtriamo piatti della categoria
                             const piattiCat = menu.filter(p => p.categoria === catNome);
-                            
-                            // 2. Raggruppiamo per sottocategoria (Gestione migliorata spazi vuoti)
+                            // Raggruppamento migliorato
                             const sottoCats = piattiCat.reduce((acc, p) => {
-                                // Se null, undefined o stringa vuota/spazi -> "Generale"
-                                const sc = (p.sottocategoria && p.sottocategoria.trim().length > 0) 
-                                           ? p.sottocategoria 
-                                           : "Generale";
+                                const sc = (p.sottocategoria && p.sottocategoria.trim().length > 0) ? p.sottocategoria : "Generale";
                                 if(!acc[sc]) acc[sc] = [];
                                 acc[sc].push(p);
                                 return acc;
                             }, {});
 
-                            // 3. Ordiniamo le chiavi per visualizzazione pulita
                             return Object.keys(sottoCats).sort().map(scKey => (
                                 <div key={scKey} style={{marginBottom: '20px'}}>
-                                    
-                                    {/* TITOLO SOTTOCATEGORIA */}
-                                    {/* Lo mostriamo se NON è "Generale" OPPURE se ci sono più gruppi (così si capisce la divisione) */}
+                                    {/* Mostra titolo se c'è più di un gruppo o se non è 'Generale' */}
                                     {(scKey !== "Generale" || Object.keys(sottoCats).length > 1) && (
-                                        <h3 style={{
-                                            borderLeft: '4px solid #ff9f43', 
-                                            paddingLeft: '10px', 
-                                            marginLeft: '5px',
-                                            color: '#555', 
-                                            fontSize: '16px',
-                                            textTransform: 'uppercase',
-                                            marginTop: '15px'
-                                        }}>
+                                        <h3 style={{borderLeft: '4px solid #ff9f43', paddingLeft: '10px', marginLeft: '5px', color: '#555', fontSize: '16px', textTransform: 'uppercase', marginTop: '15px'}}>
                                             {scKey === "Generale" ? "Altri Piatti" : scKey}
                                         </h3>
                                     )}
-
                                     <div className="menu-list">
                                         {sottoCats[scKey].map((prodotto) => (
                                             <div key={prodotto.id} className="card">
@@ -166,20 +111,4 @@ function Menu() {
     </div>
   );
 }
-
-function App() {
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/admin" element={<Admin />} />
-        <Route path="/super-admin" element={<SuperAdmin />} />
-        <Route path="/cucina/:slug" element={<Cucina />} />
-        <Route path="/:slug" element={<Menu />} />
-        <Route path="/" element={<Menu />} />
-      </Routes>
-    </BrowserRouter>
-  );
-}
-
 export default App;
