@@ -1,4 +1,4 @@
-// client/src/App.jsx - VERSIONE COMPATTA (NO SPAZI VUOTI) 📏
+// client/src/App.jsx - VERSIONE V6 (FIX SPAZI ESTREMI + SUPPORTO GRAFICA) 🎨
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useSearchParams, useParams } from 'react-router-dom';
 import Cucina from './Cucina';
@@ -11,6 +11,10 @@ function Menu() {
   const [menu, setMenu] = useState([]);
   const [ristorante, setRistorante] = useState("");
   const [ristoranteId, setRistoranteId] = useState(null);
+  
+  // STATO PER LO STILE (Colori e Logo)
+  const [style, setStyle] = useState(null);
+
   const [canOrder, setCanOrder] = useState(true); 
   const [carrello, setCarrello] = useState([]); 
   const [error, setError] = useState(false);
@@ -18,8 +22,6 @@ function Menu() {
   // STATO PER ACCORDION
   const [activeCategory, setActiveCategory] = useState(null);       
   const [activeSubCategory, setActiveSubCategory] = useState(null); 
-  
-  // STATO PER IL MODAL
   const [selectedPiatto, setSelectedPiatto] = useState(null);
 
   const { slug } = useParams();
@@ -35,6 +37,10 @@ function Menu() {
         setRistorante(data.ristorante);
         setMenu(data.menu);
         setRistoranteId(data.id);
+        
+        // SALVIAMO LO STILE RICEVUTO DAL DB
+        if (data.style) setStyle(data.style);
+
         setCanOrder(data.ordini_abilitati && data.servizio_attivo);
       })
       .catch(err => setError(true));
@@ -78,11 +84,34 @@ function Menu() {
       }
   };
 
+  // --- STILI DINAMICI (Useremo questi per colorare tutto) ---
+  // Se 'style' è null (non ancora configurato), usa i default scuri.
+  const appStyle = {
+      backgroundColor: style?.bg || '#222',
+      color: style?.text || '#ccc',
+      fontFamily: style?.font || 'sans-serif',
+      backgroundImage: style?.cover ? `url(${style.cover})` : 'none',
+      backgroundSize: 'cover',
+      backgroundAttachment: 'fixed',
+      minHeight: '100vh',
+      padding: '20px'
+  };
+
+  const titleColor = style?.title || '#fff';
+  const priceColor = style?.price || '#27ae60';
+
   return (
-    <div className="container">
-      <header>
-        <h1>🍕 {ristorante}</h1>
-        {canOrder ? <p>Tavolo: <strong>{numeroTavolo}</strong></p> : <div className="badge-digital">📖 Menu Digitale</div>}
+    <div style={appStyle}> {/* APPLICA SFONDO QUI */}
+      
+      <header style={{textAlign:'center', marginBottom:'20px'}}>
+        {/* LOGO DINAMICO: Se c'è un logo URL, mostra img, altrimenti testo */}
+        {style?.logo ? (
+            <img src={style.logo} alt={ristorante} style={{maxWidth:'250px', maxHeight:'120px', objectFit:'contain'}} />
+        ) : (
+            <h1 style={{color: titleColor, fontSize:'2.5rem', margin:'0 0 10px 0'}}>{ristorante}</h1>
+        )}
+        
+        {canOrder ? <p style={{color: style?.text || '#ccc'}}>Tavolo: <strong>{numeroTavolo}</strong></p> : <div className="badge-digital">📖 Menu Digitale</div>}
       </header>
 
       {canOrder && carrello.length > 0 && (
@@ -92,38 +121,33 @@ function Menu() {
         </div>
       )}
 
-      {/* RIDOTTO MARGINE SUPERIORE GENERALE */}
-      <div style={{paddingBottom: '80px', marginTop: '10px'}}> 
+      {/* FIX SPAZI: Ridotto marginTop a 0 */}
+      <div style={{paddingBottom: '80px', marginTop: '0'}}> 
         {categorieOrdinate.map(catNome => (
-            // MODIFICA 1: Margine fisso ridotto tra le categorie (10px invece di default)
-            <div key={catNome} className="accordion-item" style={{marginBottom: '10px'}}>
+            // FIX SPAZI: Margine minimo (2px) tra le categorie chiuse
+            <div key={catNome} className="accordion-item" style={{marginBottom: '2px', borderRadius: '5px', overflow: 'hidden'}}>
                 
-                {/* TITOLO CATEGORIA */}
                 <div 
                     onClick={() => toggleAccordion(catNome)}
                     style={{
-                        background: activeCategory === catNome ? '#333' : '#f8f9fa',
-                        color: activeCategory === catNome ? '#fff' : '#333',
+                        // Sfondo leggermente diverso se attivo
+                        background: activeCategory === catNome ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.1)',
+                        color: titleColor,
                         padding: '15px',
-                        borderRadius: '8px',
-                        // MODIFICA 2: Se aperto, margine 0 per attaccarsi al contenuto
-                        marginBottom: activeCategory === catNome ? '0' : '0',
                         cursor: 'pointer',
                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        boxShadow: '0 2px 5px rgba(0,0,0,0.05)'
+                        borderBottom: activeCategory === catNome ? `1px solid ${priceColor}` : 'none'
                     }}
                 >
-                    <h2 style={{margin:0, fontSize:'18px'}}>{catNome}</h2>
-                    <span>{activeCategory === catNome ? '▼' : '▶'}</span>
+                    <h2 style={{margin:0, fontSize:'18px', color: titleColor}}>{catNome}</h2>
+                    <span style={{color: titleColor}}>{activeCategory === catNome ? '▼' : '▶'}</span>
                 </div>
 
-                {/* CONTENUTO CATEGORIA */}
+                {/* CONTENUTO */}
                 {activeCategory === catNome && (
-                    // MODIFICA 3: Padding a 0 per evitare spazi bianchi extra
-                    <div className="accordion-content" style={{padding: '0'}}>
+                    <div className="accordion-content" style={{padding: '0', background: 'rgba(0,0,0,0.2)'}}>
                         {(() => {
                             const piattiCat = menu.filter(p => p.categoria === catNome);
-                            
                             const sottoCats = piattiCat.reduce((acc, p) => {
                                 const sc = (p.sottocategoria && p.sottocategoria.trim().length > 0) ? p.sottocategoria : "Generale";
                                 if(!acc[sc]) acc[sc] = [];
@@ -135,32 +159,31 @@ function Menu() {
                             const isSingleGroup = subKeys.length === 1 && subKeys[0] === "Generale";
 
                             return subKeys.map(scKey => (
-                                // MODIFICA 4: Margine ridotto tra sottogruppi
-                                <div key={scKey} style={{marginTop: '5px'}}>
+                                <div key={scKey}>
                                     
                                     {!isSingleGroup && (
                                         <div 
                                             onClick={() => toggleSubAccordion(scKey)}
                                             style={{
-                                                background: '#fff3e0', borderLeft: '4px solid #ff9f43', 
-                                                padding: '10px', // Padding ridotto
-                                                margin: '5px 0 0 0', // Margine solo sopra
-                                                borderRadius: '4px',
+                                                background: 'rgba(255,255,255,0.05)', 
+                                                borderLeft: `4px solid ${priceColor}`, 
+                                                padding: '10px', 
+                                                // FIX SPAZI: Margine 1px per separare le sottocategorie
+                                                margin: '1px 0', 
                                                 cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
                                             }}
                                         >
-                                            <h3 style={{margin:0, fontSize:'16px', color:'#d35400', textTransform:'uppercase'}}>
+                                            <h3 style={{margin:0, fontSize:'16px', color: titleColor, textTransform:'uppercase'}}>
                                                 {scKey === "Generale" ? "Altri Piatti" : scKey}
                                             </h3>
-                                            <span style={{color:'#d35400', fontWeight:'bold'}}>
+                                            <span style={{color: titleColor, fontWeight:'bold'}}>
                                                 {activeSubCategory === scKey ? '▼' : '▶'}
                                             </span>
                                         </div>
                                     )}
 
-                                    {/* LISTA PIATTI */}
                                     {(isSingleGroup || activeSubCategory === scKey) && (
-                                        <div className="menu-list" style={{paddingTop: '5px'}}>
+                                        <div className="menu-list" style={{padding: '0'}}>
                                             {sottoCats[scKey].map((prodotto) => (
                                                 <div 
                                                     key={prodotto.id} 
@@ -173,33 +196,32 @@ function Menu() {
                                                         gap: '15px',
                                                         padding: '10px',
                                                         cursor: prodotto.immagine_url ? 'pointer' : 'default',
-                                                        // MODIFICA 5: Piccolo margine tra i piatti per separarli leggermente
-                                                        marginBottom: '8px'
+                                                        // FIX SPAZI: Sfondo bianco pulito per i piatti, margine minimo
+                                                        backgroundColor: 'white',
+                                                        marginBottom: '1px',
+                                                        borderRadius: '0' // Squadrati per sembrare una lista unita
                                                     }}
                                                 >
                                                     {prodotto.immagine_url && (
                                                         <img 
                                                             src={prodotto.immagine_url} 
                                                             style={{
-                                                                width:'80px', 
-                                                                height:'80px', 
-                                                                objectFit:'cover', 
-                                                                borderRadius:'8px',
-                                                                flexShrink: 0 
+                                                                width:'70px', height:'70px', 
+                                                                objectFit:'cover', borderRadius:'5px', flexShrink: 0 
                                                             }} 
                                                         />
                                                     )}
 
                                                     <div className="info" style={{flex: 1}}>
-                                                        <h3 style={{margin:'0 0 5px 0', fontSize:'16px'}}>{prodotto.nome}</h3>
+                                                        <h3 style={{margin:'0 0 4px 0', fontSize:'16px', color:'#333'}}>{prodotto.nome}</h3>
                                                         
                                                         {prodotto.descrizione && (
-                                                            <p style={{fontSize:'11px', color:'#777', margin:'0 0 5px 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'}}>
+                                                            <p style={{fontSize:'12px', color:'#666', margin:'0 0 4px 0', lineHeight:'1.2'}}>
                                                                 {prodotto.descrizione}
                                                             </p>
                                                         )}
 
-                                                        <div style={{fontSize:'14px', fontWeight:'bold', color:'#27ae60'}}>{prodotto.prezzo} €</div>
+                                                        <div style={{fontSize:'14px', fontWeight:'bold', color: priceColor}}>{prodotto.prezzo} €</div>
                                                     </div>
 
                                                     {canOrder && (
@@ -207,8 +229,8 @@ function Menu() {
                                                             onClick={(e) => { e.stopPropagation(); aggiungiAlCarrello(prodotto); }} 
                                                             style={{
                                                                 background:'#f0f0f0', color:'#333', 
-                                                                borderRadius:'50%', width:'30px', height:'30px', 
-                                                                border:'none', fontSize:'18px', display:'flex', alignItems:'center', justifyContent:'center',
+                                                                borderRadius:'50%', width:'32px', height:'32px', 
+                                                                border:'none', fontSize:'20px', display:'flex', alignItems:'center', justifyContent:'center',
                                                                 cursor: 'pointer'
                                                             }}
                                                         >
@@ -233,7 +255,7 @@ function Menu() {
           <div 
             style={{
                 position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 1000,
+                backgroundColor: 'rgba(0,0,0,0.9)', zIndex: 1000,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 padding: '20px'
             }}
@@ -267,8 +289,8 @@ function Menu() {
                   )}
 
                   <div style={{padding: '20px'}}>
-                      <h2 style={{marginTop: 0, fontSize: '24px'}}>{selectedPiatto.nome}</h2>
-                      <p style={{fontSize: '18px', fontWeight: 'bold', color: '#27ae60', margin:'10px 0'}}>
+                      <h2 style={{marginTop: 0, fontSize: '24px', color:'#333'}}>{selectedPiatto.nome}</h2>
+                      <p style={{fontSize: '18px', fontWeight: 'bold', color: priceColor, margin:'10px 0'}}>
                           {selectedPiatto.prezzo} €
                       </p>
                       <p style={{color: '#555', lineHeight: '1.5', fontSize: '14px'}}>
@@ -278,7 +300,7 @@ function Menu() {
                           <button 
                             onClick={() => aggiungiAlCarrello(selectedPiatto)}
                             className="btn-invia"
-                            style={{width: '100%', marginTop: '20px', padding: '15px', fontSize: '18px'}}
+                            style={{width: '100%', marginTop: '20px', padding: '15px', fontSize: '18px', backgroundColor: priceColor}}
                           >
                               AGGIUNGI ALL'ORDINE 🛒
                           </button>
