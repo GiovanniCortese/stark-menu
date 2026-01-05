@@ -1,9 +1,15 @@
-// client/src/Admin.jsx - VERSIONE V6 (EDIT CATEGORIE ATTIVO) ✏️
+// client/src/Admin.jsx - VERSIONE V7 (GOD MODE + EDIT CATEGORIE) 🚀
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom'; // Aggiunto useParams
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 function Admin() {
+  // 1. CATTURIAMO LO SLUG DALL'URL
+  const { slug } = useParams();
+  
+  // 2. STATO UTENTE DINAMICO (Non più statico da localStorage)
+  const [user, setUser] = useState(null);
+  
   const [tab, setTab] = useState('menu'); 
   const [menu, setMenu] = useState([]); 
   const [categorie, setCategorie] = useState([]); 
@@ -24,7 +30,7 @@ function Admin() {
   const [uploading, setUploading] = useState(false);
   const [nuovoPiatto, setNuovoPiatto] = useState({ nome: '', prezzo: '', categoria: '', sottocategoria: '', descrizione: '', immagine_url: '' });
   
-  // --- MODIFICA QUI: Aggiunto stato per sapere se stiamo modificando una categoria ---
+  // Gestione categorie
   const [nuovaCat, setNuovaCat] = useState({ nome: '', descrizione: '' });
   const [editCatId, setEditCatId] = useState(null); 
 
@@ -32,28 +38,103 @@ function Admin() {
   const [fileExcel, setFileExcel] = useState(null);
 
   const navigate = useNavigate();
-  const user = JSON.parse(localStorage.getItem('user'));
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
+  // --- NUOVA LOGICA DI AUTENTICAZIONE E CARICAMENTO ---
   useEffect(() => {
-    if (!user) { navigate('/login'); return; }
-    caricaTutto();
-  }, []);
+    if (!slug) return; // Aspetta che lo slug sia disponibile
+
+    const initAdmin = async () => {
+        // A. Controlliamo se siamo autorizzati (SuperAdmin o Login Locale)
+        const sessionKey = `stark_session_${slug}`;
+        const isSuperAdmin = localStorage.getItem(sessionKey);
+        const localUser = JSON.parse(localStorage.getItem('user'));
+        
+        let authorized = false;
+
+        if (isSuperAdmin) {
+            authorized = true;
+        } else if (localUser && localUser.slug === slug) {
+            authorized = true;
+        }
+
+        // B. Se non autorizzato, chiediamo password
+        if (!authorized) {
+            const pass = prompt(`🔒 Admin Panel: ${slug}\nInserisci Password:`);
+            // Password di fallback per sviluppo (o verifica API futura)
+            if (pass === "tonystark") { 
+                localStorage.setItem(sessionKey, "true");
+                authorized = true;
+            } else {
+                alert("⛔ Accesso Negato");
+                window.location.href = "/"; // Redirect brutale
+                return;
+            }
+        }
+
+        // C. Se autorizzato, RECUPERIAMO L'ID DEL RISTORANTE
+        // Dobbiamo tradurre lo "slug" in un oggetto "user" completo (con ID)
+        try {
+            // Tentativo 1: Chiediamo al backend l'info pubblica del menu (spesso contiene l'ID)
+            const res = await fetch(`${API_URL}/api/menu/${slug}`);
+            const data = await res.json();
+            
+            if (data && data.ristorante) {
+                // Se il backend restituisce l'oggetto ristorante nel menu
+                setUser(data.ristorante);
+            } else {
+                // Tentativo 2 (Fallback): Scarichiamo la lista ristoranti (usata dal superadmin) e filtriamo
+                // Nota: Non è efficientissimo ma funziona sicuro senza modifiche backend
+                const resList = await fetch(`${API_URL}/api/super/ristoranti`);
+                const list = await resList.json();
+                const found = list.find(r => r.slug === slug);
+                
+                if (found) {
+                    setUser(found);
+                } else {
+                    alert("Errore: Ristorante non trovato nel database.");
+                }
+            }
+        } catch (error) {
+            console.error("Errore recupero dati ristorante:", error);
+            alert("Errore di connessione.");
+        }
+    };
+
+    initAdmin();
+  }, [slug]);
+
+  // Carica i dati veri solo quando abbiamo l'oggetto USER (con l'ID)
+  useEffect(() => {
+      if (user) {
+          caricaTutto();
+      }
+  }, [user]);
 
   const caricaTutto = () => {
+    if(!user) return;
+    // Carica Menu
     fetch(`${API_URL}/api/menu/${user.slug}`).then(r=>r.json()).then(d=>{if(d.menu) setMenu(d.menu)});
+    // Carica Config
     fetch(`${API_URL}/api/ristorante/config/${user.id}`).then(r=>r.json()).then(d=>setConfig(prev => ({...prev, ...d}))); 
+    // Carica Categorie
     caricaCategorie();
   };
 
   const caricaCategorie = () => {
+    if(!user) return;
     fetch(`${API_URL}/api/categorie/${user.id}`)
       .then(res => res.json())
       .then(data => {
           setCategorie(data);
-          if(data.length > 0 && !nuovoPiatto.categoria && !editId) setNuovoPiatto(prev => ({...prev, categoria: data[0].nome}));
+          // Pre-seleziona la prima categoria se stiamo creando un nuovo piatto
+          if(data.length > 0 && !nuovoPiatto.categoria && !editId) {
+              setNuovoPiatto(prev => ({...prev, categoria: data[0].nome}));
+          }
       });
   };
+
+  // --- LE FUNZIONI RESTANTI SONO INVARIATE (V6) ---
 
   const handleSaveStyle = async () => {
       try {
@@ -132,12 +213,10 @@ function Admin() {
     }
   };
   
-  // --- MODIFICA QUI: LOGICA CATEGORIE (CREA O AGGIORNA) ---
   const handleSalvaCategoria = async () => { 
       if(!nuovaCat.nome) return; 
       
       if (editCatId) {
-          // UPDATE
           await fetch(`${API_URL}/api/categorie/${editCatId}`, { 
               method:'PUT', 
               headers:{'Content-Type':'application/json'}, 
@@ -146,7 +225,6 @@ function Admin() {
           alert("Categoria modificata!");
           setEditCatId(null);
       } else {
-          // CREATE
           await fetch(`${API_URL}/api/categorie`, { 
               method:'POST', 
               headers:{'Content-Type':'application/json'}, 
@@ -188,12 +266,12 @@ function Admin() {
   
   const avviaModifica = (piatto) => { setEditId(piatto.id); setNuovoPiatto({nome: piatto.nome, prezzo: piatto.prezzo, categoria: piatto.categoria, sottocategoria: piatto.sottocategoria || '', descrizione: piatto.descrizione || '', immagine_url: piatto.immagine_url || ''}); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const annullaModifica = () => { setEditId(null); setNuovoPiatto({nome:'', prezzo:'', categoria:categorie[0]?.nome || '', sottocategoria: '', descrizione:'', immagine_url:''}); };
-  const duplicaPiatto = async (piattoOriginale) => { if(!confirm(`Vuoi duplicare "${piattoOriginale.nome}"?`)) return; const copia = { ...piattoOriginale, nome: `${piattoOriginale.nome} (Copia)`, ristorante_id: user.id }; try { await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(piattoCopia) }); caricaTutto(); } catch(e) { alert("Errore duplicazione"); } };
+  const duplicaPiatto = async (piattoOriginale) => { if(!confirm(`Vuoi duplicare "${piattoOriginale.nome}"?`)) return; const copia = { ...piattoOriginale, nome: `${piattoOriginale.nome} (Copia)`, ristorante_id: user.id }; try { await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(copia) }); caricaTutto(); } catch(e) { alert("Errore duplicazione"); } };
   const handleFileChange = async (e) => { const f=e.target.files[0]; if(!f)return; setUploading(true); const fd=new FormData(); fd.append('photo',f); const r=await fetch(`${API_URL}/api/upload`,{method:'POST',body:fd}); const d=await r.json(); if(d.url) setNuovoPiatto(p=>({...p, immagine_url:d.url})); setUploading(false); };
   const toggleServizio = async () => { const n=!config.servizio_attivo; setConfig({...config, servizio_attivo:n}); await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({servizio_attivo:n})}); };
   const cancellaPiatto = async (id) => { if(confirm("Eliminare piatto?")) { await fetch(`${API_URL}/api/prodotti/${id}`, {method:'DELETE'}); caricaTutto(); }};
 
-  if (!user) return null;
+  if (!user) return <div style={{padding:'20px', textAlign:'center'}}>🔄 Caricamento pannello Admin per <strong>{slug}</strong>...</div>;
 
   return (
     <div className="container">
@@ -207,33 +285,23 @@ function Admin() {
         </div>
       </header>
 
-      {/* --- TAB STILE (GRAFICA) --- */}
+      {/* --- TAB STILE --- */}
       {tab === 'style' && (
           <div className="card">
               <h3>🎨 Personalizzazione Grafica</h3>
               <div style={{display:'flex', flexDirection:'column', gap:'15px'}}>
-                  
                   {/* LOGO */}
                   <div style={{borderBottom:'1px solid #ccc', paddingBottom:'10px'}}>
                       <h4>Logo Attività</h4>
-                      <p><small>Sostituisce il titolo testuale in alto.</small></p>
                       <input type="file" onChange={handleUploadLogo} />
                       {uploading && <span>Caricamento...</span>}
-                      
-                      {/* ANTEPRIMA LOGO + TASTO RIMUOVI */}
                       {config.logo_url && (
                           <div style={{marginTop:'10px'}}>
                               <img src={config.logo_url} style={{height:'60px', marginBottom:'5px', display:'block', border:'1px solid #ccc'}} />
-                              <button 
-                                onClick={() => setConfig({...config, logo_url: ''})}
-                                style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}
-                              >
-                                🗑️ Rimuovi Logo
-                              </button>
+                              <button onClick={() => setConfig({...config, logo_url: ''})} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}>🗑️ Rimuovi Logo</button>
                           </div>
                       )}
                   </div>
-
                   {/* SFONDO */}
                   <div style={{borderBottom:'1px solid #ccc', paddingBottom:'10px'}}>
                       <h4>Sfondo</h4>
@@ -241,24 +309,15 @@ function Admin() {
                         <input type="color" value={config.colore_sfondo} onChange={e => setConfig({...config, colore_sfondo: e.target.value})} />
                         <span>Colore Sfondo</span>
                       </div>
-                      
                       <p><small>Oppure immagine sfondo:</small></p>
                       <input type="file" onChange={handleUploadCover} />
-                      
-                      {/* ANTEPRIMA SFONDO + TASTO RIMUOVI */}
                       {config.cover_url && (
                           <div style={{marginTop:'10px'}}>
                               <img src={config.cover_url} style={{height:'60px', marginBottom:'5px', display:'block', border:'1px solid #ccc'}} />
-                              <button 
-                                onClick={() => setConfig({...config, cover_url: ''})}
-                                style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}
-                              >
-                                🗑️ Rimuovi Sfondo
-                              </button>
+                              <button onClick={() => setConfig({...config, cover_url: ''})} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}>🗑️ Rimuovi Sfondo</button>
                           </div>
                       )}
                   </div>
-
                   {/* COLORI */}
                   <div style={{display:'flex', gap:'20px', flexWrap:'wrap'}}>
                       <div style={{flex:1}}>
@@ -266,7 +325,7 @@ function Admin() {
                           <input type="color" value={config.colore_titolo} onChange={e => setConfig({...config, colore_titolo: e.target.value})} style={{width:'100%', height:'40px'}}/>
                       </div>
                       <div style={{flex:1}}>
-                          <h4>Testo Descrizioni</h4>
+                          <h4>Testo</h4>
                           <input type="color" value={config.colore_testo} onChange={e => setConfig({...config, colore_testo: e.target.value})} style={{width:'100%', height:'40px'}}/>
                       </div>
                       <div style={{flex:1}}>
@@ -274,7 +333,6 @@ function Admin() {
                           <input type="color" value={config.colore_prezzo} onChange={e => setConfig({...config, colore_prezzo: e.target.value})} style={{width:'100%', height:'40px'}}/>
                       </div>
                   </div>
-
                   {/* FONT */}
                   <div>
                       <h4>Font</h4>
@@ -285,7 +343,6 @@ function Admin() {
                           <option value="'Brush Script MT', cursive">Corsivo</option>
                       </select>
                   </div>
-
                   <button onClick={handleSaveStyle} className="btn-invia" style={{background:'#9b59b6', marginTop:'10px'}}>💾 SALVA MODIFICHE</button>
               </div>
           </div>
@@ -328,9 +385,9 @@ function Admin() {
                     <select value={nuovoPiatto.categoria} onChange={e => setNuovoPiatto({...nuovoPiatto, categoria: e.target.value})} style={{flex:1, padding:'10px'}}>
                         {categorie.map(cat => <option key={cat.id} value={cat.nome}>{cat.nome}</option>)}
                     </select>
-                    <input placeholder="Sottocategoria (es. Bianchi)" value={nuovoPiatto.sottocategoria} onChange={e => setNuovoPiatto({...nuovoPiatto, sottocategoria: e.target.value})} style={{flex:1}} />
+                    <input placeholder="Sottocategoria" value={nuovoPiatto.sottocategoria} onChange={e => setNuovoPiatto({...nuovoPiatto, sottocategoria: e.target.value})} style={{flex:1}} />
                   </div>
-                  <textarea placeholder="Descrizione / Ingredienti" value={nuovoPiatto.descrizione} onChange={e => setNuovoPiatto({...nuovoPiatto, descrizione: e.target.value})} style={{padding:'10px', borderRadius:'5px', border:'1px solid #ccc', minHeight:'60px'}}/>
+                  <textarea placeholder="Descrizione" value={nuovoPiatto.descrizione} onChange={e => setNuovoPiatto({...nuovoPiatto, descrizione: e.target.value})} style={{padding:'10px', borderRadius:'5px', border:'1px solid #ccc', minHeight:'60px'}}/>
                   <div style={{display:'flex', gap:'10px'}}>
                       <input type="number" placeholder="Prezzo" value={nuovoPiatto.prezzo} onChange={e => setNuovoPiatto({...nuovoPiatto, prezzo: e.target.value})} style={{flex:1}}/>
                        <div style={{background:'white', padding:'5px', flex:1}}><input type="file" onChange={handleFileChange} />{uploading && "..."}{nuovoPiatto.immagine_url && "✅"}</div>
@@ -372,24 +429,19 @@ function Admin() {
         </DragDropContext>
       )}
 
-      {/* --- TAB CATEGORIE (MODIFICATO QUI PER EDIT) --- */}
+      {/* --- TAB CATEGORIE --- */}
       {tab === 'categorie' && (
         <DragDropContext onDragEnd={handleOnDragEnd}>
             <div className="card">
                 <h3>{editCatId ? "✏️ Modifica Categoria" : "➕ Gestisci Categorie"}</h3>
-                
                 <div style={{display:'flex', flexDirection:'column', gap:'10px', marginBottom:'20px'}}>
                     <input placeholder="Nome Categoria" value={nuovaCat.nome} onChange={e=>setNuovaCat({...nuovaCat, nome: e.target.value})} />
                     <input placeholder="Descrizione" value={nuovaCat.descrizione} onChange={e=>setNuovaCat({...nuovaCat, descrizione: e.target.value})} style={{fontSize: '14px'}}/>
-                    
                     <div style={{display:'flex', gap:'5px'}}>
-                        <button onClick={handleSalvaCategoria} className="btn-invia" style={{flex:1, background: editCatId ? '#f1c40f' : '#333'}}>
-                            {editCatId ? "AGGIORNA CATEGORIA" : "CREA CATEGORIA"}
-                        </button>
+                        <button onClick={handleSalvaCategoria} className="btn-invia" style={{flex:1, background: editCatId ? '#f1c40f' : '#333'}}>{editCatId ? "AGGIORNA CATEGORIA" : "CREA CATEGORIA"}</button>
                         {editCatId && <button onClick={annullaModificaCat} style={{background:'#777', color:'white', border:'none', padding:'10px', borderRadius:'5px', cursor:'pointer'}}>Annulla</button>}
                     </div>
                 </div>
-                
                 <Droppable droppableId="all-categories" type="CATEGORY">
                     {(provided) => (
                         <div {...provided.droppableProps} ref={provided.innerRef} style={{display:'flex', flexDirection:'column', gap:'10px'}}>
@@ -402,7 +454,6 @@ function Admin() {
                                                 {cat.descrizione && <div style={{fontSize:'12px', color:'#666', marginLeft:'20px'}}>{cat.descrizione}</div>}
                                             </div>
                                             <div style={{display:'flex', gap:'5px'}}>
-                                                {/* MODIFICA: TASTO MATITA PER CATEGORIA */}
                                                 <button onClick={() => avviaModificaCat(cat)} style={{background:'#f1c40f', padding:'5px 10px', borderRadius:'4px', border:'none', cursor:'pointer'}}>✏️</button>
                                                 <button onClick={()=>cancellaCategoria(cat.id)} style={{background:'red', padding:'5px 10px', color:'white'}}>X</button>
                                             </div>

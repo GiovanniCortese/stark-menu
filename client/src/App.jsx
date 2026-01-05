@@ -338,7 +338,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/admin" element={<Admin />} />
+        <Route path="/admin/:slug" element={<Admin />} />
         <Route path="/super-admin" element={<SuperAdmin />} />
         <Route path="/cucina/:slug" element={<Cucina />} />
         <Route path="/:slug" element={<Menu />} />
