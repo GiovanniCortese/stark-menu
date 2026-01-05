@@ -1,20 +1,22 @@
-// client/src/Admin.jsx - VERSIONE V8 (FIX FLASH + TASTO ESCI) 🛠️
+// client/src/Admin.jsx - VERSIONE V9 (GOD MODE FIX + ID FETCH) 🛠️
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 function Admin() {
-  const { slug } = useParams();
+  const { slug } = useParams(); // Prende "pizzeria-stark" dall'URL
   const navigate = useNavigate();
 
-  // STATI DATI
-  const [user, setUser] = useState(null); // I dati del ristorante corrente
-  const [loading, setLoading] = useState(true); // Per evitare il flash
+  // STATI FONDAMENTALI
+  const [user, setUser] = useState(null); // Contiene ID e info ristorante
+  const [loading, setLoading] = useState(true); // Evita la pagina bianca/flash
+  
+  // STATI CONTENUTO
   const [menu, setMenu] = useState([]); 
   const [categorie, setCategorie] = useState([]); 
   const [tab, setTab] = useState('menu'); 
 
-  // STATI EDITING
+  // STATI EDITING E CONFIG
   const [config, setConfig] = useState({ 
       ordini_abilitati: false, servizio_attivo: false,
       logo_url: '', cover_url: '',
@@ -30,77 +32,87 @@ function Admin() {
 
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
-  // 1. INIZIALIZZAZIONE SICURA (NO FLASH)
+  // --- 1. IL CERVELLO: AUTENTICAZIONE E RECUPERO DATI ---
   useEffect(() => {
     if (!slug) return;
 
-    const init = async () => {
+    const initPage = async () => {
         setLoading(true);
         
-        // A. CONTROLLO AUTORIZZAZIONE
+        // A. CONTROLLO PASS: SuperAdmin o Login Locale?
         const sessionKey = `stark_session_${slug}`;
-        const isGodMode = localStorage.getItem(sessionKey); 
-        // Nota: Ignoriamo il 'user' generico del localStorage per evitare conflitti
+        const isGodMode = localStorage.getItem(sessionKey); // Il trucco del SuperAdmin
         
         if (!isGodMode) {
-            const pass = prompt(`🔒 Admin: ${slug}\nInserisci Password:`);
-            if (pass !== "tonystark") {
-                window.location.href = "/"; // Password errata, via.
+            // Se non c'è il lasciapassare, chiediamo la password
+            const pass = prompt(`🔒 Admin Panel: ${slug}\nInserisci Password:`);
+            if (pass !== "tonystark") { // Qui metterai la logica password reale futura
+                alert("Password Errata");
+                window.location.href = "/";
                 return;
             }
+            // Se giusta, salviamo la sessione
             localStorage.setItem(sessionKey, "true");
         }
 
-        // B. RECUPERO DATI RISTORANTE (SLEGATO DAL LOCALSTORAGE)
+        // B. RECUPERO ID RISTORANTE DALLO SLUG
         try {
-            // Cerchiamo i dati freschi dal server usando lo slug
+            // Usiamo l'endpoint pubblico del menu per ottenere l'ID e i dati del ristorante
             const res = await fetch(`${API_URL}/api/menu/${slug}`);
             const data = await res.json();
 
             if (data && data.ristorante) {
-                setUser(data.ristorante); // Impostiamo l'utente CORRETTO
+                // ABBIAMO TROVATO IL RISTORANTE!
+                const ristoData = data.ristorante;
+                setUser(ristoData); 
                 setMenu(data.menu || []);
-                
-                // Ora che abbiamo l'ID, carichiamo il resto
-                const ristoId = data.ristorante.id;
-                
-                // Config
-                fetch(`${API_URL}/api/ristorante/config/${ristoId}`)
-                    .then(r=>r.json())
-                    .then(d=>setConfig(prev => ({...prev, ...d})));
-                
-                // Categorie
-                fetch(`${API_URL}/api/categorie/${ristoId}`)
-                    .then(r=>r.json())
-                    .then(cats => {
-                        setCategorie(cats);
-                        if(cats.length > 0) setNuovoPiatto(prev => ({...prev, categoria: cats[0].nome}));
-                    });
 
+                // Ora carichiamo le configurazioni extra usando l'ID appena trovato
+                caricaConfigurazioniExtra(ristoData.id);
             } else {
-                alert("Errore critico: Ristorante non trovato.");
+                alert("Ristorante non trovato nel database.");
                 navigate('/');
             }
         } catch (error) {
             console.error(error);
             alert("Errore di connessione al server.");
         } finally {
-            setLoading(false); // Finito il caricamento, mostra la pagina
+            setLoading(false); // Sblocca la vista
         }
     };
 
-    init();
+    initPage();
   }, [slug]);
 
-  // FUNZIONE ESCI
-  const handleLogout = () => {
-      if(confirm("Vuoi davvero uscire?")) {
-          localStorage.removeItem(`stark_session_${slug}`);
-          navigate('/'); // O torna al superadmin se preferisci
-      }
+  const caricaConfigurazioniExtra = (id) => {
+      // Configura Stile
+      fetch(`${API_URL}/api/ristorante/config/${id}`)
+        .then(r=>r.json())
+        .then(d=>setConfig(prev => ({...prev, ...d})));
+      
+      // Carica Categorie
+      fetch(`${API_URL}/api/categorie/${id}`)
+        .then(r=>r.json())
+        .then(cats => {
+            setCategorie(cats);
+            if(cats.length > 0) setNuovoPiatto(prev => ({...prev, categoria: cats[0].nome}));
+        });
   };
 
-  // --- FUNZIONI DI GESTIONE (INVARIATE MA PULITE) ---
+  const ricaricaDati = () => {
+      if(!user) return;
+      fetch(`${API_URL}/api/menu/${slug}`).then(r=>r.json()).then(d=>setMenu(d.menu || []));
+      fetch(`${API_URL}/api/categorie/${user.id}`).then(r=>r.json()).then(setCategorie);
+  };
+
+  // --- FUNZIONI DI GESTIONE (DRAG DROP, CRUD, ECC) ---
+  
+  const handleLogout = () => {
+      if(confirm("Disconnettersi dal pannello?")) {
+          localStorage.removeItem(`stark_session_${slug}`);
+          navigate('/');
+      }
+  };
 
   const handleSaveStyle = async () => {
       await fetch(`${API_URL}/api/ristorante/style/${user.id}`, {
@@ -123,17 +135,8 @@ function Admin() {
       setUploading(false);
   };
 
-  const ricaricaDati = () => {
-      // Funzione helper per ricaricare senza refreshare pagina
-      fetch(`${API_URL}/api/menu/${slug}`).then(r=>r.json()).then(d=>{ setMenu(d.menu || []) });
-      fetch(`${API_URL}/api/categorie/${user.id}`).then(r=>r.json()).then(setCategorie);
-  };
-
   const handleOnDragEnd = async (result) => {
     if (!result.destination) return;
-    // ... Logica Drag & Drop (semplificata per brevità, usa quella completa se serve) ...
-    // Se ti serve il codice completo del Drag&Drop dimmelo, qui l'ho accorciato per leggibilità
-    // assumendo tu l'abbia già, ma per sicurezza nel dubbio lo rimetto full sotto:
     if (result.type === 'CATEGORY') {
         const items = Array.from(categorie);
         const [reorderedItem] = items.splice(result.source.index, 1);
@@ -158,7 +161,6 @@ function Admin() {
     }
   };
 
-  // CRUD CATEGORIE
   const handleSalvaCategoria = async () => { 
       if(!nuovaCat.nome) return; 
       const url = editCatId ? `${API_URL}/api/categorie/${editCatId}` : `${API_URL}/api/categorie`;
@@ -168,7 +170,6 @@ function Admin() {
   };
   const cancellaCategoria = async (id) => { if(confirm("Eliminare?")) { await fetch(`${API_URL}/api/categorie/${id}`, {method:'DELETE'}); ricaricaDati(); }};
 
-  // CRUD PIATTI
   const handleSalvaPiatto = async (e) => { 
       e.preventDefault(); 
       if(!nuovoPiatto.nome) return alert("Nome mancante"); 
@@ -181,7 +182,6 @@ function Admin() {
   const cancellaPiatto = async (id) => { if(confirm("Eliminare?")) { await fetch(`${API_URL}/api/prodotti/${id}`, {method:'DELETE'}); ricaricaDati(); }};
   const avviaModifica = (piatto) => { setEditId(piatto.id); setNuovoPiatto(piatto); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   
-  // EXCEL
   const handleImportExcel = async () => {
     if(!fileExcel) return alert("Manca il file");
     const fd = new FormData(); fd.append('file', fileExcel); fd.append('ristorante_id', user.id);
@@ -190,30 +190,31 @@ function Admin() {
     setUploading(false); alert("Importazione completata"); ricaricaDati();
   };
   const handleExportExcel = () => { window.open(`${API_URL}/api/export-excel/${user.id}`, '_blank'); };
+  
   const toggleServizio = async () => { 
       const n=!config.servizio_attivo; setConfig({...config, servizio_attivo:n}); 
       await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({servizio_attivo:n})}); 
   };
 
-  // RENDER BLOCCO DI CARICAMENTO (Fondamentale per evitare crash)
-  if (loading) return <div style={{padding:'50px', textAlign:'center', fontSize:'20px'}}>🔄 Caricamento pannello <strong>{slug}</strong>...</div>;
-  if (!user) return <div style={{color:'red'}}>Errore caricamento utente.</div>;
+  // --- RENDER ---
+  if (loading) return <div style={{padding:'50px', textAlign:'center', fontSize:'24px', color:'#333'}}>🔄 Connessione a <strong>{slug}</strong>...</div>;
+  if (!user) return <div style={{color:'red', textAlign:'center', marginTop:'50px'}}>Errore caricamento dati.</div>;
 
   return (
     <div className="container" style={{maxWidth:'1200px', margin:'0 auto', paddingBottom:'50px'}}>
       
-      {/* HEADER MIGLIORATO CON TASTO ESCI */}
+      {/* HEADER */}
       <header style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px', borderBottom:'1px solid #ddd', paddingBottom:'15px'}}>
         <div>
             <h1 style={{margin:0}}>⚙️ {user.nome}</h1>
-            <small style={{color:'#666'}}>Pannello di Controllo</small>
+            <small style={{color:'#666'}}>Admin Panel / {slug}</small>
         </div>
         <button onClick={handleLogout} style={{background:'#e74c3c', color:'white', border:'none', padding:'8px 15px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold'}}>
             🚪 ESCI
         </button>
       </header>
 
-      {/* NAVIGAZIONE TAB */}
+      {/* NAV TABS */}
       <div style={{display:'flex', gap:'5px', flexWrap:'wrap', marginBottom:'20px'}}>
         {['menu', 'categorie', 'style', 'excel'].map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
@@ -225,10 +226,10 @@ function Admin() {
         ))}
       </div>
 
-      {/* --- TAB STYLE --- */}
+      {/* TAB STYLE */}
       {tab === 'style' && (
           <div className="card">
-              <h3>🎨 Personalizzazione</h3>
+              <h3>🎨 Grafica</h3>
               <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap:'20px'}}>
                   <div>
                       <h4>Logo</h4>
@@ -244,7 +245,6 @@ function Admin() {
                       <h4>Colori</h4>
                       <input type="color" value={config.colore_sfondo} onChange={e=>setConfig({...config, colore_sfondo:e.target.value})} title="Sfondo"/>
                       <input type="color" value={config.colore_titolo} onChange={e=>setConfig({...config, colore_titolo:e.target.value})} title="Titoli"/>
-                      <input type="color" value={config.colore_prezzo} onChange={e=>setConfig({...config, colore_prezzo:e.target.value})} title="Prezzi"/>
                   </div>
                   <div>
                       <h4>Font</h4>
@@ -259,7 +259,7 @@ function Admin() {
           </div>
       )}
 
-      {/* --- TAB EXCEL --- */}
+      {/* TAB EXCEL */}
       {tab === 'excel' && (
           <div className="card">
               <h3>📊 Import/Export</h3>
@@ -273,7 +273,7 @@ function Admin() {
           </div>
       )}
 
-      {/* --- TAB MENU (PRINCIPALE) --- */}
+      {/* TAB MENU */}
       {tab === 'menu' && (
         <DragDropContext onDragEnd={handleOnDragEnd}>
           <div className="card" style={{background: config.servizio_attivo ? '#d4edda':'#f8d7da', textAlign:'center', border: config.servizio_attivo ? '1px solid green' : '1px solid red'}}>
@@ -281,13 +281,12 @@ function Admin() {
               <button onClick={toggleServizio} style={{padding:'5px 20px', cursor:'pointer'}}>CAMBIA STATO</button>
           </div>
 
-          {/* FORM AGGIUNTA/EDIT */}
           <div className="card" style={{borderLeft: editId ? '5px solid #2196f3' : '5px solid #333'}}>
               <h3>{editId ? "✏️ Modifica Piatto" : "➕ Nuovo Piatto"}</h3>
               <form onSubmit={handleSalvaPiatto} style={{display:'flex', flexDirection:'column', gap:'10px'}}>
                   <div style={{display:'flex', gap:'10px'}}>
                     <input placeholder="Nome" value={nuovoPiatto.nome} onChange={e=>setNuovoPiatto({...nuovoPiatto, nome:e.target.value})} style={{flex:2}} />
-                    <input placeholder="€ Prezzo" value={nuovoPiatto.prezzo} onChange={e=>setNuovoPiatto({...nuovoPiatto, prezzo:e.target.value})} style={{flex:1}} />
+                    <input placeholder="Prezzo" value={nuovoPiatto.prezzo} onChange={e=>setNuovoPiatto({...nuovoPiatto, prezzo:e.target.value})} style={{flex:1}} />
                   </div>
                   <div style={{display:'flex', gap:'10px'}}>
                     <select value={nuovoPiatto.categoria} onChange={e=>setNuovoPiatto({...nuovoPiatto, categoria:e.target.value})} style={{flex:1}}>
@@ -304,7 +303,6 @@ function Admin() {
               </form>
           </div>
 
-          {/* LISTA PIATTI */}
           {categorie.map(cat => (
               <div key={cat.id}>
                   <h3 style={{borderBottom:'2px solid #eee', padding:'20px 0 5px', color:'#555'}}>{cat.nome}</h3>
@@ -317,10 +315,7 @@ function Admin() {
                                           <div ref={prov.innerRef} {...prov.draggableProps} {...prov.dragHandleProps} className="card" style={{...prov.draggableProps.style, padding:'10px', marginBottom:'10px', display:'flex', justifyContent:'space-between', alignItems:'center', borderLeft:'3px solid #ccc'}}>
                                               <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
                                                   {p.immagine_url && <img src={p.immagine_url} style={{width:'40px', height:'40px', borderRadius:'4px', objectFit:'cover'}}/>}
-                                                  <div>
-                                                      <strong>{p.nome}</strong> <small>({p.prezzo}€)</small>
-                                                      {p.sottocategoria && <div style={{fontSize:'10px', color:'gray'}}>{p.sottocategoria}</div>}
-                                                  </div>
+                                                  <div><strong>{p.nome}</strong> <small>({p.prezzo}€)</small></div>
                                               </div>
                                               <div>
                                                   <button onClick={()=>avviaModifica(p)} style={{marginRight:'5px'}}>✏️</button>
@@ -339,7 +334,7 @@ function Admin() {
         </DragDropContext>
       )}
 
-      {/* --- TAB CATEGORIE --- */}
+      {/* TAB CATEGORIE */}
       {tab === 'categorie' && (
         <DragDropContext onDragEnd={handleOnDragEnd}>
             <div className="card">
