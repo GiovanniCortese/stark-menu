@@ -1,26 +1,26 @@
-// client/src/Admin.jsx - VERSIONE V9 (GOD MODE FIX + ID FETCH) 🛠️
+// client/src/Admin.jsx - VERSIONE V10 (FIX LETTURA ID) 🛠️
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 function Admin() {
-  const { slug } = useParams(); // Prende "pizzeria-stark" dall'URL
+  const { slug } = useParams();
   const navigate = useNavigate();
 
-  // STATI FONDAMENTALI
-  const [user, setUser] = useState(null); // Contiene ID e info ristorante
-  const [loading, setLoading] = useState(true); // Evita la pagina bianca/flash
-  
-  // STATI CONTENUTO
+  // STATI DATI
+  const [user, setUser] = useState(null); 
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState(''); // Per vedere errori a schermo
+
   const [menu, setMenu] = useState([]); 
   const [categorie, setCategorie] = useState([]); 
   const [tab, setTab] = useState('menu'); 
 
-  // STATI EDITING E CONFIG
+  // STATI CONFIG & EDIT
   const [config, setConfig] = useState({ 
       ordini_abilitati: false, servizio_attivo: false,
       logo_url: '', cover_url: '',
-      colore_sfondo: '#222222', colore_titolo: '#ffffff', colore_testo: '#cccccc', colore_prezzo: '#27ae60',
+      colore_sfondo: '#222', colore_titolo: '#fff', colore_testo: '#ccc', colore_prezzo: '#27ae60',
       font_style: 'sans-serif'
   });
   const [uploading, setUploading] = useState(false);
@@ -32,71 +32,80 @@ function Admin() {
 
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
-  // --- 1. IL CERVELLO: AUTENTICAZIONE E RECUPERO DATI ---
+  // --- 1. INIZIALIZZAZIONE ---
   useEffect(() => {
     if (!slug) return;
 
-    const initPage = async () => {
+    const init = async () => {
         setLoading(true);
-        
-        // A. CONTROLLO PASS: SuperAdmin o Login Locale?
+        setErrorMsg('');
+
+        // A. CONTROLLO PASS (GOD MODE o PASSWORD)
         const sessionKey = `stark_session_${slug}`;
-        const isGodMode = localStorage.getItem(sessionKey); // Il trucco del SuperAdmin
+        const isGodMode = localStorage.getItem(sessionKey); 
         
         if (!isGodMode) {
-            // Se non c'è il lasciapassare, chiediamo la password
-            const pass = prompt(`🔒 Admin Panel: ${slug}\nInserisci Password:`);
-            if (pass !== "tonystark") { // Qui metterai la logica password reale futura
+            const pass = prompt(`🔒 Admin: ${slug}\nInserisci Password:`);
+            if (pass !== "tonystark") {
                 alert("Password Errata");
-                window.location.href = "/";
+                window.location.href = "/"; // Torna alla home
                 return;
             }
-            // Se giusta, salviamo la sessione
             localStorage.setItem(sessionKey, "true");
         }
 
-        // B. RECUPERO ID RISTORANTE DALLO SLUG
+        // B. RECUPERO DATI (CORRETTO PER IL TUO BACKEND)
         try {
-            // Usiamo l'endpoint pubblico del menu per ottenere l'ID e i dati del ristorante
             const res = await fetch(`${API_URL}/api/menu/${slug}`);
             const data = await res.json();
 
-            if (data && data.ristorante) {
-                // ABBIAMO TROVATO IL RISTORANTE!
-                const ristoData = data.ristorante;
-                setUser(ristoData); 
+            // VERIFICA CHE I DATI ESISTANO
+            // In App.jsx usi: data.id (numero) e data.ristorante (nome stringa)
+            if (data && data.id) {
+                
+                // Creiamo l'oggetto user manualmente per uniformare il codice
+                const userData = {
+                    id: data.id,
+                    nome: data.ristorante, // Era solo una stringa!
+                    slug: slug
+                };
+                setUser(userData);
+                
                 setMenu(data.menu || []);
+                
+                // Carichiamo il resto usando l'ID corretto
+                caricaConfigurazioniExtra(userData.id);
 
-                // Ora carichiamo le configurazioni extra usando l'ID appena trovato
-                caricaConfigurazioniExtra(ristoData.id);
             } else {
-                alert("Ristorante non trovato nel database.");
-                navigate('/');
+                console.error("Dati ricevuti strani:", data);
+                setErrorMsg("Ristorante non trovato o errore dati server.");
             }
         } catch (error) {
             console.error(error);
-            alert("Errore di connessione al server.");
+            setErrorMsg("Errore di connessione al server.");
         } finally {
-            setLoading(false); // Sblocca la vista
+            setLoading(false);
         }
     };
 
-    initPage();
+    init();
   }, [slug]);
 
   const caricaConfigurazioniExtra = (id) => {
-      // Configura Stile
+      // 1. Configurazione Stile
       fetch(`${API_URL}/api/ristorante/config/${id}`)
         .then(r=>r.json())
-        .then(d=>setConfig(prev => ({...prev, ...d})));
+        .then(d=>setConfig(prev => ({...prev, ...d})))
+        .catch(e => console.error("Err config", e));
       
-      // Carica Categorie
+      // 2. Categorie
       fetch(`${API_URL}/api/categorie/${id}`)
         .then(r=>r.json())
         .then(cats => {
             setCategorie(cats);
             if(cats.length > 0) setNuovoPiatto(prev => ({...prev, categoria: cats[0].nome}));
-        });
+        })
+        .catch(e => console.error("Err categorie", e));
   };
 
   const ricaricaDati = () => {
@@ -105,19 +114,17 @@ function Admin() {
       fetch(`${API_URL}/api/categorie/${user.id}`).then(r=>r.json()).then(setCategorie);
   };
 
-  // --- FUNZIONI DI GESTIONE (DRAG DROP, CRUD, ECC) ---
-  
+  // --- GESTIONE INTERFACCIA ---
   const handleLogout = () => {
-      if(confirm("Disconnettersi dal pannello?")) {
+      if(confirm("Uscire dal pannello?")) {
           localStorage.removeItem(`stark_session_${slug}`);
           navigate('/');
       }
   };
 
+  // --- CRUD & LOGICA (INVARIATE) ---
   const handleSaveStyle = async () => {
-      await fetch(`${API_URL}/api/ristorante/style/${user.id}`, {
-          method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config)
-      });
+      await fetch(`${API_URL}/api/ristorante/style/${user.id}`, {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config)});
       alert("🎨 Grafica aggiornata!");
   };
 
@@ -196,9 +203,16 @@ function Admin() {
       await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({servizio_attivo:n})}); 
   };
 
-  // --- RENDER ---
-  if (loading) return <div style={{padding:'50px', textAlign:'center', fontSize:'24px', color:'#333'}}>🔄 Connessione a <strong>{slug}</strong>...</div>;
-  if (!user) return <div style={{color:'red', textAlign:'center', marginTop:'50px'}}>Errore caricamento dati.</div>;
+  // --- RENDER (Con Debug Errori) ---
+  if (loading) return <div style={{padding:'50px', textAlign:'center', fontSize:'24px'}}>🔄 Caricamento Admin <strong>{slug}</strong>...</div>;
+  
+  if (errorMsg) return (
+      <div style={{padding:'50px', textAlign:'center', color:'red'}}>
+          <h2>⛔ Errore Critico</h2>
+          <p>{errorMsg}</p>
+          <button onClick={() => navigate('/')}>Torna alla Home</button>
+      </div>
+  );
 
   return (
     <div className="container" style={{maxWidth:'1200px', margin:'0 auto', paddingBottom:'50px'}}>
