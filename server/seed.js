@@ -1,71 +1,100 @@
-// server/seed.js
+// server/seed.js - VERSIONE MULTI-RISTORANTE
 require('dotenv').config();
 const { Pool } = require('pg');
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false,
-  },
+  ssl: { rejectUnauthorized: false },
 });
 
-const seedData = async () => {
+const seed = async () => {
   try {
-    console.log("🌱 Inizio inserimento dati su Neon...");
+    // 1. Pulizia Totale (Tabula Rasa)
+    console.log("🧹 Pulizia database...");
+    await pool.query('DROP TABLE IF EXISTS ordini');
+    await pool.query('DROP TABLE IF EXISTS prodotti');
+    await pool.query('DROP TABLE IF EXISTS ristoranti');
 
-    // 1. Creiamo tabelle Ristoranti e Prodotti se non esistono (per sicurezza)
+    // 2. Creazione Tabelle
+    console.log("🏗️ Creazione tabelle...");
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS ristoranti (
+      CREATE TABLE ristoranti (
         id SERIAL PRIMARY KEY,
-        nome VARCHAR(255),
-        slug VARCHAR(255) UNIQUE,
-        email_titolare VARCHAR(255),
-        password VARCHAR(255),
-        password_hash VARCHAR(255)
-      );
-      CREATE TABLE IF NOT EXISTS prodotti (
-        id SERIAL PRIMARY KEY,
-        ristorante_id INTEGER,
-        nome VARCHAR(255),
-        prezzo DECIMAL(10,2),
-        categoria VARCHAR(50)
+        nome VARCHAR(100),
+        slug VARCHAR(100) UNIQUE,
+        email_titolare VARCHAR(100),
+        password VARCHAR(100)
       );
     `);
 
-    // 2. Inseriamo il Ristorante
-    const resRist = await pool.query(`
-      INSERT INTO ristoranti (nome, slug, email_titolare, password, password_hash) 
-      VALUES ($1, $2, $3, $4, $5) 
-      ON CONFLICT (slug) DO UPDATE SET nome = EXCLUDED.nome
-      RETURNING id;
-    `, ['Pizzeria Stark', 'pizzeria-stark', 'tony@stark.it', 'admin123', 'hash_segreto']);
+    await pool.query(`
+      CREATE TABLE prodotti (
+        id SERIAL PRIMARY KEY,
+        nome VARCHAR(100),
+        prezzo DECIMAL(5,2),
+        categoria VARCHAR(50),
+        immagine_url TEXT,
+        ristorante_id INTEGER REFERENCES ristoranti(id) ON DELETE CASCADE
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE ordini (
+        id SERIAL PRIMARY KEY,
+        ristorante_id INTEGER REFERENCES ristoranti(id),
+        tavolo VARCHAR(50),
+        dettagli TEXT,
+        prezzo_totale DECIMAL(6,2),
+        stato VARCHAR(20) DEFAULT 'in_attesa',
+        data_creazione TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 3. Inserimento Ristoranti (STARK + LUIGI)
+    console.log("👨‍🍳 Inserimento Ristoranti...");
     
-    const ristoranteId = resRist.rows[0].id;
-    console.log(`✅ Ristorante Cloud creato ID: ${ristoranteId}`);
+    // Ristorante 1: Stark
+    const res1 = await pool.query(`
+      INSERT INTO ristoranti (nome, slug, email_titolare, password) 
+      VALUES ('Pizzeria Stark', 'pizzeria-stark', 'tony@stark.it', 'admin123') 
+      RETURNING id
+    `);
+    const idStark = res1.rows[0].id;
 
-    // 3. Pulizia e inserimento prodotti
-    await pool.query('DELETE FROM prodotti WHERE ristorante_id = $1', [ristoranteId]);
+    // Ristorante 2: Da Luigi (NUOVO!)
+    const res2 = await pool.query(`
+      INSERT INTO ristoranti (nome, slug, email_titolare, password) 
+      VALUES ('Pizzeria Da Luigi', 'da-luigi', 'luigi@mario.it', 'luigi123') 
+      RETURNING id
+    `);
+    const idLuigi = res2.rows[0].id;
 
-    const prodotti = [
-        { nome: 'Margherita', prezzo: 6.00, categoria: 'Pizze' },
-        { nome: 'Diavola', prezzo: 7.50, categoria: 'Pizze' },
-        { nome: 'Coca Cola', prezzo: 2.50, categoria: 'Bibite' }
-    ];
+    // 4. Inserimento Prodotti
+    console.log("🍕 Inserimento Pizze...");
 
-    for (const p of prodotti) {
-        await pool.query(`
-            INSERT INTO prodotti (nome, prezzo, categoria, ristorante_id)
-            VALUES ($1, $2, $3, $4)
-        `, [p.nome, p.prezzo, p.categoria, ristoranteId]);
-    }
+    // Menu Stark (High Tech)
+    await pool.query(`
+      INSERT INTO prodotti (nome, prezzo, categoria, ristorante_id) VALUES 
+      ('Pizza Arc Reattore', 15.00, 'Pizze', $1),
+      ('Burger Jarvis', 12.50, 'Pizze', $1),
+      ('Vino di Asgard', 40.00, 'Bibite', $1)
+    `, [idStark]);
 
-    console.log(`✅ Menu caricato nel Cloud.`);
+    // Menu Luigi (Classico)
+    await pool.query(`
+      INSERT INTO prodotti (nome, prezzo, categoria, ristorante_id) VALUES 
+      ('Pizza Margherita', 6.00, 'Pizze', $1),
+      ('Pizza Diavola', 7.50, 'Pizze', $1),
+      ('Coca Cola', 2.50, 'Bibite', $1)
+    `, [idLuigi]);
+
+    console.log("✅ Finito! Due ristoranti pronti.");
 
   } catch (err) {
-    console.error("❌ Errore:", err);
+    console.error(err);
   } finally {
     pool.end();
   }
 };
 
-seedData();
+seed();
