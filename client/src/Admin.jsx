@@ -1,4 +1,4 @@
-// client/src/Admin.jsx - VERSIONE EXCEL & SOTTOCATEGORIE 📊
+// client/src/Admin.jsx - VERSIONE DEFINITIVA (CON TASTO SERVIZIO) ✅
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
@@ -52,13 +52,15 @@ function Admin() {
         setUploading(true);
         const res = await fetch(`${API_URL}/api/import-excel`, { method: 'POST', body: formData });
         const data = await res.json();
+        
+        // MODIFICA QUI: Mostriamo l'errore reale
         if(data.success) {
             alert(data.message);
             caricaTutto();
         } else {
-            alert("Errore importazione");
+            alert("ERRORE SERVER: " + (data.error || "Errore sconosciuto"));
         }
-    } catch(err) { alert("Errore server"); } 
+    } catch(err) { alert("Errore di connessione al server"); } 
     finally { setUploading(false); setFileExcel(null); }
   };
 
@@ -158,7 +160,10 @@ function Admin() {
   
   const cancellaCategoria = async (id) => { if(confirm("Eliminare categoria?")) { await fetch(`${API_URL}/api/categorie/${id}`, {method:'DELETE'}); caricaCategorie(); }};
   const handleFileChange = async (e) => { const f=e.target.files[0]; if(!f)return; setUploading(true); const fd=new FormData(); fd.append('photo',f); const r=await fetch(`${API_URL}/api/upload`,{method:'POST',body:fd}); const d=await r.json(); if(d.url) setNuovoPiatto(p=>({...p, immagine_url:d.url})); setUploading(false); };
+  
+  // FUNZIONE TOGGLE SERVIZIO (C'era ma mancava il bottone)
   const toggleServizio = async () => { const n=!config.servizio_attivo; setConfig({...config, servizio_attivo:n}); await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({servizio_attivo:n})}); };
+  
   const cancellaPiatto = async (id) => { if(confirm("Eliminare piatto?")) { await fetch(`${API_URL}/api/prodotti/${id}`, {method:'DELETE'}); caricaTutto(); }};
 
   if (!user) return null;
@@ -199,6 +204,14 @@ function Admin() {
       {/* --- TAB MENU --- */}
       {tab === 'menu' && (
         <DragDropContext onDragEnd={handleOnDragEnd}>
+          
+          {/* --- TASTO ATTIVA/DISATTIVA SERVIZIO (REINSERITO) --- */}
+          <div className="card" style={{border: '2px solid #333', background: '#fff3cd', marginBottom:'20px'}}>
+              <button onClick={toggleServizio} style={{background: config.servizio_attivo ? '#2ecc71':'#e74c3c', width:'100%', padding:'15px', color:'white', fontWeight:'bold', fontSize:'18px', border:'none', borderRadius:'5px', cursor:'pointer'}}>
+                  {config.servizio_attivo ? "✅ ORDINI APERTI" : "🛑 ORDINI CHIUSI"}
+              </button>
+          </div>
+
           <div className="card" style={{background: '#f8f9fa', border: '2px dashed #ccc'}}>
               <h3>➕ Aggiungi Piatto Manuale</h3>
               <form onSubmit={handleAggiungiPiatto} style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
