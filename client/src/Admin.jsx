@@ -1,4 +1,4 @@
-// client/src/Admin.jsx - VERSIONE DEFINITIVA V2 (CON EDITING) ✅
+// client/src/Admin.jsx - VERSIONE DEFINITIVA V3 (DUPLICAZIONE ATTIVA) 🚀
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
@@ -14,7 +14,7 @@ function Admin() {
   const [nuovaCat, setNuovaCat] = useState({ nome: '', descrizione: '' });
   
   // STATO PER MODIFICA
-  const [editId, setEditId] = useState(null); // Se diverso da null, stiamo modificando questo ID
+  const [editId, setEditId] = useState(null); 
 
   const [fileExcel, setFileExcel] = useState(null);
 
@@ -38,7 +38,6 @@ function Admin() {
       .then(res => res.json())
       .then(data => {
           setCategorie(data);
-          // Se stiamo creando da zero, mettiamo la prima categoria come default
           if(data.length > 0 && !nuovoPiatto.categoria && !editId) setNuovoPiatto(prev => ({...prev, categoria: data[0].nome}));
       });
   };
@@ -77,15 +76,9 @@ function Admin() {
         const items = Array.from(categorie);
         const [reorderedItem] = items.splice(result.source.index, 1);
         items.splice(result.destination.index, 0, reorderedItem);
-        
         const updatedItems = items.map((item, index) => ({ ...item, posizione: index }));
         setCategorie(updatedItems);
-        
-        await fetch(`${API_URL}/api/categorie/riordina`, { 
-            method: 'PUT', 
-            headers:{'Content-Type':'application/json'}, 
-            body: JSON.stringify({ categorie: updatedItems }) 
-        });
+        await fetch(`${API_URL}/api/categorie/riordina`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ categorie: updatedItems }) });
         caricaTutto();
         return;
     }
@@ -93,53 +86,23 @@ function Admin() {
     if (result.type === 'DISH') {
         const sourceCat = result.source.droppableId.replace("cat-", "");
         const destCat = result.destination.droppableId.replace("cat-", "");
-
         const piattoId = parseInt(result.draggableId);
         const piattoSpostato = menu.find(p => p.id === piattoId);
         if (!piattoSpostato) return;
-
         let nuovoMenu = menu.filter(p => p.id !== piattoId);
         const piattoAggiornato = { ...piattoSpostato, categoria: destCat };
-
         const piattiDestinazione = nuovoMenu.filter(p => p.categoria === destCat);
         piattiDestinazione.splice(result.destination.index, 0, piattoAggiornato);
-
         const altriPiatti = nuovoMenu.filter(p => p.categoria !== destCat);
         const piattiDestinazioneFinali = piattiDestinazione.map((p, idx) => ({ ...p, posizione: idx }));
-
         const menuFinale = [...altriPiatti, ...piattiDestinazioneFinali];
         setMenu(menuFinale);
-
-        await fetch(`${API_URL}/api/prodotti/riordina`, { 
-            method: 'PUT', 
-            headers:{'Content-Type':'application/json'}, 
-            body: JSON.stringify({ 
-                prodotti: piattiDestinazioneFinali.map(p => ({ 
-                    id: p.id, 
-                    posizione: p.posizione, 
-                    categoria: destCat 
-                })) 
-            }) 
-        });
+        await fetch(`${API_URL}/api/prodotti/riordina`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prodotti: piattiDestinazioneFinali.map(p => ({ id: p.id, posizione: p.posizione, categoria: destCat })) }) });
     }
   };
   
   // --- FUNZIONI CRUD ---
-
-  const aggiungiCategoria = async () => { 
-      if(!nuovaCat.nome) return; 
-      await fetch(`${API_URL}/api/categorie`, { 
-          method:'POST', 
-          headers:{'Content-Type':'application/json'}, 
-          body:JSON.stringify({
-              nome: nuovaCat.nome, 
-              descrizione: nuovaCat.descrizione, 
-              ristorante_id: user.id
-          }) 
-      }); 
-      setNuovaCat({ nome: '', descrizione: '' }); 
-      caricaCategorie(); 
-  };
+  const aggiungiCategoria = async () => { if(!nuovaCat.nome) return; await fetch(`${API_URL}/api/categorie`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ nome: nuovaCat.nome, descrizione: nuovaCat.descrizione, ristorante_id: user.id}) }); setNuovaCat({ nome: '', descrizione: '' }); caricaCategorie(); };
 
   // GESTIONE SALVATAGGIO (CREA O MODIFICA)
   const handleSalvaPiatto = async (e) => { 
@@ -149,7 +112,7 @@ function Admin() {
       const cat = nuovoPiatto.categoria || (categorie.length > 0 ? categorie[0].nome : "");
       
       if(editId) {
-          // SIAMO IN MODIFICA (PUT)
+          // MODIFICA
           await fetch(`${API_URL}/api/prodotti/${editId}`, { 
               method:'PUT', 
               headers:{'Content-Type':'application/json'}, 
@@ -157,7 +120,7 @@ function Admin() {
           }); 
           alert("Piatto modificato!");
       } else {
-          // SIAMO IN CREAZIONE (POST)
+          // CREAZIONE
           if(categorie.length===0) return alert("Crea prima una categoria!"); 
           await fetch(`${API_URL}/api/prodotti`, { 
               method:'POST', 
@@ -173,7 +136,7 @@ function Admin() {
       caricaTutto(); 
   };
   
-  // PREPARA IL FORM PER LA MODIFICA
+  // MODIFICA
   const avviaModifica = (piatto) => {
       setEditId(piatto.id);
       setNuovoPiatto({
@@ -184,13 +147,33 @@ function Admin() {
           descrizione: piatto.descrizione || '',
           immagine_url: piatto.immagine_url || ''
       });
-      // Scrolla in alto per vedere il form
       window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const annullaModifica = () => {
       setEditId(null);
       setNuovoPiatto({nome:'', prezzo:'', categoria:categorie[0]?.nome || '', sottocategoria: '', descrizione:'', immagine_url:''}); 
+  };
+
+  // --- NUOVA FUNZIONE: DUPLICA PIATTO ❐ ---
+  const duplicaPiatto = async (piattoOriginale) => {
+      if(!confirm(`Vuoi duplicare "${piattoOriginale.nome}"?`)) return;
+
+      const piattoCopia = {
+          ...piattoOriginale,
+          nome: `${piattoOriginale.nome} (Copia)`,
+          ristorante_id: user.id
+          // Non passiamo l'ID così il DB ne crea uno nuovo
+      };
+
+      try {
+          await fetch(`${API_URL}/api/prodotti`, { 
+              method:'POST', 
+              headers:{'Content-Type':'application/json'}, 
+              body:JSON.stringify(piattoCopia) 
+          }); 
+          caricaTutto();
+      } catch(e) { alert("Errore duplicazione"); }
   };
 
   const cancellaCategoria = async (id) => { if(confirm("Eliminare categoria?")) { await fetch(`${API_URL}/api/categorie/${id}`, {method:'DELETE'}); caricaCategorie(); }};
@@ -328,10 +311,16 @@ function Admin() {
                                                     </div>
                                                 </div>
                                                 <div style={{display:'flex', gap:'5px'}}>
-                                                    {/* TASTO MODIFICA */}
-                                                    <button onClick={() => avviaModifica(p)} style={{background:'#f1c40f', padding:'5px', borderRadius:'4px', border:'none', cursor:'pointer'}}>✏️</button>
-                                                    {/* TASTO CANCELLA */}
-                                                    <button onClick={() => cancellaPiatto(p.id)} style={{background:'darkred', padding:'5px', borderRadius:'4px', border:'none', cursor:'pointer'}}>🗑️</button>
+                                                    
+                                                    {/* 1. MODIFICA */}
+                                                    <button onClick={() => avviaModifica(p)} style={{background:'#f1c40f', padding:'5px 10px', borderRadius:'4px', border:'none', cursor:'pointer'}} title="Modifica">✏️</button>
+                                                    
+                                                    {/* 2. DUPLICA (NUOVO) */}
+                                                    <button onClick={() => duplicaPiatto(p)} style={{background:'#3498db', padding:'5px 10px', borderRadius:'4px', border:'none', cursor:'pointer', color:'white'}} title="Duplica">❐</button>
+                                                    
+                                                    {/* 3. CANCELLA */}
+                                                    <button onClick={() => cancellaPiatto(p.id)} style={{background:'darkred', padding:'5px 10px', borderRadius:'4px', border:'none', cursor:'pointer'}} title="Elimina">🗑️</button>
+                                                
                                                 </div>
                                             </div>
                                         )}
