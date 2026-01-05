@@ -1,45 +1,54 @@
-/* client/src/App.css - VERSIONE FULL WIDTH (ESTESA) */
+/* client/src/App.css - VERSIONE FIX: MENU ESTESO + ADMIN CENTRATO */
 
-/* RESET GENERALE */
+/* 1. RESET GENERALE */
 body {
   margin: 0;
   padding: 0;
   width: 100%;
-  overflow-x: hidden; /* Evita scroll laterale */
-  background-color: #222; /* Colore di sicurezza finché non carica il DB */
+  overflow-x: hidden;
+  background-color: #222;
 }
 
 #root {
-  width: 100%;        /* Ocupa tutto lo schermo */
-  max-width: 100%;    /* RIMOSSO IL LIMITE DI 600px */
-  margin: 0;          /* Niente margini laterali */
-  padding: 0;         /* Niente padding esterno */
+  width: 100%;
+  max-width: 100%; /* Lasciamo libero il root per il Menu Full Width */
+  margin: 0;
+  padding: 0;
   font-family: system-ui, sans-serif;
   text-align: left;
 }
 
-/* HEADER */
-header {
-  text-align: center;
-  padding: 20px 10px; /* Un po' di spazio interno */
+/* 2. CONTENITORE PER ADMIN E LOGIN */
+/* Questo blocco serve a tenere l'Admin ordinato al centro, senza influenzare il Menu */
+.container {
+  max-width: 800px; /* Larghezza ottimale per l'Admin */
+  margin: 0 auto;   /* Centra l'Admin nello schermo */
+  padding: 20px;
   width: 100%;
   box-sizing: border-box;
 }
 
-/* CARDS */
+/* 3. HEADER */
+header {
+  text-align: center;
+  padding: 20px 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* 4. CARDS */
 .card {
-  background: white; /* Default, poi sovrascritto da React */
+  background: white;
   color: #333;
   padding: 15px;
-  /* Margini gestiti ora da React per eliminare i buchi */
-  margin: 0; 
+  margin: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  /* Rimuovi ombra pesante per stile più piatto/moderno se vuoi, o lasciala */
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1); 
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
   width: 100%;
-  box-sizing: border-box; /* Fondamentale per non sforare la larghezza */
+  box-sizing: border-box;
+  /* Importante: nel menu si estendono, nell'admin restano nel .container */
 }
 
 .info h3 {
@@ -76,7 +85,7 @@ button {
   position: fixed;
   bottom: 0;
   left: 0;
-  width: 100%; /* Larghezza totale */
+  width: 100%;
   background: #222;
   border-top: 2px solid #ff9f43;
   padding: 15px 20px;
@@ -85,7 +94,7 @@ button {
   align-items: center;
   box-sizing: border-box; 
   box-shadow: 0 -5px 10px rgba(0,0,0,0.5);
-  z-index: 999; /* Sta sempre sopra */
+  z-index: 999;
 }
 
 .totale {
@@ -101,7 +110,7 @@ button {
   font-size: 1rem;
 }
 
-/* CUCINA (Resta invariato) */
+/* CUCINA */
 .cucina-container {
   background-color: #f4f4f4;
   min-height: 100vh;
