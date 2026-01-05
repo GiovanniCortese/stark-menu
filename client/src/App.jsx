@@ -1,4 +1,4 @@
-// client/src/App.jsx - VERSIONE FOTO MINIATURA + MODAL INGRANDIMENTO 🖼️
+// client/src/App.jsx - VERSIONE FOTO SOLO SE PRESENTE & PREZZO SOTTO 🖼️
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useSearchParams, useParams } from 'react-router-dom';
 import Cucina from './Cucina';
@@ -43,7 +43,6 @@ function Menu() {
   const aggiungiAlCarrello = (prodotto) => {
     if (!canOrder) return alert("Il servizio ordini è chiuso.");
     setCarrello([...carrello, prodotto]); 
-    // Opzionale: chiudere il modal dopo l'aggiunta? Per ora lo lascio aperto o puoi mettere setSelectedPiatto(null);
     setSelectedPiatto(null); 
   };
 
@@ -160,15 +159,16 @@ function Menu() {
                                                 <div 
                                                     key={prodotto.id} 
                                                     className="card" 
-                                                    // MODIFICA QUI: Al click apri il modal
-                                                    onClick={() => setSelectedPiatto(prodotto)}
+                                                    // MODIFICA 1: Si apre SOLO se c'è immagine
+                                                    onClick={() => prodotto.immagine_url ? setSelectedPiatto(prodotto) : null}
                                                     style={{
-                                                        display: 'flex', // Flexbox per mettere immagine a sinistra
+                                                        display: 'flex', 
                                                         flexDirection: 'row',
                                                         alignItems: 'center',
                                                         gap: '15px',
                                                         padding: '10px',
-                                                        cursor: 'pointer'
+                                                        // MODIFICA 2: Cursore pointer solo se c'è foto
+                                                        cursor: prodotto.immagine_url ? 'pointer' : 'default'
                                                     }}
                                                 >
                                                     {/* IMMAGINE MINIATURA A SINISTRA */}
@@ -180,7 +180,7 @@ function Menu() {
                                                                 height:'80px', 
                                                                 objectFit:'cover', 
                                                                 borderRadius:'8px',
-                                                                flexShrink: 0 // Non rimpicciolire l'immagine
+                                                                flexShrink: 0 
                                                             }} 
                                                         />
                                                     )}
@@ -188,23 +188,27 @@ function Menu() {
                                                     {/* INFO A DESTRA */}
                                                     <div className="info" style={{flex: 1}}>
                                                         <h3 style={{margin:'0 0 5px 0', fontSize:'16px'}}>{prodotto.nome}</h3>
-                                                        <div style={{fontSize:'14px', fontWeight:'bold', color:'#27ae60'}}>{prodotto.prezzo} €</div>
-                                                        {/* Mostriamo un pezzetto di descrizione se c'è */}
+                                                        
+                                                        {/* MODIFICA 3: Descrizione PRIMA del prezzo */}
                                                         {prodotto.descrizione && (
-                                                            <p style={{fontSize:'11px', color:'#777', margin:'5px 0 0 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'}}>
+                                                            <p style={{fontSize:'11px', color:'#777', margin:'0 0 5px 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'}}>
                                                                 {prodotto.descrizione}
                                                             </p>
                                                         )}
+
+                                                        {/* MODIFICA 4: Prezzo SOTTO la descrizione */}
+                                                        <div style={{fontSize:'14px', fontWeight:'bold', color:'#27ae60'}}>{prodotto.prezzo} €</div>
                                                     </div>
 
-                                                    {/* Tasto + rapido (opzionale, ma comodo) */}
+                                                    {/* Tasto + rapido */}
                                                     {canOrder && (
                                                         <button 
                                                             onClick={(e) => { e.stopPropagation(); aggiungiAlCarrello(prodotto); }} 
                                                             style={{
                                                                 background:'#f0f0f0', color:'#333', 
                                                                 borderRadius:'50%', width:'30px', height:'30px', 
-                                                                border:'none', fontSize:'18px', display:'flex', alignItems:'center', justifyContent:'center'
+                                                                border:'none', fontSize:'18px', display:'flex', alignItems:'center', justifyContent:'center',
+                                                                cursor: 'pointer' // Il tasto + è sempre cliccabile
                                                             }}
                                                         >
                                                             +
@@ -232,7 +236,7 @@ function Menu() {
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 padding: '20px'
             }}
-            onClick={() => setSelectedPiatto(null)} // Chiudi se clicchi fuori
+            onClick={() => setSelectedPiatto(null)} 
           >
               <div 
                 style={{
@@ -240,7 +244,7 @@ function Menu() {
                     borderRadius: '15px', overflow: 'hidden', position: 'relative',
                     boxShadow: '0 10px 25px rgba(0,0,0,0.5)'
                 }}
-                onClick={(e) => e.stopPropagation()} // Non chiudere se clicchi dentro
+                onClick={(e) => e.stopPropagation()} 
               >
                   {/* Tasto Chiudi */}
                   <button 
@@ -266,9 +270,12 @@ function Menu() {
                   {/* Contenuto Modal */}
                   <div style={{padding: '20px'}}>
                       <h2 style={{marginTop: 0, fontSize: '24px'}}>{selectedPiatto.nome}</h2>
+                      
+                      {/* Anche nel Modal, prezzo sotto se vuoi, o in evidenza. Qui lo lascio in grande. */}
                       <p style={{fontSize: '18px', fontWeight: 'bold', color: '#27ae60', margin:'10px 0'}}>
                           {selectedPiatto.prezzo} €
                       </p>
+                      
                       <p style={{color: '#555', lineHeight: '1.5', fontSize: '14px'}}>
                           {selectedPiatto.descrizione || "Nessuna descrizione disponibile."}
                       </p>
