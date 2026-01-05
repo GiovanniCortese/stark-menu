@@ -1,10 +1,10 @@
-// client/src/App.jsx - VERSIONE DEFINITIVA (GERARCHIA PERMESSI) 👑
+// client/src/App.jsx - VERSIONE VISUALIZZAZIONE PER CATEGORIE 📱
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useSearchParams, useParams } from 'react-router-dom';
 import Cucina from './Cucina';
 import Login from './Login';
 import Admin from './Admin';
-import SuperAdmin from './SuperAdmin'; // <--- Importiamo la pagina Super Admin
+import SuperAdmin from './SuperAdmin'; 
 import './App.css';
 
 // --- COMPONENTE MENU DINAMICO ---
@@ -38,12 +38,10 @@ function Menu() {
       })
       .then(data => {
         setRistorante(data.ristorante);
-        setMenu(data.menu);
+        setMenu(data.menu); // Il server ce li manda già ordinati per Categoria + Posizione
         setRistoranteId(data.id);
         
-        // --- LOGICA COMBINATA ---
-        // 1. Il Super Admin ha abilitato la funzione? (data.ordini_abilitati)
-        // 2. Il Ristoratore ha acceso il servizio? (data.servizio_attivo)
+        // --- LOGICA COMBINATA PERMESSI ---
         // Si può ordinare solo se ENTRAMBI sono TRUE.
         setCanOrder(data.ordini_abilitati && data.servizio_attivo);
         
@@ -57,7 +55,7 @@ function Menu() {
 
   const aggiungiAlCarrello = (prodotto) => {
     // Sicurezza extra: se non si può ordinare, fermiamo tutto.
-    if (!canOrder) return alert("Il servizio ordini al tavolo è momentaneamente disabilitato o non attivo.");
+    if (!canOrder) return alert("Il servizio ordini è momentaneamente disabilitato.");
     setCarrello([...carrello, prodotto]); 
   };
 
@@ -93,6 +91,17 @@ function Menu() {
 
   if (error) return <div className="container"><h1>🚫 404</h1><p>Ristorante inesistente.</p></div>;
 
+  // --- NUOVA LOGICA DI RAGGRUPPAMENTO ---
+  // Raggruppiamo i piatti per categoria per la visualizzazione
+  const menuRaggruppato = menu.reduce((acc, piatto) => {
+    if (!acc[piatto.categoria]) acc[piatto.categoria] = [];
+    acc[piatto.categoria].push(piatto);
+    return acc;
+  }, {});
+  
+  // Recuperiamo le categorie nell'ordine in cui appaiono (già ordinate dal server)
+  const categorieOrdinate = [...new Set(menu.map(p => p.categoria))];
+
   return (
     <div className="container">
       <header>
@@ -110,34 +119,6 @@ function Menu() {
         )}
       </header>
 
-      <div className="menu-list">
-        {menu.map((prodotto) => (
-          <div key={prodotto.id} className="card">
-            {/* FOTO */}
-            {prodotto.immagine_url && (
-              <img 
-                src={prodotto.immagine_url} 
-                alt={prodotto.nome} 
-                style={{width: '100%', height: '150px', objectFit: 'cover', borderRadius: '8px', marginBottom:'10px'}} 
-              />
-            )}
-
-            <div className="info">
-              <h3>{prodotto.nome}</h3>
-              <span className="categoria">{prodotto.categoria}</span>
-            </div>
-            <div className="action">
-              <div className="prezzo">{prodotto.prezzo} €</div>
-              
-              {/* BOTTONE VISIBILE SOLO SE canOrder È VERO */}
-              {canOrder && (
-                <button onClick={() => aggiungiAlCarrello(prodotto)}>Aggiungi +</button>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-
       {/* CARRELLO VISIBILE SOLO SE canOrder È VERO */}
       {canOrder && carrello.length > 0 && (
         <div className="carrello-bar">
@@ -148,6 +129,49 @@ function Menu() {
           <button onClick={inviaOrdine} className="btn-invia">INVIA 🚀</button>
         </div>
       )}
+
+      {/* --- MENU CON CATEGORIE --- */}
+      <div style={{paddingBottom: '80px'}}> 
+        {categorieOrdinate.map(catNome => (
+            <div key={catNome} style={{marginBottom: '30px'}}>
+                {/* Intestazione Categoria */}
+                <h2 style={{borderBottom: '2px solid #ff9f43', paddingBottom: '5px', color: '#333', marginTop:'20px'}}>
+                    {catNome}
+                </h2>
+                
+                {/* Lista Piatti di questa Categoria */}
+                <div className="menu-list">
+                    {menuRaggruppato[catNome].map((prodotto) => (
+                        <div key={prodotto.id} className="card">
+                            {/* FOTO */}
+                            {prodotto.immagine_url && (
+                              <img 
+                                src={prodotto.immagine_url} 
+                                alt={prodotto.nome} 
+                                style={{width: '100%', height: '150px', objectFit: 'cover', borderRadius: '8px', marginBottom:'10px'}} 
+                              />
+                            )}
+
+                            <div className="info">
+                                <h3>{prodotto.nome}</h3>
+                                {/* La categoria è già nel titolo sopra, non serve ripeterla qui */}
+                            </div>
+                            <div className="action">
+                                <div className="prezzo">{prodotto.prezzo} €</div>
+                                
+                                {/* BOTTONE VISIBILE SOLO SE canOrder È VERO */}
+                                {canOrder && (
+                                  <button onClick={() => aggiungiAlCarrello(prodotto)}>Aggiungi +</button>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        ))}
+
+        {menu.length === 0 && <p style={{textAlign:'center', marginTop:'20px'}}>Menu in fase di caricamento o vuoto...</p>}
+      </div>
     </div>
   );
 }

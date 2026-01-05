@@ -1,17 +1,17 @@
-// client/src/Admin.jsx - CON DRAG & DROP CATEGORIE 🖐️
+// client/src/Admin.jsx - VERSIONE DRAG & DROP TOTALE (CATEGORIE + PIATTI) 🚀
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 function Admin() {
-  const [tab, setTab] = useState('menu'); // 'menu' o 'categorie'
-  const [menu, setMenu] = useState([]);
-  const [categorie, setCategorie] = useState([]); // Lista categorie dal DB
+  const [tab, setTab] = useState('menu'); 
+  const [menu, setMenu] = useState([]); 
+  const [categorie, setCategorie] = useState([]); 
   const [config, setConfig] = useState({ ordini_abilitati: false, servizio_attivo: false });
   
   const [uploading, setUploading] = useState(false);
   const [nuovoPiatto, setNuovoPiatto] = useState({ nome: '', prezzo: '', categoria: '', immagine_url: '' });
-  const [nuovaCat, setNuovaCat] = useState(""); // Per input nuova categoria
+  const [nuovaCat, setNuovaCat] = useState("");
 
   const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem('user'));
@@ -23,11 +23,8 @@ function Admin() {
   }, []);
 
   const caricaTutto = () => {
-    // 1. Menu
     fetch(`${API_URL}/api/menu/${user.slug}`).then(r=>r.json()).then(d=>{if(d.menu) setMenu(d.menu)});
-    // 2. Config
     fetch(`${API_URL}/api/ristorante/config/${user.id}`).then(r=>r.json()).then(d=>setConfig(d));
-    // 3. Categorie
     caricaCategorie();
   };
 
@@ -36,85 +33,92 @@ function Admin() {
       .then(res => res.json())
       .then(data => {
           setCategorie(data);
-          // Se stiamo aggiungendo un piatto e non c'è categoria, metti la prima di default
           if(data.length > 0 && !nuovoPiatto.categoria) {
               setNuovoPiatto(prev => ({...prev, categoria: data[0].nome}));
           }
       });
   };
 
-  // --- LOGICA CATEGORIE (Drag & Drop) ---
-  const aggiungiCategoria = async () => {
-    if(!nuovaCat) return;
-    await fetch(`${API_URL}/api/categorie`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ nome: nuovaCat, ristorante_id: user.id })
-    });
-    setNuovaCat("");
-    caricaCategorie();
-  };
-
-  const cancellaCategoria = async (id) => {
-      if(confirm("Eliminare categoria? Attenzione: i piatti associati rimarranno ma senza categoria.")) {
-          await fetch(`${API_URL}/api/categorie/${id}`, { method: 'DELETE' });
-          caricaCategorie();
-      }
-  }
-
-  const handleOnDragEnd = async (result) => {
+  // --- LOGICA DRAG & DROP CATEGORIE ---
+  const handleDragCategorie = async (result) => {
     if (!result.destination) return;
-    
-    // Riordiniamo l'array locale
     const items = Array.from(categorie);
     const [reorderedItem] = items.splice(result.source.index, 1);
     items.splice(result.destination.index, 0, reorderedItem);
-
-    // Aggiorniamo la posizione numerica interna
     const updatedItems = items.map((item, index) => ({ ...item, posizione: index }));
     setCategorie(updatedItems);
-
-    // Salviamo sul server
-    await fetch(`${API_URL}/api/categorie/riordina`, {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ categorie: updatedItems })
-    });
+    await fetch(`${API_URL}/api/categorie/riordina`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ categorie: updatedItems }) });
+    caricaTutto();
   };
 
-  // --- LOGICA PIATTI ---
-  const handleAggiungiPiatto = async (e) => {
-    e.preventDefault();
-    if(!nuovoPiatto.nome || !nuovoPiatto.prezzo) return alert("Dati mancanti");
+  // --- LOGICA DRAG & DROP PIATTI ---
+  const handleDragPiatti = async (result) => {
+    if (!result.destination) return;
     
-    // Se non ci sono categorie, obblighiamo a crearne una
-    if(categorie.length === 0) return alert("Crea prima almeno una categoria!");
+    // Identifichiamo la categoria di partenza e di arrivo
+    const sourceCatName = result.source.droppableId.replace("cat-", "");
+    const destCatName = result.destination.droppableId.replace("cat-", "");
 
-    const catDaUsare = nuovoPiatto.categoria || categorie[0].nome;
+    // Creiamo una copia del menu per manipolarlo
+    let nuovoMenu = Array.from(menu);
+    
+    // Troviamo il piatto spostato
+    const piattoSpostato = nuovoMenu.find(p => String(p.id) === result.draggableId);
+    
+    // Lo rimuoviamo dalla posizione vecchia
+    // (Attenzione: dobbiamo filtrare per trovare l'indice giusto nell'array globale)
+    // Strategia semplice: Rimuovilo dall'array globale e reinseriscilo nella nuova posizione logica
+    
+    // 1. Filtriamo il menu in gruppi per capire l'indice relativo
+    const piattiSource = nuovoMenu.filter(p => p.categoria === sourceCatName);
+    const piattiDest = sourceCatName === destCatName ? piattiSource : nuovoMenu.filter(p => p.categoria === destCatName);
+    
+    // L'indice di source.index si riferisce all'array FILTRATO della categoria, non a quello globale
+    const itemInSource = piattiSource[result.source.index];
+    
+    // Rimuoviamo l'item dall'array globale
+    nuovoMenu = nuovoMenu.filter(p => p.id !== itemInSource.id);
+    
+    // Aggiorniamo la categoria se cambiata
+    const itemAggiornato = { ...itemInSource, categoria: destCatName };
+    
+    // Ora dobbiamo inserirlo nella posizione giusta.
+    // Dobbiamo trovare l'item che ora occupa la posizione 'destination.index' nella categoria di destinazione
+    const piattiDestAggiornati = nuovoMenu.filter(p => p.categoria === destCatName);
+    
+    // Inseriamo l'item nell'array filtrato di destinazione
+    piattiDestAggiornati.splice(result.destination.index, 0, itemAggiornato);
+    
+    // Ricostruiamo l'array globale:
+    // Manteniamo gli altri piatti + i piatti della categoria di destinazione riordinati
+    const altriPiatti = nuovoMenu.filter(p => p.categoria !== destCatName);
+    
+    // Riassegnamo le posizioni numeriche SOLO per la categoria toccata
+    const piattiDestFinali = piattiDestAggiornati.map((p, idx) => ({ ...p, posizione: idx }));
+    
+    const menuFinale = [...altriPiatti, ...piattiDestFinali];
+    setMenu(menuFinale);
 
-    await fetch(`${API_URL}/api/prodotti`, { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify({ ...nuovoPiatto, categoria: catDaUsare, ristorante_id: user.id }) 
+    // Inviamo al server l'aggiornamento
+    await fetch(`${API_URL}/api/prodotti/riordina`, { 
+        method: 'PUT', 
+        headers:{'Content-Type':'application/json'}, 
+        body: JSON.stringify({ 
+            prodotti: piattiDestFinali.map(p => ({ 
+                id: p.id, 
+                posizione: p.posizione,
+                categoria: destCatName // Inviamo anche la categoria in caso sia cambiata
+            })) 
+        }) 
     });
-    setNuovoPiatto({ nome: '', prezzo: '', categoria: categorie[0].nome, immagine_url: '' }); 
-    caricaTutto(); alert("Piatto aggiunto!");
   };
 
-  const handleFileChange = async (e) => {
-    const file = e.target.files[0]; if(!file) return; setUploading(true);
-    const formData = new FormData(); formData.append('photo', file);
-    const res = await fetch(`${API_URL}/api/upload`, { method: 'POST', body: formData });
-    const data = await res.json();
-    if(data.url) setNuovoPiatto(prev => ({ ...prev, immagine_url: data.url }));
-    setUploading(false);
-  };
-  
-  const toggleServizio = async () => { /* Logica uguale a prima... */
-     const nuovo = !config.servizio_attivo; setConfig({...config, servizio_attivo: nuovo});
-     await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({servizio_attivo:nuovo})});
-  };
-
+  // Funzioni Standard
+  const aggiungiCategoria = async () => { if(!nuovaCat) return; await fetch(`${API_URL}/api/categorie`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({nome:nuovaCat, ristorante_id:user.id}) }); setNuovaCat(""); caricaCategorie(); };
+  const cancellaCategoria = async (id) => { if(confirm("Eliminare?")) { await fetch(`${API_URL}/api/categorie/${id}`, {method:'DELETE'}); caricaCategorie(); }};
+  const handleAggiungiPiatto = async (e) => { e.preventDefault(); if(!nuovoPiatto.nome) return alert("Dati mancanti"); if(categorie.length===0) return alert("Crea categoria!"); const cat = nuovoPiatto.categoria || categorie[0].nome; await fetch(`${API_URL}/api/prodotti`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({...nuovoPiatto, categoria:cat, ristorante_id:user.id})}); setNuovoPiatto({nome:'',prezzo:'',categoria:categorie[0].nome,immagine_url:''}); caricaTutto(); alert("Fatto!"); };
+  const handleFileChange = async (e) => { const f=e.target.files[0]; if(!f)return; setUploading(true); const fd=new FormData(); fd.append('photo',f); const r=await fetch(`${API_URL}/api/upload`,{method:'POST',body:fd}); const d=await r.json(); if(d.url) setNuovoPiatto(p=>({...p, immagine_url:d.url})); setUploading(false); };
+  const toggleServizio = async () => { const n=!config.servizio_attivo; setConfig({...config, servizio_attivo:n}); await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({servizio_attivo:n})}); };
   const cancellaPiatto = async (id) => { if(confirm("Eliminare?")) { await fetch(`${API_URL}/api/prodotti/${id}`, {method:'DELETE'}); caricaTutto(); }};
 
   if (!user) return null;
@@ -129,32 +133,21 @@ function Admin() {
         </div>
       </header>
 
-      {/* --- TAB GESTIONE CATEGORIE --- */}
       {tab === 'categorie' && (
         <div className="card">
-            <h3>Gestisci Categorie (Trascina per ordinare)</h3>
+            <h3>Gestisci Categorie</h3>
             <div style={{display:'flex', gap:'10px', marginBottom:'20px'}}>
-                <input placeholder="Nuova Categoria (es. Vini)" value={nuovaCat} onChange={e=>setNuovaCat(e.target.value)} />
+                <input placeholder="Nuova Categoria" value={nuovaCat} onChange={e=>setNuovaCat(e.target.value)} />
                 <button onClick={aggiungiCategoria} className="btn-invia">Crea</button>
             </div>
-
-            <DragDropContext onDragEnd={handleOnDragEnd}>
-                <Droppable droppableId="categories">
+            <DragDropContext onDragEnd={handleDragCategorie}>
+                <Droppable droppableId="categories-list">
                     {(provided) => (
                         <div {...provided.droppableProps} ref={provided.innerRef} style={{display:'flex', flexDirection:'column', gap:'10px'}}>
                             {categorie.map((cat, index) => (
                                 <Draggable key={cat.id} draggableId={String(cat.id)} index={index}>
                                     {(provided) => (
-                                        <div 
-                                            ref={provided.innerRef} 
-                                            {...provided.draggableProps} 
-                                            {...provided.dragHandleProps}
-                                            style={{
-                                                padding: '15px', background: 'white', border: '1px solid #ddd', borderRadius: '5px',
-                                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                                ...provided.draggableProps.style
-                                            }}
-                                        >
+                                        <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className="card" style={{...provided.draggableProps.style, padding:'15px', flexDirection:'row', justifyContent:'space-between'}}>
                                             <span>☰ <strong>{cat.nome}</strong></span>
                                             <button onClick={()=>cancellaCategoria(cat.id)} style={{background:'red', padding:'5px 10px'}}>X</button>
                                         </div>
@@ -169,15 +162,12 @@ function Admin() {
         </div>
       )}
 
-      {/* --- TAB GESTIONE MENU --- */}
       {tab === 'menu' && (
         <>
             <div className="card" style={{border: '2px solid #333', background: '#fff3cd'}}>
-                <h3>🚦 Stato Servizio</h3>
-                {!config.ordini_abilitati ? <p style={{color:'red'}}>Non abilitato dal Super Admin</p> : 
                 <button onClick={toggleServizio} style={{background: config.servizio_attivo ? '#2ecc71':'#e74c3c', width:'100%', padding:'10px', color:'white', fontWeight:'bold'}}>
                     {config.servizio_attivo ? "✅ ORDINI APERTI" : "🛑 ORDINI CHIUSI"}
-                </button>}
+                </button>
             </div>
 
             <div className="card" style={{background: '#f8f9fa', border: '2px dashed #ccc'}}>
@@ -185,30 +175,42 @@ function Admin() {
                 <form onSubmit={handleAggiungiPiatto} style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
                     <input placeholder="Nome" value={nuovoPiatto.nome} onChange={e => setNuovoPiatto({...nuovoPiatto, nome: e.target.value})} />
                     <input type="number" placeholder="Prezzo" value={nuovoPiatto.prezzo} onChange={e => setNuovoPiatto({...nuovoPiatto, prezzo: e.target.value})} />
-                    
-                    {/* SELECT DINAMICA CATEGORIE */}
-                    <label>Categoria:</label>
-                    <select 
-                        value={nuovoPiatto.categoria} 
-                        onChange={e => setNuovoPiatto({...nuovoPiatto, categoria: e.target.value})}
-                        style={{padding:'10px', borderRadius:'5px'}}
-                    >
+                    <select value={nuovoPiatto.categoria} onChange={e => setNuovoPiatto({...nuovoPiatto, categoria: e.target.value})} style={{padding:'10px'}}>
                         {categorie.map(cat => <option key={cat.id} value={cat.nome}>{cat.nome}</option>)}
                     </select>
-
-                    <div style={{background:'white', padding:'10px'}}><input type="file" onChange={handleFileChange} />{uploading && "Caricamento..."}{nuovoPiatto.immagine_url && "✅ Foto OK"}</div>
+                    <div style={{background:'white', padding:'10px'}}><input type="file" onChange={handleFileChange} />{uploading && "Caricamento..."}{nuovoPiatto.immagine_url && "✅ Foto"}</div>
                     <button type="submit" className="btn-invia">SALVA</button>
                 </form>
             </div>
 
-            <div className="menu-list">
-                {menu.map((p) => (
-                <div key={p.id} className="card" style={{flexDirection:'row', justifyContent:'space-between'}}>
-                    <div><strong>{p.nome}</strong> <br/><small>{p.categoria}</small></div>
-                    <button onClick={() => cancellaPiatto(p.id)} style={{background:'darkred'}}>🗑️</button>
-                </div>
+            <DragDropContext onDragEnd={handleDragPiatti}>
+                {categorie.map(cat => (
+                    <div key={cat.id} style={{marginBottom: '20px'}}>
+                        <h3 style={{borderBottom:'2px solid #eee', paddingBottom:'5px', color:'#555'}}>{cat.nome}</h3>
+                        <Droppable droppableId={`cat-${cat.nome}`}>
+                            {(provided) => (
+                                <div {...provided.droppableProps} ref={provided.innerRef} className="menu-list">
+                                    {menu.filter(p => p.categoria === cat.nome).map((p, index) => (
+                                        <Draggable key={p.id} draggableId={String(p.id)} index={index}>
+                                            {(provided) => (
+                                                <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className="card" style={{...provided.draggableProps.style, flexDirection:'row', justifyContent:'space-between', cursor:'grab'}}>
+                                                    <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+                                                        <span style={{color:'#ccc'}}>☰</span>
+                                                        {p.immagine_url && <img src={p.immagine_url} style={{width:'40px', height:'40px', objectFit:'cover', borderRadius:'4px'}}/>}
+                                                        <div><strong>{p.nome}</strong><br/><small>{p.prezzo}€</small></div>
+                                                    </div>
+                                                    <button onClick={() => cancellaPiatto(p.id)} style={{background:'darkred', padding:'5px'}}>🗑️</button>
+                                                </div>
+                                            )}
+                                        </Draggable>
+                                    ))}
+                                    {provided.placeholder}
+                                </div>
+                            )}
+                        </Droppable>
+                    </div>
                 ))}
-            </div>
+            </DragDropContext>
         </>
       )}
     </div>
