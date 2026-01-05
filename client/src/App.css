@@ -1,54 +1,69 @@
-/* client/src/App.css */
-#root {
-  max-width: 600px; /* Larghezza tipo cellulare */
-  margin: 0 auto;
-  padding: 20px;
-  font-family: system-ui, sans-serif;
-  text-align: left; /* Reset del default di vite */
+/* client/src/App.css - VERSIONE FULL WIDTH (ESTESA) */
+
+/* RESET GENERALE */
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  overflow-x: hidden; /* Evita scroll laterale */
+  background-color: #222; /* Colore di sicurezza finché non carica il DB */
 }
 
+#root {
+  width: 100%;        /* Ocupa tutto lo schermo */
+  max-width: 100%;    /* RIMOSSO IL LIMITE DI 600px */
+  margin: 0;          /* Niente margini laterali */
+  padding: 0;         /* Niente padding esterno */
+  font-family: system-ui, sans-serif;
+  text-align: left;
+}
+
+/* HEADER */
 header {
   text-align: center;
-  margin-bottom: 30px;
-  border-bottom: 2px solid #ff9f43;
-  padding-bottom: 10px;
+  padding: 20px 10px; /* Un po' di spazio interno */
+  width: 100%;
+  box-sizing: border-box;
 }
 
+/* CARDS */
 .card {
-  background: #2b2b2b;
-  color: white;
+  background: white; /* Default, poi sovrascritto da React */
+  color: #333;
   padding: 15px;
-  margin-bottom: 10px;
-  border-radius: 12px;
+  /* Margini gestiti ora da React per eliminare i buchi */
+  margin: 0; 
   display: flex;
   justify-content: space-between;
   align-items: center;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+  /* Rimuovi ombra pesante per stile più piatto/moderno se vuoi, o lasciala */
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1); 
+  width: 100%;
+  box-sizing: border-box; /* Fondamentale per non sforare la larghezza */
 }
 
 .info h3 {
   margin: 0;
-  font-size: 1.2rem;
+  font-size: 1.1rem;
 }
 
+/* ETICHETTE */
 .categoria {
   font-size: 0.8rem;
-  background: #444;
+  background: #eee;
   padding: 2px 8px;
   border-radius: 4px;
-  color: #ccc;
+  color: #555;
 }
 
 .prezzo {
   font-weight: bold;
-  font-size: 1.2rem;
-  color: #ff9f43;
-  margin: 0 15px;
+  font-size: 1.1rem;
+  margin: 0 10px;
 }
 
+/* BOTTONI */
 button {
-  background: #ff9f43;
-  color: #222;
   border: none;
   padding: 8px 12px;
   border-radius: 8px;
@@ -56,23 +71,21 @@ button {
   font-weight: bold;
 }
 
-.menu-list {
-  padding-bottom: 80px; /* Spazio per non coprire l'ultima pizza con il carrello */
-}
-
+/* CARRELLO */
 .carrello-bar {
   position: fixed;
   bottom: 0;
   left: 0;
-  width: 100%;
+  width: 100%; /* Larghezza totale */
   background: #222;
   border-top: 2px solid #ff9f43;
   padding: 15px 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  box-sizing: border-box; /* Importante per i margini */
+  box-sizing: border-box; 
   box-shadow: 0 -5px 10px rgba(0,0,0,0.5);
+  z-index: 999; /* Sta sempre sopra */
 }
 
 .totale {
@@ -82,13 +95,13 @@ button {
 }
 
 .btn-invia {
-  background: #28a745; /* Verde conferma */
+  background: #28a745; 
   color: white;
   padding: 12px 20px;
   font-size: 1rem;
 }
 
-/* Stile Cucina */
+/* CUCINA (Resta invariato) */
 .cucina-container {
   background-color: #f4f4f4;
   min-height: 100vh;
@@ -111,7 +124,7 @@ button {
 }
 
 .ticket-header {
-  background: #d63031; /* Rosso allarme */
+  background: #d63031; 
   color: white;
   padding: 10px;
   display: flex;
