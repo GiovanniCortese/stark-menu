@@ -1,4 +1,4 @@
-// client/src/App.jsx - VERSIONE FOTO SOLO SE PRESENTE & PREZZO SOTTO 🖼️
+// client/src/App.jsx - VERSIONE COMPATTA (NO SPAZI VUOTI) 📏
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useSearchParams, useParams } from 'react-router-dom';
 import Cucina from './Cucina';
@@ -19,7 +19,7 @@ function Menu() {
   const [activeCategory, setActiveCategory] = useState(null);       
   const [activeSubCategory, setActiveSubCategory] = useState(null); 
   
-  // STATO PER IL MODAL (PIATTO SELEZIONATO)
+  // STATO PER IL MODAL
   const [selectedPiatto, setSelectedPiatto] = useState(null);
 
   const { slug } = useParams();
@@ -60,7 +60,6 @@ function Menu() {
 
   const categorieOrdinate = [...new Set(menu.map(p => p.categoria))];
 
-  // LOGICHE ACCORDION
   const toggleAccordion = (catNome) => {
       if (activeCategory === catNome) {
           setActiveCategory(null);
@@ -93,9 +92,11 @@ function Menu() {
         </div>
       )}
 
-      <div style={{paddingBottom: '80px', marginTop: '20px'}}> 
+      {/* RIDOTTO MARGINE SUPERIORE GENERALE */}
+      <div style={{paddingBottom: '80px', marginTop: '10px'}}> 
         {categorieOrdinate.map(catNome => (
-            <div key={catNome} className="accordion-item">
+            // MODIFICA 1: Margine fisso ridotto tra le categorie (10px invece di default)
+            <div key={catNome} className="accordion-item" style={{marginBottom: '10px'}}>
                 
                 {/* TITOLO CATEGORIA */}
                 <div 
@@ -105,7 +106,8 @@ function Menu() {
                         color: activeCategory === catNome ? '#fff' : '#333',
                         padding: '15px',
                         borderRadius: '8px',
-                        marginBottom: '5px',
+                        // MODIFICA 2: Se aperto, margine 0 per attaccarsi al contenuto
+                        marginBottom: activeCategory === catNome ? '0' : '0',
                         cursor: 'pointer',
                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                         boxShadow: '0 2px 5px rgba(0,0,0,0.05)'
@@ -117,7 +119,8 @@ function Menu() {
 
                 {/* CONTENUTO CATEGORIA */}
                 {activeCategory === catNome && (
-                    <div className="accordion-content" style={{padding: '5px 0'}}>
+                    // MODIFICA 3: Padding a 0 per evitare spazi bianchi extra
+                    <div className="accordion-content" style={{padding: '0'}}>
                         {(() => {
                             const piattiCat = menu.filter(p => p.categoria === catNome);
                             
@@ -132,14 +135,17 @@ function Menu() {
                             const isSingleGroup = subKeys.length === 1 && subKeys[0] === "Generale";
 
                             return subKeys.map(scKey => (
-                                <div key={scKey} style={{marginBottom: '5px'}}>
+                                // MODIFICA 4: Margine ridotto tra sottogruppi
+                                <div key={scKey} style={{marginTop: '5px'}}>
                                     
                                     {!isSingleGroup && (
                                         <div 
                                             onClick={() => toggleSubAccordion(scKey)}
                                             style={{
                                                 background: '#fff3e0', borderLeft: '4px solid #ff9f43', 
-                                                padding: '12px', margin: '5px 0', borderRadius: '4px',
+                                                padding: '10px', // Padding ridotto
+                                                margin: '5px 0 0 0', // Margine solo sopra
+                                                borderRadius: '4px',
                                                 cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
                                             }}
                                         >
@@ -159,7 +165,6 @@ function Menu() {
                                                 <div 
                                                     key={prodotto.id} 
                                                     className="card" 
-                                                    // MODIFICA 1: Si apre SOLO se c'è immagine
                                                     onClick={() => prodotto.immagine_url ? setSelectedPiatto(prodotto) : null}
                                                     style={{
                                                         display: 'flex', 
@@ -167,11 +172,11 @@ function Menu() {
                                                         alignItems: 'center',
                                                         gap: '15px',
                                                         padding: '10px',
-                                                        // MODIFICA 2: Cursore pointer solo se c'è foto
-                                                        cursor: prodotto.immagine_url ? 'pointer' : 'default'
+                                                        cursor: prodotto.immagine_url ? 'pointer' : 'default',
+                                                        // MODIFICA 5: Piccolo margine tra i piatti per separarli leggermente
+                                                        marginBottom: '8px'
                                                     }}
                                                 >
-                                                    {/* IMMAGINE MINIATURA A SINISTRA */}
                                                     {prodotto.immagine_url && (
                                                         <img 
                                                             src={prodotto.immagine_url} 
@@ -185,22 +190,18 @@ function Menu() {
                                                         />
                                                     )}
 
-                                                    {/* INFO A DESTRA */}
                                                     <div className="info" style={{flex: 1}}>
                                                         <h3 style={{margin:'0 0 5px 0', fontSize:'16px'}}>{prodotto.nome}</h3>
                                                         
-                                                        {/* MODIFICA 3: Descrizione PRIMA del prezzo */}
                                                         {prodotto.descrizione && (
                                                             <p style={{fontSize:'11px', color:'#777', margin:'0 0 5px 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'}}>
                                                                 {prodotto.descrizione}
                                                             </p>
                                                         )}
 
-                                                        {/* MODIFICA 4: Prezzo SOTTO la descrizione */}
                                                         <div style={{fontSize:'14px', fontWeight:'bold', color:'#27ae60'}}>{prodotto.prezzo} €</div>
                                                     </div>
 
-                                                    {/* Tasto + rapido */}
                                                     {canOrder && (
                                                         <button 
                                                             onClick={(e) => { e.stopPropagation(); aggiungiAlCarrello(prodotto); }} 
@@ -208,7 +209,7 @@ function Menu() {
                                                                 background:'#f0f0f0', color:'#333', 
                                                                 borderRadius:'50%', width:'30px', height:'30px', 
                                                                 border:'none', fontSize:'18px', display:'flex', alignItems:'center', justifyContent:'center',
-                                                                cursor: 'pointer' // Il tasto + è sempre cliccabile
+                                                                cursor: 'pointer'
                                                             }}
                                                         >
                                                             +
@@ -246,7 +247,6 @@ function Menu() {
                 }}
                 onClick={(e) => e.stopPropagation()} 
               >
-                  {/* Tasto Chiudi */}
                   <button 
                     onClick={() => setSelectedPiatto(null)}
                     style={{
@@ -259,7 +259,6 @@ function Menu() {
                       ✕
                   </button>
 
-                  {/* Foto Grande */}
                   {selectedPiatto.immagine_url && (
                       <img 
                         src={selectedPiatto.immagine_url} 
@@ -267,20 +266,14 @@ function Menu() {
                       />
                   )}
 
-                  {/* Contenuto Modal */}
                   <div style={{padding: '20px'}}>
                       <h2 style={{marginTop: 0, fontSize: '24px'}}>{selectedPiatto.nome}</h2>
-                      
-                      {/* Anche nel Modal, prezzo sotto se vuoi, o in evidenza. Qui lo lascio in grande. */}
                       <p style={{fontSize: '18px', fontWeight: 'bold', color: '#27ae60', margin:'10px 0'}}>
                           {selectedPiatto.prezzo} €
                       </p>
-                      
                       <p style={{color: '#555', lineHeight: '1.5', fontSize: '14px'}}>
                           {selectedPiatto.descrizione || "Nessuna descrizione disponibile."}
                       </p>
-
-                      {/* Tasto Aggiungi Big */}
                       {canOrder && (
                           <button 
                             onClick={() => aggiungiAlCarrello(selectedPiatto)}
