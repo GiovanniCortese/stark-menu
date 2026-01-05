@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE COMPLETA (EXCEL + DRAG&DROP + SOTTOCATEGORIE) 🚀
+// server/server.js - VERSIONE FIXED
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -108,7 +108,7 @@ app.post('/api/import-excel', uploadFile.single('file'), async (req, res) => {
     }
 });
 
-// 3. EXCEL EXPORT 📤 (QUESTA È QUELLA CHE TI MANCAVA!)
+// 3. EXCEL EXPORT 📤
 app.get('/api/export-excel/:ristorante_id', async (req, res) => {
     try {
         const { ristorante_id } = req.params;
@@ -193,4 +193,5 @@ app.get('/api/polling/:ristorante_id', async (req, res) => { try { const r = awa
 app.post('/api/ordine/completato', async (req, res) => { try { await pool.query("UPDATE ordini SET stato = 'completato' WHERE id = $1", [req.body.id]); res.json({ success: true }); } catch (e) { res.status(500).json({error:"Err"}); } });
 app.delete('/api/prodotti/:id', async (req, res) => { try { await pool.query('DELETE FROM prodotti WHERE id = $1', [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
 
-app.listen(port, () => console.log(`Server attivo sulla porta ${port}`));
+// MODIFICA FORZATA: cambiato il console.log per attivare git
+app.listen(port, () => console.log(`SERVER UPDATE V5 - Porta ${port}`));
