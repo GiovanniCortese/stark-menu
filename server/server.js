@@ -298,12 +298,28 @@ app.delete('/api/prodotti/:id', async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Err" }); } 
 });
 
-// 20. UPDATE CATEGORIA (NUOVA ROTTA PER MODIFICA) ✏️
+// 20. UPDATE CATEGORIA (AGGIORNATA: MODIFICA ANCHE I PRODOTTI) ✏️
 app.put('/api/categorie/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const { nome, descrizione } = req.body;
-        await pool.query('UPDATE categorie SET nome = $1, descrizione = $2 WHERE id = $3', [nome, descrizione || "", id]);
+
+        // 1. Trova il vecchio nome della categoria
+        const oldCat = await pool.query('SELECT nome, ristorante_id FROM categorie WHERE id = $1', [id]);
+        
+        if (oldCat.rows.length > 0) {
+            const oldName = oldCat.rows[0].nome;
+            const ristId = oldCat.rows[0].ristorante_id;
+
+            // 2. Aggiorna la categoria nel DB
+            await pool.query('UPDATE categorie SET nome = $1, descrizione = $2 WHERE id = $3', [nome, descrizione || "", id]);
+
+            // 3. SE IL NOME È CAMBIATO, Aggiorna anche tutti i prodotti collegati a quel nome
+            if (oldName !== nome) {
+                await pool.query('UPDATE prodotti SET categoria = $1 WHERE categoria = $2 AND ristorante_id = $3', [nome, oldName, ristId]);
+            }
+        }
+        
         res.json({ success: true });
     } catch (err) {
         console.error(err);
@@ -314,4 +330,4 @@ app.put('/api/categorie/:id', async (req, res) => {
 app.get('/api/super/ristoranti', async (req, res) => { try { const r = await pool.query('SELECT id, nome, slug, ordini_abilitati FROM ristoranti ORDER BY id ASC'); res.json(r.rows); } catch (e) { res.status(500).json({error:"Err"}); } });
 app.put('/api/super/ristoranti/:id', async (req, res) => { try { await pool.query('UPDATE ristoranti SET ordini_abilitati = $1 WHERE id = $2', [req.body.ordini_abilitati, req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({error:"Err"}); } });
 
-app.listen(port, () => console.log(`SERVER UPDATE V12 (EDIT CATEGORIES) - Porta ${port}`));
+app.listen(port, () => console.log(`SERVER UPDATE V13 (SMART CATEGORY EDIT) - Porta ${port}`));
