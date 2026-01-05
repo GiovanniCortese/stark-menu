@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE FIXED
+// server/server.js - VERSIONE FIXED + EDIT
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -153,7 +153,26 @@ app.post('/api/prodotti', async (req, res) => {
     } catch(e){ res.status(500).json({error:"Err"}); } 
 });
 
-// 5. RIORDINA PRODOTTI (Drag & Drop)
+// 5. MODIFICA PRODOTTO (NUOVA ROTTA) ✏️
+app.put('/api/prodotti/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { nome, prezzo, categoria, sottocategoria, descrizione, immagine_url } = req.body;
+        
+        await pool.query(
+            `UPDATE prodotti 
+             SET nome=$1, prezzo=$2, categoria=$3, sottocategoria=$4, descrizione=$5, immagine_url=$6 
+             WHERE id=$7`,
+            [nome, prezzo, categoria, sottocategoria||"", descrizione||"", immagine_url||"", id]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Errore aggiornamento" });
+    }
+});
+
+// 6. RIORDINA PRODOTTI (Drag & Drop)
 app.put('/api/prodotti/riordina', async (req, res) => {
     const { prodotti } = req.body; 
     try {
@@ -193,5 +212,5 @@ app.get('/api/polling/:ristorante_id', async (req, res) => { try { const r = awa
 app.post('/api/ordine/completato', async (req, res) => { try { await pool.query("UPDATE ordini SET stato = 'completato' WHERE id = $1", [req.body.id]); res.json({ success: true }); } catch (e) { res.status(500).json({error:"Err"}); } });
 app.delete('/api/prodotti/:id', async (req, res) => { try { await pool.query('DELETE FROM prodotti WHERE id = $1', [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
 
-// MODIFICA FORZATA: cambiato il console.log per attivare git
-app.listen(port, () => console.log(`SERVER UPDATE V6 - Porta ${port}`));
+// MODIFICA FORZATA: cambiato il console.log per attivare git e indicare che l'edit è attivo
+app.listen(port, () => console.log(`SERVER UPDATE V8 (EDIT ENABLED) - Porta ${port}`));

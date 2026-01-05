@@ -1,4 +1,4 @@
-// client/src/Admin.jsx - VERSIONE DEFINITIVA (CON TASTO SERVIZIO) ✅
+// client/src/Admin.jsx - VERSIONE DEFINITIVA V2 (CON EDITING) ✅
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
@@ -10,11 +10,12 @@ function Admin() {
   const [config, setConfig] = useState({ ordini_abilitati: false, servizio_attivo: false });
   const [uploading, setUploading] = useState(false);
   
-  // Aggiunto campo 'sottocategoria'
   const [nuovoPiatto, setNuovoPiatto] = useState({ nome: '', prezzo: '', categoria: '', sottocategoria: '', descrizione: '', immagine_url: '' });
   const [nuovaCat, setNuovaCat] = useState({ nome: '', descrizione: '' });
   
-  // Stato per file excel
+  // STATO PER MODIFICA
+  const [editId, setEditId] = useState(null); // Se diverso da null, stiamo modificando questo ID
+
   const [fileExcel, setFileExcel] = useState(null);
 
   const navigate = useNavigate();
@@ -37,7 +38,8 @@ function Admin() {
       .then(res => res.json())
       .then(data => {
           setCategorie(data);
-          if(data.length > 0 && !nuovoPiatto.categoria) setNuovoPiatto(prev => ({...prev, categoria: data[0].nome}));
+          // Se stiamo creando da zero, mettiamo la prima categoria come default
+          if(data.length > 0 && !nuovoPiatto.categoria && !editId) setNuovoPiatto(prev => ({...prev, categoria: data[0].nome}));
       });
   };
 
@@ -53,7 +55,6 @@ function Admin() {
         const res = await fetch(`${API_URL}/api/import-excel`, { method: 'POST', body: formData });
         const data = await res.json();
         
-        // MODIFICA QUI: Mostriamo l'errore reale
         if(data.success) {
             alert(data.message);
             caricaTutto();
@@ -140,28 +141,61 @@ function Admin() {
       caricaCategorie(); 
   };
 
-  const handleAggiungiPiatto = async (e) => { 
+  // GESTIONE SALVATAGGIO (CREA O MODIFICA)
+  const handleSalvaPiatto = async (e) => { 
       e.preventDefault(); 
-      if(!nuovoPiatto.nome) return alert("Dati mancanti"); 
-      if(categorie.length===0) return alert("Crea prima una categoria!"); 
+      if(!nuovoPiatto.nome) return alert("Nome mancante"); 
       
-      const cat = nuovoPiatto.categoria || categorie[0].nome; 
+      const cat = nuovoPiatto.categoria || (categorie.length > 0 ? categorie[0].nome : "");
       
-      await fetch(`${API_URL}/api/prodotti`, { 
-          method:'POST', 
-          headers:{'Content-Type':'application/json'}, 
-          body:JSON.stringify({...nuovoPiatto, categoria:cat, ristorante_id:user.id}) 
-      }); 
+      if(editId) {
+          // SIAMO IN MODIFICA (PUT)
+          await fetch(`${API_URL}/api/prodotti/${editId}`, { 
+              method:'PUT', 
+              headers:{'Content-Type':'application/json'}, 
+              body:JSON.stringify({...nuovoPiatto, categoria:cat, ristorante_id:user.id}) 
+          }); 
+          alert("Piatto modificato!");
+      } else {
+          // SIAMO IN CREAZIONE (POST)
+          if(categorie.length===0) return alert("Crea prima una categoria!"); 
+          await fetch(`${API_URL}/api/prodotti`, { 
+              method:'POST', 
+              headers:{'Content-Type':'application/json'}, 
+              body:JSON.stringify({...nuovoPiatto, categoria:cat, ristorante_id:user.id}) 
+          }); 
+          alert("Piatto aggiunto!");
+      }
       
+      // Reset form
       setNuovoPiatto({nome:'', prezzo:'', categoria:cat, sottocategoria: '', descrizione:'', immagine_url:''}); 
+      setEditId(null);
       caricaTutto(); 
-      alert("Piatto aggiunto!"); 
   };
   
+  // PREPARA IL FORM PER LA MODIFICA
+  const avviaModifica = (piatto) => {
+      setEditId(piatto.id);
+      setNuovoPiatto({
+          nome: piatto.nome,
+          prezzo: piatto.prezzo,
+          categoria: piatto.categoria,
+          sottocategoria: piatto.sottocategoria || '',
+          descrizione: piatto.descrizione || '',
+          immagine_url: piatto.immagine_url || ''
+      });
+      // Scrolla in alto per vedere il form
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const annullaModifica = () => {
+      setEditId(null);
+      setNuovoPiatto({nome:'', prezzo:'', categoria:categorie[0]?.nome || '', sottocategoria: '', descrizione:'', immagine_url:''}); 
+  };
+
   const cancellaCategoria = async (id) => { if(confirm("Eliminare categoria?")) { await fetch(`${API_URL}/api/categorie/${id}`, {method:'DELETE'}); caricaCategorie(); }};
   const handleFileChange = async (e) => { const f=e.target.files[0]; if(!f)return; setUploading(true); const fd=new FormData(); fd.append('photo',f); const r=await fetch(`${API_URL}/api/upload`,{method:'POST',body:fd}); const d=await r.json(); if(d.url) setNuovoPiatto(p=>({...p, immagine_url:d.url})); setUploading(false); };
   
-  // FUNZIONE TOGGLE SERVIZIO (C'era ma mancava il bottone)
   const toggleServizio = async () => { const n=!config.servizio_attivo; setConfig({...config, servizio_attivo:n}); await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({servizio_attivo:n})}); };
   
   const cancellaPiatto = async (id) => { if(confirm("Eliminare piatto?")) { await fetch(`${API_URL}/api/prodotti/${id}`, {method:'DELETE'}); caricaTutto(); }};
@@ -205,16 +239,19 @@ function Admin() {
       {tab === 'menu' && (
         <DragDropContext onDragEnd={handleOnDragEnd}>
           
-          {/* --- TASTO ATTIVA/DISATTIVA SERVIZIO (REINSERITO) --- */}
           <div className="card" style={{border: '2px solid #333', background: '#fff3cd', marginBottom:'20px'}}>
               <button onClick={toggleServizio} style={{background: config.servizio_attivo ? '#2ecc71':'#e74c3c', width:'100%', padding:'15px', color:'white', fontWeight:'bold', fontSize:'18px', border:'none', borderRadius:'5px', cursor:'pointer'}}>
                   {config.servizio_attivo ? "✅ ORDINI APERTI" : "🛑 ORDINI CHIUSI"}
               </button>
           </div>
 
-          <div className="card" style={{background: '#f8f9fa', border: '2px dashed #ccc'}}>
-              <h3>➕ Aggiungi Piatto Manuale</h3>
-              <form onSubmit={handleAggiungiPiatto} style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+          <div className="card" style={{background: editId ? '#e3f2fd' : '#f8f9fa', border: editId ? '2px solid #2196f3' : '2px dashed #ccc'}}>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                  <h3>{editId ? "✏️ Modifica Piatto" : "➕ Aggiungi Piatto Manuale"}</h3>
+                  {editId && <button onClick={annullaModifica} style={{background:'#777', padding:'5px 10px', fontSize:'12px', color:'white', border:'none', borderRadius:'3px', cursor:'pointer'}}>Annulla Modifica</button>}
+              </div>
+
+              <form onSubmit={handleSalvaPiatto} style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
                   <input placeholder="Nome Piatto" value={nuovoPiatto.nome} onChange={e => setNuovoPiatto({...nuovoPiatto, nome: e.target.value})} />
                   
                   <div style={{display:'flex', gap:'10px'}}>
@@ -242,7 +279,9 @@ function Admin() {
                        <div style={{background:'white', padding:'5px', flex:1}}><input type="file" onChange={handleFileChange} />{uploading && "..."}{nuovoPiatto.immagine_url && "✅"}</div>
                   </div>
                   
-                  <button type="submit" className="btn-invia">SALVA PIATTO</button>
+                  <button type="submit" className="btn-invia" style={{background: editId ? '#2196f3' : '#333'}}>
+                      {editId ? "AGGIORNA PIATTO" : "SALVA PIATTO"}
+                  </button>
               </form>
           </div>
 
@@ -275,7 +314,8 @@ function Admin() {
                                                     ...provided.draggableProps.style, 
                                                     flexDirection:'row', 
                                                     justifyContent:'space-between',
-                                                    background: snapshot.isDragging ? '#e3f2fd' : 'white'
+                                                    background: snapshot.isDragging ? '#e3f2fd' : 'white',
+                                                    border: editId === p.id ? '2px solid #2196f3' : '1px solid #eee'
                                                 }}
                                             >
                                                 <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
@@ -287,7 +327,12 @@ function Admin() {
                                                         <div style={{fontSize:'12px', fontWeight:'bold'}}>{p.prezzo}€</div>
                                                     </div>
                                                 </div>
-                                                <button onClick={() => cancellaPiatto(p.id)} style={{background:'darkred', padding:'5px'}}>🗑️</button>
+                                                <div style={{display:'flex', gap:'5px'}}>
+                                                    {/* TASTO MODIFICA */}
+                                                    <button onClick={() => avviaModifica(p)} style={{background:'#f1c40f', padding:'5px', borderRadius:'4px', border:'none', cursor:'pointer'}}>✏️</button>
+                                                    {/* TASTO CANCELLA */}
+                                                    <button onClick={() => cancellaPiatto(p.id)} style={{background:'darkred', padding:'5px', borderRadius:'4px', border:'none', cursor:'pointer'}}>🗑️</button>
+                                                </div>
                                             </div>
                                         )}
                                     </Draggable>

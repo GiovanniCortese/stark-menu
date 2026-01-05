@@ -1,4 +1,4 @@
-// client/src/App.jsx - VERSIONE "TUTTO CHIUSO" E "CLICCA PER CHIUDERE"
+// client/src/App.jsx - VERSIONE SUB-ACCORDION (MATRIOSKA)
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useSearchParams, useParams } from 'react-router-dom';
 import Cucina from './Cucina';
@@ -15,8 +15,9 @@ function Menu() {
   const [carrello, setCarrello] = useState([]); 
   const [error, setError] = useState(false);
   
-  // STATO PER ACCORDION (Parte null = tutto chiuso)
-  const [activeCategory, setActiveCategory] = useState(null);
+  // STATO PER ACCORDION
+  const [activeCategory, setActiveCategory] = useState(null);       // Livello 1: Categoria (es. Vini)
+  const [activeSubCategory, setActiveSubCategory] = useState(null); // Livello 2: Sottocategoria (es. Rossi)
 
   const { slug } = useParams();
   const currentSlug = slug || 'pizzeria-stark';
@@ -32,7 +33,6 @@ function Menu() {
         setMenu(data.menu);
         setRistoranteId(data.id);
         setCanOrder(data.ordini_abilitati && data.servizio_attivo);
-        // NOTA: Ho rimosso il codice che apriva la prima categoria in automatico.
       })
       .catch(err => setError(true));
   }, [currentSlug]);
@@ -57,12 +57,23 @@ function Menu() {
   // RAGGRUPPAMENTO MENU
   const categorieOrdinate = [...new Set(menu.map(p => p.categoria))];
 
-  // MODIFICA QUI: Logica apri/chiudi
+  // LOGICA LIVELLO 1: Categorie Principali
   const toggleAccordion = (catNome) => {
       if (activeCategory === catNome) {
-          setActiveCategory(null); // Se è già aperta, la chiudo
+          setActiveCategory(null);
+          setActiveSubCategory(null); // Chiudo anche le sub
       } else {
-          setActiveCategory(catNome); // Altrimenti apro la nuova
+          setActiveCategory(catNome);
+          setActiveSubCategory(null); // Reset sub quando cambio categoria
+      }
+  };
+
+  // LOGICA LIVELLO 2: Sottocategorie
+  const toggleSubAccordion = (subName) => {
+      if (activeSubCategory === subName) {
+          setActiveSubCategory(null);
+      } else {
+          setActiveSubCategory(subName);
       }
   };
 
@@ -84,7 +95,7 @@ function Menu() {
         {categorieOrdinate.map(catNome => (
             <div key={catNome} className="accordion-item">
                 
-                {/* TITOLO CATEGORIA */}
+                {/* TITOLO CATEGORIA (LIVELLO 1) */}
                 <div 
                     onClick={() => toggleAccordion(catNome)}
                     style={{
@@ -102,11 +113,13 @@ function Menu() {
                     <span>{activeCategory === catNome ? '▼' : '▶'}</span>
                 </div>
 
-                {/* CONTENUTO */}
+                {/* CONTENUTO CATEGORIA */}
                 {activeCategory === catNome && (
-                    <div className="accordion-content" style={{padding: '10px 0'}}>
+                    <div className="accordion-content" style={{padding: '5px 0'}}>
                         {(() => {
                             const piattiCat = menu.filter(p => p.categoria === catNome);
+                            
+                            // Raggruppa per sottocategoria
                             const sottoCats = piattiCat.reduce((acc, p) => {
                                 const sc = (p.sottocategoria && p.sottocategoria.trim().length > 0) 
                                            ? p.sottocategoria 
@@ -116,37 +129,56 @@ function Menu() {
                                 return acc;
                             }, {});
 
-                            return Object.keys(sottoCats).sort().map(scKey => (
-                                <div key={scKey} style={{marginBottom: '20px'}}>
-                                    {(scKey !== "Generale" || Object.keys(sottoCats).length > 1) && (
-                                        <h3 style={{
-                                            borderLeft: '4px solid #ff9f43', 
-                                            paddingLeft: '10px', 
-                                            marginLeft: '5px',
-                                            color: '#555', 
-                                            fontSize: '16px',
-                                            textTransform: 'uppercase',
-                                            marginTop: '15px'
-                                        }}>
-                                            {scKey === "Generale" ? "Altri Piatti" : scKey}
-                                        </h3>
+                            const subKeys = Object.keys(sottoCats).sort();
+                            // Se c'è solo "Generale", non mostriamo il livello intermedio
+                            const isSingleGroup = subKeys.length === 1 && subKeys[0] === "Generale";
+
+                            return subKeys.map(scKey => (
+                                <div key={scKey} style={{marginBottom: '5px'}}>
+                                    
+                                    {/* TITOLO SOTTOCATEGORIA (LIVELLO 2) - Cliccabile come Accordion */}
+                                    {/* Lo mostriamo solo se NON è il caso unico "Generale" */}
+                                    {!isSingleGroup && (
+                                        <div 
+                                            onClick={() => toggleSubAccordion(scKey)}
+                                            style={{
+                                                background: '#fff3e0', // Colore diverso per distinguere
+                                                borderLeft: '4px solid #ff9f43', 
+                                                padding: '12px', 
+                                                margin: '5px 0',
+                                                borderRadius: '4px',
+                                                cursor: 'pointer',
+                                                display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                                            }}
+                                        >
+                                            <h3 style={{margin:0, fontSize:'16px', color:'#d35400', textTransform:'uppercase'}}>
+                                                {scKey === "Generale" ? "Altri Piatti" : scKey}
+                                            </h3>
+                                            <span style={{color:'#d35400', fontWeight:'bold'}}>
+                                                {activeSubCategory === scKey ? '▼' : '▶'}
+                                            </span>
+                                        </div>
                                     )}
 
-                                    <div className="menu-list">
-                                        {sottoCats[scKey].map((prodotto) => (
-                                            <div key={prodotto.id} className="card">
-                                                {prodotto.immagine_url && <img src={prodotto.immagine_url} style={{width:'100%', height:'120px', objectFit:'cover', borderRadius:'5px'}} />}
-                                                <div className="info">
-                                                    <h3>{prodotto.nome}</h3>
-                                                    {prodotto.descrizione && <p style={{fontSize:'12px', color:'#777'}}>{prodotto.descrizione}</p>}
+                                    {/* LISTA PIATTI */}
+                                    {/* Visibile se: è il gruppo unico "Generale" OPPURE se la sottocategoria è aperta */}
+                                    {(isSingleGroup || activeSubCategory === scKey) && (
+                                        <div className="menu-list" style={{paddingTop: '5px'}}>
+                                            {sottoCats[scKey].map((prodotto) => (
+                                                <div key={prodotto.id} className="card">
+                                                    {prodotto.immagine_url && <img src={prodotto.immagine_url} style={{width:'100%', height:'120px', objectFit:'cover', borderRadius:'5px'}} />}
+                                                    <div className="info">
+                                                        <h3>{prodotto.nome}</h3>
+                                                        {prodotto.descrizione && <p style={{fontSize:'12px', color:'#777'}}>{prodotto.descrizione}</p>}
+                                                    </div>
+                                                    <div className="action">
+                                                        <div className="prezzo">{prodotto.prezzo} €</div>
+                                                        {canOrder && <button onClick={() => aggiungiAlCarrello(prodotto)}>+</button>}
+                                                    </div>
                                                 </div>
-                                                <div className="action">
-                                                    <div className="prezzo">{prodotto.prezzo} €</div>
-                                                    {canOrder && <button onClick={() => aggiungiAlCarrello(prodotto)}>+</button>}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             ));
                         })()}
