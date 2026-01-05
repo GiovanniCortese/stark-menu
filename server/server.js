@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE CON DESCRIZIONI (Piatti e Categorie) 📝
+// server/server.js - VERSIONE EXCEL & SOTTOCATEGORIE 📊
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -6,6 +6,7 @@ const { Pool } = require('pg');
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require('multer');
+const xlsx = require('xlsx'); // <--- NUOVA LIBRERIA
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -18,6 +19,7 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
+// CLOUDINARY
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -28,10 +30,12 @@ const storage = new CloudinaryStorage({
   params: { folder: 'menu-pizzeria', allowed_formats: ['jpg', 'png', 'jpeg', 'webp'] },
 });
 const upload = multer({ storage: storage });
+// Multer per file generici (Excel) - usiamo memoria temporanea
+const uploadFile = multer({ storage: multer.memoryStorage() });
 
 // --- ROTTE ---
 
-// 1. MENU PUBBLICO (RESTITUISCE ANCHE LE DESCRIZIONI)
+// 1. MENU PUBBLICO
 app.get('/api/menu/:slug', async (req, res) => {
     try {
         const { slug } = req.params;
@@ -40,7 +44,7 @@ app.get('/api/menu/:slug', async (req, res) => {
         if (rist.rows.length === 0) return res.status(404).json({ error: "Ristorante non trovato" });
         const ristID = rist.rows[0].id;
 
-        // QUERY AGGIORNATA: Selezioniamo anche la descrizione della categoria!
+        // Selezioniamo anche la sottocategoria
         const query = `
             SELECT p.*, c.descrizione as categoria_descrizione 
             FROM prodotti p
@@ -58,44 +62,89 @@ app.get('/api/menu/:slug', async (req, res) => {
             servizio_attivo: rist.rows[0].servizio_attivo,
             menu: menu.rows 
         });
-    } catch (err) { 
+    } catch (err) { res.status(500).json({ error: "Server error" }); }
+});
+
+// 2. EXCEL IMPORT 📥
+app.post('/api/import-excel', uploadFile.single('file'), async (req, res) => {
+    const { ristorante_id } = req.body;
+    if (!req.file || !ristorante_id) return res.status(400).json({ error: "File o ID mancante" });
+
+    try {
+        // Leggiamo il file Excel dalla memoria
+        const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
+        const sheetName = workbook.SheetNames[0];
+        const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
+
+        // data è un array di oggetti: [{ Nome: 'Margherita', Prezzo: 6, Categoria: 'Pizze', Sottocategoria: '' }, ...]
+        
+        // Loop per inserire/aggiornare
+        for (const row of data) {
+            const nome = row['Nome'];
+            const prezzo = row['Prezzo'];
+            const categoria = row['Categoria'];
+            const sottocategoria = row['Sottocategoria'] || "";
+            const descrizione = row['Descrizione'] || "";
+            
+            // 1. Assicuriamoci che la Categoria esista, se no la creiamo
+            let catCheck = await pool.query('SELECT * FROM categorie WHERE nome = $1 AND ristorante_id = $2', [categoria, ristorante_id]);
+            if (catCheck.rows.length === 0) {
+                const maxPos = await pool.query('SELECT MAX(posizione) as max FROM categorie WHERE ristorante_id = $1', [ristorante_id]);
+                await pool.query('INSERT INTO categorie (nome, posizione, ristorante_id) VALUES ($1, $2, $3)', [categoria, (maxPos.rows[0].max||0)+1, ristorante_id]);
+            }
+
+            // 2. Inseriamo il prodotto (o aggiorniamo se vogliamo fare cose complesse, qui inseriamo e basta per semplicità)
+            // Nota: Per evitare duplicati, idealmente dovremmo controllare se esiste già.
+            // Facciamo una pulizia preventiva? No, aggiungiamo in coda.
+            await pool.query(
+                `INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, posizione) 
+                 VALUES ($1, $2, $3, $4, $5, $6, 999)`,
+                [nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id]
+            );
+        }
+
+        res.json({ success: true, message: `Importati ${data.length} piatti!` });
+    } catch (err) {
         console.error(err);
-        res.status(500).json({ error: "Server error" }); 
+        res.status(500).json({ error: "Errore Importazione Excel" });
     }
 });
 
-// 2. CREA PRODOTTO (CON DESCRIZIONE)
+// 3. EXCEL EXPORT 📤
+app.get('/api/export-excel/:ristorante_id', async (req, res) => {
+    try {
+        const { ristorante_id } = req.params;
+        const result = await pool.query('SELECT nome as "Nome", prezzo as "Prezzo", categoria as "Categoria", sottocategoria as "Sottocategoria", descrizione as "Descrizione" FROM prodotti WHERE ristorante_id = $1 ORDER BY categoria, nome', [ristorante_id]);
+        
+        const workbook = xlsx.utils.book_new();
+        const worksheet = xlsx.utils.json_to_sheet(result.rows);
+        xlsx.utils.book_append_sheet(workbook, worksheet, "Menu");
+        
+        const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+        
+        res.setHeader('Content-Disposition', 'attachment; filename="menu.xlsx"');
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(buffer);
+    } catch (err) { res.status(500).json({ error: "Errore Export" }); }
+});
+
+// 4. CREA PRODOTTO (Aggiornato con Sottocategoria)
 app.post('/api/prodotti', async (req, res) => { 
     try { 
-        // Aggiunto campo descrizione ($6)
         await pool.query(
-            'INSERT INTO prodotti (nome, prezzo, categoria, ristorante_id, immagine_url, posizione, descrizione) VALUES ($1, $2, $3, $4, $5, 999, $6)', 
-            [req.body.nome, req.body.prezzo, req.body.categoria, req.body.ristorante_id, req.body.immagine_url||"", req.body.descrizione||""]
+            'INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, ristorante_id, immagine_url, posizione, descrizione) VALUES ($1, $2, $3, $4, $5, $6, 999, $7)', 
+            [req.body.nome, req.body.prezzo, req.body.categoria, req.body.sottocategoria||"", req.body.ristorante_id, req.body.immagine_url||"", req.body.descrizione||""]
         ); 
         res.json({success:true}); 
     } catch(e){ res.status(500).json({error:"Err"}); } 
 });
 
-// 3. CREA CATEGORIA (CON DESCRIZIONE)
-app.post('/api/categorie', async (req, res) => {
-    try { 
-        const max = await pool.query('SELECT MAX(posizione) as max FROM categorie WHERE ristorante_id = $1', [req.body.ristorante_id]);
-        const next = (max.rows[0].max || 0) + 1;
-        
-        // Aggiunto campo descrizione ($4)
-        const result = await pool.query(
-            'INSERT INTO categorie (nome, posizione, ristorante_id, descrizione) VALUES ($1, $2, $3, $4) RETURNING *', 
-            [req.body.nome, next, req.body.ristorante_id, req.body.descrizione||""]
-        ); 
-        res.json(result.rows[0]); 
-    } catch (e) { res.status(500).json({error:"Err"}); }
-});
-
-// ... ROTTE INVARIATE ...
+// 5. RIORDINA (Supporta sottocategorie anche se non le usiamo nel drag & drop del server esplicitamente)
 app.put('/api/prodotti/riordina', async (req, res) => {
     const { prodotti } = req.body; 
     try {
         for (const prod of prodotti) {
+            // Aggiorniamo posizione e categoria. La sottocategoria non cambia col drag & drop standard per ora
             if(prod.categoria) {
                 await pool.query('UPDATE prodotti SET posizione = $1, categoria = $2 WHERE id = $3', [prod.posizione, prod.categoria, prod.id]);
             } else {
@@ -105,6 +154,8 @@ app.put('/api/prodotti/riordina', async (req, res) => {
         res.json({ success: true });
     } catch (err) { res.status(500).json({ error: "Err" }); }
 });
+
+// ... ALTRE ROTTE STANDARD (Config, Categorie, Login, Upload, Ordine) ...
 app.put('/api/categorie/riordina', async (req, res) => {
     const { categorie } = req.body; 
     try {
@@ -117,6 +168,7 @@ app.put('/api/categorie/riordina', async (req, res) => {
 app.get('/api/ristorante/config/:id', async (req, res) => { try { const r = await pool.query('SELECT ordini_abilitati, servizio_attivo FROM ristoranti WHERE id = $1', [req.params.id]); res.json(r.rows[0]); } catch (e) { res.status(500).json({error:"Err"}); } });
 app.put('/api/ristorante/servizio/:id', async (req, res) => { try { await pool.query('UPDATE ristoranti SET servizio_attivo = $1 WHERE id = $2', [req.body.servizio_attivo, req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({error:"Err"}); } });
 app.get('/api/categorie/:ristorante_id', async (req, res) => { try { const r = await pool.query('SELECT * FROM categorie WHERE ristorante_id = $1 ORDER BY posizione ASC', [req.params.ristorante_id]); res.json(r.rows); } catch (e) { res.status(500).json({error:"Err"}); } });
+app.post('/api/categorie', async (req, res) => { try { const max = await pool.query('SELECT MAX(posizione) as max FROM categorie WHERE ristorante_id = $1', [req.body.ristorante_id]); const next = (max.rows[0].max || 0) + 1; const r = await pool.query('INSERT INTO categorie (nome, posizione, ristorante_id, descrizione) VALUES ($1, $2, $3, $4) RETURNING *', [req.body.nome, next, req.body.ristorante_id, req.body.descrizione||""]); res.json(r.rows[0]); } catch (e) { res.status(500).json({error:"Err"}); } });
 app.delete('/api/categorie/:id', async (req, res) => { try { await pool.query('DELETE FROM categorie WHERE id = $1', [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
 app.get('/api/super/ristoranti', async (req, res) => { try { const r = await pool.query('SELECT id, nome, slug, ordini_abilitati FROM ristoranti ORDER BY id ASC'); res.json(r.rows); } catch (e) { res.status(500).json({error:"Err"}); } });
 app.put('/api/super/ristoranti/:id', async (req, res) => { try { await pool.query('UPDATE ristoranti SET ordini_abilitati = $1 WHERE id = $2', [req.body.ordini_abilitati, req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({error:"Err"}); } });
