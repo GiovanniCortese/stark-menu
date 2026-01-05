@@ -1,4 +1,4 @@
-// client/src/App.jsx - VERSIONE DEFINITIVA
+// client/src/App.jsx - VERSIONE "TUTTO CHIUSO" E "CLICCA PER CHIUDERE"
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useSearchParams, useParams } from 'react-router-dom';
 import Cucina from './Cucina';
@@ -15,7 +15,7 @@ function Menu() {
   const [carrello, setCarrello] = useState([]); 
   const [error, setError] = useState(false);
   
-  // STATO PER ACCORDION
+  // STATO PER ACCORDION (Parte null = tutto chiuso)
   const [activeCategory, setActiveCategory] = useState(null);
 
   const { slug } = useParams();
@@ -32,10 +32,7 @@ function Menu() {
         setMenu(data.menu);
         setRistoranteId(data.id);
         setCanOrder(data.ordini_abilitati && data.servizio_attivo);
-        // Apre la prima categoria di default
-        if (data.menu && data.menu.length > 0) {
-           setActiveCategory(data.menu[0].categoria);
-        }
+        // NOTA: Ho rimosso il codice che apriva la prima categoria in automatico.
       })
       .catch(err => setError(true));
   }, [currentSlug]);
@@ -60,9 +57,12 @@ function Menu() {
   // RAGGRUPPAMENTO MENU
   const categorieOrdinate = [...new Set(menu.map(p => p.categoria))];
 
+  // MODIFICA QUI: Logica apri/chiudi
   const toggleAccordion = (catNome) => {
-      if (activeCategory !== catNome) {
-          setActiveCategory(catNome);
+      if (activeCategory === catNome) {
+          setActiveCategory(null); // Se è già aperta, la chiudo
+      } else {
+          setActiveCategory(catNome); // Altrimenti apro la nuova
       }
   };
 
@@ -106,10 +106,7 @@ function Menu() {
                 {activeCategory === catNome && (
                     <div className="accordion-content" style={{padding: '10px 0'}}>
                         {(() => {
-                            // 1. Filtra piatti della categoria
                             const piattiCat = menu.filter(p => p.categoria === catNome);
-                            
-                            // 2. Raggruppa per sottocategoria
                             const sottoCats = piattiCat.reduce((acc, p) => {
                                 const sc = (p.sottocategoria && p.sottocategoria.trim().length > 0) 
                                            ? p.sottocategoria 
@@ -119,11 +116,8 @@ function Menu() {
                                 return acc;
                             }, {});
 
-                            // 3. Renderizza i gruppi
                             return Object.keys(sottoCats).sort().map(scKey => (
                                 <div key={scKey} style={{marginBottom: '20px'}}>
-                                    
-                                    {/* Titolo Sottocategoria (mostrato solo se serve) */}
                                     {(scKey !== "Generale" || Object.keys(sottoCats).length > 1) && (
                                         <h3 style={{
                                             borderLeft: '4px solid #ff9f43', 
