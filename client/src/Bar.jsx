@@ -1,9 +1,11 @@
-// client/src/Bar.jsx - SOLO BIBITE E CAFFÈ ☕🍺
+// client/src/Bar.jsx - VERSIONE V18 (FIX DATA + COMPLETAMENTO BAR) 🍹
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
 function Bar() {
   const [ordini, setOrdini] = useState([]);
+  // Stato per nascondere localmente gli ordini completati dal Bar
+  const [ordiniCompletatiBar, setOrdiniCompletatiBar] = useState([]); 
   const [infoRistorante, setInfoRistorante] = useState(null); 
   const [isAuthorized, setIsAuthorized] = useState(false); 
   const [passwordInput, setPasswordInput] = useState("");
@@ -20,11 +22,15 @@ function Bar() {
       
     const sessionKey = `bar_session_${slug}`;
     if (localStorage.getItem(sessionKey) === "true") setIsAuthorized(true);
+    
+    // Recupera ordini bar completati dalla sessione locale (opzionale)
+    const completati = JSON.parse(localStorage.getItem(`bar_completed_${slug}`) || "[]");
+    setOrdiniCompletatiBar(completati);
   }, [slug]);
 
   const handleLogin = (e) => {
       e.preventDefault();
-      if (passwordInput === "tonystark") { // Stessa pass per ora
+      if (passwordInput === "tonystark") { 
           setIsAuthorized(true);
           localStorage.setItem(`bar_session_${slug}`, "true");
       } else {
@@ -45,14 +51,17 @@ function Bar() {
     fetch(`${API_URL}/api/polling/${infoRistorante.id}`)
       .then(res => res.json())
       .then(data => {
-          // FILTRO AVANZATO: Mostra l'ordine SOLO se contiene almeno un articolo da BAR
+          // 1. Filtra ordini che hanno prodotti da Bar
           const ordiniBar = (data.nuovi_ordini || []).filter(ordine => {
               let prodotti = [];
               try { prodotti = typeof ordine.prodotti === 'string' ? JSON.parse(ordine.prodotti) : ordine.prodotti; } catch(e){}
-              // Controlla se c'è roba da bere
               return prodotti.some(p => p.is_bar === true);
           });
-          setOrdini(ordiniBar);
+          
+          // 2. Rimuovi quelli che il Barman ha già segnato come completati localmente
+          const ordiniAttivi = ordiniBar.filter(o => !ordiniCompletatiBar.includes(o.id));
+          
+          setOrdini(ordiniAttivi);
       })
       .catch(err => console.error("Errore polling:", err));
   };
@@ -63,22 +72,34 @@ function Bar() {
       const intervallo = setInterval(aggiornaOrdini, 3000); 
       return () => clearInterval(intervallo);
     }
-  }, [infoRistorante, isAuthorized]);
+  }, [infoRistorante, isAuthorized, ordiniCompletatiBar]);
 
   const toggleCheck = (uniqueKey) => {
       setCheckedItems(prev => ({ ...prev, [uniqueKey]: !prev[uniqueKey] }));
+  };
+
+  // Funzione per completare l'ordine LATO BAR (lo nasconde solo dalla vista bar)
+  const completaOrdineBar = (ordineId) => {
+      if(!confirm("Hai servito tutte le bevande per questo tavolo?")) return;
+      
+      const nuoviCompletati = [...ordiniCompletatiBar, ordineId];
+      setOrdiniCompletatiBar(nuoviCompletati);
+      
+      // Salviamo in locale per non perderli al refresh
+      localStorage.setItem(`bar_completed_${slug}`, JSON.stringify(nuoviCompletati));
+      
+      // Aggiorniamo subito la vista
+      setOrdini(prev => prev.filter(o => o.id !== ordineId));
   };
 
   const renderTicketBody = (ordine) => {
       let listaProdotti = [];
       try { listaProdotti = typeof ordine.prodotti === 'string' ? JSON.parse(ordine.prodotti) : ordine.prodotti; } catch(e){}
 
-      // --- FILTRO BAR: Prendi SOLO le cose da bere ---
       const prodottiBar = listaProdotti.filter(p => p.is_bar === true);
 
-      if(prodottiBar.length === 0) return null; // Non dovrebbe succedere grazie al filtro sopra
+      if(prodottiBar.length === 0) return null; 
 
-      // Raggruppamento
       const gruppi = prodottiBar.reduce((acc, item) => {
           const cat = item.categoria || 'Altro';
           if (!acc[cat]) acc[cat] = [];
@@ -107,32 +128,46 @@ function Bar() {
       );
   };
 
+  if (!infoRistorante) return <div className="cucina-container" style={{textAlign:'center', padding:'50px'}}><h1>⏳ Caricamento Bar...</h1></div>;
+
   if (!isAuthorized) return (
       <div className="cucina-container" style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', flexDirection:'column'}}>
           <div style={{background:'white', padding:'40px', borderRadius:'10px', textAlign:'center', maxWidth:'400px', width:'90%'}}>
               <h1>🍹 Accesso Bar</h1>
-              <h3>{infoRistorante?.ristorante}</h3>
+              <h3>{infoRistorante.ristorante}</h3>
               <form onSubmit={handleLogin}><input type="password" placeholder="Password" value={passwordInput} onChange={(e)=>setPasswordInput(e.target.value)} style={{width:'100%', padding:'10px', marginBottom:'10px'}}/><button className="btn-invia" style={{width:'100%'}}>ENTRA</button></form>
           </div>
       </div>
   );
 
   return (
-    <div className="cucina-container" style={{backgroundColor:'#2c3e50'}}> {/* Sfondo diverso per distinguerlo */}
+    <div className="cucina-container" style={{backgroundColor:'#2c3e50'}}> 
       <header style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom:'20px'}}>
-        <div><h1 style={{margin:0}}>🍹 Bar</h1><h3 style={{margin:'5px 0 0 0', color:'#ccc'}}>{infoRistorante.ristorante}</h3></div>
+        <div><h1 style={{margin:0, color:'white'}}>🍹 Bar</h1><h3 style={{margin:'5px 0 0 0', color:'#ccc'}}>{infoRistorante.ristorante}</h3></div>
         <button onClick={handleLogout} style={{background:'#e74c3c', color:'white', border:'none', padding:'8px 15px', borderRadius:'5px'}}>Esci</button>
       </header>
       <div className="ordini-grid">
-        {ordini.length === 0 && <div style={{textAlign: 'center', width: '100%', marginTop: '50px', color: '#fff'}}><h2>Nessuna bevanda in attesa 🍺</h2></div>}
+        {ordini.length === 0 && <div style={{textAlign: 'center', width: '100%', marginTop: '50px', color: '#fff'}}><h2>Tutto pulito al Bar! 🍺</h2></div>}
         {ordini.map((ordine) => (
-          <div key={ordine.id} className="ticket">
-            <div className="ticket-header" style={{background:'#3498db'}}> {/* Intestazione blu per Bar */}
+          <div key={ordine.id} className="ticket" style={{background:'#ecf0f1'}}>
+            <div className="ticket-header" style={{background:'#3498db'}}> 
               <span className="tavolo">Tavolo {ordine.tavolo}</span>
-              <span className="orario">{new Date(ordine.data_ora).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+              {/* FIX DATA: Gestione fallback se data_ora manca */}
+              <span className="orario">
+                  {new Date(ordine.data_ora || ordine.data_creazione || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+              </span>
             </div>
+            
             <div className="ticket-body">{renderTicketBody(ordine)}</div>
-            {/* Nota: Il Bar NON chiude l'ordine completo, lo fa solo la cucina. Il Bar vede solo la lista. */}
+            
+            {/* NUOVO TASTO PER IL BAR */}
+            <button 
+                className="btn-completato" 
+                style={{background:'#2980b9', marginTop:'15px'}} // Colore blu scuro per differenziare
+                onClick={() => completaOrdineBar(ordine.id)}
+            >
+                ✅ ORDINE SERVITO
+            </button>
           </div>
         ))}
       </div>
