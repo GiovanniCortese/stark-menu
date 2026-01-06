@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE V13 (FIX ORDINI + CRM POSTGRESQL) 🛠️
+// server/server.js - VERSIONE V14 (FIX DATABASE ORDINI AUTO-REPAIR) 🛠️
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -19,13 +19,13 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
-// --- INIT DB & MIGRAZIONI AUTOMATICHE ---
+// --- INIT DB & MIGRAZIONI AUTOMATICHE (AUTO-REPAIR) ---
 const initDb = async () => {
     const client = await pool.connect();
     try {
-        console.log("Verifica schema database...");
+        console.log("🛠️ Verifica e aggiornamento database...");
         
-        // 1. RISTORANTI
+        // 1. TABELLA RISTORANTI
         await client.query(`CREATE TABLE IF NOT EXISTS ristoranti (
             id SERIAL PRIMARY KEY,
             nome TEXT NOT NULL,
@@ -40,12 +40,12 @@ const initDb = async () => {
             font_style TEXT DEFAULT 'sans-serif'
         )`);
         
-        // Aggiunta colonne CRM se mancano
+        // Fix Ristoranti
         await client.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS email TEXT`);
         await client.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS telefono TEXT`);
         await client.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS password TEXT DEFAULT 'tonystark'`);
 
-        // 2. CATEGORIE
+        // 2. TABELLA CATEGORIE
         await client.query(`CREATE TABLE IF NOT EXISTS categorie (
             id SERIAL PRIMARY KEY,
             ristorante_id INTEGER REFERENCES ristoranti(id),
@@ -54,7 +54,7 @@ const initDb = async () => {
             posizione INTEGER DEFAULT 0
         )`);
 
-        // 3. PRODOTTI
+        // 3. TABELLA PRODOTTI
         await client.query(`CREATE TABLE IF NOT EXISTS prodotti (
             id SERIAL PRIMARY KEY,
             ristorante_id INTEGER REFERENCES ristoranti(id),
@@ -67,20 +67,23 @@ const initDb = async () => {
             posizione INTEGER DEFAULT 0
         )`);
 
-        // 4. ORDINI (IMPORTANTE PER IL TUO PROBLEMA)
+        // 4. TABELLA ORDINI (FIX CRITICO PER IL TUO PROBLEMA)
         await client.query(`CREATE TABLE IF NOT EXISTS ordini (
             id SERIAL PRIMARY KEY,
             ristorante_id INTEGER REFERENCES ristoranti(id),
             tavolo TEXT,
-            prodotti TEXT,
-            totale REAL,
             stato TEXT DEFAULT 'in attesa',
             data_ora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )`);
+
+        // --- FIX AUTO-REPAIR: AGGIUNGE COLONNE MANCANTI ALLA TABELLA ESISTENTE ---
+        // Se la tabella esisteva già ma con nomi vecchi, questo comando la ripara
+        await client.query(`ALTER TABLE ordini ADD COLUMN IF NOT EXISTS prodotti TEXT`); 
+        await client.query(`ALTER TABLE ordini ADD COLUMN IF NOT EXISTS totale REAL`);   
         
-        console.log("✅ Database aggiornato e pronto.");
+        console.log("✅ Database aggiornato e pronto (Ordini Fix Applicato).");
     } catch (err) {
-        console.error("Errore init DB:", err);
+        console.error("❌ Errore init DB:", err);
     } finally {
         client.release();
     }
@@ -330,32 +333,49 @@ app.post('/api/upload', upload.single('photo'), async (req, res) => {
     } catch (e) { res.status(500).json({error:"Err"}); } 
 });
 
-// 16. INVIA ORDINE (FIXED) 🚀
+// 16. INVIA ORDINE (FIXED & SAFE) 🚀
 app.post('/api/ordine', async (req, res) => { 
     try { 
-        // Convertiamo l'array prodotti in stringa JSON per salvarlo in Postgres
-        const prodottiStr = JSON.stringify(req.body.prodotti);
+        console.log("Ricevuto ordine:", req.body);
+        const { ristorante_id, tavolo, prodotti, totale } = req.body;
         
+        if (!ristorante_id || !prodotti) {
+            return res.status(400).json({ error: "Dati mancanti" });
+        }
+
+        const prodottiStr = JSON.stringify(prodotti);
+        
+        // NOTA: Se la tabella ha colonne vecchie, initDb() dovrebbe aver aggiunto quelle nuove.
+        // Usiamo "prodotti" e "totale".
         await pool.query(
             'INSERT INTO ordini (ristorante_id, tavolo, prodotti, totale) VALUES ($1, $2, $3, $4)', 
-            [req.body.ristorante_id, req.body.tavolo, prodottiStr, req.body.totale]
+            [ristorante_id, tavolo, prodottiStr, totale]
         ); 
         
+        console.log("Ordine salvato!");
         res.json({ success: true }); 
     } catch (e) { 
-        console.error(e);
-        res.status(500).json({error:"Err invio ordine"}); 
+        console.error("Errore salvataggio ordine:", e);
+        res.status(500).json({error: "Errore interno server"}); 
     } 
 });
 
-// 17. POLLING ORDINI
+// 17. POLLING ORDINI (Con fallback colonne vecchie se necessario)
 app.get('/api/polling/:ristorante_id', async (req, res) => { 
     try { 
         const r = await pool.query("SELECT * FROM ordini WHERE ristorante_id = $1 AND stato = 'in attesa' ORDER BY id ASC", [req.params.ristorante_id]); 
-        // Parsiamo la stringa prodotti in JSON per il frontend
-        const ordini = r.rows.map(o => ({...o, prodotti: JSON.parse(o.prodotti || "[]")}));
+        
+        const ordini = r.rows.map(o => ({
+            ...o, 
+            // Supporto retroattivo: se 'prodotti' è null, prova a leggere 'dettagli' (vecchia colonna) se esiste, altrimenti array vuoto
+            prodotti: JSON.parse(o.prodotti || o.dettagli || "[]")
+        }));
+        
         res.json({ nuovi_ordini: ordini }); 
-    } catch (e) { res.status(500).send("Err"); } 
+    } catch (e) { 
+        console.error(e);
+        res.status(500).send("Err"); 
+    } 
 });
 
 // 18. COMPLETA ORDINE
@@ -394,7 +414,7 @@ app.put('/api/categorie/:id', async (req, res) => {
 });
 
 // ======================================================
-//              NUOVE ROTTE SUPER ADMIN (POSTGRES)
+//              ROTTE SUPER ADMIN
 // ======================================================
 
 // A. LISTA RISTORANTI
@@ -422,23 +442,20 @@ app.post('/api/super/ristoranti', async (req, res) => {
     }
 });
 
-// C. AGGIORNA RISTORANTE (Toggle + Dati)
+// C. AGGIORNA RISTORANTE
 app.put('/api/super/ristoranti/:id', async (req, res) => {
     const { id } = req.params;
     const body = req.body;
 
     try {
-        // Caso 1: Solo Toggle
         if (body.ordini_abilitati !== undefined && Object.keys(body).length === 1) {
             await pool.query('UPDATE ristoranti SET ordini_abilitati = $1 WHERE id = $2', [body.ordini_abilitati, id]);
             return res.json({ success: true });
         }
 
-        // Caso 2: Aggiornamento Completo
         let sql = "UPDATE ristoranti SET nome=$1, slug=$2, email=$3, telefono=$4";
         let params = [body.nome, body.slug, body.email, body.telefono];
         
-        // Se c'è password
         if (body.password && body.password.trim() !== "") {
             sql += ", password=$5 WHERE id=$6";
             params.push(body.password, id);
@@ -470,4 +487,4 @@ app.delete('/api/super/ristoranti/:id', async (req, res) => {
     }
 });
 
-app.listen(port, () => console.log(`SERVER UPDATE V13 (FIX ORDINI) - Porta ${port}`));
+app.listen(port, () => console.log(`SERVER UPDATE V14 (FIX ORDINI) - Porta ${port}`));
