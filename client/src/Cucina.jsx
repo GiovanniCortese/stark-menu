@@ -1,9 +1,11 @@
-// client/src/Cucina.jsx - VERSIONE V17 (SOLO CIBO - NO BAR) 👨‍🍳
+// client/src/Cucina.jsx - VERSIONE V18 (HIDE ONLY - GESTITO DALLA CASSA) 👨‍🍳
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
 function Cucina() {
   const [ordini, setOrdini] = useState([]);
+  // Stato per memorizzare gli ordini "fatti" ma non ancora pagati in cassa
+  const [ticketNascosti, setTicketNascosti] = useState([]);
   const [infoRistorante, setInfoRistorante] = useState(null); 
   const [isAuthorized, setIsAuthorized] = useState(false); 
   const [passwordInput, setPasswordInput] = useState("");
@@ -20,6 +22,10 @@ function Cucina() {
       
     const sessionKey = `cucina_session_${slug}`;
     if (localStorage.getItem(sessionKey) === "true") setIsAuthorized(true);
+
+    // Recupera lo storico locale dei ticket completati dalla cucina
+    const hidden = JSON.parse(localStorage.getItem(`cucina_hidden_${slug}`) || "[]");
+    setTicketNascosti(hidden);
   }, [slug]);
 
   const handleLogin = (e) => {
@@ -46,15 +52,18 @@ function Cucina() {
     fetch(`${API_URL}/api/polling/${infoRistorante.id}`)
       .then(res => res.json())
       .then(data => {
-          // FILTRO ORDINI: Mostriamo l'ordine SOLO se contiene cibo (non solo bar)
+          // 1. FILTRO CIBO: Prendi solo ordini che hanno cibo
           const ordiniCucina = (data.nuovi_ordini || []).filter(ordine => {
               let prodotti = [];
               try { prodotti = typeof ordine.prodotti === 'string' ? JSON.parse(ordine.prodotti) : ordine.prodotti; } catch(e){}
-              
-              // Se l'ordine ha solo cose da bere, non lo mostriamo nemmeno in cucina
               return prodotti.some(p => p.is_bar !== true);
           });
-          setOrdini(ordiniCucina);
+
+          // 2. FILTRO LOCALE: Nascondi quelli che lo chef ha già cliccato
+          // (L'ordine esiste ancora nel DB finché la cassa non paga, ma lo chef non lo vede più)
+          const visibili = ordiniCucina.filter(o => !ticketNascosti.includes(o.id));
+          
+          setOrdini(visibili);
       })
       .catch(err => console.error("Errore polling:", err));
   };
@@ -62,29 +71,30 @@ function Cucina() {
   useEffect(() => {
     if (infoRistorante && isAuthorized) {
       aggiornaOrdini(); 
+      // Polling ogni 3 secondi per vedere nuovi ordini
       const intervallo = setInterval(aggiornaOrdini, 3000); 
       return () => clearInterval(intervallo);
     }
-  }, [infoRistorante, isAuthorized]);
+  }, [infoRistorante, isAuthorized, ticketNascosti]);
 
-  const segnaComePronto = async (ordineId) => {
-    if(!confirm("Confermi che TUTTO l'ordine di CUCINA è completo?")) return;
+  // NUOVA FUNZIONE: Nasconde solo localmente, non chiama il server
+  const nascondiTicket = (ordineId) => {
+    if(!confirm("Hai finito di preparare questo ordine? Sparirà dalla schermata.")) return;
+
+    const nuoviNascosti = [...ticketNascosti, ordineId];
+    setTicketNascosti(nuoviNascosti);
+    // Salviamo nel browser così al refresh non ricompaiono
+    localStorage.setItem(`cucina_hidden_${slug}`, JSON.stringify(nuoviNascosti));
     
-    try {
-      const response = await fetch(`${API_URL}/api/ordine/completato`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: ordineId })
-      });
-      if (response.ok) aggiornaOrdini(); 
-    } catch (error) { alert("Errore di connessione"); }
+    // Aggiorniamo la vista subito
+    setOrdini(prev => prev.filter(o => o.id !== ordineId));
   };
 
   const toggleCheck = (uniqueKey) => {
       setCheckedItems(prev => ({ ...prev, [uniqueKey]: !prev[uniqueKey] }));
   };
 
-  // --- FUNZIONE CORE: FILTRA E MOSTRA SOLO CIBO ---
+  // --- RENDERING TICKET (Identico a prima: Filtra cibo e raggruppa) ---
   const renderTicketBody = (ordine) => {
       let listaProdotti = [];
 
@@ -99,15 +109,12 @@ function Cucina() {
 
       if(!Array.isArray(listaProdotti)) return <p>Errore dati</p>;
 
-      // -------------------------------------------------------------
-      // FILTRO CUCINA: Escludiamo tutto ciò che è Bar (is_bar === true)
-      // -------------------------------------------------------------
+      // FILTRO CUCINA: Escludiamo Bar
       const prodottiCucina = listaProdotti.filter(p => p.is_bar !== true);
 
-      // Se dopo il filtro non c'è nulla, non mostrare niente (caso raro gestito dal filtro ordini sopra)
       if (prodottiCucina.length === 0) return null;
 
-      // Raggruppamento per Categoria
+      // Raggruppamento
       const gruppi = prodottiCucina.reduce((acc, item) => {
           const nome = typeof item === 'string' ? item : item.nome;
           const cat = (typeof item === 'object' && item.categoria) ? item.categoria : 'Altro';
@@ -118,7 +125,6 @@ function Cucina() {
           return acc;
       }, {});
 
-      // Ordinamento delle Categorie
       const categorieOrdinate = Object.keys(gruppi).sort((a, b) => gruppi[a].posizione - gruppi[b].posizione);
 
       return (
@@ -180,11 +186,18 @@ function Cucina() {
             
             <div className="ticket-body">
               {renderTicketBody(ordine)}
-              {/* Il totale lo mostriamo, anche se parziale */}
+              {/* Il totale è utile anche in cucina per controllo */}
               {ordine.totale && <div style={{marginTop:'15px', borderTop:'2px dashed #ccc', paddingTop:'10px', textAlign:'right', fontSize:'1.2rem', fontWeight:'bold'}}>Tot: {ordine.totale}€</div>}
             </div>
             
-            <button className="btn-completato" onClick={() => segnaComePronto(ordine.id)}>✅ ORDINE COMPLETATO</button>
+            {/* TASTO MODIFICATO: NASCONDE SOLO LOCALMENTE */}
+            <button 
+                className="btn-completato" 
+                onClick={() => nascondiTicket(ordine.id)}
+                style={{background:'#27ae60'}} // Verde
+            >
+                ✅ PRONTO (NASCONDI)
+            </button>
           </div>
         ))}
       </div>

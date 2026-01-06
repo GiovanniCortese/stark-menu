@@ -3,10 +3,12 @@ import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useSearchParams, useParams } from 'react-router-dom';
 import Cucina from './Cucina';
 import Bar from './Bar'; // [NUOVO] Importiamo la pagina Bar
+import Cassa from './Cassa'; // Import
 import Login from './Login';
 import Admin from './Admin';
 import SuperAdmin from './SuperAdmin'; 
 import './App.css';
+
 
 function Menu() {
   const [menu, setMenu] = useState([]);
@@ -402,6 +404,7 @@ function App() {
         <Route path="/cucina/:slug" element={<Cucina />} />
         {/* [NUOVO] Rotta per il Bar */}
         <Route path="/bar/:slug" element={<Bar />} />
+        <Route path="/cassa/:slug" element={<Cassa />} />
         <Route path="/:slug" element={<Menu />} />
         <Route path="/" element={<Menu />} />
       </Routes>
