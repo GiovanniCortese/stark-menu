@@ -70,7 +70,7 @@ function Bar() {
       } 
   }, [isAuthorized, infoRistorante]);
 
-  // Toggle stato bibita (con salvataggio orario)
+  // Toggle stato bibita + LOG STORICO
   const segnaBibitaServita = async (ordineId, prodottiAttuali, indexReale) => {
       const nuoviProdotti = [...prodottiAttuali];
       const item = nuoviProdotti[indexReale];
@@ -79,17 +79,21 @@ function Bar() {
       const nuovoStato = item.stato === 'servito' ? 'in_attesa' : 'servito';
       item.stato = nuovoStato;
 
-      // SE è servito, salviamo l'orario corrente.
+      // Gestione orario
       if (nuovoStato === 'servito') {
           item.ora_servizio = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
       } else {
           delete item.ora_servizio;
       }
 
+      // CREIAMO IL MESSAGGIO DI LOG PER LA CASSA
+      const azione = nuovoStato === 'servito' ? 'HA SERVITO' : 'HA RIMESSO IN ATTESA';
+      const logMsg = `[BAR 🍹] ${azione}: ${item.nome}`;
+
       await fetch(`${API_URL}/api/ordine/${ordineId}/update-items`, {
           method: 'PUT',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ prodotti: nuoviProdotti })
+          body: JSON.stringify({ prodotti: nuoviProdotti, logMsg: logMsg })
       });
       aggiorna();
   };
