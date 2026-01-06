@@ -1,11 +1,11 @@
-// client/src/Cassa.jsx - GESTIONE CENTRALE (CASSA) 💶
+// client/src/Cassa.jsx - VERSIONE V22 (CASSA STABILE) 💶
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
 function Cassa() {
   const { slug } = useParams();
   const [tab, setTab] = useState('attivi'); // 'attivi' o 'storico'
-  const [tavoliAttivi, setTavoliAttivi] = useState({}); // { "Tavolo 1": { ordini: [], totale: 0 } }
+  const [tavoliAttivi, setTavoliAttivi] = useState({}); 
   const [storico, setStorico] = useState([]);
   const [infoRistorante, setInfoRistorante] = useState(null);
   const [isAuthorized, setIsAuthorized] = useState(false);
@@ -34,19 +34,22 @@ function Cassa() {
   // --- LOGICA RAGGRUPPAMENTO TAVOLI ---
   const aggiornaTavoliAttivi = () => {
     if (!infoRistorante?.id) return;
+    
     fetch(`${API_URL}/api/polling/${infoRistorante.id}`)
       .then(res => res.json())
       .then(data => {
         const ordini = data.nuovi_ordini || [];
         const raggruppati = {};
 
+        // Raggruppa gli ordini per numero di tavolo
         ordini.forEach(ordine => {
           const tavolo = ordine.tavolo;
           if (!raggruppati[tavolo]) {
             raggruppati[tavolo] = { ordini: [], totale: 0, ultimo_orario: ordine.data_ora };
           }
           raggruppati[tavolo].ordini.push(ordine);
-          raggruppati[tavolo].totale += (ordine.totale || 0);
+          // Somma sicura (converte in numero se serve)
+          raggruppati[tavolo].totale += Number(ordine.totale || 0);
         });
         setTavoliAttivi(raggruppati);
       })
@@ -60,6 +63,7 @@ function Cassa() {
       .then(data => setStorico(data));
   };
 
+  // Polling continuo ogni 3 secondi
   useEffect(() => {
     if (isAuthorized && infoRistorante) {
       if (tab === 'attivi') {
@@ -75,12 +79,16 @@ function Cassa() {
   const chiudiTavolo = async (tavoloNum) => {
     if (!confirm(`Confermi il pagamento del Tavolo ${tavoloNum}?`)) return;
     
-    await fetch(`${API_URL}/api/cassa/paga-tavolo`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ristorante_id: infoRistorante.id, tavolo: tavoloNum })
-    });
-    aggiornaTavoliAttivi(); // Refresh immediato
+    try {
+        await fetch(`${API_URL}/api/cassa/paga-tavolo`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ristorante_id: infoRistorante.id, tavolo: tavoloNum })
+        });
+        aggiornaTavoliAttivi(); // Refresh immediato interfaccia
+    } catch(e) {
+        alert("Errore di connessione durante il pagamento");
+    }
   };
 
   if (!isAuthorized) return (
@@ -117,30 +125,42 @@ function Cassa() {
             {Object.keys(tavoliAttivi).map(tavolo => {
                 const dati = tavoliAttivi[tavolo];
                 return (
-                    <div key={tavolo} style={{background:'white', borderRadius:'10px', boxShadow:'0 2px 10px rgba(0,0,0,0.1)', overflow:'hidden'}}>
+                    <div key={tavolo} style={{background:'white', borderRadius:'10px', boxShadow:'0 2px 10px rgba(0,0,0,0.1)', overflow:'hidden', display:'flex', flexDirection:'column'}}>
                         <div style={{background:'#27ae60', color:'white', padding:'15px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                             <h2 style={{margin:0, fontSize:'22px'}}>Tavolo {tavolo}</h2>
                             <span style={{fontSize:'22px', fontWeight:'bold'}}>{dati.totale.toFixed(2)} €</span>
                         </div>
-                        <div style={{padding:'15px', maxHeight:'300px', overflowY:'auto'}}>
+                        
+                        <div style={{padding:'15px', flex:1, maxHeight:'300px', overflowY:'auto'}}>
                             {dati.ordini.map((ord, idx) => {
-                                let prodotti = typeof ord.prodotti === 'string' ? JSON.parse(ord.prodotti) : ord.prodotti;
+                                // Parsing Sicuro
+                                let prodotti = [];
+                                try { 
+                                    prodotti = typeof ord.prodotti === 'string' ? JSON.parse(ord.prodotti) : ord.prodotti; 
+                                } catch(e) { prodotti = []; }
                                 if (!Array.isArray(prodotti)) prodotti = [];
+
                                 return (
                                     <div key={ord.id} style={{marginBottom:'10px', paddingBottom:'10px', borderBottom:'1px dashed #eee'}}>
-                                        <div style={{fontSize:'12px', color:'#999'}}>Ordine #{ord.id} - {new Date(ord.data_ora).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+                                        <div style={{fontSize:'12px', color:'#999'}}>
+                                            Ordine #{ord.id} - {new Date(ord.data_ora).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+                                        </div>
                                         <ul style={{paddingLeft:'20px', margin:'5px 0'}}>
                                             {prodotti.map((p, i) => (
-                                                <li key={i}>{p.nome} <span style={{float:'right'}}>{p.prezzo}€</span></li>
+                                                <li key={i}>
+                                                    {p.nome} 
+                                                    <span style={{float:'right', fontWeight:'bold'}}>{p.prezzo}€</span>
+                                                </li>
                                             ))}
                                         </ul>
                                     </div>
                                 );
                             })}
                         </div>
+                        
                         <button 
                             onClick={() => chiudiTavolo(tavolo)}
-                            style={{width:'100%', padding:'15px', background:'#2c3e50', color:'white', border:'none', fontSize:'16px', cursor:'pointer', fontWeight:'bold'}}
+                            style={{width:'100%', padding:'20px', background:'#2c3e50', color:'white', border:'none', fontSize:'16px', cursor:'pointer', fontWeight:'bold', marginTop:'auto'}}
                         >
                             💰 PAGA E CHIUDI TAVOLO
                         </button>
@@ -164,9 +184,11 @@ function Cassa() {
                   </thead>
                   <tbody>
                       {storico.map(ord => {
+                          // Parsing sicuro anche per lo storico
                           let prods = [];
                           try { prods = typeof ord.prodotti === 'string' ? JSON.parse(ord.prodotti) : ord.prodotti; } catch(e){}
                           if(!Array.isArray(prods)) prods = [];
+
                           return (
                               <tr key={ord.id} style={{borderBottom:'1px solid #eee'}}>
                                   <td style={{padding:'10px'}}>{new Date(ord.data_ora).toLocaleString()}</td>
