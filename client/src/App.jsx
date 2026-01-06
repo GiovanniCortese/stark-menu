@@ -1,4 +1,4 @@
-// client/src/App.jsx - VERSIONE V7 (FULL WIDTH ESTESO + GRAFICA) ↔️
+// client/src/App.jsx - VERSIONE V12 (RIEPILOGO ORDINE + CHECKOUT) 🛒
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useSearchParams, useParams } from 'react-router-dom';
 import Cucina from './Cucina';
@@ -24,6 +24,9 @@ function Menu() {
   const [activeSubCategory, setActiveSubCategory] = useState(null); 
   const [selectedPiatto, setSelectedPiatto] = useState(null);
 
+  // NUOVO STATO: VISIBILITÀ CHECKOUT
+  const [showCheckout, setShowCheckout] = useState(false);
+
   const { slug } = useParams();
   const currentSlug = slug || 'pizzeria-stark';
   const [searchParams] = useSearchParams();
@@ -48,8 +51,19 @@ function Menu() {
 
   const aggiungiAlCarrello = (prodotto) => {
     if (!canOrder) return alert("Il servizio ordini è chiuso.");
-    setCarrello([...carrello, prodotto]); 
+    
+    // Aggiungiamo un ID temporaneo univoco per gestire doppioni nel carrello
+    const item = { ...prodotto, tempId: Date.now() + Math.random() };
+    setCarrello([...carrello, item]); 
     setSelectedPiatto(null); 
+  };
+
+  // NUOVA FUNZIONE: RIMUOVI ELEMENTO DAL RIEPILOGO
+  const rimuoviDalCarrello = (tempId) => {
+      const nuovoCarrello = carrello.filter(item => item.tempId !== tempId);
+      setCarrello(nuovoCarrello);
+      // Se svuoto il carrello, chiudo il checkout automaticamente
+      if(nuovoCarrello.length === 0) setShowCheckout(false);
   };
 
   const inviaOrdine = async () => { 
@@ -58,7 +72,11 @@ function Menu() {
      try {
         const res = await fetch(`${API_URL}/api/ordine`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ristorante_id: ristoranteId, tavolo: numeroTavolo, prodotti: carrello.map(p => p.nome), totale})});
         const d = await res.json();
-        if(d.success) { alert("✅ Ordine inviato!"); setCarrello([]); }
+        if(d.success) { 
+            alert("✅ Ordine inviato in cucina!"); 
+            setCarrello([]); 
+            setShowCheckout(false); // Chiudi riepilogo
+        }
      } catch (e) { alert("Errore connessione"); }
   };
 
@@ -84,7 +102,7 @@ function Menu() {
       }
   };
 
-  // --- STILI DINAMICI (Useremo questi per colorare tutto) ---
+  // --- STILI DINAMICI ---
   const appStyle = {
       backgroundColor: style?.bg || '#222',
       color: style?.text || '#ccc',
@@ -93,12 +111,10 @@ function Menu() {
       backgroundSize: 'cover',
       backgroundAttachment: 'fixed',
       minHeight: '100vh',
-      
-      // FULL WIDTH FIX:
       width: '100%',
       maxWidth: '100%',
       margin: 0,
-      padding: '10px', // Solo un piccolo margine ai lati per non toccare il bordo schermo
+      padding: '10px',
       boxSizing: 'border-box'
   };
 
@@ -106,18 +122,16 @@ function Menu() {
   const priceColor = style?.price || '#27ae60';
 
   return (
-    // RIMOSSO className="container" per evitare che il CSS lo stringa
     <div style={appStyle}> 
       
       <header style={{textAlign:'center', marginBottom:'20px'}}>
-        {/* LOGO DINAMICO: Reso molto più grande e largo */}
         {style?.logo ? (
             <img 
                 src={style.logo} 
                 alt={ristorante} 
                 style={{
                     width: '100%',
-                    maxWidth: '90%', // Occupa quasi tutta la larghezza
+                    maxWidth: '90%', 
                     maxHeight: '150px', 
                     objectFit: 'contain'
                 }} 
@@ -129,23 +143,22 @@ function Menu() {
         {canOrder ? <p style={{color: style?.text || '#ccc'}}>Tavolo: <strong>{numeroTavolo}</strong></p> : <div className="badge-digital">📖 Menu Digitale</div>}
       </header>
 
-      {canOrder && carrello.length > 0 && (
+      {/* --- BARRA CARRELLO (Ora apre il riepilogo) --- */}
+      {canOrder && carrello.length > 0 && !showCheckout && (
         <div className="carrello-bar">
           <div className="totale"><span>{carrello.length} ordini</span><strong>{carrello.reduce((a,b)=>a+Number(b.prezzo),0).toFixed(2)} €</strong></div>
-          <button onClick={inviaOrdine} className="btn-invia">INVIA 🚀</button>
+          <button onClick={() => setShowCheckout(true)} className="btn-invia" style={{background:'#f1c40f', color:'black'}}>MODIFICA / CONFERMA 📝</button>
         </div>
       )}
 
-      {/* FIX SPAZI: Ridotto marginTop a 0 */}
+      {/* --- LISTA MENU --- */}
       <div style={{paddingBottom: '80px', marginTop: '0', width: '100%'}}> 
         {categorieOrdinate.map(catNome => (
-            // FIX SPAZI: Margine minimo (2px) tra le categorie chiuse
             <div key={catNome} className="accordion-item" style={{marginBottom: '2px', borderRadius: '5px', overflow: 'hidden', width: '100%'}}>
                 
                 <div 
                     onClick={() => toggleAccordion(catNome)}
                     style={{
-                        // Sfondo leggermente diverso se attivo
                         background: activeCategory === catNome ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.1)',
                         color: titleColor,
                         padding: '15px',
@@ -183,7 +196,6 @@ function Menu() {
                                                 background: 'rgba(255,255,255,0.05)', 
                                                 borderLeft: `4px solid ${priceColor}`, 
                                                 padding: '10px', 
-                                                // FIX SPAZI: Margine 1px per separare le sottocategorie
                                                 margin: '1px 0', 
                                                 width: '100%',
                                                 boxSizing: 'border-box',
@@ -207,39 +219,18 @@ function Menu() {
                                                     className="card" 
                                                     onClick={() => prodotto.immagine_url ? setSelectedPiatto(prodotto) : null}
                                                     style={{
-                                                        display: 'flex', 
-                                                        flexDirection: 'row',
-                                                        alignItems: 'center',
-                                                        gap: '15px',
-                                                        padding: '10px',
-                                                        width: '100%',
-                                                        boxSizing: 'border-box',
-                                                        cursor: prodotto.immagine_url ? 'pointer' : 'default',
-                                                        // FIX SPAZI: Sfondo bianco pulito per i piatti, margine minimo
-                                                        backgroundColor: 'white',
-                                                        marginBottom: '1px',
-                                                        borderRadius: '0' // Squadrati per sembrare una lista unita
+                                                        display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px',
+                                                        width: '100%', boxSizing: 'border-box', cursor: prodotto.immagine_url ? 'pointer' : 'default',
+                                                        backgroundColor: 'white', marginBottom: '1px', borderRadius: '0'
                                                     }}
                                                 >
                                                     {prodotto.immagine_url && (
-                                                        <img 
-                                                            src={prodotto.immagine_url} 
-                                                            style={{
-                                                                width:'70px', height:'70px', 
-                                                                objectFit:'cover', borderRadius:'5px', flexShrink: 0 
-                                                            }} 
-                                                        />
+                                                        <img src={prodotto.immagine_url} style={{width:'70px', height:'70px', objectFit:'cover', borderRadius:'5px', flexShrink: 0}} />
                                                     )}
 
                                                     <div className="info" style={{flex: 1}}>
                                                         <h3 style={{margin:'0 0 4px 0', fontSize:'16px', color:'#333'}}>{prodotto.nome}</h3>
-                                                        
-                                                        {prodotto.descrizione && (
-                                                            <p style={{fontSize:'12px', color:'#666', margin:'0 0 4px 0', lineHeight:'1.2'}}>
-                                                                {prodotto.descrizione}
-                                                            </p>
-                                                        )}
-
+                                                        {prodotto.descrizione && (<p style={{fontSize:'12px', color:'#666', margin:'0 0 4px 0', lineHeight:'1.2'}}>{prodotto.descrizione}</p>)}
                                                         <div style={{fontSize:'14px', fontWeight:'bold', color: priceColor}}>{prodotto.prezzo} €</div>
                                                     </div>
 
@@ -247,10 +238,8 @@ function Menu() {
                                                         <button 
                                                             onClick={(e) => { e.stopPropagation(); aggiungiAlCarrello(prodotto); }} 
                                                             style={{
-                                                                background:'#f0f0f0', color:'#333', 
-                                                                borderRadius:'50%', width:'32px', height:'32px', 
-                                                                border:'none', fontSize:'20px', display:'flex', alignItems:'center', justifyContent:'center',
-                                                                cursor: 'pointer'
+                                                                background:'#f0f0f0', color:'#333', borderRadius:'50%', width:'32px', height:'32px', 
+                                                                border:'none', fontSize:'20px', display:'flex', alignItems:'center', justifyContent:'center', cursor: 'pointer'
                                                             }}
                                                         >
                                                             +
@@ -269,14 +258,62 @@ function Menu() {
         ))}
       </div>
 
-      {/* --- MODAL INGRANDIMENTO FOTO & DETTAGLI --- */}
+      {/* --- NUOVA PAGINA RIEPILOGO (CHECKOUT) --- */}
+      {showCheckout && (
+          <div style={{
+              position:'fixed', top:0, left:0, right:0, bottom:0, 
+              background: appStyle.backgroundColor, zIndex:2000, 
+              display:'flex', flexDirection:'column', padding:'20px', overflowY:'auto'
+          }}>
+              
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px', borderBottom:`1px solid ${style?.text||'#ccc'}`, paddingBottom:'10px'}}>
+                  <h2 style={{color: titleColor, margin:0}}>Riepilogo Ordine</h2>
+                  <button onClick={() => setShowCheckout(false)} style={{background:'transparent', border:'none', color: titleColor, fontSize:'24px', cursor:'pointer'}}>✕</button>
+              </div>
+
+              <div style={{flex:1, overflowY:'auto'}}>
+                  {carrello.map((item) => (
+                      <div key={item.tempId} style={{display:'flex', justifyContent:'space-between', alignItems:'center', background:'rgba(255,255,255,0.1)', padding:'10px', marginBottom:'10px', borderRadius:'8px'}}>
+                          <div>
+                              <div style={{color: titleColor, fontWeight:'bold', fontSize:'16px'}}>{item.nome}</div>
+                              <div style={{color: priceColor}}>{item.prezzo} €</div>
+                          </div>
+                          <button 
+                            onClick={() => rimuoviDalCarrello(item.tempId)}
+                            style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 12px', borderRadius:'5px', cursor:'pointer'}}
+                          >
+                            Elimina 🗑️
+                          </button>
+                      </div>
+                  ))}
+                  {carrello.length === 0 && <p style={{color: style?.text, textAlign:'center'}}>Il carrello è vuoto.</p>}
+              </div>
+
+              <div style={{marginTop:'20px', borderTop:`1px solid ${style?.text||'#ccc'}`, paddingTop:'20px'}}>
+                  <div style={{display:'flex', justifyContent:'space-between', fontSize:'20px', color: titleColor, marginBottom:'20px'}}>
+                      <span>TOTALE:</span>
+                      <strong style={{color: priceColor}}>{carrello.reduce((a,b)=>a+Number(b.prezzo),0).toFixed(2)} €</strong>
+                  </div>
+                  
+                  {carrello.length > 0 && (
+                      <button onClick={inviaOrdine} className="btn-invia" style={{width:'100%', padding:'15px', fontSize:'18px', background:'#27ae60'}}>
+                          CONFERMA E INVIA 🚀
+                      </button>
+                  )}
+                  <button onClick={() => setShowCheckout(false)} style={{width:'100%', padding:'15px', marginTop:'10px', background:'transparent', border:`1px solid ${style?.text||'#ccc'}`, color: style?.text||'#ccc', borderRadius:'30px', cursor:'pointer'}}>
+                      Torna al Menu
+                  </button>
+              </div>
+          </div>
+      )}
+
+      {/* --- MODAL DETTAGLI PIATTO --- */}
       {selectedPiatto && (
           <div 
             style={{
                 position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                 backgroundColor: 'rgba(0,0,0,0.9)', zIndex: 1000,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                padding: '20px'
+                display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
             }}
             onClick={() => setSelectedPiatto(null)} 
           >
@@ -301,10 +338,7 @@ function Menu() {
                   </button>
 
                   {selectedPiatto.immagine_url && (
-                      <img 
-                        src={selectedPiatto.immagine_url} 
-                        style={{width:'100%', height:'300px', objectFit:'cover'}} 
-                      />
+                      <img src={selectedPiatto.immagine_url} style={{width:'100%', height:'300px', objectFit:'cover'}} />
                   )}
 
                   <div style={{padding: '20px'}}>
