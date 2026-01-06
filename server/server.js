@@ -58,7 +58,22 @@ app.get('/api/menu/:slug', async (req, res) => {
         if (rist.rows.length === 0) return res.status(404).json({ error: "Ristorante non trovato" });
         const data = rist.rows[0];
         const menu = await pool.query(`SELECT p.*, c.nome as categoria_nome, c.is_bar as categoria_is_bar, c.posizione as categoria_posizione FROM prodotti p LEFT JOIN categorie c ON p.categoria = c.nome AND p.ristorante_id = c.ristorante_id WHERE p.ristorante_id = $1 ORDER BY COALESCE(c.posizione, 999) ASC, p.posizione ASC`, [data.id]);
-        res.json({ id: data.id, ristorante: data.nome, style: { logo: data.logo_url, cover: data.cover_url, bg: data.colore_sfondo }, ordini_abilitati: data.ordini_abilitati, servizio_attivo: data.servizio_attivo, menu: menu.rows });
+        res.json({ 
+            id: data.id, 
+            ristorante: data.nome, 
+            style: { 
+                logo: data.logo_url, 
+                cover: data.cover_url, 
+                bg: data.colore_sfondo,
+                title: data.colore_titolo, // <--- MANCAVA QUESTO
+                text: data.colore_testo,   // <--- MANCAVA QUESTO
+                price: data.colore_prezzo, // <--- MANCAVA QUESTO
+                font: data.font_style      // <--- MANCAVA QUESTO
+            }, 
+            ordini_abilitati: data.ordini_abilitati, 
+            servizio_attivo: data.servizio_attivo, 
+            menu: menu.rows 
+        });
     } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 

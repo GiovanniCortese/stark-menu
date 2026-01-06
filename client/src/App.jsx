@@ -14,7 +14,7 @@ function Menu() {
   const [menu, setMenu] = useState([]);
   const [ristorante, setRistorante] = useState("");
   const [ristoranteId, setRistoranteId] = useState(null);
-  const [style, setStyle] = useState(null);
+  const [style, setStyle] = useState({});
   
   // --- STATI CARRELLO E ORDINE ---
   const [canOrder, setCanOrder] = useState(true); 
@@ -154,7 +154,7 @@ function Menu() {
   const appStyle = {
       backgroundColor: style?.bg || '#222',
       color: style?.text || '#ccc',
-      fontFamily: style?.font || 'sans-serif',
+      fontFamily: style?.font || 'sans-serif', // Applica il font scelto
       backgroundImage: style?.cover ? `url(${style.cover})` : 'none',
       backgroundSize: 'cover',
       backgroundAttachment: 'fixed',
@@ -166,8 +166,8 @@ function Menu() {
       boxSizing: 'border-box'
   };
 
-  const titleColor = style?.title || '#fff';
-  const priceColor = style?.price || '#27ae60';
+  const titleColor = style?.title || '#fff';   // Colore Titoli
+  const priceColor = style?.price || '#27ae60'; // Colore Prezzi
 
   return (
     <div style={appStyle}> 
@@ -286,7 +286,7 @@ function Menu() {
                                                     )}
 
                                                     <div className="info" style={{flex: 1}}>
-                                                        <h3 style={{margin:'0 0 4px 0', fontSize:'16px', color:'#333'}}>{prodotto.nome}</h3>
+                                                        <h3 style={{margin:'0 0 4px 0', fontSize:'16px', color: 'titleColor'}}>{prodotto.nome}</h3>
                                                         {prodotto.descrizione && (<p style={{fontSize:'12px', color:'#666', margin:'0 0 4px 0', lineHeight:'1.2'}}>{prodotto.descrizione}</p>)}
                                                         <div style={{fontSize:'14px', fontWeight:'bold', color: priceColor}}>{prodotto.prezzo} €</div>
                                                     </div>
