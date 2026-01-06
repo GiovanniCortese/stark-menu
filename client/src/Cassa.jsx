@@ -1,4 +1,4 @@
-// client/src/Cassa.jsx - VERSIONE V22 (CASSA STABILE) 💶
+// client/src/Cassa.jsx - VERSIONE V23 (FIX CRASH AVVIO) 💶
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -7,6 +7,8 @@ function Cassa() {
   const [tab, setTab] = useState('attivi'); // 'attivi' o 'storico'
   const [tavoliAttivi, setTavoliAttivi] = useState({}); 
   const [storico, setStorico] = useState([]);
+  
+  // Inizializziamo a null
   const [infoRistorante, setInfoRistorante] = useState(null);
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
@@ -14,11 +16,16 @@ function Cassa() {
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
   useEffect(() => {
+    // Caricamento Dati Ristorante
     fetch(`${API_URL}/api/menu/${slug}`)
       .then(res => res.json())
-      .then(data => setInfoRistorante(data))
-      .catch(err => console.error(err));
+      .then(data => {
+          if(data.error) console.error("Ristorante non trovato");
+          setInfoRistorante(data);
+      })
+      .catch(err => console.error("Errore fetch menu:", err));
 
+    // Controllo Sessione
     const sessionKey = `cassa_session_${slug}`;
     if (localStorage.getItem(sessionKey) === "true") setIsAuthorized(true);
   }, [slug]);
@@ -63,9 +70,9 @@ function Cassa() {
       .then(data => setStorico(data));
   };
 
-  // Polling continuo ogni 3 secondi
+  // Polling continuo ogni 3 secondi (SOLO SE DATI CARICATI)
   useEffect(() => {
-    if (isAuthorized && infoRistorante) {
+    if (isAuthorized && infoRistorante && infoRistorante.id) {
       if (tab === 'attivi') {
         aggiornaTavoliAttivi();
         const interval = setInterval(aggiornaTavoliAttivi, 3000);
@@ -91,11 +98,22 @@ function Cassa() {
     }
   };
 
+  // --- 1. SCHERMATA CARICAMENTO (FIX CRASH) ---
+  // Se infoRistorante è null, aspettiamo e non renderizziamo il resto
+  if (!infoRistorante) {
+      return (
+          <div style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', background:'#2c3e50', color:'white'}}>
+              <h1>⏳ Caricamento Sistema Cassa...</h1>
+          </div>
+      );
+  }
+
+  // --- 2. SCHERMATA LOGIN ---
   if (!isAuthorized) return (
     <div style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', background:'#2c3e50'}}>
         <div style={{background:'white', padding:'40px', borderRadius:'10px', textAlign:'center', minWidth:'300px'}}>
             <h1>💶 Cassa</h1>
-            <p>{infoRistorante?.ristorante}</p>
+            <p>{infoRistorante.ristorante}</p> {/* Qui ora è sicuro leggerlo */}
             <form onSubmit={handleLogin}>
                 <input type="password" placeholder="Password" value={passwordInput} onChange={e=>setPasswordInput(e.target.value)} style={{width:'100%', padding:'10px', marginBottom:'10px'}}/>
                 <button className="btn-invia" style={{width:'100%'}}>ENTRA</button>
@@ -104,6 +122,7 @@ function Cassa() {
     </div>
   );
 
+  // --- 3. SCHERMATA DASHBOARD (CASSA ATTIVA) ---
   return (
     <div style={{minHeight:'100vh', background:'#ecf0f1', padding:'20px'}}>
       <header style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px'}}>
