@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE V12 (CRM COMPLETO PER POSTGRESQL) 🚀
+// server/server.js - VERSIONE V13 (FIX ORDINI + CRM POSTGRESQL) 🛠️
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -20,11 +20,12 @@ const pool = new Pool({
 });
 
 // --- INIT DB & MIGRAZIONI AUTOMATICHE ---
-// Questa funzione controlla se mancano le colonne per il CRM e le aggiunge
 const initDb = async () => {
     const client = await pool.connect();
     try {
         console.log("Verifica schema database...");
+        
+        // 1. RISTORANTI
         await client.query(`CREATE TABLE IF NOT EXISTS ristoranti (
             id SERIAL PRIMARY KEY,
             nome TEXT NOT NULL,
@@ -39,10 +40,43 @@ const initDb = async () => {
             font_style TEXT DEFAULT 'sans-serif'
         )`);
         
-        // Aggiungi colonne CRM se mancano
+        // Aggiunta colonne CRM se mancano
         await client.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS email TEXT`);
         await client.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS telefono TEXT`);
         await client.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS password TEXT DEFAULT 'tonystark'`);
+
+        // 2. CATEGORIE
+        await client.query(`CREATE TABLE IF NOT EXISTS categorie (
+            id SERIAL PRIMARY KEY,
+            ristorante_id INTEGER REFERENCES ristoranti(id),
+            nome TEXT NOT NULL,
+            descrizione TEXT,
+            posizione INTEGER DEFAULT 0
+        )`);
+
+        // 3. PRODOTTI
+        await client.query(`CREATE TABLE IF NOT EXISTS prodotti (
+            id SERIAL PRIMARY KEY,
+            ristorante_id INTEGER REFERENCES ristoranti(id),
+            categoria TEXT,
+            sottocategoria TEXT,
+            nome TEXT NOT NULL,
+            descrizione TEXT,
+            prezzo REAL,
+            immagine_url TEXT,
+            posizione INTEGER DEFAULT 0
+        )`);
+
+        // 4. ORDINI (IMPORTANTE PER IL TUO PROBLEMA)
+        await client.query(`CREATE TABLE IF NOT EXISTS ordini (
+            id SERIAL PRIMARY KEY,
+            ristorante_id INTEGER REFERENCES ristoranti(id),
+            tavolo TEXT,
+            prodotti TEXT,
+            totale REAL,
+            stato TEXT DEFAULT 'in attesa',
+            data_ora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`);
         
         console.log("✅ Database aggiornato e pronto.");
     } catch (err) {
@@ -280,7 +314,7 @@ app.delete('/api/categorie/:id', async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Err" }); } 
 });
 
-// 14. LOGIN (Non usato da CRM, ma utile per legacy)
+// 14. LOGIN
 app.post('/api/login', async (req, res) => { 
     try { 
         const r = await pool.query('SELECT * FROM ristoranti WHERE email = $1 AND password = $2', [req.body.email, req.body.password]); 
@@ -296,23 +330,31 @@ app.post('/api/upload', upload.single('photo'), async (req, res) => {
     } catch (e) { res.status(500).json({error:"Err"}); } 
 });
 
-// 16. INVIA ORDINE
+// 16. INVIA ORDINE (FIXED) 🚀
 app.post('/api/ordine', async (req, res) => { 
     try { 
-        // Nota: Postgres usa JSONB o Text per array, qui usiamo stringa per semplicità
+        // Convertiamo l'array prodotti in stringa JSON per salvarlo in Postgres
         const prodottiStr = JSON.stringify(req.body.prodotti);
-        await pool.query('INSERT INTO ordini (ristorante_id, tavolo, prodotti, totale) VALUES ($1, $2, $3, $4)', [req.body.ristorante_id, req.body.tavolo, prodottiStr, req.body.totale]); 
+        
+        await pool.query(
+            'INSERT INTO ordini (ristorante_id, tavolo, prodotti, totale) VALUES ($1, $2, $3, $4)', 
+            [req.body.ristorante_id, req.body.tavolo, prodottiStr, req.body.totale]
+        ); 
+        
         res.json({ success: true }); 
-    } catch (e) { res.status(500).json({error:"Err"}); } 
+    } catch (e) { 
+        console.error(e);
+        res.status(500).json({error:"Err invio ordine"}); 
+    } 
 });
 
 // 17. POLLING ORDINI
 app.get('/api/polling/:ristorante_id', async (req, res) => { 
     try { 
-        // Nota: Assicurati che la tabella ordini esista e abbia le colonne corrette
-        // Per ora usiamo una query sicura
         const r = await pool.query("SELECT * FROM ordini WHERE ristorante_id = $1 AND stato = 'in attesa' ORDER BY id ASC", [req.params.ristorante_id]); 
-        res.json({ nuovi_ordini: r.rows }); 
+        // Parsiamo la stringa prodotti in JSON per il frontend
+        const ordini = r.rows.map(o => ({...o, prodotti: JSON.parse(o.prodotti || "[]")}));
+        res.json({ nuovi_ordini: ordini }); 
     } catch (e) { res.status(500).send("Err"); } 
 });
 
@@ -428,4 +470,4 @@ app.delete('/api/super/ristoranti/:id', async (req, res) => {
     }
 });
 
-app.listen(port, () => console.log(`SERVER UPDATE V12 (CRM POSTGRES) - Porta ${port}`));
+app.listen(port, () => console.log(`SERVER UPDATE V13 (FIX ORDINI) - Porta ${port}`));
