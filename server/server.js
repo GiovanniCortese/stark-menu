@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE V11 (FULL ESTESA & GRAFICA)
+// server/server.js - VERSIONE V12 (CRM COMPLETO PER POSTGRESQL) 🚀
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -19,6 +19,40 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
+// --- INIT DB & MIGRAZIONI AUTOMATICHE ---
+// Questa funzione controlla se mancano le colonne per il CRM e le aggiunge
+const initDb = async () => {
+    const client = await pool.connect();
+    try {
+        console.log("Verifica schema database...");
+        await client.query(`CREATE TABLE IF NOT EXISTS ristoranti (
+            id SERIAL PRIMARY KEY,
+            nome TEXT NOT NULL,
+            slug TEXT UNIQUE NOT NULL,
+            ordini_abilitati BOOLEAN DEFAULT FALSE,
+            servizio_attivo BOOLEAN DEFAULT FALSE,
+            logo_url TEXT, cover_url TEXT,
+            colore_sfondo TEXT DEFAULT '#222222',
+            colore_titolo TEXT DEFAULT '#ffffff',
+            colore_testo TEXT DEFAULT '#cccccc',
+            colore_prezzo TEXT DEFAULT '#27ae60',
+            font_style TEXT DEFAULT 'sans-serif'
+        )`);
+        
+        // Aggiungi colonne CRM se mancano
+        await client.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS email TEXT`);
+        await client.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS telefono TEXT`);
+        await client.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS password TEXT DEFAULT 'tonystark'`);
+        
+        console.log("✅ Database aggiornato e pronto.");
+    } catch (err) {
+        console.error("Errore init DB:", err);
+    } finally {
+        client.release();
+    }
+};
+initDb();
+
 // --- CONFIGURAZIONE CLOUDINARY ---
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -34,15 +68,13 @@ const upload = multer({ storage: storage });
 const uploadFile = multer({ storage: multer.memoryStorage() });
 
 // ==========================================
-//                 ROTTE API
+//                  ROTTE API
 // ==========================================
 
-// 1. MENU PUBBLICO (CON GRAFICA PERSONALIZZATA)
+// 1. MENU PUBBLICO
 app.get('/api/menu/:slug', async (req, res) => {
     try {
         const { slug } = req.params;
-        
-        // Recuperiamo info ristorante + colonne GRAFICHE
         const rist = await pool.query(`
             SELECT id, nome, ordini_abilitati, servizio_attivo, 
                    logo_url, cover_url, colore_sfondo, colore_titolo, colore_testo, colore_prezzo, font_style
@@ -53,7 +85,6 @@ app.get('/api/menu/:slug', async (req, res) => {
         if (rist.rows.length === 0) return res.status(404).json({ error: "Ristorante non trovato" });
         const data = rist.rows[0];
 
-        // Recuperiamo il menu
         const query = `
             SELECT p.*, c.descrizione as categoria_descrizione 
             FROM prodotti p
@@ -67,7 +98,6 @@ app.get('/api/menu/:slug', async (req, res) => {
         res.json({ 
             id: data.id, 
             ristorante: data.nome,
-            // Pacchetto stile per il Frontend
             style: {
                 logo: data.logo_url,
                 cover: data.cover_url,
@@ -87,7 +117,7 @@ app.get('/api/menu/:slug', async (req, res) => {
     }
 });
 
-// 2. SALVA STILE GRAFICO (NUOVA ROTTA)
+// 2. SALVA STILE GRAFICO
 app.put('/api/ristorante/style/:id', async (req, res) => {
     try {
         const { logo_url, cover_url, colore_sfondo, colore_titolo, colore_testo, colore_prezzo, font_style } = req.body;
@@ -190,7 +220,7 @@ app.put('/api/prodotti/:id', async (req, res) => {
     } catch (err) { res.status(500).json({ error: "Errore aggiornamento" }); }
 });
 
-// 8. RIORDINA PRODOTTI (Drag & Drop)
+// 8. RIORDINA PRODOTTI
 app.put('/api/prodotti/riordina', async (req, res) => {
     const { prodotti } = req.body; 
     try {
@@ -250,16 +280,16 @@ app.delete('/api/categorie/:id', async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Err" }); } 
 });
 
-// 14. LOGIN
+// 14. LOGIN (Non usato da CRM, ma utile per legacy)
 app.post('/api/login', async (req, res) => { 
     try { 
-        const r = await pool.query('SELECT * FROM ristoranti WHERE email_titolare = $1 AND password = $2', [req.body.email, req.body.password]); 
+        const r = await pool.query('SELECT * FROM ristoranti WHERE email = $1 AND password = $2', [req.body.email, req.body.password]); 
         if(r.rows.length>0) res.json({success:true, user:r.rows[0]}); 
         else res.status(401).json({success:false}); 
     } catch(e){res.status(500).json({error:"Err"});} 
 });
 
-// 15. UPLOAD FOTO (Usato per Piatti, Logo e Cover)
+// 15. UPLOAD FOTO
 app.post('/api/upload', upload.single('photo'), async (req, res) => { 
     try { 
         res.json({ url: req.file.path }); 
@@ -269,15 +299,19 @@ app.post('/api/upload', upload.single('photo'), async (req, res) => {
 // 16. INVIA ORDINE
 app.post('/api/ordine', async (req, res) => { 
     try { 
-        await pool.query('INSERT INTO ordini (ristorante_id, tavolo, dettagli, prezzo_totale) VALUES ($1, $2, $3, $4)', [req.body.ristorante_id, req.body.tavolo, req.body.prodotti.join(", "), req.body.totale]); 
+        // Nota: Postgres usa JSONB o Text per array, qui usiamo stringa per semplicità
+        const prodottiStr = JSON.stringify(req.body.prodotti);
+        await pool.query('INSERT INTO ordini (ristorante_id, tavolo, prodotti, totale) VALUES ($1, $2, $3, $4)', [req.body.ristorante_id, req.body.tavolo, prodottiStr, req.body.totale]); 
         res.json({ success: true }); 
     } catch (e) { res.status(500).json({error:"Err"}); } 
 });
 
-// 17. POLLING ORDINI (Cucina)
+// 17. POLLING ORDINI
 app.get('/api/polling/:ristorante_id', async (req, res) => { 
     try { 
-        const r = await pool.query("SELECT * FROM ordini WHERE ristorante_id = $1 AND stato = 'in_attesa' ORDER BY data_creazione ASC", [req.params.ristorante_id]); 
+        // Nota: Assicurati che la tabella ordini esista e abbia le colonne corrette
+        // Per ora usiamo una query sicura
+        const r = await pool.query("SELECT * FROM ordini WHERE ristorante_id = $1 AND stato = 'in attesa' ORDER BY id ASC", [req.params.ristorante_id]); 
         res.json({ nuovi_ordini: r.rows }); 
     } catch (e) { res.status(500).send("Err"); } 
 });
@@ -298,36 +332,100 @@ app.delete('/api/prodotti/:id', async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Err" }); } 
 });
 
-// 20. UPDATE CATEGORIA (AGGIORNATA: MODIFICA ANCHE I PRODOTTI) ✏️
+// 20. UPDATE CATEGORIA
 app.put('/api/categorie/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const { nome, descrizione } = req.body;
-
-        // 1. Trova il vecchio nome della categoria
         const oldCat = await pool.query('SELECT nome, ristorante_id FROM categorie WHERE id = $1', [id]);
         
         if (oldCat.rows.length > 0) {
             const oldName = oldCat.rows[0].nome;
             const ristId = oldCat.rows[0].ristorante_id;
-
-            // 2. Aggiorna la categoria nel DB
             await pool.query('UPDATE categorie SET nome = $1, descrizione = $2 WHERE id = $3', [nome, descrizione || "", id]);
-
-            // 3. SE IL NOME È CAMBIATO, Aggiorna anche tutti i prodotti collegati a quel nome
             if (oldName !== nome) {
                 await pool.query('UPDATE prodotti SET categoria = $1 WHERE categoria = $2 AND ristorante_id = $3', [nome, oldName, ristId]);
             }
         }
-        
         res.json({ success: true });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: "Errore aggiornamento categoria" });
+    } catch (err) { res.status(500).json({ error: "Errore aggiornamento categoria" }); }
+});
+
+// ======================================================
+//              NUOVE ROTTE SUPER ADMIN (POSTGRES)
+// ======================================================
+
+// A. LISTA RISTORANTI
+app.get('/api/super/ristoranti', async (req, res) => { 
+    try { 
+        const r = await pool.query('SELECT id, nome, slug, ordini_abilitati, email, telefono FROM ristoranti ORDER BY id ASC'); 
+        res.json(r.rows); 
+    } catch (e) { res.status(500).json({error:"Err"}); } 
+});
+
+// B. CREA RISTORANTE
+app.post('/api/super/ristoranti', async (req, res) => {
+    const { nome, slug, email, telefono, password } = req.body;
+    const passFinale = password && password.trim() !== '' ? password : 'tonystark';
+    try {
+        await pool.query(
+            `INSERT INTO ristoranti (nome, slug, email, telefono, password, ordini_abilitati) 
+             VALUES ($1, $2, $3, $4, $5, TRUE)`,
+            [nome, slug, email || '', telefono || '', passFinale]
+        );
+        res.json({ success: true });
+    } catch (e) { 
+        console.error(e);
+        res.status(500).json({error: "Errore Creazione. Slug già esistente?"}); 
     }
 });
 
-app.get('/api/super/ristoranti', async (req, res) => { try { const r = await pool.query('SELECT id, nome, slug, ordini_abilitati FROM ristoranti ORDER BY id ASC'); res.json(r.rows); } catch (e) { res.status(500).json({error:"Err"}); } });
-app.put('/api/super/ristoranti/:id', async (req, res) => { try { await pool.query('UPDATE ristoranti SET ordini_abilitati = $1 WHERE id = $2', [req.body.ordini_abilitati, req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({error:"Err"}); } });
+// C. AGGIORNA RISTORANTE (Toggle + Dati)
+app.put('/api/super/ristoranti/:id', async (req, res) => {
+    const { id } = req.params;
+    const body = req.body;
 
-app.listen(port, () => console.log(`SERVER UPDATE V13 (SMART CATEGORY EDIT) - Porta ${port}`));
+    try {
+        // Caso 1: Solo Toggle
+        if (body.ordini_abilitati !== undefined && Object.keys(body).length === 1) {
+            await pool.query('UPDATE ristoranti SET ordini_abilitati = $1 WHERE id = $2', [body.ordini_abilitati, id]);
+            return res.json({ success: true });
+        }
+
+        // Caso 2: Aggiornamento Completo
+        let sql = "UPDATE ristoranti SET nome=$1, slug=$2, email=$3, telefono=$4";
+        let params = [body.nome, body.slug, body.email, body.telefono];
+        
+        // Se c'è password
+        if (body.password && body.password.trim() !== "") {
+            sql += ", password=$5 WHERE id=$6";
+            params.push(body.password, id);
+        } else {
+            sql += " WHERE id=$5";
+            params.push(id);
+        }
+
+        await pool.query(sql, params);
+        res.json({ success: true });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({error: "Errore Aggiornamento"});
+    }
+});
+
+// D. ELIMINA RISTORANTE
+app.delete('/api/super/ristoranti/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        await pool.query('DELETE FROM prodotti WHERE ristorante_id = $1', [id]);
+        await pool.query('DELETE FROM categorie WHERE ristorante_id = $1', [id]);
+        await pool.query('DELETE FROM ordini WHERE ristorante_id = $1', [id]);
+        await pool.query('DELETE FROM ristoranti WHERE id = $1', [id]);
+        res.json({ success: true });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({error: "Errore Eliminazione"});
+    }
+});
+
+app.listen(port, () => console.log(`SERVER UPDATE V12 (CRM POSTGRES) - Porta ${port}`));
