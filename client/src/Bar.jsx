@@ -70,10 +70,21 @@ function Bar() {
       } 
   }, [isAuthorized, infoRistorante]);
 
-  // Toggle stato bibita
+  // Toggle stato bibita (con salvataggio orario)
   const segnaBibitaServita = async (ordineId, prodottiAttuali, indexReale) => {
       const nuoviProdotti = [...prodottiAttuali];
-      nuoviProdotti[indexReale].stato = nuoviProdotti[indexReale].stato === 'servito' ? 'in_attesa' : 'servito';
+      const item = nuoviProdotti[indexReale];
+
+      // Calcola il nuovo stato
+      const nuovoStato = item.stato === 'servito' ? 'in_attesa' : 'servito';
+      item.stato = nuovoStato;
+
+      // SE è servito, salviamo l'orario corrente.
+      if (nuovoStato === 'servito') {
+          item.ora_servizio = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+      } else {
+          delete item.ora_servizio;
+      }
 
       await fetch(`${API_URL}/api/ordine/${ordineId}/update-items`, {
           method: 'PUT',
