@@ -1,51 +1,58 @@
-// client/src/Admin.jsx - VERSIONE V10 (FIX LETTURA ID) 🛠️
+// client/src/Admin.jsx - VERSIONE V10 (FIX ID + GOD MODE + EDIT CATEGORIE) 🛠️
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 function Admin() {
-  const { slug } = useParams();
+  const { slug } = useParams(); // PRENDE LO SLUG DALL'URL
   const navigate = useNavigate();
 
   // STATI DATI
-  const [user, setUser] = useState(null); 
-  const [loading, setLoading] = useState(true);
-  const [errorMsg, setErrorMsg] = useState(''); // Per vedere errori a schermo
-
+  const [user, setUser] = useState(null); // Lo user viene caricato dal server, non dal localStorage
+  const [loading, setLoading] = useState(true); // Evita il flash della pagina vuota
+  
+  const [tab, setTab] = useState('menu'); 
   const [menu, setMenu] = useState([]); 
   const [categorie, setCategorie] = useState([]); 
-  const [tab, setTab] = useState('menu'); 
-
-  // STATI CONFIG & EDIT
+  
+  // STATO CONFIG
   const [config, setConfig] = useState({ 
-      ordini_abilitati: false, servizio_attivo: false,
-      logo_url: '', cover_url: '',
-      colore_sfondo: '#222', colore_titolo: '#fff', colore_testo: '#ccc', colore_prezzo: '#27ae60',
+      ordini_abilitati: false, 
+      servizio_attivo: false,
+      logo_url: '',
+      cover_url: '',
+      colore_sfondo: '#222222',
+      colore_titolo: '#ffffff',
+      colore_testo: '#cccccc',
+      colore_prezzo: '#27ae60',
       font_style: 'sans-serif'
   });
+
   const [uploading, setUploading] = useState(false);
   const [nuovoPiatto, setNuovoPiatto] = useState({ nome: '', prezzo: '', categoria: '', sottocategoria: '', descrizione: '', immagine_url: '' });
+  
+  // STATI CATEGORIE
   const [nuovaCat, setNuovaCat] = useState({ nome: '', descrizione: '' });
   const [editCatId, setEditCatId] = useState(null); 
+
   const [editId, setEditId] = useState(null); 
   const [fileExcel, setFileExcel] = useState(null);
 
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
-  // --- 1. INIZIALIZZAZIONE ---
+  // --- 1. INIZIALIZZAZIONE SICURA ---
   useEffect(() => {
     if (!slug) return;
 
     const init = async () => {
         setLoading(true);
-        setErrorMsg('');
 
         // A. CONTROLLO PASS (GOD MODE o PASSWORD)
         const sessionKey = `stark_session_${slug}`;
         const isGodMode = localStorage.getItem(sessionKey); 
         
         if (!isGodMode) {
-            const pass = prompt(`🔒 Admin: ${slug}\nInserisci Password:`);
+            const pass = prompt(`🔒 Admin Panel: ${slug}\nInserisci Password:`);
             if (pass !== "tonystark") {
                 alert("Password Errata");
                 window.location.href = "/"; // Torna alla home
@@ -54,35 +61,32 @@ function Admin() {
             localStorage.setItem(sessionKey, "true");
         }
 
-        // B. RECUPERO DATI (CORRETTO PER IL TUO BACKEND)
+        // B. RECUPERO DATI DAL SERVER
         try {
             const res = await fetch(`${API_URL}/api/menu/${slug}`);
             const data = await res.json();
 
             // VERIFICA CHE I DATI ESISTANO
-            // In App.jsx usi: data.id (numero) e data.ristorante (nome stringa)
             if (data && data.id) {
-                
-                // Creiamo l'oggetto user manualmente per uniformare il codice
+                // Creiamo l'oggetto user manualmente usando l'ID ricevuto
                 const userData = {
                     id: data.id,
-                    nome: data.ristorante, // Era solo una stringa!
+                    nome: data.ristorante, // Il server manda il nome qui
                     slug: slug
                 };
                 setUser(userData);
-                
                 setMenu(data.menu || []);
                 
                 // Carichiamo il resto usando l'ID corretto
                 caricaConfigurazioniExtra(userData.id);
 
             } else {
-                console.error("Dati ricevuti strani:", data);
-                setErrorMsg("Ristorante non trovato o errore dati server.");
+                alert("Ristorante non trovato.");
+                navigate('/');
             }
         } catch (error) {
             console.error(error);
-            setErrorMsg("Errore di connessione al server.");
+            alert("Errore di connessione al server.");
         } finally {
             setLoading(false);
         }
@@ -92,29 +96,24 @@ function Admin() {
   }, [slug]);
 
   const caricaConfigurazioniExtra = (id) => {
-      // 1. Configurazione Stile
-      fetch(`${API_URL}/api/ristorante/config/${id}`)
-        .then(r=>r.json())
-        .then(d=>setConfig(prev => ({...prev, ...d})))
-        .catch(e => console.error("Err config", e));
-      
-      // 2. Categorie
-      fetch(`${API_URL}/api/categorie/${id}`)
-        .then(r=>r.json())
-        .then(cats => {
-            setCategorie(cats);
-            if(cats.length > 0) setNuovoPiatto(prev => ({...prev, categoria: cats[0].nome}));
-        })
-        .catch(e => console.error("Err categorie", e));
+    // Config
+    fetch(`${API_URL}/api/ristorante/config/${id}`).then(r=>r.json()).then(d=>setConfig(prev => ({...prev, ...d}))); 
+    
+    // Categorie
+    fetch(`${API_URL}/api/categorie/${id}`)
+      .then(res => res.json())
+      .then(data => {
+          setCategorie(data);
+          if(data.length > 0 && !nuovoPiatto.categoria && !editId) setNuovoPiatto(prev => ({...prev, categoria: data[0].nome}));
+      });
   };
 
   const ricaricaDati = () => {
       if(!user) return;
-      fetch(`${API_URL}/api/menu/${slug}`).then(r=>r.json()).then(d=>setMenu(d.menu || []));
+      fetch(`${API_URL}/api/menu/${slug}`).then(r=>r.json()).then(d=>{if(d.menu) setMenu(d.menu)});
       fetch(`${API_URL}/api/categorie/${user.id}`).then(r=>r.json()).then(setCategorie);
   };
 
-  // --- GESTIONE INTERFACCIA ---
   const handleLogout = () => {
       if(confirm("Uscire dal pannello?")) {
           localStorage.removeItem(`stark_session_${slug}`);
@@ -122,25 +121,54 @@ function Admin() {
       }
   };
 
-  // --- CRUD & LOGICA (INVARIATE) ---
+  // --- FUNZIONI INVARIATE ---
+
   const handleSaveStyle = async () => {
-      await fetch(`${API_URL}/api/ristorante/style/${user.id}`, {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config)});
-      alert("🎨 Grafica aggiornata!");
+      try {
+        await fetch(`${API_URL}/api/ristorante/style/${user.id}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(config)
+        });
+        alert("🎨 Grafica aggiornata con successo!");
+      } catch (e) {
+        alert("Errore salvataggio grafica");
+      }
   };
 
-  const handleUpload = async (e, type) => {
+  const handleUploadLogo = async (e) => {
       const f = e.target.files[0]; if(!f) return;
       setUploading(true);
       const fd = new FormData(); fd.append('photo', f);
       const r = await fetch(`${API_URL}/api/upload`, {method:'POST', body:fd});
       const d = await r.json();
-      if(d.url) {
-          if(type === 'logo') setConfig(p => ({...p, logo_url: d.url}));
-          if(type === 'cover') setConfig(p => ({...p, cover_url: d.url}));
-          if(type === 'dish') setNuovoPiatto(p => ({...p, immagine_url: d.url}));
-      }
+      if(d.url) setConfig(prev => ({...prev, logo_url: d.url}));
       setUploading(false);
   };
+  
+  const handleUploadCover = async (e) => {
+      const f = e.target.files[0]; if(!f) return;
+      setUploading(true);
+      const fd = new FormData(); fd.append('photo', f);
+      const r = await fetch(`${API_URL}/api/upload`, {method:'POST', body:fd});
+      const d = await r.json();
+      if(d.url) setConfig(prev => ({...prev, cover_url: d.url}));
+      setUploading(false);
+  };
+
+  const handleImportExcel = async () => {
+    if(!fileExcel) return alert("Seleziona un file .xlsx prima!");
+    const formData = new FormData(); formData.append('file', fileExcel); formData.append('ristorante_id', user.id);
+    try {
+        setUploading(true);
+        const res = await fetch(`${API_URL}/api/import-excel`, { method: 'POST', body: formData });
+        const data = await res.json();
+        if(data.success) { alert(data.message); ricaricaDati(); } else { alert("ERRORE SERVER: " + (data.error || "Errore sconosciuto")); }
+    } catch(err) { alert("Errore di connessione al server"); } 
+    finally { setUploading(false); setFileExcel(null); }
+  };
+
+  const handleExportExcel = () => { window.open(`${API_URL}/api/export-excel/${user.id}`, '_blank'); };
 
   const handleOnDragEnd = async (result) => {
     if (!result.destination) return;
@@ -152,7 +180,10 @@ function Admin() {
         setCategorie(updatedItems);
         await fetch(`${API_URL}/api/categorie/riordina`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ categorie: updatedItems }) });
         ricaricaDati();
-    } else if (result.type === 'DISH') {
+        return;
+    }
+    if (result.type === 'DISH') {
+        const sourceCat = result.source.droppableId.replace("cat-", "");
         const destCat = result.destination.droppableId.replace("cat-", "");
         const piattoId = parseInt(result.draggableId);
         const piattoSpostato = menu.find(p => p.id === piattoId);
@@ -163,212 +194,291 @@ function Admin() {
         piattiDestinazione.splice(result.destination.index, 0, piattoAggiornato);
         const altriPiatti = nuovoMenu.filter(p => p.categoria !== destCat);
         const piattiDestinazioneFinali = piattiDestinazione.map((p, idx) => ({ ...p, posizione: idx }));
-        setMenu([...altriPiatti, ...piattiDestinazioneFinali]);
+        const menuFinale = [...altriPiatti, ...piattiDestinazioneFinali];
+        setMenu(menuFinale);
         await fetch(`${API_URL}/api/prodotti/riordina`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prodotti: piattiDestinazioneFinali.map(p => ({ id: p.id, posizione: p.posizione, categoria: destCat })) }) });
     }
   };
-
+  
+  // LOGICA CATEGORIE
   const handleSalvaCategoria = async () => { 
       if(!nuovaCat.nome) return; 
-      const url = editCatId ? `${API_URL}/api/categorie/${editCatId}` : `${API_URL}/api/categorie`;
-      const method = editCatId ? 'PUT' : 'POST';
-      await fetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify({ ...nuovaCat, ristorante_id: user.id}) });
-      setNuovaCat({ nome: '', descrizione: '' }); setEditCatId(null); ricaricaDati(); 
+      
+      if (editCatId) {
+          // UPDATE
+          await fetch(`${API_URL}/api/categorie/${editCatId}`, { 
+              method:'PUT', 
+              headers:{'Content-Type':'application/json'}, 
+              body:JSON.stringify({ nome: nuovaCat.nome, descrizione: nuovaCat.descrizione }) 
+          });
+          alert("Categoria modificata!");
+          setEditCatId(null);
+      } else {
+          // CREATE
+          await fetch(`${API_URL}/api/categorie`, { 
+              method:'POST', 
+              headers:{'Content-Type':'application/json'}, 
+              body:JSON.stringify({ nome: nuovaCat.nome, descrizione: nuovaCat.descrizione, ristorante_id: user.id}) 
+          });
+      }
+      setNuovaCat({ nome: '', descrizione: '' }); 
+      ricaricaDati(); 
   };
-  const cancellaCategoria = async (id) => { if(confirm("Eliminare?")) { await fetch(`${API_URL}/api/categorie/${id}`, {method:'DELETE'}); ricaricaDati(); }};
+
+  const avviaModificaCat = (cat) => {
+      setEditCatId(cat.id);
+      setNuovaCat({ nome: cat.nome, descrizione: cat.descrizione || '' });
+  };
+
+  const annullaModificaCat = () => {
+      setEditCatId(null);
+      setNuovaCat({ nome: '', descrizione: '' });
+  };
+
+  const cancellaCategoria = async (id) => { if(confirm("Eliminare categoria?")) { await fetch(`${API_URL}/api/categorie/${id}`, {method:'DELETE'}); ricaricaDati(); }};
 
   const handleSalvaPiatto = async (e) => { 
       e.preventDefault(); 
       if(!nuovoPiatto.nome) return alert("Nome mancante"); 
-      const cat = nuovoPiatto.categoria || (categorie[0]?.nome || "");
-      const url = editId ? `${API_URL}/api/prodotti/${editId}` : `${API_URL}/api/prodotti`;
-      const method = editId ? 'PUT' : 'POST';
-      await fetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify({...nuovoPiatto, categoria:cat, ristorante_id:user.id}) }); 
-      setNuovoPiatto({nome:'', prezzo:'', categoria:cat, sottocategoria: '', descrizione:'', immagine_url:''}); setEditId(null); ricaricaDati(); 
+      const cat = nuovoPiatto.categoria || (categorie.length > 0 ? categorie[0].nome : "");
+      if(editId) {
+          await fetch(`${API_URL}/api/prodotti/${editId}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({...nuovoPiatto, categoria:cat, ristorante_id:user.id}) }); 
+          alert("Piatto modificato!");
+      } else {
+          if(categorie.length===0) return alert("Crea prima una categoria!"); 
+          await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({...nuovoPiatto, categoria:cat, ristorante_id:user.id}) }); 
+          alert("Piatto aggiunto!");
+      }
+      setNuovoPiatto({nome:'', prezzo:'', categoria:cat, sottocategoria: '', descrizione:'', immagine_url:''}); 
+      setEditId(null);
+      ricaricaDati(); 
   };
-  const cancellaPiatto = async (id) => { if(confirm("Eliminare?")) { await fetch(`${API_URL}/api/prodotti/${id}`, {method:'DELETE'}); ricaricaDati(); }};
-  const avviaModifica = (piatto) => { setEditId(piatto.id); setNuovoPiatto(piatto); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   
-  const handleImportExcel = async () => {
-    if(!fileExcel) return alert("Manca il file");
-    const fd = new FormData(); fd.append('file', fileExcel); fd.append('ristorante_id', user.id);
-    setUploading(true);
-    await fetch(`${API_URL}/api/import-excel`, { method: 'POST', body: fd });
-    setUploading(false); alert("Importazione completata"); ricaricaDati();
-  };
-  const handleExportExcel = () => { window.open(`${API_URL}/api/export-excel/${user.id}`, '_blank'); };
-  
-  const toggleServizio = async () => { 
-      const n=!config.servizio_attivo; setConfig({...config, servizio_attivo:n}); 
-      await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({servizio_attivo:n})}); 
-  };
+  const avviaModifica = (piatto) => { setEditId(piatto.id); setNuovoPiatto({nome: piatto.nome, prezzo: piatto.prezzo, categoria: piatto.categoria, sottocategoria: piatto.sottocategoria || '', descrizione: piatto.descrizione || '', immagine_url: piatto.immagine_url || ''}); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const annullaModifica = () => { setEditId(null); setNuovoPiatto({nome:'', prezzo:'', categoria:categorie[0]?.nome || '', sottocategoria: '', descrizione:'', immagine_url:''}); };
+  const duplicaPiatto = async (piattoOriginale) => { if(!confirm(`Vuoi duplicare "${piattoOriginale.nome}"?`)) return; const copia = { ...piattoOriginale, nome: `${piattoOriginale.nome} (Copia)`, ristorante_id: user.id }; try { await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(copia) }); ricaricaDati(); } catch(e) { alert("Errore duplicazione"); } };
+  const handleFileChange = async (e) => { const f=e.target.files[0]; if(!f)return; setUploading(true); const fd=new FormData(); fd.append('photo',f); const r=await fetch(`${API_URL}/api/upload`,{method:'POST',body:fd}); const d=await r.json(); if(d.url) setNuovoPiatto(p=>({...p, immagine_url:d.url})); setUploading(false); };
+  const toggleServizio = async () => { const n=!config.servizio_attivo; setConfig({...config, servizio_attivo:n}); await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({servizio_attivo:n})}); };
+  const cancellaPiatto = async (id) => { if(confirm("Eliminare piatto?")) { await fetch(`${API_URL}/api/prodotti/${id}`, {method:'DELETE'}); ricaricaDati(); }};
 
-  // --- RENDER (Con Debug Errori) ---
+  // RENDER SICURO
   if (loading) return <div style={{padding:'50px', textAlign:'center', fontSize:'24px'}}>🔄 Caricamento Admin <strong>{slug}</strong>...</div>;
-  
-  if (errorMsg) return (
-      <div style={{padding:'50px', textAlign:'center', color:'red'}}>
-          <h2>⛔ Errore Critico</h2>
-          <p>{errorMsg}</p>
-          <button onClick={() => navigate('/')}>Torna alla Home</button>
-      </div>
-  );
+  if (!user) return null;
 
   return (
-    <div className="container" style={{maxWidth:'1200px', margin:'0 auto', paddingBottom:'50px'}}>
-      
-      {/* HEADER */}
-      <header style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px', borderBottom:'1px solid #ddd', paddingBottom:'15px'}}>
-        <div>
-            <h1 style={{margin:0}}>⚙️ {user.nome}</h1>
-            <small style={{color:'#666'}}>Admin Panel / {slug}</small>
-        </div>
-        <button onClick={handleLogout} style={{background:'#e74c3c', color:'white', border:'none', padding:'8px 15px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold'}}>
+    <div className="container">
+      <header style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+        <h1>⚙️ Admin: {user.nome}</h1>
+        <button onClick={handleLogout} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 15px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold', fontSize:'14px'}}>
             🚪 ESCI
         </button>
       </header>
+      
+        <div style={{display:'flex', gap:'5px', flexWrap:'wrap', marginTop:'10px'}}>
+            <button onClick={() => setTab('menu')} style={{background: tab==='menu'?'#333':'#ccc', flex:1}}>🍔 Menu</button>
+            <button onClick={() => setTab('categorie')} style={{background: tab==='categorie'?'#333':'#ccc', flex:1}}>📂 Categorie</button>
+            <button onClick={() => setTab('style')} style={{background: tab==='style'?'#9b59b6':'#ccc', flex:1}}>🎨 Grafica</button>
+            <button onClick={() => setTab('excel')} style={{background: tab==='excel'?'#27ae60':'#ccc', flex:1}}>📊 Excel</button>
+        </div>
+      
 
-      {/* NAV TABS */}
-      <div style={{display:'flex', gap:'5px', flexWrap:'wrap', marginBottom:'20px'}}>
-        {['menu', 'categorie', 'style', 'excel'].map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{
-                flex:1, padding:'10px', border:'none', cursor:'pointer', fontWeight:'bold',
-                background: tab===t ? '#333' : '#ddd', color: tab===t ? 'white' : 'black'
-            }}>
-                {t.toUpperCase()}
-            </button>
-        ))}
-      </div>
-
-      {/* TAB STYLE */}
+      {/* --- TAB STILE (GRAFICA) --- */}
       {tab === 'style' && (
           <div className="card">
-              <h3>🎨 Grafica</h3>
-              <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap:'20px'}}>
-                  <div>
-                      <h4>Logo</h4>
-                      <input type="file" onChange={(e)=>handleUpload(e, 'logo')} />
-                      {config.logo_url && <img src={config.logo_url} height="50" style={{marginTop:'5px', border:'1px solid #ccc'}}/>}
+              <h3>🎨 Personalizzazione Grafica</h3>
+              <div style={{display:'flex', flexDirection:'column', gap:'15px'}}>
+                  
+                  {/* LOGO */}
+                  <div style={{borderBottom:'1px solid #ccc', paddingBottom:'10px'}}>
+                      <h4>Logo Attività</h4>
+                      <p><small>Sostituisce il titolo testuale in alto.</small></p>
+                      <input type="file" onChange={handleUploadLogo} />
+                      {uploading && <span>Caricamento...</span>}
+                      
+                      {/* ANTEPRIMA LOGO + TASTO RIMUOVI */}
+                      {config.logo_url && (
+                          <div style={{marginTop:'10px'}}>
+                              <img src={config.logo_url} style={{height:'60px', marginBottom:'5px', display:'block', border:'1px solid #ccc'}} />
+                              <button 
+                                onClick={() => setConfig({...config, logo_url: ''})}
+                                style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}
+                              >
+                                🗑️ Rimuovi Logo
+                              </button>
+                          </div>
+                      )}
                   </div>
-                  <div>
-                      <h4>Cover</h4>
-                      <input type="file" onChange={(e)=>handleUpload(e, 'cover')} />
-                      {config.cover_url && <img src={config.cover_url} height="50" style={{marginTop:'5px', border:'1px solid #ccc'}}/>}
+
+                  {/* SFONDO */}
+                  <div style={{borderBottom:'1px solid #ccc', paddingBottom:'10px'}}>
+                      <h4>Sfondo</h4>
+                      <div style={{display:'flex', alignItems:'center', gap:'10px', marginBottom:'10px'}}>
+                        <input type="color" value={config.colore_sfondo} onChange={e => setConfig({...config, colore_sfondo: e.target.value})} />
+                        <span>Colore Sfondo</span>
+                      </div>
+                      
+                      <p><small>Oppure immagine sfondo:</small></p>
+                      <input type="file" onChange={handleUploadCover} />
+                      
+                      {/* ANTEPRIMA SFONDO + TASTO RIMUOVI */}
+                      {config.cover_url && (
+                          <div style={{marginTop:'10px'}}>
+                              <img src={config.cover_url} style={{height:'60px', marginBottom:'5px', display:'block', border:'1px solid #ccc'}} />
+                              <button 
+                                onClick={() => setConfig({...config, cover_url: ''})}
+                                style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}
+                              >
+                                🗑️ Rimuovi Sfondo
+                              </button>
+                          </div>
+                      )}
                   </div>
-                  <div>
-                      <h4>Colori</h4>
-                      <input type="color" value={config.colore_sfondo} onChange={e=>setConfig({...config, colore_sfondo:e.target.value})} title="Sfondo"/>
-                      <input type="color" value={config.colore_titolo} onChange={e=>setConfig({...config, colore_titolo:e.target.value})} title="Titoli"/>
+
+                  {/* COLORI */}
+                  <div style={{display:'flex', gap:'20px', flexWrap:'wrap'}}>
+                      <div style={{flex:1}}>
+                          <h4>Titoli</h4>
+                          <input type="color" value={config.colore_titolo} onChange={e => setConfig({...config, colore_titolo: e.target.value})} style={{width:'100%', height:'40px'}}/>
+                      </div>
+                      <div style={{flex:1}}>
+                          <h4>Testo Descrizioni</h4>
+                          <input type="color" value={config.colore_testo} onChange={e => setConfig({...config, colore_testo: e.target.value})} style={{width:'100%', height:'40px'}}/>
+                      </div>
+                      <div style={{flex:1}}>
+                          <h4>Prezzi</h4>
+                          <input type="color" value={config.colore_prezzo} onChange={e => setConfig({...config, colore_prezzo: e.target.value})} style={{width:'100%', height:'40px'}}/>
+                      </div>
                   </div>
+
+                  {/* FONT */}
                   <div>
                       <h4>Font</h4>
-                      <select value={config.font_style} onChange={e=>setConfig({...config, font_style:e.target.value})} style={{width:'100%', padding:'5px'}}>
+                      <select value={config.font_style} onChange={e => setConfig({...config, font_style: e.target.value})} style={{width:'100%', padding:'10px'}}>
                           <option value="sans-serif">Moderno</option>
                           <option value="serif">Classico</option>
-                          <option value="'Courier New', monospace">Typewriter</option>
+                          <option value="'Courier New', monospace">Macchina da scrivere</option>
+                          <option value="'Brush Script MT', cursive">Corsivo</option>
                       </select>
                   </div>
+
+                  <button onClick={handleSaveStyle} className="btn-invia" style={{background:'#9b59b6', marginTop:'10px'}}>💾 SALVA MODIFICHE</button>
               </div>
-              <button onClick={handleSaveStyle} className="btn-invia" style={{marginTop:'15px', background:'#9b59b6'}}>💾 Salva Grafica</button>
           </div>
       )}
 
-      {/* TAB EXCEL */}
+      {/* --- TAB EXCEL --- */}
       {tab === 'excel' && (
           <div className="card">
-              <h3>📊 Import/Export</h3>
-              <div style={{display:'flex', gap:'10px', marginTop:'10px'}}>
-                <button onClick={handleExportExcel} className="btn-invia" style={{background:'#27ae60', flex:1}}>📥 Scarica Excel</button>
-                <div style={{flex:1, display:'flex', gap:'5px'}}>
-                    <input type="file" onChange={(e)=>setFileExcel(e.target.files[0])} />
-                    <button onClick={handleImportExcel} className="btn-invia" disabled={uploading}>📤 Carica</button>
-                </div>
+              <h3>Gestione Massiva (Excel)</h3>
+              <div style={{margin:'20px 0', padding:'20px', background:'#f0f0f0', borderRadius:'10px'}}>
+                  <h4>📤 Esporta Menu</h4>
+                  <button onClick={handleExportExcel} className="btn-invia" style={{background:'#27ae60'}}>Scarica Excel</button>
+              </div>
+              <div style={{margin:'20px 0', padding:'20px', background:'#f0f0f0', borderRadius:'10px'}}>
+                  <h4>📥 Importa Menu</h4>
+                  <input type="file" accept=".xlsx, .xls" onChange={(e) => setFileExcel(e.target.files[0])} />
+                  <button onClick={handleImportExcel} className="btn-invia" disabled={uploading}>{uploading ? "Caricamento..." : "Carica Excel"}</button>
               </div>
           </div>
       )}
 
-      {/* TAB MENU */}
+      {/* --- TAB MENU --- */}
       {tab === 'menu' && (
         <DragDropContext onDragEnd={handleOnDragEnd}>
-          <div className="card" style={{background: config.servizio_attivo ? '#d4edda':'#f8d7da', textAlign:'center', border: config.servizio_attivo ? '1px solid green' : '1px solid red'}}>
-              <h3 style={{margin:'0 0 10px 0'}}>Stato Servizio: {config.servizio_attivo ? "APERTO 🟢" : "CHIUSO 🔴"}</h3>
-              <button onClick={toggleServizio} style={{padding:'5px 20px', cursor:'pointer'}}>CAMBIA STATO</button>
+          <div className="card" style={{border: '2px solid #333', background: '#fff3cd', marginBottom:'20px'}}>
+              <button onClick={toggleServizio} style={{background: config.servizio_attivo ? '#2ecc71':'#e74c3c', width:'100%', padding:'15px', color:'white', fontWeight:'bold', fontSize:'18px', border:'none', borderRadius:'5px', cursor:'pointer'}}>
+                  {config.servizio_attivo ? "✅ ORDINI APERTI" : "🛑 ORDINI CHIUSI"}
+              </button>
           </div>
 
-          <div className="card" style={{borderLeft: editId ? '5px solid #2196f3' : '5px solid #333'}}>
-              <h3>{editId ? "✏️ Modifica Piatto" : "➕ Nuovo Piatto"}</h3>
-              <form onSubmit={handleSalvaPiatto} style={{display:'flex', flexDirection:'column', gap:'10px'}}>
+          <div className="card" style={{background: editId ? '#e3f2fd' : '#f8f9fa', border: editId ? '2px solid #2196f3' : '2px dashed #ccc'}}>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                  <h3>{editId ? "✏️ Modifica Piatto" : "➕ Aggiungi Piatto Manuale"}</h3>
+                  {editId && <button onClick={annullaModifica} style={{background:'#777', padding:'5px 10px', fontSize:'12px', color:'white', border:'none', borderRadius:'3px', cursor:'pointer'}}>Annulla Modifica</button>}
+              </div>
+
+              <form onSubmit={handleSalvaPiatto} style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+                  <input placeholder="Nome Piatto" value={nuovoPiatto.nome} onChange={e => setNuovoPiatto({...nuovoPiatto, nome: e.target.value})} />
                   <div style={{display:'flex', gap:'10px'}}>
-                    <input placeholder="Nome" value={nuovoPiatto.nome} onChange={e=>setNuovoPiatto({...nuovoPiatto, nome:e.target.value})} style={{flex:2}} />
-                    <input placeholder="Prezzo" value={nuovoPiatto.prezzo} onChange={e=>setNuovoPiatto({...nuovoPiatto, prezzo:e.target.value})} style={{flex:1}} />
-                  </div>
-                  <div style={{display:'flex', gap:'10px'}}>
-                    <select value={nuovoPiatto.categoria} onChange={e=>setNuovoPiatto({...nuovoPiatto, categoria:e.target.value})} style={{flex:1}}>
-                        {categorie.map(c=><option key={c.id} value={c.nome}>{c.nome}</option>)}
+                    <select value={nuovoPiatto.categoria} onChange={e => setNuovoPiatto({...nuovoPiatto, categoria: e.target.value})} style={{flex:1, padding:'10px'}}>
+                        {categorie.map(cat => <option key={cat.id} value={cat.nome}>{cat.nome}</option>)}
                     </select>
-                    <input placeholder="Sottocategoria" value={nuovoPiatto.sottocategoria || ''} onChange={e=>setNuovoPiatto({...nuovoPiatto, sottocategoria:e.target.value})} style={{flex:1}} />
+                    <input placeholder="Sottocategoria (es. Bianchi)" value={nuovoPiatto.sottocategoria} onChange={e => setNuovoPiatto({...nuovoPiatto, sottocategoria: e.target.value})} style={{flex:1}} />
                   </div>
-                  <textarea placeholder="Descrizione" value={nuovoPiatto.descrizione || ''} onChange={e=>setNuovoPiatto({...nuovoPiatto, descrizione:e.target.value})} style={{minHeight:'60px'}} />
-                  <input type="file" onChange={(e)=>handleUpload(e, 'dish')} />
+                  <textarea placeholder="Descrizione / Ingredienti" value={nuovoPiatto.descrizione} onChange={e => setNuovoPiatto({...nuovoPiatto, descrizione: e.target.value})} style={{padding:'10px', borderRadius:'5px', border:'1px solid #ccc', minHeight:'60px'}}/>
                   <div style={{display:'flex', gap:'10px'}}>
-                      <button type="submit" className="btn-invia" style={{background: editId ? '#2196f3':'#333'}}>{editId ? "Aggiorna" : "Aggiungi"}</button>
-                      {editId && <button type="button" onClick={()=>{setEditId(null); setNuovoPiatto({nome:'', prezzo:'', categoria:categorie[0]?.nome, sottocategoria:'', descrizione:'', immagine_url:''})}} style={{padding:'10px'}}>Annulla</button>}
+                      <input type="number" placeholder="Prezzo" value={nuovoPiatto.prezzo} onChange={e => setNuovoPiatto({...nuovoPiatto, prezzo: e.target.value})} style={{flex:1}}/>
+                       <div style={{background:'white', padding:'5px', flex:1}}><input type="file" onChange={handleFileChange} />{uploading && "..."}{nuovoPiatto.immagine_url && "✅"}</div>
                   </div>
+                  <button type="submit" className="btn-invia" style={{background: editId ? '#2196f3' : '#333'}}>{editId ? "AGGIORNA PIATTO" : "SALVA PIATTO"}</button>
               </form>
           </div>
 
-          {categorie.map(cat => (
-              <div key={cat.id}>
-                  <h3 style={{borderBottom:'2px solid #eee', padding:'20px 0 5px', color:'#555'}}>{cat.nome}</h3>
-                  <Droppable droppableId={`cat-${cat.nome}`} type="DISH">
-                      {(provided, snapshot) => (
-                          <div {...provided.droppableProps} ref={provided.innerRef} style={{background: snapshot.isDraggingOver ? '#f9f9f9' : 'transparent', minHeight:'50px'}}>
-                              {menu.filter(p=>p.categoria===cat.nome).map((p, idx) => (
-                                  <Draggable key={p.id} draggableId={String(p.id)} index={idx}>
-                                      {(prov) => (
-                                          <div ref={prov.innerRef} {...prov.draggableProps} {...prov.dragHandleProps} className="card" style={{...prov.draggableProps.style, padding:'10px', marginBottom:'10px', display:'flex', justifyContent:'space-between', alignItems:'center', borderLeft:'3px solid #ccc'}}>
-                                              <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-                                                  {p.immagine_url && <img src={p.immagine_url} style={{width:'40px', height:'40px', borderRadius:'4px', objectFit:'cover'}}/>}
-                                                  <div><strong>{p.nome}</strong> <small>({p.prezzo}€)</small></div>
-                                              </div>
-                                              <div>
-                                                  <button onClick={()=>avviaModifica(p)} style={{marginRight:'5px'}}>✏️</button>
-                                                  <button onClick={()=>cancellaPiatto(p.id)} style={{background:'#e74c3c', color:'white'}}>🗑️</button>
-                                              </div>
-                                          </div>
-                                      )}
-                                  </Draggable>
-                              ))}
-                              {provided.placeholder}
-                          </div>
-                      )}
-                  </Droppable>
-              </div>
-          ))}
+           {categorie.map(cat => (
+                <div key={cat.id} style={{marginBottom: '20px'}}>
+                    <h3 style={{marginTop:'30px', borderBottom:'2px solid #eee', paddingBottom:'5px', color:'#555'}}>{cat.nome}</h3>
+                    <Droppable droppableId={`cat-${cat.nome}`} type="DISH">
+                        {(provided, snapshot) => (
+                            <div {...provided.droppableProps} ref={provided.innerRef} className="menu-list" style={{background: snapshot.isDraggingOver ? '#f0f0f0' : 'transparent', minHeight: '50px', padding: '5px'}}>
+                                {menu.filter(p => p.categoria === cat.nome).map((p, index) => (
+                                    <Draggable key={p.id} draggableId={String(p.id)} index={index}>
+                                        {(provided, snapshot) => (
+                                            <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className="card" style={{...provided.draggableProps.style, flexDirection:'row', justifyContent:'space-between', background: snapshot.isDragging ? '#e3f2fd' : 'white', border: editId === p.id ? '2px solid #2196f3' : '1px solid #eee'}}>
+                                                <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+                                                    <span style={{color:'#ccc', cursor:'grab', fontSize:'20px'}}>☰</span>
+                                                    {p.immagine_url && <img src={p.immagine_url} style={{width:'40px', height:'40px', objectFit:'cover', borderRadius:'4px'}}/>}
+                                                    <div><strong>{p.nome}</strong>{p.sottocategoria && <span style={{fontSize:'11px', background:'#eee', padding:'2px 5px', borderRadius:'4px', marginLeft:'5px'}}>{p.sottocategoria}</span>}<div style={{fontSize:'12px', fontWeight:'bold'}}>{p.prezzo}€</div></div>
+                                                </div>
+                                                <div style={{display:'flex', gap:'5px'}}>
+                                                    <button onClick={() => avviaModifica(p)} style={{background:'#f1c40f', padding:'5px 10px', borderRadius:'4px', border:'none', cursor:'pointer'}} title="Modifica">✏️</button>
+                                                    <button onClick={() => duplicaPiatto(p)} style={{background:'#3498db', padding:'5px 10px', borderRadius:'4px', border:'none', cursor:'pointer', color:'white'}} title="Duplica">❐</button>
+                                                    <button onClick={() => cancellaPiatto(p.id)} style={{background:'darkred', padding:'5px 10px', borderRadius:'4px', border:'none', cursor:'pointer'}} title="Elimina">🗑️</button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </Draggable>
+                                ))}
+                                {provided.placeholder}
+                            </div>
+                        )}
+                    </Droppable>
+                </div>
+            ))}
         </DragDropContext>
       )}
 
-      {/* TAB CATEGORIE */}
+      {/* --- TAB CATEGORIE (MODIFICATO QUI PER EDIT) --- */}
       {tab === 'categorie' && (
         <DragDropContext onDragEnd={handleOnDragEnd}>
             <div className="card">
-                <h3>Gestione Categorie</h3>
-                <div style={{display:'flex', gap:'10px', marginBottom:'20px'}}>
-                    <input placeholder="Nome Categoria" value={nuovaCat.nome} onChange={e=>setNuovaCat({...nuovaCat, nome:e.target.value})} style={{flex:2}}/>
-                    <button onClick={handleSalvaCategoria} className="btn-invia" style={{flex:1, background: editCatId?'#f1c40f':'#333'}}>{editCatId?'Aggiorna':'Crea'}</button>
-                    {editCatId && <button onClick={()=>{setEditCatId(null); setNuovaCat({nome:'', descrizione:''})}}>Annulla</button>}
+                <h3>{editCatId ? "✏️ Modifica Categoria" : "➕ Gestisci Categorie"}</h3>
+                
+                <div style={{display:'flex', flexDirection:'column', gap:'10px', marginBottom:'20px'}}>
+                    <input placeholder="Nome Categoria" value={nuovaCat.nome} onChange={e=>setNuovaCat({...nuovaCat, nome: e.target.value})} />
+                    <input placeholder="Descrizione" value={nuovaCat.descrizione} onChange={e=>setNuovaCat({...nuovaCat, descrizione: e.target.value})} style={{fontSize: '14px'}}/>
+                    
+                    <div style={{display:'flex', gap:'5px'}}>
+                        <button onClick={handleSalvaCategoria} className="btn-invia" style={{flex:1, background: editCatId ? '#f1c40f' : '#333'}}>
+                            {editCatId ? "AGGIORNA CATEGORIA" : "CREA CATEGORIA"}
+                        </button>
+                        {editCatId && <button onClick={annullaModificaCat} style={{background:'#777', color:'white', border:'none', padding:'10px', borderRadius:'5px', cursor:'pointer'}}>Annulla</button>}
+                    </div>
                 </div>
-                <Droppable droppableId="cats" type="CATEGORY">
+                
+                <Droppable droppableId="all-categories" type="CATEGORY">
                     {(provided) => (
-                        <div {...provided.droppableProps} ref={provided.innerRef}>
-                            {categorie.map((c, idx) => (
-                                <Draggable key={c.id} draggableId={String(c.id)} index={idx}>
-                                    {(prov) => (
-                                        <div ref={prov.innerRef} {...prov.draggableProps} {...prov.dragHandleProps} className="card" style={{...prov.draggableProps.style, marginBottom:'10px', display:'flex', justifyContent:'space-between', padding:'15px', borderLeft:'5px solid #333'}}>
-                                            <span>☰ <strong>{c.nome}</strong></span>
+                        <div {...provided.droppableProps} ref={provided.innerRef} style={{display:'flex', flexDirection:'column', gap:'10px'}}>
+                            {categorie.map((cat, index) => (
+                                <Draggable key={cat.id} draggableId={String(cat.id)} index={index}>
+                                    {(provided) => (
+                                        <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className="card" style={{...provided.draggableProps.style, padding:'15px', flexDirection:'row', justifyContent:'space-between', borderLeft:'5px solid #333'}}>
                                             <div>
-                                                <button onClick={()=>{setEditCatId(c.id); setNuovaCat(c)}} style={{marginRight:'5px'}}>✏️</button>
-                                                <button onClick={()=>cancellaCategoria(c.id)} style={{background:'red', color:'white'}}>X</button>
+                                                <span>☰ <strong>{cat.nome}</strong></span>
+                                                {cat.descrizione && <div style={{fontSize:'12px', color:'#666', marginLeft:'20px'}}>{cat.descrizione}</div>}
+                                            </div>
+                                            <div style={{display:'flex', gap:'5px'}}>
+                                                <button onClick={() => avviaModificaCat(cat)} style={{background:'#f1c40f', padding:'5px 10px', borderRadius:'4px', border:'none', cursor:'pointer'}}>✏️</button>
+                                                <button onClick={()=>cancellaCategoria(cat.id)} style={{background:'red', padding:'5px 10px', color:'white'}}>X</button>
                                             </div>
                                         </div>
                                     )}
