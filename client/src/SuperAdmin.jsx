@@ -1,4 +1,4 @@
-// client/src/SuperAdmin.jsx - VERSIONE GOD MODE ⚡️
+// client/src/SuperAdmin.jsx - VERSIONE V2 (PERSISTENZA + NUOVA TAB) 🚀
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -10,15 +10,24 @@ function SuperAdmin() {
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
   useEffect(() => {
-    // PROTEZIONE INGRESSO
-    const password = prompt("🔒 Accesso Riservato Stark Enterprise.\nInserisci la Master Key:");
-    
-    if (password === "tonystark") {
+    // 1. CHECK PERSISTENZA: Hai già fatto login in questa sessione?
+    const isLogged = localStorage.getItem("super_admin_logged");
+
+    if (isLogged === "true") {
         setAuthorized(true);
         caricaDati();
     } else {
-        alert("⛔ Accesso Negato!");
-        navigate('/'); 
+        // Se non sei loggato, chiedi password
+        const password = prompt("🔒 Accesso Riservato Stark Enterprise.\nInserisci la Master Key:");
+        
+        if (password === "tonystark") {
+            setAuthorized(true);
+            localStorage.setItem("super_admin_logged", "true"); // SALVIAMO IL LOGIN
+            caricaDati();
+        } else {
+            alert("⛔ Accesso Negato!");
+            navigate('/'); 
+        }
     }
   }, []);
 
@@ -36,14 +45,10 @@ function SuperAdmin() {
   };
 
   const toggleOrdini = async (id, statoAttuale) => {
-    // 1. Aggiornamento Visivo Immediato (Optimistic UI)
     const nuovoStato = !statoAttuale;
-    const nuovaLista = ristoranti.map(r => 
-        r.id === id ? { ...r, ordini_abilitati: nuovoStato } : r
-    );
+    const nuovaLista = ristoranti.map(r => r.id === id ? { ...r, ordini_abilitati: nuovoStato } : r);
     setRistoranti(nuovaLista);
 
-    // 2. Aggiornamento Server
     try {
         await fetch(`${API_URL}/api/super/ristoranti/${id}`, {
             method: 'PUT',
@@ -52,19 +57,21 @@ function SuperAdmin() {
         });
     } catch(err) {
         alert("Errore di connessione, ripristino stato...");
-        caricaDati(); // Ricarica il vero stato se fallisce
+        caricaDati(); 
     }
   };
 
-  // --- NUOVA FUNZIONE: IMPERSONIFICAZIONE ---
   const entraNelPannello = (slug) => {
-    // Qui facciamo una magia: diciamo al browser che siamo già loggati per QUESTO ristorante.
-    // IMPORTANTE: Assicurati che la chiave 'stark_session_...' corrisponda a quella che usa il tuo Admin.jsx
-    // Se nel tuo Admin.jsx controlli una chiave diversa, cambiala qui sotto.
+    // 1. Iniettiamo il lasciapassare
     localStorage.setItem(`stark_session_${slug}`, "true");
     
-    // Ora navighiamo e il pannello ci lascerà entrare senza password
-    navigate(`/admin/${slug}`);
+    // 2. Apriamo in una NUOVA SCHEDA (_blank) invece di navigare nella stessa
+    window.open(`/admin/${slug}`, '_blank');
+  };
+
+  const logout = () => {
+      localStorage.removeItem("super_admin_logged");
+      navigate('/');
   };
 
   if (!authorized) return null;
@@ -76,7 +83,7 @@ function SuperAdmin() {
             <h1>🦸‍♂️ J.A.R.V.I.S. Control Center</h1>
             <p>Super Admin: Gestione Globale Attività</p>
         </div>
-        <button onClick={() => navigate('/')} style={{padding:'10px 20px', cursor:'pointer'}}>Esci</button>
+        <button onClick={logout} style={{padding:'10px 20px', cursor:'pointer', background:'#e74c3c', color:'white', border:'none', borderRadius:'5px'}}>Esci</button>
       </header>
       
       <div className="card-grid" style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px'}}>
@@ -89,7 +96,6 @@ function SuperAdmin() {
                 background: '#fff',
                 boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
             }}>
-                {/* INTESTAZIONE CARD */}
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'start', marginBottom:'15px'}}>
                     <div>
                         <h2 style={{margin:'0 0 5px 0', fontSize:'1.2rem'}}>{r.nome}</h2>
@@ -100,7 +106,6 @@ function SuperAdmin() {
                     </div>
                 </div>
                 
-                {/* CORPO CARD - STATO */}
                 <div style={{background: '#f4f4f4', padding: '10px', borderRadius: '5px', marginBottom: '15px', textAlign:'center'}}>
                     <small>Stato Attuale:</small><br/>
                     <strong style={{color: r.ordini_abilitati ? '#27ae60' : '#c0392b'}}>
@@ -108,10 +113,7 @@ function SuperAdmin() {
                     </strong>
                 </div>
 
-                {/* PULSANTIERA DI CONTROLLO */}
                 <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
-                    
-                    {/* 1. Tasto per entrare nel pannello (GOD MODE) */}
                     <button 
                         onClick={() => entraNelPannello(r.slug)}
                         style={{
@@ -122,16 +124,12 @@ function SuperAdmin() {
                             cursor: 'pointer',
                             borderRadius: '5px',
                             fontWeight: 'bold',
-                            display: 'flex', 
-                            justifyContent: 'center', 
-                            alignItems: 'center', 
-                            gap: '8px'
+                            display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px'
                         }}
                     >
-                        ⚙️ GESTISCI PANNELLO
+                        ⚙️ GESTISCI PANNELLO ↗
                     </button>
 
-                    {/* 2. Tasto Toggle Rapido */}
                     <button 
                         onClick={() => toggleOrdini(r.id, r.ordini_abilitati)}
                         style={{

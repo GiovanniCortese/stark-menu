@@ -1,4 +1,4 @@
-// client/src/Admin.jsx - VERSIONE V10 (FIX ID + GOD MODE + EDIT CATEGORIE) 🛠️
+// client/src/Admin.jsx - VERSIONE V11 (VEDI MENU + BLOCCO SUPERADMIN) 🛠️
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
@@ -8,8 +8,8 @@ function Admin() {
   const navigate = useNavigate();
 
   // STATI DATI
-  const [user, setUser] = useState(null); // Lo user viene caricato dal server, non dal localStorage
-  const [loading, setLoading] = useState(true); // Evita il flash della pagina vuota
+  const [user, setUser] = useState(null); // Lo user viene caricato dal server
+  const [loading, setLoading] = useState(true); 
   
   const [tab, setTab] = useState('menu'); 
   const [menu, setMenu] = useState([]); 
@@ -71,8 +71,10 @@ function Admin() {
                 // Creiamo l'oggetto user manualmente usando l'ID ricevuto
                 const userData = {
                     id: data.id,
-                    nome: data.ristorante, // Il server manda il nome qui
-                    slug: slug
+                    nome: data.ristorante, 
+                    slug: slug,
+                    // IMPORTANTE: Salviamo se il Super Admin ha abilitato questo ristorante
+                    superAdminAbilitato: data.ordini_abilitati 
                 };
                 setUser(userData);
                 setMenu(data.menu || []);
@@ -121,7 +123,12 @@ function Admin() {
       }
   };
 
-  // --- FUNZIONI INVARIATE ---
+  // --- NUOVA FUNZIONE: APRI MENU ---
+  const apriMenuFrontend = () => {
+      window.open(`/${slug}`, '_blank');
+  };
+
+  // --- FUNZIONI OPERATIVE ---
 
   const handleSaveStyle = async () => {
       try {
@@ -205,36 +212,23 @@ function Admin() {
       if(!nuovaCat.nome) return; 
       
       if (editCatId) {
-          // UPDATE
           await fetch(`${API_URL}/api/categorie/${editCatId}`, { 
-              method:'PUT', 
-              headers:{'Content-Type':'application/json'}, 
+              method:'PUT', headers:{'Content-Type':'application/json'}, 
               body:JSON.stringify({ nome: nuovaCat.nome, descrizione: nuovaCat.descrizione }) 
           });
           alert("Categoria modificata!");
           setEditCatId(null);
       } else {
-          // CREATE
           await fetch(`${API_URL}/api/categorie`, { 
-              method:'POST', 
-              headers:{'Content-Type':'application/json'}, 
+              method:'POST', headers:{'Content-Type':'application/json'}, 
               body:JSON.stringify({ nome: nuovaCat.nome, descrizione: nuovaCat.descrizione, ristorante_id: user.id}) 
           });
       }
       setNuovaCat({ nome: '', descrizione: '' }); 
       ricaricaDati(); 
   };
-
-  const avviaModificaCat = (cat) => {
-      setEditCatId(cat.id);
-      setNuovaCat({ nome: cat.nome, descrizione: cat.descrizione || '' });
-  };
-
-  const annullaModificaCat = () => {
-      setEditCatId(null);
-      setNuovaCat({ nome: '', descrizione: '' });
-  };
-
+  const avviaModificaCat = (cat) => { setEditCatId(cat.id); setNuovaCat({ nome: cat.nome, descrizione: cat.descrizione || '' }); };
+  const annullaModificaCat = () => { setEditCatId(null); setNuovaCat({ nome: '', descrizione: '' }); };
   const cancellaCategoria = async (id) => { if(confirm("Eliminare categoria?")) { await fetch(`${API_URL}/api/categorie/${id}`, {method:'DELETE'}); ricaricaDati(); }};
 
   const handleSalvaPiatto = async (e) => { 
@@ -258,7 +252,20 @@ function Admin() {
   const annullaModifica = () => { setEditId(null); setNuovoPiatto({nome:'', prezzo:'', categoria:categorie[0]?.nome || '', sottocategoria: '', descrizione:'', immagine_url:''}); };
   const duplicaPiatto = async (piattoOriginale) => { if(!confirm(`Vuoi duplicare "${piattoOriginale.nome}"?`)) return; const copia = { ...piattoOriginale, nome: `${piattoOriginale.nome} (Copia)`, ristorante_id: user.id }; try { await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(copia) }); ricaricaDati(); } catch(e) { alert("Errore duplicazione"); } };
   const handleFileChange = async (e) => { const f=e.target.files[0]; if(!f)return; setUploading(true); const fd=new FormData(); fd.append('photo',f); const r=await fetch(`${API_URL}/api/upload`,{method:'POST',body:fd}); const d=await r.json(); if(d.url) setNuovoPiatto(p=>({...p, immagine_url:d.url})); setUploading(false); };
-  const toggleServizio = async () => { const n=!config.servizio_attivo; setConfig({...config, servizio_attivo:n}); await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({servizio_attivo:n})}); };
+  
+  // --- GESTIONE SERVIZIO CON BLOCCO SUPER ADMIN ---
+  const toggleServizio = async () => { 
+      // Se il Super Admin ha bloccato (ordini_abilitati = false), non possiamo fare nulla.
+      if (!user.superAdminAbilitato) {
+          alert("⛔ Impossibile aprire gli ordini.\nIl Super Admin ha disabilitato il tuo account.");
+          return;
+      }
+
+      const n = !config.servizio_attivo; 
+      setConfig({...config, servizio_attivo:n}); 
+      await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({servizio_attivo:n})}); 
+  };
+
   const cancellaPiatto = async (id) => { if(confirm("Eliminare piatto?")) { await fetch(`${API_URL}/api/prodotti/${id}`, {method:'DELETE'}); ricaricaDati(); }};
 
   // RENDER SICURO
@@ -269,9 +276,15 @@ function Admin() {
     <div className="container">
       <header style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
         <h1>⚙️ Admin: {user.nome}</h1>
-        <button onClick={handleLogout} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 15px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold', fontSize:'14px'}}>
-            🚪 ESCI
-        </button>
+        <div style={{display:'flex', gap:'10px'}}>
+            {/* NUOVO PULSANTE VEDI MENU */}
+            <button onClick={apriMenuFrontend} style={{background:'#3498db', color:'white', border:'none', padding:'8px 15px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold'}}>
+                👁️ VEDI MENU
+            </button>
+            <button onClick={handleLogout} style={{background:'#e74c3c', color:'white', border:'none', padding:'8px 15px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold'}}>
+                🚪 ESCI
+            </button>
+        </div>
       </header>
       
         <div style={{display:'flex', gap:'5px', flexWrap:'wrap', marginTop:'10px'}}>
@@ -282,75 +295,42 @@ function Admin() {
         </div>
       
 
-      {/* --- TAB STILE (GRAFICA) --- */}
+      {/* --- TAB STILE --- */}
       {tab === 'style' && (
           <div className="card">
               <h3>🎨 Personalizzazione Grafica</h3>
               <div style={{display:'flex', flexDirection:'column', gap:'15px'}}>
-                  
-                  {/* LOGO */}
                   <div style={{borderBottom:'1px solid #ccc', paddingBottom:'10px'}}>
                       <h4>Logo Attività</h4>
-                      <p><small>Sostituisce il titolo testuale in alto.</small></p>
                       <input type="file" onChange={handleUploadLogo} />
                       {uploading && <span>Caricamento...</span>}
-                      
-                      {/* ANTEPRIMA LOGO + TASTO RIMUOVI */}
                       {config.logo_url && (
                           <div style={{marginTop:'10px'}}>
                               <img src={config.logo_url} style={{height:'60px', marginBottom:'5px', display:'block', border:'1px solid #ccc'}} />
-                              <button 
-                                onClick={() => setConfig({...config, logo_url: ''})}
-                                style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}
-                              >
-                                🗑️ Rimuovi Logo
-                              </button>
+                              <button onClick={() => setConfig({...config, logo_url: ''})} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}>🗑️ Rimuovi Logo</button>
                           </div>
                       )}
                   </div>
-
-                  {/* SFONDO */}
                   <div style={{borderBottom:'1px solid #ccc', paddingBottom:'10px'}}>
                       <h4>Sfondo</h4>
                       <div style={{display:'flex', alignItems:'center', gap:'10px', marginBottom:'10px'}}>
                         <input type="color" value={config.colore_sfondo} onChange={e => setConfig({...config, colore_sfondo: e.target.value})} />
                         <span>Colore Sfondo</span>
                       </div>
-                      
                       <p><small>Oppure immagine sfondo:</small></p>
                       <input type="file" onChange={handleUploadCover} />
-                      
-                      {/* ANTEPRIMA SFONDO + TASTO RIMUOVI */}
                       {config.cover_url && (
                           <div style={{marginTop:'10px'}}>
                               <img src={config.cover_url} style={{height:'60px', marginBottom:'5px', display:'block', border:'1px solid #ccc'}} />
-                              <button 
-                                onClick={() => setConfig({...config, cover_url: ''})}
-                                style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}
-                              >
-                                🗑️ Rimuovi Sfondo
-                              </button>
+                              <button onClick={() => setConfig({...config, cover_url: ''})} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}>🗑️ Rimuovi Sfondo</button>
                           </div>
                       )}
                   </div>
-
-                  {/* COLORI */}
                   <div style={{display:'flex', gap:'20px', flexWrap:'wrap'}}>
-                      <div style={{flex:1}}>
-                          <h4>Titoli</h4>
-                          <input type="color" value={config.colore_titolo} onChange={e => setConfig({...config, colore_titolo: e.target.value})} style={{width:'100%', height:'40px'}}/>
-                      </div>
-                      <div style={{flex:1}}>
-                          <h4>Testo Descrizioni</h4>
-                          <input type="color" value={config.colore_testo} onChange={e => setConfig({...config, colore_testo: e.target.value})} style={{width:'100%', height:'40px'}}/>
-                      </div>
-                      <div style={{flex:1}}>
-                          <h4>Prezzi</h4>
-                          <input type="color" value={config.colore_prezzo} onChange={e => setConfig({...config, colore_prezzo: e.target.value})} style={{width:'100%', height:'40px'}}/>
-                      </div>
+                      <div style={{flex:1}}><h4>Titoli</h4><input type="color" value={config.colore_titolo} onChange={e => setConfig({...config, colore_titolo: e.target.value})} style={{width:'100%', height:'40px'}}/></div>
+                      <div style={{flex:1}}><h4>Testo Descrizioni</h4><input type="color" value={config.colore_testo} onChange={e => setConfig({...config, colore_testo: e.target.value})} style={{width:'100%', height:'40px'}}/></div>
+                      <div style={{flex:1}}><h4>Prezzi</h4><input type="color" value={config.colore_prezzo} onChange={e => setConfig({...config, colore_prezzo: e.target.value})} style={{width:'100%', height:'40px'}}/></div>
                   </div>
-
-                  {/* FONT */}
                   <div>
                       <h4>Font</h4>
                       <select value={config.font_style} onChange={e => setConfig({...config, font_style: e.target.value})} style={{width:'100%', padding:'10px'}}>
@@ -360,7 +340,6 @@ function Admin() {
                           <option value="'Brush Script MT', cursive">Corsivo</option>
                       </select>
                   </div>
-
                   <button onClick={handleSaveStyle} className="btn-invia" style={{background:'#9b59b6', marginTop:'10px'}}>💾 SALVA MODIFICHE</button>
               </div>
           </div>
@@ -385,10 +364,25 @@ function Admin() {
       {/* --- TAB MENU --- */}
       {tab === 'menu' && (
         <DragDropContext onDragEnd={handleOnDragEnd}>
-          <div className="card" style={{border: '2px solid #333', background: '#fff3cd', marginBottom:'20px'}}>
-              <button onClick={toggleServizio} style={{background: config.servizio_attivo ? '#2ecc71':'#e74c3c', width:'100%', padding:'15px', color:'white', fontWeight:'bold', fontSize:'18px', border:'none', borderRadius:'5px', cursor:'pointer'}}>
-                  {config.servizio_attivo ? "✅ ORDINI APERTI" : "🛑 ORDINI CHIUSI"}
-              </button>
+          {/* VISUALIZZAZIONE BLOCCO SUPER ADMIN O PULSANTE NORMALE */}
+          <div className="card" style={{
+              border: user.superAdminAbilitato ? '2px solid #333' : '2px solid red', 
+              background: user.superAdminAbilitato ? (config.servizio_attivo ? '#fff3cd' : '#f8d7da') : '#ffecec', 
+              marginBottom:'20px', textAlign:'center'
+          }}>
+              {!user.superAdminAbilitato ? (
+                  <div>
+                      <h2 style={{color:'red', margin:0}}>⛔ SERVIZIO DISABILITATO DAL SUPER ADMIN</h2>
+                      <p>Contatta l'amministrazione per riattivare gli ordini.</p>
+                  </div>
+              ) : (
+                  <button onClick={toggleServizio} style={{
+                      background: config.servizio_attivo ? '#2ecc71':'#e74c3c', 
+                      width:'100%', padding:'15px', color:'white', fontWeight:'bold', fontSize:'18px', border:'none', borderRadius:'5px', cursor:'pointer'
+                  }}>
+                      {config.servizio_attivo ? "✅ ORDINI APERTI (Clicca per Chiudere)" : "🛑 ORDINI CHIUSI (Clicca per Aprire)"}
+                  </button>
+              )}
           </div>
 
           <div className="card" style={{background: editId ? '#e3f2fd' : '#f8f9fa', border: editId ? '2px solid #2196f3' : '2px dashed #ccc'}}>
@@ -447,7 +441,7 @@ function Admin() {
         </DragDropContext>
       )}
 
-      {/* --- TAB CATEGORIE (MODIFICATO QUI PER EDIT) --- */}
+      {/* --- TAB CATEGORIE --- */}
       {tab === 'categorie' && (
         <DragDropContext onDragEnd={handleOnDragEnd}>
             <div className="card">
