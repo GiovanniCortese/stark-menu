@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE V20 (GESTIONE CASSA, STORICO E PAGAMENTI) 💶
+// server/server.js - VERSIONE V21 (ANTI-CRASH & ROBUST JSON PARSING) 🛡️
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -37,17 +37,19 @@ const initDb = async () => {
             CREATE TABLE IF NOT EXISTS ordini (id SERIAL PRIMARY KEY, ristorante_id INTEGER REFERENCES ristoranti(id), tavolo TEXT, stato TEXT DEFAULT 'in_attesa', data_ora TIMESTAMP DEFAULT CURRENT_TIMESTAMP, prodotti TEXT, totale REAL, dettagli TEXT);
         `);
 
-        // AGGIUNTA COLONNE AUTO-REPAIR
+        // AUTO-REPAIR COLONNE
         await client.query(`
             DO $$ 
             BEGIN 
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='categorie' AND column_name='is_bar') THEN 
                     ALTER TABLE categorie ADD COLUMN is_bar BOOLEAN DEFAULT FALSE; 
                 END IF;
+                -- Fix per evitare crash se 'prodotti' è null
+                ALTER TABLE ordini ALTER COLUMN prodotti SET DEFAULT '[]';
             END $$;
         `);
         
-        console.log("✅ Database pronto V20 (Cassa Ready).");
+        console.log("✅ Database pronto V21.");
         return true;
     } catch (err) { console.error("❌ Errore InitDB:", err); return false; } 
     finally { client.release(); }
@@ -93,12 +95,10 @@ app.get('/api/menu/:slug', async (req, res) => {
     } catch (err) { console.error(err); res.status(500).json({ error: "Server error" }); }
 });
 
-// 2. POLLING UNIFICATO (Restituisce TUTTO tranne i PAGATI)
+// 2. POLLING ULTRA-ROBUSTO (Fix per il crash)
 app.get('/api/polling/:ristorante_id', async (req, res) => { 
     try { 
-        // MODIFICA FONDAMENTALE V20:
-        // La Cassa deve vedere tutto ciò che non è 'pagato'. 
-        // Cucina e Bar filtrano lato client cosa mostrare.
+        // Prendi tutto ciò che NON è pagato (così la cassa vede tutto)
         const r = await pool.query(
             "SELECT * FROM ordini WHERE ristorante_id = $1 AND stato != 'pagato' ORDER BY data_ora ASC", 
             [req.params.ristorante_id]
@@ -106,22 +106,41 @@ app.get('/api/polling/:ristorante_id', async (req, res) => {
         
         const ordini = r.rows.map(o => {
             let parsed = [];
-            try { parsed = JSON.parse(o.prodotti); } catch (e) { parsed = [{nome: o.prodotti}]; }
+            
+            // LOGICA DI PARSING SICURA (Non crasha mai)
+            if (o.prodotti) {
+                try {
+                    const temp = typeof o.prodotti === 'string' ? JSON.parse(o.prodotti) : o.prodotti;
+                    parsed = Array.isArray(temp) ? temp : [temp];
+                } catch (e) {
+                    // Se il JSON è rotto, crea un oggetto errore leggibile invece di crashare
+                    console.error(`Errore parsing ordine ID ${o.id}:`, e);
+                    parsed = [{ nome: `⚠️ Errore dati: ${String(o.prodotti).substring(0, 20)}...` }];
+                }
+            } else if (o.dettagli) {
+                parsed = [{ nome: o.dettagli }]; // Fallback vecchio
+            } else {
+                parsed = []; // Ordine vuoto
+            }
+
             return { ...o, prodotti: parsed };
         });
         
         res.json({ nuovi_ordini: ordini }); 
-    } catch (e) { res.status(500).send("Err"); } 
+    } catch (e) { 
+        console.error("CRITICAL POLLING ERROR:", e);
+        res.status(500).send("Err"); 
+    } 
 });
 
-// 3. NUOVO: CHIUSURA CONTO TAVOLO (CASSA)
+// 3. CHIUSURA CONTO TAVOLO (CASSA)
 app.post('/api/cassa/paga-tavolo', async (req, res) => {
     try {
         const { ristorante_id, tavolo } = req.body;
-        // Chiude TUTTI gli ordini aperti di quel tavolo
+        // Chiude TUTTI gli ordini di quel tavolo
         await pool.query(
             "UPDATE ordini SET stato = 'pagato' WHERE ristorante_id = $1 AND tavolo = $2 AND stato != 'pagato'", 
-            [ristorante_id, tavolo]
+            [ristorante_id, String(tavolo)] // Convertiamo in stringa per sicurezza
         );
         res.json({ success: true });
     } catch (e) { 
@@ -130,29 +149,40 @@ app.post('/api/cassa/paga-tavolo', async (req, res) => {
     }
 });
 
-// 4. NUOVO: STORICO ORDINI (CASSA)
+// 4. STORICO ORDINI
 app.get('/api/cassa/storico/:ristorante_id', async (req, res) => {
     try {
-        // Recupera gli ultimi 500 ordini pagati
         const r = await pool.query(
-            "SELECT * FROM ordini WHERE ristorante_id = $1 AND stato = 'pagato' ORDER BY data_ora DESC LIMIT 500", 
+            "SELECT * FROM ordini WHERE ristorante_id = $1 AND stato = 'pagato' ORDER BY data_ora DESC LIMIT 100", 
             [req.params.ristorante_id]
         );
-        
         const ordini = r.rows.map(o => {
             let parsed = [];
-            try { parsed = JSON.parse(o.prodotti); } catch (e) { parsed = [{nome: o.prodotti}]; }
+            try { parsed = JSON.parse(o.prodotti || "[]"); } catch (e) { parsed = [{nome: "Errore dati"}]; }
             return { ...o, prodotti: parsed };
         });
-        
         res.json(ordini);
     } catch (e) { res.status(500).json({ error: "Err" }); }
 });
 
-// ALTRE API STANDARD
-app.post('/api/ordine', async (req, res) => { try { console.log("➡️ Ordine:", req.body); const { ristorante_id, tavolo, prodotti, totale } = req.body; const prodottiStr = JSON.stringify(prodotti); await pool.query("INSERT INTO ordini (ristorante_id, tavolo, prodotti, totale, stato) VALUES ($1, $2, $3, $4, 'in_attesa')", [ristorante_id, tavolo, prodottiStr, totale]); res.json({ success: true }); } catch (e) { res.status(500).json({error: "Err"}); } });
+// ALTRE API
+app.post('/api/ordine', async (req, res) => { 
+    try { 
+        console.log("➡️ Ordine:", req.body); 
+        const { ristorante_id, tavolo, prodotti, totale } = req.body; 
+        
+        // Verifica dati
+        if(!prodotti) return res.status(400).json({error: "No prodotti"});
 
-// Nota: Completato cambia stato in 'servito' (opzionale), ma non 'pagato'. La cassa lo vede ancora.
+        const prodottiStr = JSON.stringify(prodotti); 
+        await pool.query("INSERT INTO ordini (ristorante_id, tavolo, prodotti, totale, stato) VALUES ($1, $2, $3, $4, 'in_attesa')", [ristorante_id, String(tavolo), prodottiStr, totale]); 
+        res.json({ success: true }); 
+    } catch (e) { 
+        console.error("Errore salvataggio ordine:", e);
+        res.status(500).json({error: "Err"}); 
+    } 
+});
+
 app.post('/api/ordine/completato', async (req, res) => { try { await pool.query("UPDATE ordini SET stato = 'servito' WHERE id = $1", [req.body.id]); res.json({ success: true }); } catch (e) { res.status(500).json({error:"Err"}); } });
 
 app.post('/api/categorie', async (req, res) => { try { const { nome, ristorante_id, descrizione, is_bar } = req.body; const max = await pool.query('SELECT MAX(posizione) as max FROM categorie WHERE ristorante_id = $1', [ristorante_id]); const next = (max.rows[0].max || 0) + 1; const r = await pool.query('INSERT INTO categorie (nome, posizione, ristorante_id, descrizione, is_bar) VALUES ($1, $2, $3, $4, $5) RETURNING *', [nome, next, ristorante_id, descrizione||"", is_bar || false]); res.json(r.rows[0]); } catch (e) { res.status(500).json({error:"Err"}); } });
@@ -176,4 +206,4 @@ app.post('/api/super/ristoranti', async (req, res) => { try { await pool.query(`
 app.put('/api/super/ristoranti/:id', async (req, res) => { try { if (req.body.ordini_abilitati !== undefined && Object.keys(req.body).length === 1) { await pool.query('UPDATE ristoranti SET ordini_abilitati = $1 WHERE id = $2', [req.body.ordini_abilitati, req.params.id]); return res.json({ success: true }); } let sql = "UPDATE ristoranti SET nome=$1, slug=$2, email=$3, telefono=$4"; let params = [req.body.nome, req.body.slug, req.body.email, req.body.telefono]; if (req.body.password) { sql += ", password=$5 WHERE id=$6"; params.push(req.body.password, req.params.id); } else { sql += " WHERE id=$5"; params.push(req.params.id); } await pool.query(sql, params); res.json({ success: true }); } catch (e) { res.status(500).json({error: "Err"}); } });
 app.delete('/api/super/ristoranti/:id', async (req, res) => { try { const id = req.params.id; await pool.query('DELETE FROM prodotti WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM categorie WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM ordini WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM ristoranti WHERE id = $1', [id]); res.json({ success: true }); } catch (e) { res.status(500).json({error: "Err"}); } });
 
-initDb().then((ready) => { if (ready) app.listen(port, () => console.log(`🚀 SERVER V20 (CASSA) - Porta ${port}`)); });
+initDb().then((ready) => { if (ready) app.listen(port, () => console.log(`🚀 SERVER V21 (ANTI-CRASH) - Porta ${port}`)); });

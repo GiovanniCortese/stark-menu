@@ -1,4 +1,4 @@
-// client/src/Cassa.jsx - NUOVO MODULO GESTIONALE 💶
+// client/src/Cassa.jsx - GESTIONE CENTRALE (CASSA) 💶
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -49,7 +49,8 @@ function Cassa() {
           raggruppati[tavolo].totale += (ordine.totale || 0);
         });
         setTavoliAttivi(raggruppati);
-      });
+      })
+      .catch(e => console.error("Errore polling cassa", e));
   };
 
   const caricaStorico = () => {
@@ -124,6 +125,7 @@ function Cassa() {
                         <div style={{padding:'15px', maxHeight:'300px', overflowY:'auto'}}>
                             {dati.ordini.map((ord, idx) => {
                                 let prodotti = typeof ord.prodotti === 'string' ? JSON.parse(ord.prodotti) : ord.prodotti;
+                                if (!Array.isArray(prodotti)) prodotti = [];
                                 return (
                                     <div key={ord.id} style={{marginBottom:'10px', paddingBottom:'10px', borderBottom:'1px dashed #eee'}}>
                                         <div style={{fontSize:'12px', color:'#999'}}>Ordine #{ord.id} - {new Date(ord.data_ora).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
@@ -161,16 +163,21 @@ function Cassa() {
                       </tr>
                   </thead>
                   <tbody>
-                      {storico.map(ord => (
-                          <tr key={ord.id} style={{borderBottom:'1px solid #eee'}}>
-                              <td style={{padding:'10px'}}>{new Date(ord.data_ora).toLocaleString()}</td>
-                              <td style={{padding:'10px'}}>Tavolo {ord.tavolo}</td>
-                              <td style={{padding:'10px', fontSize:'14px'}}>
-                                  {(typeof ord.prodotti === 'string' ? JSON.parse(ord.prodotti) : ord.prodotti).map(p=>p.nome).join(', ')}
-                              </td>
-                              <td style={{padding:'10px', fontWeight:'bold'}}>{ord.totale} €</td>
-                          </tr>
-                      ))}
+                      {storico.map(ord => {
+                          let prods = [];
+                          try { prods = typeof ord.prodotti === 'string' ? JSON.parse(ord.prodotti) : ord.prodotti; } catch(e){}
+                          if(!Array.isArray(prods)) prods = [];
+                          return (
+                              <tr key={ord.id} style={{borderBottom:'1px solid #eee'}}>
+                                  <td style={{padding:'10px'}}>{new Date(ord.data_ora).toLocaleString()}</td>
+                                  <td style={{padding:'10px'}}>Tavolo {ord.tavolo}</td>
+                                  <td style={{padding:'10px', fontSize:'14px'}}>
+                                      {prods.map(p=>p.nome).join(', ')}
+                                  </td>
+                                  <td style={{padding:'10px', fontWeight:'bold'}}>{ord.totale} €</td>
+                              </tr>
+                          )
+                      })}
                   </tbody>
               </table>
           </div>
