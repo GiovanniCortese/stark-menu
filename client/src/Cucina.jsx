@@ -187,7 +187,6 @@ function Cucina() {
 <div className="ticket-body">
               {renderTicketBody(ordine)}
               {/* Il totale è utile anche in cucina per controllo */}
-              {ordine.totale && <div style={{marginTop:'15px', borderTop:'2px dashed #ccc', paddingTop:'10px', textAlign:'right', fontSize:'1.2rem', fontWeight:'bold'}}>Tot: {ordine.totale}€</div>}
             </div>
 
             {/* TASTO MODIFICATO: NASCONDE SOLO LOCALMENTE */}
