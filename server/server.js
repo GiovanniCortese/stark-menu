@@ -142,7 +142,7 @@ app.put('/api/ordine/:id/update-items', async (req, res) => {
 app.post('/api/cassa/paga-tavolo', async (req, res) => {
     try {
         const { ristorante_id, tavolo } = req.body;
-        cconst logMsg = `\n[${new Date().toLocaleString('it-IT', { timeZone: 'Europe/Rome' })}] CONTO CHIUSO E PAGATO.`;
+        const logMsg = `\n[${new Date().toLocaleString('it-IT', { timeZone: 'Europe/Rome' })}] CONTO CHIUSO E PAGATO.`;
         await pool.query(
             "UPDATE ordini SET stato = 'pagato', dettagli = COALESCE(dettagli, '') || $3 WHERE ristorante_id = $1 AND tavolo = $2 AND stato != 'pagato'", 
             [ristorante_id, String(tavolo), logMsg]
