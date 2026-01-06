@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE V26 (DATABASE AUTO-REPAIR & DEEP CLEAN) 🛠️
+// server/server.js - VERSIONE V30 (AUTO-REPAIR + ITEM MANAGEMENT) 🛠️
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -28,9 +28,9 @@ const pool = new Pool({
 const initDb = async () => {
     const client = await pool.connect();
     try {
-        console.log("🛠️ AVVIO CONTROLLO DATABASE (V26)...");
+        console.log("🛠️ AVVIO CONTROLLO DATABASE (V30)...");
         
-        // 1. CREAZIONE TABELLE BASE (Se non esistono)
+        // 1. CREAZIONE TABELLE BASE
         await client.query(`
             CREATE TABLE IF NOT EXISTS ristoranti (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, slug TEXT UNIQUE NOT NULL, ordini_abilitati BOOLEAN DEFAULT FALSE, servizio_attivo BOOLEAN DEFAULT FALSE, logo_url TEXT, cover_url TEXT, colore_sfondo TEXT DEFAULT '#222', colore_titolo TEXT DEFAULT '#fff', colore_testo TEXT DEFAULT '#ccc', colore_prezzo TEXT DEFAULT '#27ae60', font_style TEXT DEFAULT 'sans-serif', email TEXT, telefono TEXT, password TEXT DEFAULT 'tonystark');
             CREATE TABLE IF NOT EXISTS categorie (id SERIAL PRIMARY KEY, ristorante_id INTEGER REFERENCES ristoranti(id), nome TEXT NOT NULL, descrizione TEXT, posizione INTEGER DEFAULT 0);
@@ -38,29 +38,22 @@ const initDb = async () => {
             CREATE TABLE IF NOT EXISTS ordini (id SERIAL PRIMARY KEY, ristorante_id INTEGER REFERENCES ristoranti(id), tavolo TEXT, stato TEXT DEFAULT 'in_attesa', data_ora TIMESTAMP DEFAULT CURRENT_TIMESTAMP, prodotti TEXT, totale REAL, dettagli TEXT);
         `);
 
-        // 2. RIPARAZIONE COLONNE MANCANTI (Se la tabella esiste ma è vecchia)
+        // 2. RIPARAZIONE COLONNE MANCANTI
         console.log("🔧 Verifica colonne mancanti...");
         await client.query(`
             DO $$ 
             BEGIN 
-                -- Tabella Categorie: Aggiungi is_bar
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='categorie' AND column_name='is_bar') THEN 
                     ALTER TABLE categorie ADD COLUMN is_bar BOOLEAN DEFAULT FALSE; 
                 END IF;
-
-                -- Tabella Ordini: Aggiungi stato
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ordini' AND column_name='stato') THEN 
                     ALTER TABLE ordini ADD COLUMN stato TEXT DEFAULT 'in_attesa'; 
                 END IF;
-
-                -- Tabella Ordini: Aggiungi prodotti (e imposta default)
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ordini' AND column_name='prodotti') THEN 
                     ALTER TABLE ordini ADD COLUMN prodotti TEXT DEFAULT '[]'; 
                 ELSE
                     ALTER TABLE ordini ALTER COLUMN prodotti SET DEFAULT '[]';
                 END IF;
-
-                -- Tabella Ordini: Aggiungi totale
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ordini' AND column_name='totale') THEN 
                     ALTER TABLE ordini ADD COLUMN totale REAL DEFAULT 0; 
                 END IF;
@@ -112,46 +105,62 @@ app.get('/api/menu/:slug', async (req, res) => {
     } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
-// 2. POLLING BLINDATO (Con gestione errori DB)
+// 2. POLLING AVANZATO (Gestione Item Singoli)
 app.get('/api/polling/:ristorante_id', async (req, res) => { 
     try { 
-        // Query sicura
         const querySQL = "SELECT * FROM ordini WHERE ristorante_id = $1 AND (stato IS NULL OR stato != 'pagato') ORDER BY data_ora ASC";
-        
         const r = await pool.query(querySQL, [req.params.ristorante_id]); 
         
         const ordini = r.rows.map(o => {
             let parsed = [];
-            // Gestione robusta del JSON
             if (o.prodotti) {
                 if (typeof o.prodotti === 'object') {
-                    // Se Postgres lo restituisce già come oggetto (tipo JSONB)
                     parsed = Array.isArray(o.prodotti) ? o.prodotti : [o.prodotti];
                 } else if (typeof o.prodotti === 'string') {
                     try {
                         const temp = JSON.parse(o.prodotti);
                         parsed = Array.isArray(temp) ? temp : [temp];
                     } catch (e) {
-                        console.error(`Ordine corrotto (ID ${o.id}):`, e);
-                        parsed = [{ nome: "⚠️ Errore Dati Ordine" }];
+                        parsed = [];
                     }
                 }
             } else if (o.dettagli) {
                 parsed = [{ nome: o.dettagli }];
-            } else {
-                parsed = [];
             }
+
+            // [MODIFICA V30] Arricchimento dati per gestione singola
+            parsed = parsed.map((item, idx) => ({
+                ...item,
+                uniqId: item.uniqId || `${o.id}_${idx}_${Date.now()}`, // Genera ID se manca
+                stato: item.stato || 'in_attesa' // 'in_attesa', 'servito'
+            }));
+
             return { ...o, prodotti: parsed };
         });
         
         res.json({ nuovi_ordini: ordini }); 
     } catch (e) { 
-        console.error("ERRORE POLLING (500):", e.message); // Logga l'errore esatto nel terminale
+        console.error("ERRORE POLLING:", e.message);
         res.status(500).json({ error: "Errore DB Polling", details: e.message }); 
     } 
 });
 
-// 3. CHIUSURA TAVOLO
+// 3. NUOVA API: UPDATE ITEMS (Per la Cassa che modifica/cancella piatti)
+app.put('/api/ordine/:id/update-items', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { prodotti } = req.body; // Arriva l'array aggiornato dalla cassa
+        
+        const prodottiStr = JSON.stringify(prodotti);
+        await pool.query("UPDATE ordini SET prodotti = $1 WHERE id = $2", [prodottiStr, id]);
+        res.json({ success: true });
+    } catch (e) { 
+        console.error("Errore Update Items:", e);
+        res.status(500).json({ error: "Errore Update Items" }); 
+    }
+});
+
+// 4. CHIUSURA TAVOLO
 app.post('/api/cassa/paga-tavolo', async (req, res) => {
     try {
         const { ristorante_id, tavolo } = req.body;
@@ -166,7 +175,7 @@ app.post('/api/cassa/paga-tavolo', async (req, res) => {
     }
 });
 
-// 4. STORICO ORDINI
+// 5. STORICO ORDINI
 app.get('/api/cassa/storico/:ristorante_id', async (req, res) => {
     try {
         const r = await pool.query(
@@ -184,12 +193,20 @@ app.get('/api/cassa/storico/:ristorante_id', async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Err" }); }
 });
 
-// ALTRE API
+// 6. CREAZIONE ORDINE (Arricchita con ID univoci)
 app.post('/api/ordine', async (req, res) => { 
     try { 
         const { ristorante_id, tavolo, prodotti, totale } = req.body; 
         if(!prodotti) return res.status(400).json({error:"No prodotti"});
-        const prodottiStr = JSON.stringify(prodotti); 
+
+        // [MODIFICA V30] Aggiungiamo subito ID univoci ai nuovi ordini
+        const prodottiArricchiti = prodotti.map((p, i) => ({
+            ...p,
+            uniqId: `new_${Date.now()}_${i}`,
+            stato: 'in_attesa'
+        }));
+
+        const prodottiStr = JSON.stringify(prodottiArricchiti); 
         await pool.query("INSERT INTO ordini (ristorante_id, tavolo, prodotti, totale, stato) VALUES ($1, $2, $3, $4, 'in_attesa')", [ristorante_id, String(tavolo), prodottiStr, totale]); 
         res.json({ success: true }); 
     } catch (e) { console.error(e); res.status(500).json({error: "Err"}); } 
@@ -219,15 +236,15 @@ app.post('/api/super/ristoranti', async (req, res) => { try { await pool.query(`
 app.put('/api/super/ristoranti/:id', async (req, res) => { try { if (req.body.ordini_abilitati !== undefined && Object.keys(req.body).length === 1) { await pool.query('UPDATE ristoranti SET ordini_abilitati = $1 WHERE id = $2', [req.body.ordini_abilitati, req.params.id]); return res.json({ success: true }); } let sql = "UPDATE ristoranti SET nome=$1, slug=$2, email=$3, telefono=$4"; let params = [req.body.nome, req.body.slug, req.body.email, req.body.telefono]; if (req.body.password) { sql += ", password=$5 WHERE id=$6"; params.push(req.body.password, req.params.id); } else { sql += " WHERE id=$5"; params.push(req.params.id); } await pool.query(sql, params); res.json({ success: true }); } catch (e) { res.status(500).json({error: "Err"}); } });
 app.delete('/api/super/ristoranti/:id', async (req, res) => { try { const id = req.params.id; await pool.query('DELETE FROM prodotti WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM categorie WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM ordini WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM ristoranti WHERE id = $1', [id]); res.json({ success: true }); } catch (e) { res.status(500).json({error: "Err"}); } });
 
-// --- EMERGENCY RESET (Per cancellare tutti gli ordini corrotti) ---
+// --- EMERGENCY RESET ---
 app.get('/api/reset-ordini', async (req, res) => {
-    try {
-        await pool.query('DELETE FROM ordini');
-        await pool.query('ALTER SEQUENCE ordini_id_seq RESTART WITH 1'); // Reset ID
-        res.send("<h1>✅ DB RESET COMPLETATO</h1><p>Tutti gli ordini sono stati cancellati. Il sistema è pulito e pronto.</p>");
-    } catch (e) {
-        res.status(500).send("Errore durante il reset: " + e.message);
-    }
+    try {
+        await pool.query('DELETE FROM ordini');
+        await pool.query('ALTER SEQUENCE ordini_id_seq RESTART WITH 1'); 
+        res.send("<h1>✅ TABULA RASA</h1>");
+    } catch (e) {
+        res.status(500).send("Errore: " + e.message);
+    }
 });
 
-initDb().then((ready) => { if (ready) app.listen(port, () => console.log(`🚀 SERVER V26 (AUTO-REPAIR) - Porta ${port}`)); });
+initDb().then((ready) => { if (ready) app.listen(port, () => console.log(`🚀 SERVER V30 (AUTO-REPAIR) - Porta ${port}`)); });
