@@ -179,7 +179,7 @@ function Cassa() {
               <table style={{width:'100%', borderCollapse:'collapse'}}>
                   <thead>
                       <tr style={{background:'#f9f9f9', textAlign:'left'}}>
-                          <th style={{padding:10}}>Data</th>
+                          <th style={{padding:10}}>Data Apertura</th>
                           <th style={{padding:10}}>Tavolo</th>
                           <th style={{padding:10}}>Prodotti</th>
                           <th style={{padding:10}}>Totale</th>
