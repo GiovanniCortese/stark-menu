@@ -120,7 +120,7 @@ app.put('/api/ordine/:id/update-items', async (req, res) => {
 
         // Aggiunge log allo storico dell'ordine
         if (logMsg) {
-            const timestamp = new Date().toLocaleString('it-IT');
+            const timestamp = new Date().toLocaleString('it-IT', { timeZone: 'Europe/Rome' });
             const logEntry = `\n[${timestamp}] ${logMsg}`;
             query += `, dettagli = COALESCE(dettagli, '') || $${paramIndex}`;
             params.push(logEntry);
@@ -142,7 +142,7 @@ app.put('/api/ordine/:id/update-items', async (req, res) => {
 app.post('/api/cassa/paga-tavolo', async (req, res) => {
     try {
         const { ristorante_id, tavolo } = req.body;
-        const logMsg = `\n[${new Date().toLocaleString('it-IT')}] CONTO CHIUSO E PAGATO.`;
+        cconst logMsg = `\n[${new Date().toLocaleString('it-IT', { timeZone: 'Europe/Rome' })}] CONTO CHIUSO E PAGATO.`;
         await pool.query(
             "UPDATE ordini SET stato = 'pagato', dettagli = COALESCE(dettagli, '') || $3 WHERE ristorante_id = $1 AND tavolo = $2 AND stato != 'pagato'", 
             [ristorante_id, String(tavolo), logMsg]
@@ -169,7 +169,7 @@ app.post('/api/ordine', async (req, res) => {
         const { ristorante_id, tavolo, prodotti, totale } = req.body; 
         const prodottiArricchiti = (prodotti||[]).map((p, i) => ({ ...p, uniqId: `new_${Date.now()}_${i}`, stato: 'in_attesa' }));
         const prodottiStr = JSON.stringify(prodottiArricchiti); 
-        const logMsg = `[${new Date().toLocaleString('it-IT')}] Ordine creato: ${prodottiArricchiti.length} elementi. Tot: ${totale}€`;
+        const logMsg = `[${new Date().toLocaleString('it-IT', { timeZone: 'Europe/Rome' })}] Ordine creato: ${prodottiArricchiti.length} elementi. Tot: ${totale}€`;
         
         await pool.query("INSERT INTO ordini (ristorante_id, tavolo, prodotti, totale, stato, dettagli) VALUES ($1, $2, $3, $4, 'in_attesa', $5)", 
             [ristorante_id, String(tavolo), prodottiStr, totale, logMsg]); 
