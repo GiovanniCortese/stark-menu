@@ -1,4 +1,4 @@
-// client/src/Cucina.jsx - VERSIONE V16 (CATEGORIE ORDINATE + CHECKLIST) 👨‍🍳
+// client/src/Cucina.jsx - VERSIONE V17 (SOLO CIBO - NO BAR) 👨‍🍳
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -7,9 +7,6 @@ function Cucina() {
   const [infoRistorante, setInfoRistorante] = useState(null); 
   const [isAuthorized, setIsAuthorized] = useState(false); 
   const [passwordInput, setPasswordInput] = useState("");
-  
-  // Stato locale per gestire le spunte (checkbox) dei singoli prodotti
-  // Struttura: { "ordineID_prodottoIndex": true/false }
   const [checkedItems, setCheckedItems] = useState({});
 
   const { slug } = useParams(); 
@@ -48,7 +45,17 @@ function Cucina() {
     if (!infoRistorante?.id) return; 
     fetch(`${API_URL}/api/polling/${infoRistorante.id}`)
       .then(res => res.json())
-      .then(data => setOrdini(data.nuovi_ordini || []))
+      .then(data => {
+          // FILTRO ORDINI: Mostriamo l'ordine SOLO se contiene cibo (non solo bar)
+          const ordiniCucina = (data.nuovi_ordini || []).filter(ordine => {
+              let prodotti = [];
+              try { prodotti = typeof ordine.prodotti === 'string' ? JSON.parse(ordine.prodotti) : ordine.prodotti; } catch(e){}
+              
+              // Se l'ordine ha solo cose da bere, non lo mostriamo nemmeno in cucina
+              return prodotti.some(p => p.is_bar !== true);
+          });
+          setOrdini(ordiniCucina);
+      })
       .catch(err => console.error("Errore polling:", err));
   };
 
@@ -61,7 +68,7 @@ function Cucina() {
   }, [infoRistorante, isAuthorized]);
 
   const segnaComePronto = async (ordineId) => {
-    if(!confirm("Confermi che TUTTO l'ordine è completo?")) return;
+    if(!confirm("Confermi che TUTTO l'ordine di CUCINA è completo?")) return;
     
     try {
       const response = await fetch(`${API_URL}/api/ordine/completato`, {
@@ -74,17 +81,13 @@ function Cucina() {
   };
 
   const toggleCheck = (uniqueKey) => {
-      setCheckedItems(prev => ({
-          ...prev,
-          [uniqueKey]: !prev[uniqueKey]
-      }));
+      setCheckedItems(prev => ({ ...prev, [uniqueKey]: !prev[uniqueKey] }));
   };
 
-  // --- FUNZIONE CORE: ORGANIZZA E RAGGRUPPA I PRODOTTI ---
+  // --- FUNZIONE CORE: FILTRA E MOSTRA SOLO CIBO ---
   const renderTicketBody = (ordine) => {
       let listaProdotti = [];
 
-      // 1. Parsing sicuro dei dati
       if (Array.isArray(ordine.prodotti)) listaProdotti = ordine.prodotti;
       else if (typeof ordine.prodotti === 'string') {
           try { listaProdotti = JSON.parse(ordine.prodotti); } 
@@ -96,9 +99,16 @@ function Cucina() {
 
       if(!Array.isArray(listaProdotti)) return <p>Errore dati</p>;
 
-      // 2. Raggruppamento per Categoria
-      const gruppi = listaProdotti.reduce((acc, item) => {
-          // Se l'item è una stringa vecchia, lo normalizziamo
+      // -------------------------------------------------------------
+      // FILTRO CUCINA: Escludiamo tutto ciò che è Bar (is_bar === true)
+      // -------------------------------------------------------------
+      const prodottiCucina = listaProdotti.filter(p => p.is_bar !== true);
+
+      // Se dopo il filtro non c'è nulla, non mostrare niente (caso raro gestito dal filtro ordini sopra)
+      if (prodottiCucina.length === 0) return null;
+
+      // Raggruppamento per Categoria
+      const gruppi = prodottiCucina.reduce((acc, item) => {
           const nome = typeof item === 'string' ? item : item.nome;
           const cat = (typeof item === 'object' && item.categoria) ? item.categoria : 'Altro';
           const pos = (typeof item === 'object' && item.categoria_posizione) ? item.categoria_posizione : 999;
@@ -108,50 +118,23 @@ function Cucina() {
           return acc;
       }, {});
 
-      // 3. Ordinamento delle Categorie (Prima Antipasti, poi Pizze, ecc.)
+      // Ordinamento delle Categorie
       const categorieOrdinate = Object.keys(gruppi).sort((a, b) => gruppi[a].posizione - gruppi[b].posizione);
 
       return (
           <div style={{textAlign:'left'}}>
               {categorieOrdinate.map((catName) => (
                   <div key={catName} style={{marginBottom:'15px'}}>
-                      <h4 style={{
-                          margin:'0 0 5px 0', 
-                          borderBottom:'1px solid #ddd', 
-                          color:'#555', 
-                          textTransform:'uppercase', 
-                          fontSize:'0.9rem'
-                      }}>
+                      <h4 style={{margin:'0 0 5px 0', borderBottom:'1px solid #ddd', color:'#555', textTransform:'uppercase', fontSize:'0.9rem'}}>
                           {catName}
                       </h4>
-                      
                       {gruppi[catName].prodotti.map((prodNome, idx) => {
-                          // Chiave univoca per la checkbox: IDOrdine_Categoria_Index
                           const uniqueKey = `${ordine.id}_${catName}_${idx}`;
                           const isChecked = checkedItems[uniqueKey] || false;
-
                           return (
-                              <div 
-                                key={uniqueKey} 
-                                onClick={() => toggleCheck(uniqueKey)}
-                                style={{
-                                    display:'flex', 
-                                    alignItems:'center', 
-                                    padding:'8px 0', 
-                                    cursor:'pointer',
-                                    opacity: isChecked ? 0.5 : 1,
-                                    textDecoration: isChecked ? 'line-through' : 'none'
-                                }}
-                              >
-                                  <input 
-                                    type="checkbox" 
-                                    checked={isChecked} 
-                                    onChange={() => {}} // Gestito dal div padre
-                                    style={{transform:'scale(1.5)', marginRight:'10px', cursor:'pointer'}}
-                                  />
-                                  <span style={{fontSize:'1.1rem', fontWeight: isChecked ? 'normal' : 'bold'}}>
-                                      {prodNome}
-                                  </span>
+                              <div key={uniqueKey} onClick={() => toggleCheck(uniqueKey)} style={{display:'flex', alignItems:'center', padding:'8px 0', cursor:'pointer', opacity: isChecked ? 0.5 : 1, textDecoration: isChecked ? 'line-through' : 'none'}}>
+                                  <input type="checkbox" checked={isChecked} onChange={() => {}} style={{transform:'scale(1.5)', marginRight:'10px', cursor:'pointer'}} />
+                                  <span style={{fontSize:'1.1rem', fontWeight: isChecked ? 'normal' : 'bold'}}>{prodNome}</span>
                               </div>
                           );
                       })}
@@ -181,40 +164,27 @@ function Cucina() {
   return (
     <div className="cucina-container">
       <header style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom:'20px'}}>
-        <div>
-            <h1 style={{margin:0}}>👨‍🍳 Cucina</h1>
-            <h3 style={{margin:'5px 0 0 0', color:'#ccc'}}>{infoRistorante.ristorante}</h3>
-        </div>
+        <div><h1 style={{margin:0}}>👨‍🍳 Cucina</h1><h3 style={{margin:'5px 0 0 0', color:'#ccc'}}>{infoRistorante.ristorante}</h3></div>
         <button onClick={handleLogout} style={{background:'#e74c3c', color:'white', border:'none', padding:'8px 15px', borderRadius:'5px', cursor:'pointer'}}>Esci</button>
       </header>
       
       <div className="ordini-grid">
-        {ordini.length === 0 && (
-            <div style={{textAlign: 'center', width: '100%', marginTop: '50px', color: '#888'}}>
-                <h2>Tutto pulito! 🧹</h2>
-                <p>Nessun ordine in attesa...</p>
-            </div>
-        )}
+        {ordini.length === 0 && <div style={{textAlign: 'center', width: '100%', marginTop: '50px', color: '#888'}}><h2>Tutto pulito! 🧹</h2><p>Nessun ordine in attesa...</p></div>}
 
         {ordini.map((ordine) => (
           <div key={ordine.id} className="ticket">
             <div className="ticket-header">
               <span className="tavolo">Tavolo {ordine.tavolo}</span>
-              <span className="orario">
-                {new Date(ordine.data_ora || ordine.data_creazione).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-              </span>
+              <span className="orario">{new Date(ordine.data_ora || ordine.data_creazione).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
             </div>
             
             <div className="ticket-body">
               {renderTicketBody(ordine)}
-              
-              {/* Totale opzionale, utile per cassa */}
+              {/* Il totale lo mostriamo, anche se parziale */}
               {ordine.totale && <div style={{marginTop:'15px', borderTop:'2px dashed #ccc', paddingTop:'10px', textAlign:'right', fontSize:'1.2rem', fontWeight:'bold'}}>Tot: {ordine.totale}€</div>}
             </div>
             
-            <button className="btn-completato" onClick={() => segnaComePronto(ordine.id)}>
-                ✅ ORDINE COMPLETATO
-            </button>
+            <button className="btn-completato" onClick={() => segnaComePronto(ordine.id)}>✅ ORDINE COMPLETATO</button>
           </div>
         ))}
       </div>

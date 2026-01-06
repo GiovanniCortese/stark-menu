@@ -1,7 +1,8 @@
-// client/src/App.jsx - VERSIONE V13 (ORDINE CON CATEGORIE PER CUCINA) 🛒
+// client/src/App.jsx - VERSIONE V14 (ROUTING BAR + SPLIT ORDINI) 🍹
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useSearchParams, useParams } from 'react-router-dom';
 import Cucina from './Cucina';
+import Bar from './Bar'; // [NUOVO] Importiamo la pagina Bar
 import Login from './Login';
 import Admin from './Admin';
 import SuperAdmin from './SuperAdmin'; 
@@ -46,14 +47,14 @@ function Menu() {
   const aggiungiAlCarrello = (prodotto) => {
     if (!canOrder) return alert("Il servizio ordini è chiuso.");
     
-    // IMPORTANTE: Salviamo TUTTI i dati per la cucina (nome, categoria, posizione)
-    // Usiamo 'tempId' per gestire più prodotti uguali nel carrello
+    // [IMPORTANTE] Salviamo i dati per lo smistamento Cucina/Bar
     const item = { 
         ...prodotto, 
         tempId: Date.now() + Math.random(),
-        // Assicuriamoci che i dati della categoria ci siano
         categoria: prodotto.categoria,
-        categoria_posizione: prodotto.categoria_posizione || 999 
+        categoria_posizione: prodotto.categoria_posizione || 999,
+        // Qui catturiamo se la categoria è "Da Bar" (arriva dal DB)
+        is_bar: prodotto.categoria_is_bar || false 
     };
     
     setCarrello([...carrello, item]); 
@@ -70,14 +71,13 @@ function Menu() {
      if (!ristoranteId) return;
      const totale = carrello.reduce((acc, i) => acc + parseFloat(i.prezzo), 0);
      
-     // ---------------------------------------------------------
-     // MODIFICA CHIAVE: Inviamo oggetti completi, non solo stringhe
-     // ---------------------------------------------------------
+     // Prepariamo l'oggetto per il server includendo il flag is_bar
      const prodottiPerBackend = carrello.map(p => ({
          nome: p.nome,
          prezzo: p.prezzo,
-         categoria: p.categoria, // Serve per raggruppare in cucina
-         categoria_posizione: p.categoria_posizione || 999 // Serve per ordinare (prima Antipasti, poi Pizze)
+         categoria: p.categoria,
+         categoria_posizione: p.categoria_posizione || 999,
+         is_bar: p.is_bar // [FONDAMENTALE] Dice al server se è bar o cucina
      }));
 
      try {
@@ -87,7 +87,7 @@ function Menu() {
             body: JSON.stringify({
                 ristorante_id: ristoranteId, 
                 tavolo: numeroTavolo, 
-                prodotti: prodottiPerBackend, // Inviamo l'array strutturato
+                prodotti: prodottiPerBackend, 
                 totale
             })
         });
@@ -162,7 +162,7 @@ function Menu() {
         {canOrder ? <p style={{color: style?.text || '#ccc'}}>Tavolo: <strong>{numeroTavolo}</strong></p> : <div className="badge-digital">📖 Menu Digitale</div>}
       </header>
 
-      {/* BARRA CARRELLO CON TASTO PER APRIRE IL RIEPILOGO */}
+      {/* BARRA CARRELLO */}
       {canOrder && carrello.length > 0 && !showCheckout && (
         <div className="carrello-bar">
           <div className="totale"><span>{carrello.length} ordini</span><strong>{carrello.reduce((a,b)=>a+Number(b.prezzo),0).toFixed(2)} €</strong></div>
@@ -294,7 +294,9 @@ function Menu() {
                       <div key={item.tempId} style={{display:'flex', justifyContent:'space-between', alignItems:'center', background:'rgba(255,255,255,0.1)', padding:'10px', marginBottom:'10px', borderRadius:'8px'}}>
                           <div>
                               <div style={{color: titleColor, fontWeight:'bold', fontSize:'16px'}}>{item.nome}</div>
-                              <div style={{color: '#888', fontSize:'12px'}}>{item.categoria}</div>
+                              <div style={{color: '#888', fontSize:'12px'}}>
+                                {item.categoria} {item.is_bar ? '🍹' : '🍽️'}
+                              </div>
                               <div style={{color: priceColor}}>{item.prezzo} €</div>
                           </div>
                           <button 
@@ -398,6 +400,8 @@ function App() {
         <Route path="/admin/:slug" element={<Admin />} />
         <Route path="/super-admin" element={<SuperAdmin />} />
         <Route path="/cucina/:slug" element={<Cucina />} />
+        {/* [NUOVO] Rotta per il Bar */}
+        <Route path="/bar/:slug" element={<Bar />} />
         <Route path="/:slug" element={<Menu />} />
         <Route path="/" element={<Menu />} />
       </Routes>
