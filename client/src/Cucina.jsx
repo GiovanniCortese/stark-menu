@@ -184,6 +184,12 @@ function Cucina() {
               <span className="orario">{new Date(ordine.data_ora || ordine.data_creazione).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
             </div>
             
+<div className="ticket-body">
+              {renderTicketBody(ordine)}
+              {/* Il totale è utile anche in cucina per controllo */}
+              {ordine.totale && <div style={{marginTop:'15px', borderTop:'2px dashed #ccc', paddingTop:'10px', textAlign:'right', fontSize:'1.2rem', fontWeight:'bold'}}>Tot: {ordine.totale}€</div>}
+            </div>
+
             {/* TASTO MODIFICATO: NASCONDE SOLO LOCALMENTE */}
             <button 
                 className="btn-completato" 
