@@ -174,8 +174,8 @@ function Cassa() {
 
       {/* --- VISTA STORICO DETTAGLIATO --- */}
       {tab === 'storico' && (
-          <div style={{background:'white', padding:20, borderRadius:10}}>
-              <h2>📜 Storico Ordini Conclusi</h2>
+          <div style={{background:'white', color:'#0b0b0bff', padding:20, borderRadius:10}}>
+              <h2 style={{color:'#191e22ff', marginTop:0}}>📜 Storico Ordini Conclusi</h2>
               <table style={{width:'100%', borderCollapse:'collapse'}}>
                   <thead>
                       <tr style={{background:'#f9f9f9', textAlign:'left'}}>
