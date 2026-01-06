@@ -136,7 +136,7 @@ function Cassa() {
               {Object.keys(tavoliAttivi).map(tavolo => (
                   <div key={tavolo} style={{background:'white', padding:20, borderRadius:10, boxShadow:'0 4px 10px rgba(0,0,0,0.1)'}}>
                       <div style={{display:'flex', justifyContent:'space-between', borderBottom:'2px solid #ddd', paddingBottom:10, marginBottom:10}}>
-                          <h2 style={{margin:0}}>Tavolo {tavolo}</h2>
+                          <h2 style={{margin:0, color:'#000000ff'}}>Tavolo {tavolo}</h2>
                           <h2 style={{margin:0, color:'#27ae60'}}>{tavoliAttivi[tavolo].totale.toFixed(2)}€</h2>
                       </div>
 
@@ -207,8 +207,8 @@ function Cassa() {
       {selectedLog && (
           <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999}}>
               <div style={{background:'white', padding:30, borderRadius:10, maxWidth:600, width:'90%', maxHeight:'80vh', overflowY:'auto'}}>
-                  <h2>Dettagli Ordine #{selectedLog.id}</h2>
-                  <div style={{background:'#f0f0f0', padding:15, borderRadius:5, fontFamily:'monospace', whiteSpace:'pre-wrap', fontSize:13}}>
+                  <h2 style={{color:'#000'}}>Dettagli Ordine #{selectedLog.id}</h2>
+                  <div style={{background:'#f0f0f0', color:'#0f0e0eff', padding:15, borderRadius:5, fontFamily:'monospace', whiteSpace:'pre-wrap', fontSize:13}}>
                       {selectedLog.dettagli || "Nessun dettaglio registrato."}
                   </div>
                   <button onClick={() => setSelectedLog(null)} style={{marginTop:20, padding:'10px 20px', background:'#2c3e50', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Chiudi</button>
