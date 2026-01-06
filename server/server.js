@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE V17 (FIX CUCINA + CODICE COMPLETO) 🛡️
+// server/server.js - VERSIONE V18 (CATEGORIE PER CUCINA) 🛡️
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -14,10 +14,10 @@ const port = process.env.PORT || 3000;
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
-// Verifica configurazione critica
+// Verifica configurazione
 if (!process.env.DATABASE_URL) {
-    console.error("❌ ERRORE CRITICO: Manca la variabile d'ambiente DATABASE_URL");
-    process.exit(1); 
+    console.error("❌ ERRORE: Manca DATABASE_URL. Il server non può partire.");
+    process.exit(1);
 }
 
 const pool = new Pool({
@@ -25,13 +25,12 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
-// --- INIT DB & MIGRAZIONI (SAFE MODE) ---
+// --- INIT DB & MIGRAZIONI ---
 const initDb = async () => {
     const client = await pool.connect();
     try {
-        console.log("🛠️ Verifica struttura Database in corso...");
+        console.log("🛠️ Verifica struttura Database...");
         
-        // 1. CREAZIONE TABELLE BASE (SE NON ESISTONO)
         await client.query(`
             CREATE TABLE IF NOT EXISTS ristoranti (
                 id SERIAL PRIMARY KEY,
@@ -73,7 +72,7 @@ const initDb = async () => {
             );
         `);
 
-        // 2. MIGRAZIONE COLONNE MANCANTI (AUTO-REPAIR SICURO)
+        // FIX COLONNE MANCANTI
         await client.query(`
             DO $$ 
             BEGIN 
@@ -82,17 +81,17 @@ const initDb = async () => {
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ristoranti' AND column_name='telefono') THEN ALTER TABLE ristoranti ADD COLUMN telefono TEXT; END IF;
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ristoranti' AND column_name='password') THEN ALTER TABLE ristoranti ADD COLUMN password TEXT DEFAULT 'tonystark'; END IF;
                 
-                -- Ordini (IMPORTANTE)
+                -- Ordini
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ordini' AND column_name='prodotti') THEN ALTER TABLE ordini ADD COLUMN prodotti TEXT; END IF;
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ordini' AND column_name='totale') THEN ALTER TABLE ordini ADD COLUMN totale REAL; END IF;
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ordini' AND column_name='dettagli') THEN ALTER TABLE ordini ADD COLUMN dettagli TEXT; END IF;
             END $$;
         `);
         
-        console.log("✅ Database verificato e pronto. Avvio server...");
+        console.log("✅ Database verificato.");
         return true;
     } catch (err) {
-        console.error("❌ Errore critico InitDB:", err);
+        console.error("❌ Errore InitDB:", err);
         return false;
     } finally {
         client.release();
@@ -116,16 +115,29 @@ const uploadFile = multer({ storage: multer.memoryStorage() });
 //                  ROTTE API
 // ==========================================
 
-// 1. MENU PUBBLICO
+// 1. MENU PUBBLICO (MODIFICATO PER INCLUDERE DATI CATEGORIA)
 app.get('/api/menu/:slug', async (req, res) => {
     try {
         const { slug } = req.params;
         const rist = await pool.query(`SELECT id, nome, ordini_abilitati, servizio_attivo, logo_url, cover_url, colore_sfondo, colore_titolo, colore_testo, colore_prezzo, font_style FROM ristoranti WHERE slug = $1`, [slug]);
         if (rist.rows.length === 0) return res.status(404).json({ error: "Ristorante non trovato" });
         const data = rist.rows[0];
-        const menu = await pool.query(`SELECT p.*, c.descrizione as categoria_descrizione FROM prodotti p LEFT JOIN categorie c ON p.categoria = c.nome AND p.ristorante_id = c.ristorante_id WHERE p.ristorante_id = $1 ORDER BY COALESCE(c.posizione, 999) ASC, p.posizione ASC`, [data.id]);
+        
+        // MODIFICA QUI: Aggiunto c.nome e c.posizione
+        const query = `
+            SELECT p.*, 
+                   c.descrizione as categoria_descrizione,
+                   c.nome as categoria_nome, 
+                   c.posizione as categoria_posizione
+            FROM prodotti p 
+            LEFT JOIN categorie c ON p.categoria = c.nome AND p.ristorante_id = c.ristorante_id 
+            WHERE p.ristorante_id = $1 
+            ORDER BY COALESCE(c.posizione, 999) ASC, p.posizione ASC
+        `;
+        const menu = await pool.query(query, [data.id]);
+        
         res.json({ 
-            id: data.id, ristorante: data.nome,
+            id: data.id, restaurante: data.nome,
             style: { logo: data.logo_url, cover: data.cover_url, bg: data.colore_sfondo, title: data.colore_titolo, text: data.colore_testo, price: data.colore_prezzo, font: data.font_style },
             ordini_abilitati: data.ordini_abilitati, servizio_attivo: data.servizio_attivo, menu: menu.rows 
         });
@@ -203,13 +215,12 @@ app.put('/api/ristorante/servizio/:id', async (req, res) => { try { await pool.q
 app.post('/api/login', async (req, res) => { try { const r = await pool.query('SELECT * FROM ristoranti WHERE email = $1 AND password = $2', [req.body.email, req.body.password]); if(r.rows.length>0) res.json({success:true, user:r.rows[0]}); else res.status(401).json({success:false}); } catch(e){res.status(500).json({error:"Err"});} });
 app.post('/api/upload', upload.single('photo'), async (req, res) => { try { res.json({ url: req.file.path }); } catch (e) { res.status(500).json({error:"Err"}); } });
 
-// --- GESTIONE ORDINI (FIX V17) ---
+// --- GESTIONE ORDINI (FIX V18) ---
 app.post('/api/ordine', async (req, res) => { 
     try { 
         console.log("➡️ RICEVUTO ORDINE:", req.body);
         const { ristorante_id, tavolo, prodotti, totale } = req.body;
         
-        // Validazione
         if (!ristorante_id || !prodotti || !tavolo) {
             console.error("❌ Dati mancanti nell'ordine");
             return res.status(400).json({ error: "Dati incompleti" });
@@ -229,21 +240,16 @@ app.post('/api/ordine', async (req, res) => {
     } 
 });
 
-// API POLLING (Questa è quella che la cucina chiama)
+// API POLLING 
 app.get('/api/polling/:ristorante_id', async (req, res) => { 
     try { 
-        // ------------------------------------------------------------------
-        // FIX CRITICO: Supporto per entrambi gli stati 'in attesa' e 'in_attesa'
-        // ------------------------------------------------------------------
         const r = await pool.query(
             "SELECT * FROM ordini WHERE ristorante_id = $1 AND (stato = 'in attesa' OR stato = 'in_attesa') ORDER BY id ASC", 
             [req.params.ristorante_id]
         ); 
         
-        // TRASFORMAZIONE DATI (Fondamentale per far vedere gli ordini)
         const ordini = r.rows.map(o => {
             let parsedProdotti = [];
-            
             if (Array.isArray(o.prodotti)) {
                 parsedProdotti = o.prodotti;
             } else if (typeof o.prodotti === 'string') {
@@ -253,10 +259,8 @@ app.get('/api/polling/:ristorante_id', async (req, res) => {
                     parsedProdotti = [{ nome: o.prodotti }];
                 }
             } else if (o.dettagli) {
-                // Fallback vecchia colonna
                 parsedProdotti = [{ nome: o.dettagli }];
             }
-
             return { ...o, prodotti: parsedProdotti };
         });
         
@@ -280,10 +284,10 @@ app.post('/api/super/ristoranti', async (req, res) => { const { nome, slug, emai
 app.put('/api/super/ristoranti/:id', async (req, res) => { const { id } = req.params; const body = req.body; try { if (body.ordini_abilitati !== undefined && Object.keys(body).length === 1) { await pool.query('UPDATE ristoranti SET ordini_abilitati = $1 WHERE id = $2', [body.ordini_abilitati, id]); return res.json({ success: true }); } let sql = "UPDATE ristoranti SET nome=$1, slug=$2, email=$3, telefono=$4"; let params = [body.nome, body.slug, body.email, body.telefono]; if (body.password && body.password.trim() !== "") { sql += ", password=$5 WHERE id=$6"; params.push(body.password, id); } else { sql += " WHERE id=$5"; params.push(id); } await pool.query(sql, params); res.json({ success: true }); } catch (e) { res.status(500).json({error: "Errore Aggiornamento"}); } });
 app.delete('/api/super/ristoranti/:id', async (req, res) => { const { id } = req.params; try { await pool.query('DELETE FROM prodotti WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM categorie WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM ordini WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM ristoranti WHERE id = $1', [id]); res.json({ success: true }); } catch (e) { res.status(500).json({error: "Errore Eliminazione"}); } });
 
-// --- AVVIO SERVER SINCRONIZZATO (SAFE BOOT) ---
+// --- AVVIO SERVER (SAFE BOOT) ---
 initDb().then((ready) => {
     if (ready) {
-        app.listen(port, () => console.log(`🚀 SERVER V17 AVVIATO SU PORTA ${port}`));
+        app.listen(port, () => console.log(`🚀 SERVER V18 AVVIATO SU PORTA ${port}`));
     } else {
         console.error("❌ Impossibile avviare il server.");
     }
