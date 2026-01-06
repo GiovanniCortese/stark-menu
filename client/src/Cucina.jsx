@@ -1,47 +1,47 @@
-// client/src/Cucina.jsx - VERSIONE MULTI-RISTORANTE 👨‍🍳
+// client/src/Cucina.jsx - VERSIONE V13 (COMPATIBILE CON NUOVI ORDINI) 👨‍🍳
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
 function Cucina() {
   const [ordini, setOrdini] = useState([]);
-  const [infoRistorante, setInfoRistorante] = useState(null); // Qui salviamo ID e Nome
-  const { slug } = useParams(); // Legge "da-luigi" o "pizzeria-stark" dall'URL
+  const [infoRistorante, setInfoRistorante] = useState(null); 
+  const { slug } = useParams(); 
   
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
-  // 1. Appena apri la pagina, scopriamo CHI SIAMO (ID e Nome) basandoci sullo slug
+  // 1. Identificazione Ristorante
   useEffect(() => {
     fetch(`${API_URL}/api/menu/${slug}`)
       .then(res => res.json())
       .then(data => {
-        // data contiene: { id: 1, ristorante: "Pizzeria Stark", ... }
-        // Se il server non tornasse l'ID, questo passaggio fallirebbe.
-        // Assicurati di aver aggiornato server.js come detto prima!
         setInfoRistorante(data); 
       })
       .catch(err => console.error("Ristorante non trovato:", err));
   }, [slug]);
 
-  // 2. Funzione per scaricare gli ordini (usando l'ID dinamico)
+  // 2. Scaricamento Ordini
   const aggiornaOrdini = () => {
-    if (!infoRistorante?.id) return; // Se non sappiamo ancora chi siamo, non facciamo nulla
+    if (!infoRistorante?.id) return; 
 
     fetch(`${API_URL}/api/polling/${infoRistorante.id}`)
       .then(res => res.json())
-      .then(data => setOrdini(data.nuovi_ordini || []))
+      .then(data => {
+          // I dati arrivano dal server già formattati, ma assicuriamoci che l'array esista
+          setOrdini(data.nuovi_ordini || []);
+      })
       .catch(err => console.error("Errore polling:", err));
   };
 
-  // 3. Attiva il Polling solo quando abbiamo le info del ristorante
+  // 3. Polling
   useEffect(() => {
     if (infoRistorante) {
-      aggiornaOrdini(); // Prima chiamata immediata
-      const intervallo = setInterval(aggiornaOrdini, 5000); // Poi ogni 5 sec
+      aggiornaOrdini(); 
+      const intervallo = setInterval(aggiornaOrdini, 5000); 
       return () => clearInterval(intervallo);
     }
   }, [infoRistorante]);
 
-  // 4. Gestisce il click su "Pronto"
+  // 4. Segna come Pronto
   const segnaComePronto = async (ordineId) => {
     try {
       const response = await fetch(`${API_URL}/api/ordine/completato`, {
@@ -51,7 +51,7 @@ function Cucina() {
       });
       
       if (response.ok) {
-        aggiornaOrdini(); // Ricarica subito la lista pulita
+        aggiornaOrdini(); 
       }
     } catch (error) {
       console.error("Errore completamento:", error);
@@ -59,14 +59,14 @@ function Cucina() {
     }
   };
 
-  if (!infoRistorante) return <div className="cucina-container" style={{textAlign:'center', padding:'50px'}}><h1>⏳ Identificazione Ristorante...</h1></div>;
+  if (!infoRistorante) return <div className="cucina-container" style={{textAlign:'center', padding:'50px'}}><h1>⏳ In attesa del server...</h1></div>;
 
   return (
     <div className="cucina-container">
       <header style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
         <h1>👨‍🍳 Cucina</h1>
         <div style={{background: '#222', color: '#fff', padding: '5px 15px', borderRadius: '20px'}}>
-            {infoRistorante.ristorante} {/* Nome Dinamico! */}
+            {infoRistorante.ristorante}
         </div>
       </header>
       
@@ -83,18 +83,32 @@ function Cucina() {
             <div className="ticket-header">
               <span className="tavolo">Tavolo {ordine.tavolo}</span>
               <span className="orario">
-                {new Date(ordine.data_creazione).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                {/* Supporto sia per data_ora (nuovo) che data_creazione (vecchio) */}
+                {new Date(ordine.data_ora || ordine.data_creazione).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
               </span>
             </div>
-            <div className="ticket-body">
-              <p>{ordine.dettagli}</p>
+            
+            <div className="ticket-body" style={{textAlign:'left'}}>
+              {/* LOGICA INTELLIGENTE: Se c'è 'prodotti' (nuovo array), usa quello. Altrimenti usa 'dettagli' (vecchio testo) */}
+              {Array.isArray(ordine.prodotti) && ordine.prodotti.length > 0 ? (
+                  <ul style={{paddingLeft: '20px', margin: '10px 0', fontSize:'1.1rem'}}>
+                      {ordine.prodotti.map((item, index) => (
+                          <li key={index} style={{marginBottom:'5px'}}>
+                              {/* Gestisce sia se item è una stringa ("Margherita") sia se è un oggetto ({nome: "Margherita"}) */}
+                              {typeof item === 'string' ? item : item.nome}
+                          </li>
+                      ))}
+                  </ul>
+              ) : (
+                  <p style={{fontSize:'1.2rem', fontWeight:'bold'}}>{ordine.dettagli || "Nessun dettaglio"}</p>
+              )}
             </div>
             
             <button 
                 className="btn-completato" 
                 onClick={() => segnaComePronto(ordine.id)}
             >
-                ✅ ORDINE PRONTO
+                ✅ PRONTO
             </button>
           </div>
         ))}
