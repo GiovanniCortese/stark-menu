@@ -99,7 +99,7 @@ const initDb = async () => {
     }
 };
 
-// --- CLOUDINARY ---
+// --- CONFIG CLOUDINARY ---
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -125,7 +125,7 @@ app.get('/api/menu/:slug', async (req, res) => {
         const data = rist.rows[0];
         const menu = await pool.query(`SELECT p.*, c.descrizione as categoria_descrizione FROM prodotti p LEFT JOIN categorie c ON p.categoria = c.nome AND p.ristorante_id = c.ristorante_id WHERE p.ristorante_id = $1 ORDER BY COALESCE(c.posizione, 999) ASC, p.posizione ASC`, [data.id]);
         res.json({ 
-            id: data.id, restaurante: data.nome,
+            id: data.id, ristorante: data.nome,
             style: { logo: data.logo_url, cover: data.cover_url, bg: data.colore_sfondo, title: data.colore_titolo, text: data.colore_testo, price: data.colore_prezzo, font: data.font_style },
             ordini_abilitati: data.ordini_abilitati, servizio_attivo: data.servizio_attivo, menu: menu.rows 
         });
@@ -232,7 +232,13 @@ app.post('/api/ordine', async (req, res) => {
 // API POLLING (Questa è quella che la cucina chiama)
 app.get('/api/polling/:ristorante_id', async (req, res) => { 
     try { 
-        const r = await pool.query("SELECT * FROM ordini WHERE ristorante_id = $1 AND stato = 'in attesa' ORDER BY id ASC", [req.params.ristorante_id]); 
+        // ------------------------------------------------------------------
+        // FIX CRITICO: Supporto per entrambi gli stati 'in attesa' e 'in_attesa'
+        // ------------------------------------------------------------------
+        const r = await pool.query(
+            "SELECT * FROM ordini WHERE ristorante_id = $1 AND (stato = 'in attesa' OR stato = 'in_attesa') ORDER BY id ASC", 
+            [req.params.ristorante_id]
+        ); 
         
         // TRASFORMAZIONE DATI (Fondamentale per far vedere gli ordini)
         const ordini = r.rows.map(o => {
