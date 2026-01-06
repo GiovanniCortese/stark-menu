@@ -89,20 +89,25 @@ function Admin() {
     init();
   }, [slug]);
 
-  const caricaConfigurazioniExtra = (id) => {
+ const caricaConfigurazioniExtra = (id) => {
     fetch(`${API_URL}/api/ristorante/config/${id}`).then(r=>r.json()).then(d=>setConfig(prev => ({...prev, ...d}))); 
     fetch(`${API_URL}/api/categorie/${id}`)
       .then(res => res.json())
       .then(data => {
-          setCategorie(data);
-          if(data.length > 0 && !nuovoPiatto.categoria && !editId) setNuovoPiatto(prev => ({...prev, categoria: data[0].nome}));
+          // ORDINAMENTO FONDAMENTALE PER IL DRAG & DROP
+          const sorted = data.sort((a,b) => (a.posizione || 0) - (b.posizione || 0));
+          setCategorie(sorted);
+          if(sorted.length > 0 && !nuovoPiatto.categoria && !editId) setNuovoPiatto(prev => ({...prev, categoria: sorted[0].nome}));
       });
   };
 
   const ricaricaDati = () => {
       if(!user) return;
       fetch(`${API_URL}/api/menu/${slug}`).then(r=>r.json()).then(d=>{if(d.menu) setMenu(d.menu)});
-      fetch(`${API_URL}/api/categorie/${user.id}`).then(r=>r.json()).then(setCategorie);
+      fetch(`${API_URL}/api/categorie/${user.id}`).then(r=>r.json()).then(data => {
+          const sorted = data.sort((a,b) => (a.posizione || 0) - (b.posizione || 0));
+          setCategorie(sorted);
+      });
   };
 
   const handleLogout = () => {
@@ -163,31 +168,62 @@ function Admin() {
 
   const handleOnDragEnd = async (result) => {
     if (!result.destination) return;
+
+    // 1. SPOSTAMENTO CATEGORIE
     if (result.type === 'CATEGORY') {
         const items = Array.from(categorie);
         const [reorderedItem] = items.splice(result.source.index, 1);
         items.splice(result.destination.index, 0, reorderedItem);
+
         const updatedItems = items.map((item, index) => ({ ...item, posizione: index }));
-        setCategorie(updatedItems);
-        await fetch(`${API_URL}/api/categorie/riordina`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ categorie: updatedItems }) });
-        ricaricaDati();
+        setCategorie(updatedItems); // Aggiorna subito la vista
+
+        await fetch(`${API_URL}/api/categorie/riordina`, { 
+            method: 'PUT', 
+            headers:{'Content-Type':'application/json'}, 
+            body: JSON.stringify({ categorie: updatedItems }) 
+        });
         return;
     }
+
+    // 2. SPOSTAMENTO PIATTI
     if (result.type === 'DISH') {
         const sourceCat = result.source.droppableId.replace("cat-", "");
         const destCat = result.destination.droppableId.replace("cat-", "");
         const piattoId = parseInt(result.draggableId);
+
+        // Trova il piatto e aggiorna la sua categoria locale
         const piattoSpostato = menu.find(p => p.id === piattoId);
         if (!piattoSpostato) return;
-        let nuovoMenu = menu.filter(p => p.id !== piattoId);
-        const piattoAggiornato = { ...piattoSpostato, categoria: destCat };
-        const piattiDestinazione = nuovoMenu.filter(p => p.categoria === destCat);
-        piattiDestinazione.splice(result.destination.index, 0, piattoAggiornato);
-        const altriPiatti = nuovoMenu.filter(p => p.categoria !== destCat);
-        const piattiDestinazioneFinali = piattiDestinazione.map((p, idx) => ({ ...p, posizione: idx }));
-        const menuFinale = [...altriPiatti, ...piattiDestinazioneFinali];
-        setMenu(menuFinale);
-        await fetch(`${API_URL}/api/prodotti/riordina`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prodotti: piattiDestinazioneFinali.map(p => ({ id: p.id, posizione: p.posizione, categoria: destCat })) }) });
+        piattoSpostato.categoria = destCat;
+
+        // Calcola la nuova disposizione
+        const menuSenzaPiatto = menu.filter(p => p.id !== piattoId);
+        
+        // Trova l'indice globale dove inserire il piatto (approssimato per la UI)
+        // La logica server farà il salvataggio preciso delle posizioni
+        const piattiDestinazione = menu.filter(p => p.categoria === destCat && p.id !== piattoId);
+        piattiDestinazione.splice(result.destination.index, 0, piattoSpostato);
+
+        // Prepariamo il payload per il server (solo la categoria impattata)
+        const updatePayload = piattiDestinazione.map((p, idx) => ({
+            id: p.id,
+            posizione: idx,
+            categoria: destCat
+        }));
+
+        // Aggiorna UI locale
+        const nuovoMenu = [...menuSenzaPiatto];
+        // Reinseriamo il piatto nella lista generale (semplificato per non crashare)
+        nuovoMenu.push(piattoSpostato); 
+        setMenu(nuovoMenu);
+
+        await fetch(`${API_URL}/api/prodotti/riordina`, { 
+            method: 'PUT', 
+            headers:{'Content-Type':'application/json'}, 
+            body: JSON.stringify({ prodotti: updatePayload }) 
+        });
+        ricaricaDati(); // Ricarica per allineare tutto perfettamente
     }
   };
   
