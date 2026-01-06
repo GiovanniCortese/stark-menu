@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE V21 (ANTI-CRASH & CASSA SYSTEM) 🛡️
+// server/server.js - VERSIONE V22 (FIX CASSA CRITICO + ANTI-CRASH) 🛡️
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -14,7 +14,7 @@ const port = process.env.PORT || 3000;
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
-// Verifica presenza DATABASE_URL
+// Verifica configurazione
 if (!process.env.DATABASE_URL) {
     console.error("❌ ERRORE: Manca DATABASE_URL. Il server non può partire.");
     process.exit(1);
@@ -31,7 +31,7 @@ const initDb = async () => {
     try {
         console.log("🛠️ Verifica struttura Database...");
         
-        // Tabelle Base
+        // TABELLE BASE
         await client.query(`
             CREATE TABLE IF NOT EXISTS ristoranti (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, slug TEXT UNIQUE NOT NULL, ordini_abilitati BOOLEAN DEFAULT FALSE, servizio_attivo BOOLEAN DEFAULT FALSE, logo_url TEXT, cover_url TEXT, colore_sfondo TEXT DEFAULT '#222222', colore_titolo TEXT DEFAULT '#ffffff', colore_testo TEXT DEFAULT '#cccccc', colore_prezzo TEXT DEFAULT '#27ae60', font_style TEXT DEFAULT 'sans-serif', email TEXT, telefono TEXT, password TEXT DEFAULT 'tonystark');
             CREATE TABLE IF NOT EXISTS categorie (id SERIAL PRIMARY KEY, ristorante_id INTEGER REFERENCES ristoranti(id), nome TEXT NOT NULL, descrizione TEXT, posizione INTEGER DEFAULT 0);
@@ -39,23 +39,24 @@ const initDb = async () => {
             CREATE TABLE IF NOT EXISTS ordini (id SERIAL PRIMARY KEY, ristorante_id INTEGER REFERENCES ristoranti(id), tavolo TEXT, stato TEXT DEFAULT 'in_attesa', data_ora TIMESTAMP DEFAULT CURRENT_TIMESTAMP, prodotti TEXT, totale REAL, dettagli TEXT);
         `);
 
-        // FIX & MIGRAZIONI AUTOMATICHE
+        // AGGIORNAMENTO COLONNE (AUTO-FIX)
         await client.query(`
             DO $$ 
             BEGIN 
-                -- Colonna per distinguere BAR vs CUCINA
+                -- Aggiunta colonna per distinguere BAR vs CUCINA
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='categorie' AND column_name='is_bar') THEN 
                     ALTER TABLE categorie ADD COLUMN is_bar BOOLEAN DEFAULT FALSE; 
                 END IF;
-                -- Protezione dati nulli
+                
+                -- Protezione dati nulli per evitare crash JSON
                 ALTER TABLE ordini ALTER COLUMN prodotti SET DEFAULT '[]';
             END $$;
         `);
         
-        console.log("✅ Database pronto V21 (Anti-Crash Attivo).");
+        console.log("✅ Database verificato e pronto V22.");
         return true;
     } catch (err) {
-        console.error("❌ Errore InitDB:", err);
+        console.error("❌ Errore critico InitDB:", err);
         return false;
     } finally {
         client.release();
@@ -94,17 +95,18 @@ app.get('/api/menu/:slug', async (req, res) => {
         const menu = await pool.query(query, [data.id]);
         
         res.json({ 
-            id: data.id, ristorante: data.nome,
+            id: data.id, restaurante: data.nome,
             style: { logo: data.logo_url, cover: data.cover_url, bg: data.colore_sfondo, title: data.colore_titolo, text: data.colore_testo, price: data.colore_prezzo, font: data.font_style },
             ordini_abilitati: data.ordini_abilitati, servizio_attivo: data.servizio_attivo, menu: menu.rows 
         });
     } catch (err) { console.error(err); res.status(500).json({ error: "Server error" }); }
 });
 
-// 2. POLLING ULTRA-ROBUSTO (Fix crash)
+// 2. POLLING ULTRA-ROBUSTO (CRITICO PER EVITARE CRASH)
 app.get('/api/polling/:ristorante_id', async (req, res) => { 
     try { 
-        // Seleziona tutto ciò che NON è stato pagato (così la Cassa vede tutto)
+        // MODIFICA CRITICA: Seleziona tutto tranne i PAGATI.
+        // Se c'è un ordine "in_attesa" o "servito", la cassa DEVE vederlo.
         const r = await pool.query(
             "SELECT * FROM ordini WHERE ristorante_id = $1 AND stato != 'pagato' ORDER BY data_ora ASC", 
             [req.params.ristorante_id]
@@ -120,6 +122,7 @@ app.get('/api/polling/:ristorante_id', async (req, res) => {
                     parsed = Array.isArray(temp) ? temp : [temp];
                 } catch (e) {
                     console.error(`⚠️ Ordine corrotto ID ${o.id}:`, e);
+                    // Invece di crashare, restituisci un oggetto errore visibile
                     parsed = [{ nome: "⚠️ ERRORE DATI - IMPOSSIBILE LEGGERE" }];
                 }
             } else if (o.dettagli) {
@@ -138,7 +141,7 @@ app.get('/api/polling/:ristorante_id', async (req, res) => {
     } 
 });
 
-// 3. CHIUSURA TAVOLO (CASSA)
+// 3. CHIUSURA TAVOLO (CASSA) - QUESTA MANCAVA!
 app.post('/api/cassa/paga-tavolo', async (req, res) => {
     try {
         const { ristorante_id, tavolo } = req.body;
@@ -148,10 +151,13 @@ app.post('/api/cassa/paga-tavolo', async (req, res) => {
             [ristorante_id, String(tavolo)]
         );
         res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: "Errore pagamento" }); }
+    } catch (e) { 
+        console.error("Errore Pagamento:", e);
+        res.status(500).json({ error: "Errore pagamento" }); 
+    }
 });
 
-// 4. STORICO ORDINI (CASSA)
+// 4. STORICO ORDINI (CASSA) - QUESTA MANCAVA!
 app.get('/api/cassa/storico/:ristorante_id', async (req, res) => {
     try {
         const r = await pool.query(
@@ -160,7 +166,7 @@ app.get('/api/cassa/storico/:ristorante_id', async (req, res) => {
         );
         const ordini = r.rows.map(o => {
             let parsed = [];
-            try { parsed = JSON.parse(o.prodotti || "[]"); } catch (e) { parsed = [{nome: "Err"}]; }
+            try { parsed = JSON.parse(o.prodotti || "[]"); } catch (e) { parsed = [{nome: "Err Dati"}]; }
             return { ...o, prodotti: parsed };
         });
         res.json(ordini);
@@ -206,7 +212,7 @@ app.delete('/api/super/ristoranti/:id', async (req, res) => { try { const id = r
 // --- AVVIO SERVER (SAFE BOOT) ---
 initDb().then((ready) => {
     if (ready) {
-        app.listen(port, () => console.log(`🚀 SERVER V21 (ANTI-CRASH) - Porta ${port}`));
+        app.listen(port, () => console.log(`🚀 SERVER V22 (FIX CASSA) - Porta ${port}`));
     } else {
         console.error("❌ Impossibile avviare il server.");
     }

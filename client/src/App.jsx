@@ -1,109 +1,139 @@
-// client/src/App.jsx - VERSIONE V14 (ROUTING BAR + SPLIT ORDINI) 🍹
+// client/src/App.jsx - VERSIONE V22 (FULL STACK INTEGRATION) 🛒
 import { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Link, useSearchParams, useParams } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useParams, useSearchParams } from 'react-router-dom';
 import Cucina from './Cucina';
-import Bar from './Bar'; // [NUOVO] Importiamo la pagina Bar
-import Cassa from './Cassa'; // Import
+import Bar from './Bar'; 
+import Cassa from './Cassa'; 
 import Login from './Login';
 import Admin from './Admin';
 import SuperAdmin from './SuperAdmin'; 
 import './App.css';
 
-
 function Menu() {
+  // --- STATI DATI ---
   const [menu, setMenu] = useState([]);
   const [ristorante, setRistorante] = useState("");
   const [ristoranteId, setRistoranteId] = useState(null);
   const [style, setStyle] = useState(null);
+  
+  // --- STATI CARRELLO E ORDINE ---
   const [canOrder, setCanOrder] = useState(true); 
   const [carrello, setCarrello] = useState([]); 
   const [error, setError] = useState(false);
   
-  // STATO PER ACCORDION
+  // --- STATI INTERFACCIA (ACCORDION & MODAL) ---
   const [activeCategory, setActiveCategory] = useState(null);       
   const [activeSubCategory, setActiveSubCategory] = useState(null); 
   const [selectedPiatto, setSelectedPiatto] = useState(null);
-
-  // NUOVO: Stato per il checkout/riepilogo
   const [showCheckout, setShowCheckout] = useState(false);
 
+  // --- PARAMETRI URL ---
   const { slug } = useParams();
   const currentSlug = slug || 'pizzeria-stark';
   const [searchParams] = useSearchParams();
   const numeroTavolo = searchParams.get('tavolo') || 'Banco';
+  
+  // URL SERVER (Assicurati che sia quello giusto)
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
+  // --- 1. CARICAMENTO MENU ---
   useEffect(() => {
     fetch(`${API_URL}/api/menu/${currentSlug}`)
       .then(res => res.json())
       .then(data => {
+        if(data.error) { 
+            console.error("Ristorante non trovato"); 
+            setError(true); 
+            return; 
+        }
+        
         setRistorante(data.ristorante);
-        setMenu(data.menu);
-        setRistoranteId(data.id);
+        setMenu(data.menu || []);
+        setRistoranteId(data.id); // FONDAMENTALE PER INVIARE L'ORDINE
+        
         if (data.style) setStyle(data.style);
         setCanOrder(data.ordini_abilitati && data.servizio_attivo);
       })
-      .catch(err => setError(true));
+      .catch(err => {
+          console.error("Errore fetch menu:", err);
+          setError(true);
+      });
   }, [currentSlug]);
 
+  // --- 2. AGGIUNGI AL CARRELLO (Con Logica Bar) ---
   const aggiungiAlCarrello = (prodotto) => {
-    if (!canOrder) return alert("Il servizio ordini è chiuso.");
+    if (!canOrder) return alert("Il servizio ordini è momentaneamente chiuso.");
     
-    // [IMPORTANTE] Salviamo i dati per lo smistamento Cucina/Bar
+    // Creiamo l'oggetto per il carrello
     const item = { 
         ...prodotto, 
-        tempId: Date.now() + Math.random(),
-        categoria: prodotto.categoria,
+        tempId: Date.now() + Math.random(), // ID univoco per il frontend
+        categoria: prodotto.categoria || "Varie",
         categoria_posizione: prodotto.categoria_posizione || 999,
-        // Qui catturiamo se la categoria è "Da Bar" (arriva dal DB)
-        is_bar: prodotto.categoria_is_bar || false 
+        // QUI CATTURIAMO IL FLAG DAL DB: Se la categoria è Bar, il prodotto è Bar
+        is_bar: !!prodotto.categoria_is_bar 
     };
     
     setCarrello([...carrello, item]); 
-    setSelectedPiatto(null); 
+    setSelectedPiatto(null); // Chiude il modale se aperto
   };
 
+  // --- 3. RIMUOVI DAL CARRELLO ---
   const rimuoviDalCarrello = (tempId) => {
       const nuovoCarrello = carrello.filter(item => item.tempId !== tempId);
       setCarrello(nuovoCarrello);
       if(nuovoCarrello.length === 0) setShowCheckout(false);
   };
 
+  // --- 4. INVIA ORDINE AL SERVER ---
   const inviaOrdine = async () => { 
-     if (!ristoranteId) return;
-     const totale = carrello.reduce((acc, i) => acc + parseFloat(i.prezzo), 0);
+     if (!ristoranteId) return alert("Errore: Impossibile identificare il ristorante. Ricarica la pagina.");
      
-     // Prepariamo l'oggetto per il server includendo il flag is_bar
+     const totale = carrello.reduce((acc, i) => acc + parseFloat(i.prezzo || 0), 0);
+     
+     // Puliamo i dati per il backend (mandiamo solo ciò che serve)
      const prodottiPerBackend = carrello.map(p => ({
          nome: p.nome,
          prezzo: p.prezzo,
          categoria: p.categoria,
-         categoria_posizione: p.categoria_posizione || 999,
-         is_bar: p.is_bar // [FONDAMENTALE] Dice al server se è bar o cucina
+         categoria_posizione: p.categoria_posizione,
+         is_bar: p.is_bar // CRUCIALE: Questo dice al server "sono una bibita"
      }));
+
+     const payload = {
+        ristorante_id: ristoranteId, 
+        tavolo: numeroTavolo, 
+        prodotti: prodottiPerBackend, 
+        totale
+     };
+
+     console.log("📤 Invio Ordine...", payload);
 
      try {
         const res = await fetch(`${API_URL}/api/ordine`, { 
             method: 'POST', 
             headers: {'Content-Type': 'application/json'}, 
-            body: JSON.stringify({
-                ristorante_id: ristoranteId, 
-                tavolo: numeroTavolo, 
-                prodotti: prodottiPerBackend, 
-                totale
-            })
+            body: JSON.stringify(payload)
         });
+        
         const d = await res.json();
+        
         if(d.success) { 
             alert("✅ Ordine inviato con successo!"); 
             setCarrello([]); 
             setShowCheckout(false);
+        } else {
+            alert("❌ Errore dal server: " + (d.error || "Sconosciuto"));
         }
-     } catch (e) { alert("Errore connessione"); }
+     } catch (e) { 
+         console.error("Errore di rete:", e);
+         alert("Errore di connessione. Controlla internet e riprova."); 
+     }
   };
 
-  if (error) return <div className="container"><h1>🚫 404</h1></div>;
+  if (error) return <div className="container" style={{padding:'50px', textAlign:'center', color:'white'}}><h1>🚫 Ristorante non trovato (404)</h1></div>;
 
+  // --- LOGICA UI (Accordion) ---
   const categorieOrdinate = [...new Set(menu.map(p => p.categoria))];
 
   const toggleAccordion = (catNome) => {
@@ -117,13 +147,10 @@ function Menu() {
   };
 
   const toggleSubAccordion = (subName) => {
-      if (activeSubCategory === subName) {
-          setActiveSubCategory(null);
-      } else {
-          setActiveSubCategory(subName);
-      }
+      setActiveSubCategory(activeSubCategory === subName ? null : subName);
   };
 
+  // --- STILI DINAMICI ---
   const appStyle = {
       backgroundColor: style?.bg || '#222',
       color: style?.text || '#ccc',
@@ -145,38 +172,44 @@ function Menu() {
   return (
     <div style={appStyle}> 
       
+      {/* HEADER */}
       <header style={{textAlign:'center', marginBottom:'20px'}}>
         {style?.logo ? (
-            <img 
-                src={style.logo} 
-                alt={ristorante} 
-                style={{
-                    width: '100%',
-                    maxWidth: '90%', 
-                    maxHeight: '150px', 
-                    objectFit: 'contain'
-                }} 
-            />
+            <img src={style.logo} alt={ristorante} style={{width: '100%', maxWidth: '90%', maxHeight: '150px', objectFit: 'contain'}} />
         ) : (
             <h1 style={{color: titleColor, fontSize:'2.5rem', margin:'0 0 10px 0'}}>{ristorante}</h1>
         )}
         
-        {canOrder ? <p style={{color: style?.text || '#ccc'}}>Tavolo: <strong>{numeroTavolo}</strong></p> : <div className="badge-digital">📖 Menu Digitale</div>}
+        {canOrder ? (
+            <p style={{color: style?.text || '#ccc'}}>
+                Tavolo: <strong style={{fontSize:'1.2rem', color:'white'}}>{numeroTavolo}</strong>
+            </p> 
+        ) : (
+            <div className="badge-digital" style={{background:'red', color:'white', padding:'5px 10px', display:'inline-block', borderRadius:'5px'}}>
+                ⛔ Servizio Chiuso
+            </div>
+        )}
       </header>
 
-      {/* BARRA CARRELLO */}
+      {/* BARRA CARRELLO FLOTTANTE */}
       {canOrder && carrello.length > 0 && !showCheckout && (
         <div className="carrello-bar">
-          <div className="totale"><span>{carrello.length} ordini</span><strong>{carrello.reduce((a,b)=>a+Number(b.prezzo),0).toFixed(2)} €</strong></div>
-          <button onClick={() => setShowCheckout(true)} className="btn-invia" style={{background:'#f1c40f', color:'black'}}>VEDI ORDINE 📝</button>
+          <div className="totale">
+              <span>{carrello.length} prodotti</span>
+              <strong>{carrello.reduce((a,b)=>a+Number(b.prezzo),0).toFixed(2)} €</strong>
+          </div>
+          <button onClick={() => setShowCheckout(true)} className="btn-invia" style={{background:'#f1c40f', color:'black'}}>
+              VEDI ORDINE 📝
+          </button>
         </div>
       )}
 
-      {/* LISTA MENU */}
+      {/* LISTA MENU (ACCORDION) */}
       <div style={{paddingBottom: '80px', marginTop: '0', width: '100%'}}> 
         {categorieOrdinate.map(catNome => (
             <div key={catNome} className="accordion-item" style={{marginBottom: '2px', borderRadius: '5px', overflow: 'hidden', width: '100%'}}>
                 
+                {/* Header Categoria */}
                 <div 
                     onClick={() => toggleAccordion(catNome)}
                     style={{
@@ -192,9 +225,11 @@ function Menu() {
                     <span style={{color: titleColor}}>{activeCategory === catNome ? '▼' : '▶'}</span>
                 </div>
 
+                {/* Contenuto Categoria */}
                 {activeCategory === catNome && (
                     <div className="accordion-content" style={{padding: '0', background: 'rgba(0,0,0,0.2)', width: '100%'}}>
                         {(() => {
+                            // Filtro e Raggruppamento Sottocategorie
                             const piattiCat = menu.filter(p => p.categoria === catNome);
                             const sottoCats = piattiCat.reduce((acc, p) => {
                                 const sc = (p.sottocategoria && p.sottocategoria.trim().length > 0) ? p.sottocategoria : "Generale";
@@ -209,6 +244,7 @@ function Menu() {
                             return subKeys.map(scKey => (
                                 <div key={scKey} style={{width: '100%'}}>
                                     
+                                    {/* Header Sottocategoria (se esiste) */}
                                     {!isSingleGroup && (
                                         <div 
                                             onClick={() => toggleSubAccordion(scKey)}
@@ -231,6 +267,7 @@ function Menu() {
                                         </div>
                                     )}
 
+                                    {/* Lista Piatti */}
                                     {(isSingleGroup || activeSubCategory === scKey) && (
                                         <div className="menu-list" style={{padding: '0', width: '100%'}}>
                                             {sottoCats[scKey].map((prodotto) => (
@@ -278,7 +315,7 @@ function Menu() {
         ))}
       </div>
 
-      {/* --- RIEPILOGO ORDINE (CHECKOUT) --- */}
+      {/* --- SCHERMATA RIEPILOGO (CHECKOUT) --- */}
       {showCheckout && (
           <div style={{
               position:'fixed', top:0, left:0, right:0, bottom:0, 
@@ -297,7 +334,7 @@ function Menu() {
                           <div>
                               <div style={{color: titleColor, fontWeight:'bold', fontSize:'16px'}}>{item.nome}</div>
                               <div style={{color: '#888', fontSize:'12px'}}>
-                                {item.categoria} {item.is_bar ? '🍹' : '🍽️'}
+                                {item.categoria} {item.is_bar ? '🍹 (Bar)' : '🍽️ (Cucina)'}
                               </div>
                               <div style={{color: priceColor}}>{item.prezzo} €</div>
                           </div>
@@ -394,6 +431,7 @@ function Menu() {
   );
 }
 
+// --- ROTTE PRINCIPALI ---
 function App() {
   return (
     <BrowserRouter>
@@ -401,10 +439,13 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/admin/:slug" element={<Admin />} />
         <Route path="/super-admin" element={<SuperAdmin />} />
+        
+        {/* ROTTE GESTIONALI */}
         <Route path="/cucina/:slug" element={<Cucina />} />
-        {/* [NUOVO] Rotta per il Bar */}
         <Route path="/bar/:slug" element={<Bar />} />
         <Route path="/cassa/:slug" element={<Cassa />} />
+        
+        {/* ROTTA MENU CLIENTE */}
         <Route path="/:slug" element={<Menu />} />
         <Route path="/" element={<Menu />} />
       </Routes>
