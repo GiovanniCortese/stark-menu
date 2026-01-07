@@ -54,7 +54,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
     piattoSpostato.categoria = destCat;
     const menuSenzaPiatto = menu.filter(p => p.id !== piattoId);
     const nuovoMenu = [...menuSenzaPiatto]; nuovoMenu.push(piattoSpostato); 
-    setMenu(nuovoMenu); // Update locale rapido
+    setMenu(nuovoMenu); 
 
     const piattiDestinazione = menu.filter(p => p.categoria === destCat && p.id !== piattoId);
     piattiDestinazione.splice(result.destination.index, 0, piattoSpostato);
@@ -66,6 +66,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
   return (
     <DragDropContext onDragEnd={onDragEnd}>
+        {/* Pulsante Servizio */}
         <div className="card" style={{border: user.superAdminAbilitato ? '2px solid #333' : '2px solid red', background: user.superAdminAbilitato ? (config.servizio_attivo ? '#fff3cd' : '#f8d7da') : '#ffecec', marginBottom:'20px', textAlign:'center'}}>
               {!user.superAdminAbilitato ? (
                   <div><h2 style={{color:'red', margin:0}}>⛔ SERVIZIO DISABILITATO DAL SUPER ADMIN</h2></div>
@@ -74,6 +75,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
               )}
         </div>
 
+        {/* Form Aggiungi/Modifica */}
         <div className="card" style={{background: editId ? '#e3f2fd' : '#f8f9fa', border: editId ? '2px solid #2196f3' : '2px dashed #ccc'}}>
               <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                   <h3>{editId ? "✏️ Modifica Piatto" : "➕ Aggiungi Piatto"}</h3>
@@ -96,6 +98,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
               </form>
         </div>
 
+        {/* Lista Piatti */}
         {categorie.map(cat => (
             <div key={cat.id} style={{marginBottom: '20px'}}>
                 <h3 style={{marginTop:'30px', borderBottom:'2px solid #eee', paddingBottom:'5px', color:'#555'}}>{cat.nome} {cat.is_bar && "🍹"} {cat.is_pizzeria && "🍕"}</h3>
@@ -106,15 +109,33 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                                 <Draggable key={p.id} draggableId={String(p.id)} index={index}>
                                     {(provided, snapshot) => (
                                         <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className="card" style={{...provided.draggableProps.style, flexDirection:'row', justifyContent:'space-between', background: snapshot.isDragging ? '#e3f2fd' : 'white', border: editId === p.id ? '2px solid #2196f3' : '1px solid #eee'}}>
-                                            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+                                            <div style={{display:'flex', alignItems:'center', gap:'10px', flex:1}}>
                                                 <span style={{color:'#ccc', cursor:'grab', fontSize:'20px'}}>☰</span>
                                                 {p.immagine_url && <img src={p.immagine_url} style={{width:'40px', height:'40px', objectFit:'cover', borderRadius:'4px'}}/>}
-                                                <div><strong>{p.nome}</strong>{p.sottocategoria && <span style={{fontSize:'11px', background:'#eee', padding:'2px 5px', borderRadius:'4px', marginLeft:'5px'}}>{p.sottocategoria}</span>}<div style={{fontSize:'12px', fontWeight:'bold'}}>{p.prezzo}€</div></div>
+                                                
+                                                <div style={{flex:1}}>
+                                                    {/* NOME E TAG */}
+                                                    <div>
+                                                        <strong>{p.nome}</strong>
+                                                        {p.sottocategoria && <span style={{fontSize:'11px', background:'#eee', padding:'2px 5px', borderRadius:'4px', marginLeft:'5px'}}>{p.sottocategoria}</span>}
+                                                    </div>
+                                                    
+                                                    {/* --- MODIFICA QUI: DESCRIZIONE --- */}
+                                                    {p.descrizione && (
+                                                        <div style={{fontSize:'12px', color:'#777', fontStyle:'italic', marginTop:'2px', lineHeight:'1.2'}}>
+                                                            {p.descrizione.length > 60 ? p.descrizione.substring(0,60) + "..." : p.descrizione}
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* PREZZO */}
+                                                    <div style={{fontSize:'12px', fontWeight:'bold', marginTop:'3px'}}>{p.prezzo}€</div>
+                                                </div>
+
                                             </div>
-                                            <div style={{display:'flex', gap:'5px'}}>
-                                                <button onClick={() => avviaModifica(p)} style={{background:'#f1c40f', padding:'5px 10px', borderRadius:'4px', border:'none'}}>✏️</button>
-                                                <button onClick={() => duplicaPiatto(p)} style={{background:'#3498db', padding:'5px 10px', borderRadius:'4px', border:'none', color:'white'}}>❐</button>
-                                                <button onClick={() => cancellaPiatto(p.id)} style={{background:'darkred', padding:'5px 10px', borderRadius:'4px', border:'none'}}>🗑️</button>
+                                            <div style={{display:'flex', gap:'5px', alignItems:'center'}}>
+                                                <button onClick={() => avviaModifica(p)} style={{background:'#f1c40f', padding:'5px 10px', borderRadius:'4px', border:'none', cursor:'pointer'}}>✏️</button>
+                                                <button onClick={() => duplicaPiatto(p)} style={{background:'#3498db', padding:'5px 10px', borderRadius:'4px', border:'none', color:'white', cursor:'pointer'}}>❐</button>
+                                                <button onClick={() => cancellaPiatto(p.id)} style={{background:'darkred', padding:'5px 10px', borderRadius:'4px', border:'none', cursor:'pointer'}}>🗑️</button>
                                             </div>
                                         </div>
                                     )}
