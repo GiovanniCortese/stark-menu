@@ -138,29 +138,72 @@ app.put('/api/ordine/:id/update-items', async (req, res) => {
     }
 });
 
-// 4. PAGAMENTO
+// 4. PAGAMENTO (MERGE DEGLI ORDINI: Unisce tutto in un'unica riga di storico)
 app.post('/api/cassa/paga-tavolo', async (req, res) => {
+    const client = await pool.connect();
     try {
+        await client.query('BEGIN'); // Inizia transazione sicura
+        
         const { ristorante_id, tavolo } = req.body;
-        const logMsg = `\n[${new Date().toLocaleString('it-IT', { timeZone: 'Europe/Rome' })}] CONTO CHIUSO E PAGATO.`;
-        await pool.query(
-            "UPDATE ordini SET stato = 'pagato', dettagli = COALESCE(dettagli, '') || $3 WHERE ristorante_id = $1 AND tavolo = $2 AND stato != 'pagato'", 
-            [ristorante_id, String(tavolo), logMsg]
+        
+        // 1. Trova tutti gli ordini aperti di questo tavolo
+        const result = await client.query(
+            "SELECT * FROM ordini WHERE ristorante_id = $1 AND tavolo = $2 AND stato != 'pagato' ORDER BY data_ora ASC", 
+            [ristorante_id, String(tavolo)]
         );
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: "Errore Pagamento" }); }
-});
 
-// 5. STORICO (Con log e limite aumentato)
-app.get('/api/cassa/storico/:ristorante_id', async (req, res) => {
-    try {
-        const r = await pool.query("SELECT * FROM ordini WHERE ristorante_id = $1 AND stato = 'pagato' ORDER BY data_ora DESC LIMIT 300", [req.params.ristorante_id]);
-        const ordini = r.rows.map(o => {
-            let parsed = []; try { parsed = JSON.parse(o.prodotti||"[]"); } catch(e){}
-            return { ...o, prodotti: Array.isArray(parsed)?parsed:[] };
+        if (result.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.json({ success: true }); // Nessun ordine da pagare
+        }
+
+        // 2. Prepariamo i dati unificati
+        let primoOrdine = result.rows[0]; // Terremo buono il primo (quello aperto prima)
+        let prodottiUnificati = [];
+        let totaleUnificato = 0;
+        let logUnificato = "";
+
+        // Cicliamo su tutti gli ordini trovati per unirli
+        result.rows.forEach(ord => {
+            // Unione Prodotti
+            let prodottiProd = [];
+            try { prodottiProd = JSON.parse(ord.prodotti || "[]"); } catch(e) {}
+            if(Array.isArray(prodottiProd)) prodottiUnificati = [...prodottiUnificati, ...prodottiProd];
+
+            // Unione Totale
+            totaleUnificato += Number(ord.totale || 0);
+
+            // Unione Log (Dettagli)
+            if (ord.dettagli) logUnificato += ord.dettagli + "\n";
         });
-        res.json(ordini);
-    } catch (e) { res.status(500).json({ error: "Err" }); }
+
+        // Aggiungiamo il log finale di chiusura
+        const timeLog = new Date().toLocaleString('it-IT', { timeZone: 'Europe/Rome' });
+        logUnificato += `\n[${timeLog}] 💰 CONTO CHIUSO E UNIFICATO.`;
+
+        // 3. Aggiorniamo il PRIMO ordine con tutti i dati uniti
+        await client.query(
+            "UPDATE ordini SET stato = 'pagato', prodotti = $1, totale = $2, dettagli = $3 WHERE id = $4",
+            [JSON.stringify(prodottiUnificati), totaleUnificato, logUnificato, primoOrdine.id]
+        );
+
+        // 4. Cancelliamo gli altri ordini (dal secondo in poi) perché ora sono dentro il primo
+        const idsDaCancellare = result.rows.slice(1).map(o => o.id);
+        if (idsDaCancellare.length > 0) {
+            // Usiamo ANY per cancellare un array di ID
+            await client.query("DELETE FROM ordini WHERE id = ANY($1::int[])", [idsDaCancellare]);
+        }
+
+        await client.query('COMMIT'); // Conferma le modifiche
+        res.json({ success: true });
+
+    } catch (e) { 
+        await client.query('ROLLBACK'); // Annulla se c'è errore
+        console.error("Errore Pagamento Merge:", e);
+        res.status(500).json({ error: "Errore Pagamento" }); 
+    } finally {
+        client.release();
+    }
 });
 
 // 6. CREAZIONE ORDINE
