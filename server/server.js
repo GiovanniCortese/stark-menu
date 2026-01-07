@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE V33 (AGGIUNTA PIZZERIA) 🍕
+// server/server.js - VERSIONE V34 (FIX RIORDINO + STABILITÀ) 🍕
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -21,7 +21,7 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejec
 const initDb = async () => {
     const client = await pool.connect();
     try {
-        console.log("🛠️ AVVIO CONTROLLO DATABASE (V33)...");
+        console.log("🛠️ AVVIO CONTROLLO DATABASE (V34)...");
         await client.query(`
             CREATE TABLE IF NOT EXISTS ristoranti (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, slug TEXT UNIQUE NOT NULL, ordini_abilitati BOOLEAN DEFAULT FALSE, servizio_attivo BOOLEAN DEFAULT FALSE, logo_url TEXT, cover_url TEXT, colore_sfondo TEXT DEFAULT '#222', colore_titolo TEXT DEFAULT '#fff', colore_testo TEXT DEFAULT '#ccc', colore_prezzo TEXT DEFAULT '#27ae60', font_style TEXT DEFAULT 'sans-serif', email TEXT, telefono TEXT, password TEXT DEFAULT 'tonystark');
             CREATE TABLE IF NOT EXISTS categorie (id SERIAL PRIMARY KEY, ristorante_id INTEGER REFERENCES ristoranti(id), nome TEXT NOT NULL, descrizione TEXT, posizione INTEGER DEFAULT 0);
@@ -29,7 +29,7 @@ const initDb = async () => {
             CREATE TABLE IF NOT EXISTS ordini (id SERIAL PRIMARY KEY, ristorante_id INTEGER REFERENCES ristoranti(id), tavolo TEXT, stato TEXT DEFAULT 'in_attesa', data_ora TIMESTAMP DEFAULT CURRENT_TIMESTAMP, prodotti TEXT, totale REAL, dettagli TEXT);
         `);
         
-        // MODIFICA V33: Aggiunto controllo per colonna is_pizzeria
+        // MODIFICA V33: Aggiunto controllo per colonna is_pizzeria e is_bar
         await client.query(`
             DO $$ BEGIN 
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='categorie' AND column_name='is_bar') THEN ALTER TABLE categorie ADD COLUMN is_bar BOOLEAN DEFAULT FALSE; END IF;
@@ -40,7 +40,7 @@ const initDb = async () => {
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ordini' AND column_name='dettagli') THEN ALTER TABLE ordini ADD COLUMN dettagli TEXT; END IF;
             END $$;
         `);
-        console.log("✅ Database V33 (Pizzeria Ready) Pronto.");
+        console.log("✅ Database V34 Pronto.");
         return true;
     } catch (err) { console.error("❌ Errore InitDB:", err); return false; } 
     finally { client.release(); }
@@ -53,7 +53,7 @@ const uploadFile = multer({ storage: multer.memoryStorage() });
 
 // --- API ---
 
-// 1. MENU (MODIFICA V33: Aggiunto c.is_pizzeria nella selezione)
+// 1. MENU
 app.get('/api/menu/:slug', async (req, res) => {
     try {
         const { slug } = req.params;
@@ -85,7 +85,6 @@ app.get('/api/polling/:ristorante_id', async (req, res) => {
             try { parsed = typeof o.prodotti === 'string' ? JSON.parse(o.prodotti) : o.prodotti; } catch (e) { parsed = []; }
             if (!Array.isArray(parsed)) parsed = [];
             
-            // Generazione ID univoci per il frontend
             parsed = parsed.map((item, idx) => ({
                 ...item,
                 uniqId: item.uniqId || `${o.id}_${idx}_${Date.now()}`,
@@ -139,7 +138,7 @@ app.put('/api/ordine/:id/update-items', async (req, res) => {
 app.post('/api/cassa/paga-tavolo', async (req, res) => {
     const client = await pool.connect();
     try {
-        await client.query('BEGIN'); // Inizia transazione
+        await client.query('BEGIN'); 
         
         const { ristorante_id, tavolo } = req.body;
         
@@ -211,21 +210,71 @@ app.post('/api/ordine', async (req, res) => {
     } catch (e) { console.error(e); res.status(500).json({error: "Err"}); } 
 });
 
-// MODIFICA V33: API CATEGORIE (Gestione is_pizzeria)
+// --- FIX RIORDINO CATEGORIE (V34) ---
+app.put('/api/categorie/riordina', async (req, res) => {
+    const { categorie } = req.body;
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN'); 
+        
+        for (const cat of categorie) {
+            await client.query('UPDATE categorie SET posizione = $1 WHERE id = $2', [cat.posizione, cat.id]);
+        }
+        
+        await client.query('COMMIT'); 
+        res.json({ success: true });
+    } catch (e) {
+        await client.query('ROLLBACK'); 
+        console.error("Errore Riordino Categorie:", e);
+        res.status(500).json({ error: "Errore riordino categorie" });
+    } finally {
+        client.release();
+    }
+});
+
+// --- FIX RIORDINO PRODOTTI (V34) ---
+app.put('/api/prodotti/riordina', async (req, res) => {
+    const { prodotti } = req.body;
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN'); 
+
+        for (const prod of prodotti) {
+            if (prod.categoria) {
+                // Aggiorna posizione E categoria
+                await client.query('UPDATE prodotti SET posizione = $1, categoria = $2 WHERE id = $3', 
+                    [prod.posizione, prod.categoria, prod.id]);
+            } else {
+                // Aggiorna solo posizione
+                await client.query('UPDATE prodotti SET posizione = $1 WHERE id = $2', 
+                    [prod.posizione, prod.id]);
+            }
+        }
+
+        await client.query('COMMIT'); 
+        res.json({ success: true });
+    } catch (err) {
+        await client.query('ROLLBACK'); 
+        console.error("Errore Riordino Prodotti:", err);
+        res.status(500).json({ error: "Errore riordino prodotti" });
+    } finally {
+        client.release(); 
+    }
+});
+
+// --- API STANDARD MINIFICATE ---
 app.post('/api/categorie', async (req, res) => { try { const { nome, ristorante_id, descrizione, is_bar, is_pizzeria } = req.body; const max = await pool.query('SELECT MAX(posizione) as max FROM categorie WHERE ristorante_id = $1', [ristorante_id]); const next = (max.rows[0].max || 0) + 1; const r = await pool.query('INSERT INTO categorie (nome, posizione, ristorante_id, descrizione, is_bar, is_pizzeria) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *', [nome, next, ristorante_id, descrizione||"", is_bar || false, is_pizzeria || false]); res.json(r.rows[0]); } catch (e) { res.status(500).json({error:"Err"}); } });
 app.put('/api/categorie/:id', async (req, res) => { try { await pool.query('UPDATE categorie SET nome = $1, descrizione = $2, is_bar = $3, is_pizzeria = $4 WHERE id = $5', [req.body.nome, req.body.descrizione||"", req.body.is_bar, req.body.is_pizzeria, req.params.id]); res.json({ success: true }); } catch (err) { res.status(500).json({ error: "Err" }); } });
-
-// ALTRE API STANDARD
-app.put('/api/categorie/riordina', async (req, res) => { const { categorie } = req.body; try { const client = await pool.connect(); try { await client.query('BEGIN'); for (const cat of categorie) { await client.query('UPDATE categorie SET posizione = $1 WHERE id = $2', [cat.posizione, cat.id]); } await client.query('COMMIT'); res.json({ success: true }); } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); } } catch (err) { res.status(500).json({ error: "Err Ord Cat" }); } });
-app.post('/api/login', async (req, res) => { try { const r = await pool.query('SELECT * FROM ristoranti WHERE email = $1 AND password = $2', [req.body.email, req.body.password]); if(r.rows.length>0) res.json({success:true, user:r.rows[0]}); else res.status(401).json({success:false}); } catch(e){res.status(500).json({error:"Err"});} });
-app.put('/api/ristorante/style/:id', async (req, res) => { try { await pool.query(`UPDATE ristoranti SET logo_url=$1, cover_url=$2, colore_sfondo=$3, colore_titolo=$4, colore_testo=$5, colore_prezzo=$6, font_style=$7 WHERE id=$8`, [req.body.logo_url, req.body.cover_url, req.body.colore_sfondo, req.body.colore_titolo, req.body.colore_testo, req.body.colore_prezzo, req.body.font_style, req.params.id]); res.json({ success: true }); } catch (err) { res.status(500).json({ error: "Err" }); } });
-app.get('/api/ristorante/config/:id', async (req, res) => { try { const r = await pool.query('SELECT * FROM ristoranti WHERE id = $1', [req.params.id]); res.json(r.rows[0]); } catch (e) { res.status(500).json({error:"Err"}); } });
 app.delete('/api/categorie/:id', async (req, res) => { try { await pool.query('DELETE FROM categorie WHERE id = $1', [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
+
 app.post('/api/prodotti', async (req, res) => { try { await pool.query('INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, immagine_url, posizione) VALUES ($1, $2, $3, $4, $5, $6, $7, 999)', [req.body.nome, req.body.prezzo, req.body.categoria, req.body.sottocategoria||"", req.body.descrizione||"", req.body.ristorante_id, req.body.immagine_url||""]); res.json({success:true}); } catch(e){ res.status(500).json({error:"Err"}); } });
 app.put('/api/prodotti/:id', async (req, res) => { try { await pool.query(`UPDATE prodotti SET nome=$1, prezzo=$2, categoria=$3, sottocategoria=$4, descrizione=$5, immagine_url=$6 WHERE id=$7`, [req.body.nome, req.body.prezzo, req.body.categoria, req.body.sottocategoria||"", req.body.descrizione||"", req.body.immagine_url||"", req.params.id]); res.json({ success: true }); } catch (err) { res.status(500).json({ error: "Err" }); } });
 app.delete('/api/prodotti/:id', async (req, res) => { try { await pool.query('DELETE FROM prodotti WHERE id = $1', [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
-app.put('/api/prodotti/riordina', async (req, res) => { const { prodotti } = req.body; try { for (const prod of prodotti) { if(prod.categoria) await pool.query('UPDATE prodotti SET posizione = $1, categoria = $2 WHERE id = $3', [prod.posizione, prod.categoria, prod.id]); else await pool.query('UPDATE prodotti SET posizione = $1 WHERE id = $2', [prod.posizione, prod.id]); } res.json({ success: true }); } catch (err) { res.status(500).json({ error: "Err" }); } });
+
 app.get('/api/categorie/:ristorante_id', async (req, res) => { try { const r = await pool.query('SELECT * FROM categorie WHERE ristorante_id = $1 ORDER BY posizione ASC', [req.params.ristorante_id]); res.json(r.rows); } catch (e) { res.status(500).json({error:"Err"}); } });
+app.post('/api/login', async (req, res) => { try { const r = await pool.query('SELECT * FROM ristoranti WHERE email = $1 AND password = $2', [req.body.email, req.body.password]); if(r.rows.length>0) res.json({success:true, user:r.rows[0]}); else res.status(401).json({success:false}); } catch(e){res.status(500).json({error:"Err"});} });
+app.put('/api/ristorante/style/:id', async (req, res) => { try { await pool.query(`UPDATE ristoranti SET logo_url=$1, cover_url=$2, colore_sfondo=$3, colore_titolo=$4, colore_testo=$5, colore_prezzo=$6, font_style=$7 WHERE id=$8`, [req.body.logo_url, req.body.cover_url, req.body.colore_sfondo, req.body.colore_titolo, req.body.colore_testo, req.body.colore_prezzo, req.body.font_style, req.params.id]); res.json({ success: true }); } catch (err) { res.status(500).json({ error: "Err" }); } });
+app.get('/api/ristorante/config/:id', async (req, res) => { try { const r = await pool.query('SELECT * FROM ristoranti WHERE id = $1', [req.params.id]); res.json(r.rows[0]); } catch (e) { res.status(500).json({error:"Err"}); } });
 app.put('/api/ristorante/servizio/:id', async (req, res) => { try { await pool.query('UPDATE ristoranti SET servizio_attivo = $1 WHERE id = $2', [req.body.servizio_attivo, req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({error:"Err"}); } });
 app.post('/api/upload', upload.single('photo'), async (req, res) => { try { res.json({ url: req.file.path }); } catch (e) { res.status(500).json({error:"Err"}); } });
 app.get('/api/cassa/storico/:ristorante_id', async (req, res) => { try { const r = await pool.query("SELECT * FROM ordini WHERE ristorante_id = $1 AND stato = 'pagato' ORDER BY data_ora DESC LIMIT 100", [req.params.ristorante_id]); const ordini = r.rows.map(o => { try { o.prodotti = JSON.parse(o.prodotti); } catch(e){ o.prodotti=[]; } return o; }); res.json(ordini); } catch (e) { res.status(500).json({error:"Err"}); } });
@@ -238,4 +287,4 @@ app.delete('/api/super/ristoranti/:id', async (req, res) => { try { const id = r
 app.post('/api/ordine/completato', async (req, res) => { try { await pool.query("UPDATE ordini SET stato = 'servito' WHERE id = $1", [req.body.id]); res.json({ success: true }); } catch (e) { res.status(500).json({error:"Err"}); } });
 app.get('/api/reset-ordini', async (req, res) => { try { await pool.query('DELETE FROM ordini'); await pool.query('ALTER SEQUENCE ordini_id_seq RESTART WITH 1'); res.send("<h1>✅ TABULA RASA</h1>"); } catch (e) { res.status(500).send("Errore: " + e.message); } });
 
-initDb().then((ready) => { if (ready) app.listen(port, () => console.log(`🚀 SERVER V33 (PIZZERIA) - Porta ${port}`)); });
+initDb().then((ready) => { if (ready) app.listen(port, () => console.log(`🚀 SERVER V34 (PIZZERIA) - Porta ${port}`)); });
