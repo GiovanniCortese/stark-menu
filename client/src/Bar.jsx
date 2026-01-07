@@ -66,23 +66,29 @@ function Bar() {
       } 
   }, [isAuthorized, infoRistorante]);
 
-  // LOGICA DI UPDATE
-  const segnaBibitaServita = async (ordineId, prodottiAttuali, indexReale) => {
+  // Toggle stato bibita (MASSIVO PER GRUPPO) + LOG STORICO
+  const segnaBibitaServita = async (ordineId, prodottiAttuali, indices) => {
       const nuoviProdotti = [...prodottiAttuali];
-      const item = nuoviProdotti[indexReale];
+      
+      // Prendiamo il primo per capire lo stato attuale (tanto sono tutti uguali nel gruppo)
+      const primoItem = nuoviProdotti[indices[0]];
+      const nuovoStato = primoItem.stato === 'servito' ? 'in_attesa' : 'servito';
 
-      // Calcola nuovo stato
-      const nuovoStato = item.stato === 'servito' ? 'in_attesa' : 'servito';
-      item.stato = nuovoStato;
+      // Aggiorniamo TUTTI gli item del gruppo
+      indices.forEach(idx => {
+          const item = nuoviProdotti[idx];
+          item.stato = nuovoStato;
+          if (nuovoStato === 'servito') {
+              item.ora_servizio = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+          } else {
+              delete item.ora_servizio;
+          }
+      });
 
-      if (nuovoStato === 'servito') {
-          item.ora_servizio = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-      } else {
-          delete item.ora_servizio;
-      }
-
+      // Messaggio Log con Quantità
+      const qty = indices.length;
       const azione = nuovoStato === 'servito' ? 'HA SERVITO' : 'HA RIMESSO IN ATTESA';
-      const logMsg = `[BAR 🍹] ${azione}: ${item.nome}`;
+      const logMsg = `[BAR 🍹] ${azione}: ${qty > 1 ? qty + 'x ' : ''}${primoItem.nome}`;
 
       await fetch(`${API_URL}/api/ordine/${ordineId}/update-items`, {
           method: 'PUT',
@@ -159,42 +165,16 @@ function Bar() {
       <div className="ordini-grid">
         {ordini.length === 0 && <div style={{textAlign: 'center', width: '100%', marginTop: '50px', color: '#fff'}}><h2>Tutto pulito al Bar! 🍺</h2></div>}
 
-   {ordiniPerTavolo.map(gruppo => (
-            <div key={gruppo.tavolo} className="ticket" style={{background:'#ecf0f1', borderTop:'5px solid #3498db'}}>
-                <div className="ticket-header" style={{background:'#2980b9', color:'white', padding:'10px'}}>
-                    <span style={{fontSize:'1.5rem'}}>Tavolo <strong>{gruppo.tavolo}</strong></span>
-                </div>
-                
-                <div className="ticket-body" style={{textAlign:'left', paddingBottom:'5px'}}>
-                    {gruppo.listaOrdini.map(ord => {
-                        // Usiamo la funzione helper creata prima per raggruppare i prodotti di QUESTO ordine
-                        const prodottiRaggruppati = getProdottiRaggruppati(ord.prodotti);
-                        if(prodottiRaggruppati.length === 0) return null;
-
-                        return (
-                            <div key={ord.id} style={{marginBottom: '10px', borderBottom:'2px solid #bdc3c7'}}>
-                                {/* Intestazione dell'ordine specifico (Orario) */}
-                                <div style={{
-                                    fontSize:'0.85rem', 
-                                    background:'#d6eaf8', 
-                                    padding:'4px 10px', 
-                                    color:'#2980b9', 
-                                    fontWeight:'bold',
-                                    display:'flex', justifyContent:'space-between'
-                                }}>
-                                    <span>Ore {new Date(ord.data_ora).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                                    <span>{ord.cameriere}</span>
-                                </div>
-
-                                {/* Lista Prodotti */}
-                                {prodottiRaggruppati.map((gruppoProd) => {
+  {prodottiRaggruppati.map((gruppoProd) => {
                                     const isServito = gruppoProd.stato === 'servito';
-                                    const indiceDaModificare = gruppoProd.indices[0]; 
+                                    // MODIFICA QUI: Passiamo TUTTI gli indici del gruppo
+                                    const indiciDaModificare = gruppoProd.indices; 
 
                                     return (
                                         <div 
                                             key={gruppoProd.key} 
-                                            onClick={() => segnaBibitaServita(ord.id, ord.prodotti, indiceDaModificare)}
+                                            // MODIFICA QUI: passiamo l'array indiciDaModificare
+                                            onClick={() => segnaBibitaServita(ord.id, ord.prodotti, indiciDaModificare)}
                                             style={{
                                                 padding:'12px 10px', 
                                                 borderBottom:'1px dashed #ecf0f1',
@@ -225,12 +205,6 @@ function Bar() {
                                         </div>
                                     );
                                 })}
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
-        ))}
       </div>
     </div>
   );
