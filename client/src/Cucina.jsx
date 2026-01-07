@@ -235,7 +235,7 @@ function Cucina() {
                 <div key={tavoloData.tavolo} className="ticket" style={{borderTop: '5px solid #d35400'}}>
                     <div className="ticket-header" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                         <span style={{fontSize:'1.8rem'}}>Tavolo <strong>{tavoloData.tavolo}</strong></span>
-                        <span style={{fontSize:'0.9rem', color:'#666'}}>{new Date(tavoloData.orarioMin).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                        <span style={{fontSize:'0.9rem', color:'#ffffffff'}}>{new Date(tavoloData.orarioMin).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
                     </div>
                     
                     <div className="ticket-body" style={{textAlign:'left', paddingBottom:'5px'}}>
