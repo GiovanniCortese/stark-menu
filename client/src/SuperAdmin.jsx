@@ -1,4 +1,4 @@
-// client/src/SuperAdmin.jsx - VERSIONE V13 (BASE V3 + DOPPIO COMANDO) 🛠️
+// client/src/SuperAdmin.jsx - VERSIONE V7 (FIX STATO INIZIALE + GRAFICA PULITA) ✨
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -35,14 +35,12 @@ function SuperAdmin() {
   const caricaDati = () => {
     fetch(`${API_URL}/api/super/ristoranti`)
       .then(res => res.json())
-      .then(data => {
-          if(Array.isArray(data)) setRistoranti(data);
-      })
+      .then(data => { if(Array.isArray(data)) setRistoranti(data); })
       .catch(err => console.error(err));
   };
 
   const handleInputChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
-
+  
   const apriModaleNuovo = () => {
       setEditingId(null);
       setFormData({ nome: '', slug: '', email: '', telefono: '', password: '' });
@@ -57,7 +55,6 @@ function SuperAdmin() {
 
   const chiudiModale = () => { setShowModal(false); setEditingId(null); };
 
-  // --- AZIONI CRUD BASE ---
   const handleSalva = async (e) => {
       e.preventDefault();
       const endpoint = editingId ? `${API_URL}/api/super/ristoranti/${editingId}` : `${API_URL}/api/super/ristoranti`;             
@@ -65,149 +62,161 @@ function SuperAdmin() {
 
       try {
           const res = await fetch(endpoint, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formData) });
-          if(res.ok) { alert(editingId ? "Dati aggiornati!" : "Creato!"); chiudiModale(); caricaDati(); } 
+          if(res.ok) { alert(editingId ? "Dati aggiornati!" : "Nuovo ristorante creato!"); chiudiModale(); caricaDati(); } 
+          else { alert("Errore salvataggio."); }
       } catch(err) { alert("Errore connessione."); }
   };
 
   const handleElimina = async (id, nome) => {
-      if(!confirm(`⚠️ ELIMINARE "${nome}"?\nPerderai tutto.`)) return;
-      try { await fetch(`${API_URL}/api/super/ristoranti/${id}`, { method: 'DELETE' }); caricaDati(); } catch(err) { alert("Errore."); }
+      if(!confirm(`⚠️ ATTENZIONE ⚠️\nStai per eliminare definitivamente "${nome}".\nTutti i dati verranno persi.\n\nSei sicuro?`)) return;
+      try { await fetch(`${API_URL}/api/super/ristoranti/${id}`, { method: 'DELETE' }); alert("Eliminato."); caricaDati(); } 
+      catch(err) { alert("Errore eliminazione."); }
   };
 
-  // ---------------------------------------------------------
-  // 1. COMANDO CUCINA (Usa il tuo codice V3: ordini_abilitati)
-  // ---------------------------------------------------------
-  const toggleCucina = async (id, statoAttuale) => {
-    const nuovoStato = !statoAttuale;
-    // UI Optimistic
+  // --- AZIONE 1: PAUSA GLOBALE (ACCOUNT SOSPESO) ---
+  const toggleSospensione = async (id, statoAttuale) => {
+    const nuovoStato = !statoAttuale; 
     setRistoranti(ristoranti.map(r => r.id === id ? { ...r, ordini_abilitati: nuovoStato } : r));
-    // Server Call
+    
     await fetch(`${API_URL}/api/super/ristoranti/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ordini_abilitati: nuovoStato })
+        body: JSON.stringify({ ordini_abilitati: nuovoStato }) 
     });
   };
 
-  // ---------------------------------------------------------
-  // 2. COMANDO ABBONAMENTO (Usa il nuovo campo: account_attivo)
-  // ---------------------------------------------------------
-  const toggleSospensione = async (id, statoAttualeAccount) => {
-    // Se è undefined (vecchi record), consideralo true
-    const attuale = statoAttualeAccount !== false; 
-    const nuovoStato = !attuale; 
-    
-    // UI Optimistic
-    setRistoranti(ristoranti.map(r => r.id === id ? { ...r, account_attivo: nuovoStato } : r));
-    
-    // Server Call (campo account_attivo)
-    await fetch(`${API_URL}/api/super/ristoranti/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ account_attivo: nuovoStato })
-    });
+  // --- AZIONE 2: SERVIZIO CUCINA (APERTO/CHIUSO) ---
+  const toggleServizioCucina = async (id, statoAttuale) => {
+      // FIX LOGICA: Se è true diventa false, se è false diventa true.
+      // Il problema precedente era che lo stato iniziale era undefined.
+      const nuovoStato = !statoAttuale;
+      
+      setRistoranti(ristoranti.map(r => r.id === id ? { ...r, servizio_attivo: nuovoStato } : r));
+
+      await fetch(`${API_URL}/api/ristorante/servizio/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ servizio_attivo: nuovoStato })
+      });
   };
 
-  // 4. GOD MODE
   const entraNelPannello = (slug) => { localStorage.setItem(`stark_session_${slug}`, "true"); window.open(`/admin/${slug}`, '_blank'); };
   const logout = () => { localStorage.removeItem("super_admin_logged"); navigate('/'); };
 
   if (!authorized) return null;
 
-  // Stile Input
-  const inputStyle = { width: '100%', padding: '10px', marginTop: '5px', border: '1px solid #ccc', borderRadius: '5px', fontSize: '16px' };
+  const inputStyle = {
+      width: '100%', padding: '10px', marginTop: '5px', 
+      border: '1px solid #ccc', borderRadius: '5px',
+      color: '#000', backgroundColor: '#fff', fontSize: '16px'
+  };
 
   return (
-    <div className="container" style={{maxWidth: '1200px', margin: '0 auto', padding: '20px', fontFamily:'sans-serif'}}>
+    <div className="container" style={{maxWidth: '1200px', margin: '0 auto', padding: '20px'}}>
       
-      <header style={{borderBottom: '2px solid #333', paddingBottom: '20px', marginBottom: '30px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-        <div><h1>🦸‍♂️ J.A.R.V.I.S. Control</h1><p>Super Admin: Gestione Globale</p></div>
+      <header style={{borderBottom: '2px solid #333', paddingBottom: '20px', marginBottom: '30px', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:10}}>
+        <div><h1 style={{margin:0}}>🦸‍♂️ J.A.R.V.I.S. Control</h1><p style={{margin:0, opacity:0.7}}>Super Admin: Gestione Globale</p></div>
         <div style={{display:'flex', gap:'10px'}}>
-            <button onClick={apriModaleNuovo} style={{background:'#27ae60', color:'white', border:'none', padding:'10px 20px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold'}}>+ NUOVO</button>
+            <button onClick={apriModaleNuovo} style={{background:'#27ae60', color:'white', border:'none', padding:'10px 20px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold'}}>➕ NUOVO</button>
             <button onClick={logout} style={{background:'#e74c3c', color:'white', border:'none', padding:'10px 20px', borderRadius:'5px', cursor:'pointer'}}>ESCI</button>
         </div>
       </header>
       
-      <div className="card-grid" style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '20px'}}>
-        {ristoranti.map(r => {
-            const isAccountAttivo = r.account_attivo !== false; // Default true
-
-            return (
-            <div key={r.id} className="card" style={{
-                background: '#fff', borderRadius: '10px', overflow:'hidden', 
-                boxShadow: '0 4px 10px rgba(0,0,0,0.1)', border: '1px solid #ddd'
+      <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '25px'}}>
+        {ristoranti.map(r => (
+            <div key={r.id} style={{
+                border: '1px solid #ddd', borderRadius: '12px', overflow:'hidden',
+                background: r.ordini_abilitati ? '#ffffff' : '#f2f2f2',
+                boxShadow: '0 5px 15px rgba(0,0,0,0.08)', position:'relative',
+                display:'flex', flexDirection:'column'
             }}>
                 
-                {/* HEADER CARD */}
-                <div style={{padding:'20px', position:'relative'}}>
-                    <div style={{position:'absolute', top:'15px', right:'15px', display:'flex', gap:'5px'}}>
-                        <button onClick={() => apriModaleModifica(r)} style={{background:'#f39c12', border:'none', borderRadius:'4px', cursor:'pointer', width:'30px', height:'30px'}}>✏️</button>
-                        <button onClick={() => handleElimina(r.id, r.nome)} style={{background:'#c0392b', color:'white', border:'none', borderRadius:'4px', cursor:'pointer', width:'30px', height:'30px'}}>🗑️</button>
+                {/* 1. HEADER CARD (Nome + Edit/Delete) */}
+                <div style={{padding:'15px', borderBottom:'1px solid #eee', background: r.ordini_abilitati ? '#fff' : '#e0e0e0', display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+                    <div>
+                        <h2 style={{margin:'0 0 5px 0', fontSize:'1.4rem', color:'#333'}}>{r.nome}</h2>
+                        <span style={{background:'#333', color:'#fff', padding:'3px 8px', borderRadius:'4px', fontSize:'0.8rem'}}>/{r.slug}</span>
                     </div>
-
-                    <h2 style={{margin:'0 0 5px 0', fontSize:'1.4rem', color:'#333'}}>{r.nome}</h2>
-                    <code style={{background:'#333', color:'#fff', padding:'2px 6px', borderRadius:'4px', fontSize:'0.8rem'}}>/{r.slug}</code>
-                    <div style={{fontSize:'0.9rem', color:'#666', marginTop:'10px'}}>
-                        <div>📧 {r.email || '-'}</div>
-                        <div>📞 {r.telefono || '-'}</div>
+                    <div style={{display:'flex', gap:'5px'}}>
+                        <button onClick={() => apriModaleModifica(r)} title="Modifica" style={{background:'#f39c12', border:'none', borderRadius:'4px', cursor:'pointer', padding:'5px', width:'30px', height:'30px'}}>✏️</button>
+                        <button onClick={() => handleElimina(r.id, r.nome)} title="Elimina" style={{background:'#c0392b', color:'white', border:'none', borderRadius:'4px', cursor:'pointer', padding:'5px', width:'30px', height:'30px'}}>🗑️</button>
                     </div>
                 </div>
+
+                {/* 2. BODY CARD (Info) */}
+                <div style={{padding:'15px', color:'#666', fontSize:'0.9rem', flex:1}}>
+                    <p style={{margin:'5px 0'}}>📧 {r.email || '-'}</p>
+                    <p style={{margin:'5px 0'}}>📞 {r.telefono || '-'}</p>
+                </div>
                 
-                {/* AREA CONTROLLI (GRIGIA) */}
-                <div style={{background:'#f5f5f5', padding:'20px', borderTop:'1px solid #eee'}}>
+                {/* 3. CONTROLS (Pulsantiere) */}
+                <div style={{padding:'15px', background:'#f9f9f9', borderTop:'1px solid #eee'}}>
                     
-                    {/* TASTO 1: STATO ABBONAMENTO (Blocco Totale) */}
-                    <div style={{marginBottom:'20px'}}>
-                        <div style={{fontSize:'0.7rem', fontWeight:'bold', color:'#888', marginBottom:'5px'}}>STATO ABBONAMENTO</div>
-                        <button onClick={() => toggleSospensione(r.id, r.account_attivo)} style={{
-                            width: '100%', padding:'10px', borderRadius:'5px', border:'none', cursor:'pointer', fontWeight:'bold',
-                            background: isAccountAttivo ? '#2c3e50' : '#e67e22', color:'white'
-                        }}>
-                            {isAccountAttivo ? "⏸️ METTI IN PAUSA" : "▶️ RIATTIVA ABBONAMENTO"}
+                    {/* A. STATO ACCOUNT (PAUSA) */}
+                    <div style={{marginBottom:'15px'}}>
+                        <div style={{fontSize:'0.8rem', fontWeight:'bold', color:'#888', marginBottom:'5px', textTransform:'uppercase'}}>Stato Abbonamento</div>
+                        <button 
+                            onClick={() => toggleSospensione(r.id, r.ordini_abilitati)} 
+                            style={{
+                                width: '100%', padding:'10px', borderRadius:'6px', border:'none', cursor:'pointer', fontWeight:'bold',
+                                background: r.ordini_abilitati ? '#2c3e50' : '#e67e22', color:'white',
+                                display:'flex', alignItems:'center', justifyContent:'center', gap:'10px'
+                            }}
+                        >
+                            {r.ordini_abilitati ? <span>⏸️ METTI IN PAUSA</span> : <span>▶️ RIATTIVA ACCOUNT</span>}
                         </button>
                     </div>
 
-                    {/* TASTO 2: STATO CUCINA (Il tuo codice V3) */}
-                    <div style={{marginBottom:'20px'}}>
-                        <div style={{fontSize:'0.7rem', fontWeight:'bold', color:'#888', marginBottom:'5px'}}>STATO CUCINA</div>
-                        {isAccountAttivo ? (
-                            <button onClick={() => toggleCucina(r.id, r.ordini_abilitati)} style={{
-                                width: '100%', padding:'10px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold',
-                                border: r.ordini_abilitati ? '2px solid #e74c3c' : '2px solid #27ae60',
-                                background: 'white', 
-                                color: r.ordini_abilitati ? '#e74c3c' : '#27ae60'
-                            }}>
-                                {r.ordini_abilitati ? "⛔ CHIUDI CUCINA" : "✅ APRI CUCINA"}
+                    {/* B. STATO CUCINA (SERVIZIO) - Visibile solo se account attivo */}
+                    {r.ordini_abilitati ? (
+                        <div style={{marginBottom:'15px'}}>
+                            <div style={{fontSize:'0.8rem', fontWeight:'bold', color:'#888', marginBottom:'5px', textTransform:'uppercase'}}>Stato Cucina</div>
+                            <button 
+                                onClick={() => toggleServizioCucina(r.id, r.servizio_attivo)} 
+                                style={{
+                                    width: '100%', padding:'10px', borderRadius:'6px', cursor:'pointer', fontWeight:'bold',
+                                    border: r.servizio_attivo ? '2px solid #e74c3c' : '2px solid #27ae60',
+                                    background: 'white',
+                                    color: r.servizio_attivo ? '#e74c3c' : '#27ae60',
+                                    display:'flex', alignItems:'center', justifyContent:'center', gap:'10px'
+                                }}
+                            >
+                                {r.servizio_attivo ? <span>⛔ CHIUDI CUCINA</span> : <span>✅ APRI CUCINA</span>}
                             </button>
-                        ) : (
-                            <div style={{background:'#ddd', color:'#777', padding:'10px', textAlign:'center', borderRadius:'5px', fontSize:'0.8rem'}}>
-                                🚫 Abbonamento Sospeso
+                            <div style={{textAlign:'center', fontSize:'0.8rem', marginTop:'5px', color: r.servizio_attivo ? '#27ae60' : '#e74c3c'}}>
+                                {r.servizio_attivo ? "Attualmente APERTA" : "Attualmente CHIUSA"}
                             </div>
-                        )}
-                    </div>
+                        </div>
+                    ) : (
+                        <div style={{background:'#fceceb', color:'#c0392b', padding:'10px', borderRadius:'5px', textAlign:'center', fontSize:'0.9rem', marginBottom:'15px'}}>
+                            🚫 Account Sospeso.<br/>Impossibile gestire la cucina.
+                        </div>
+                    )}
 
-                    {/* LINK */}
-                    <button onClick={() => entraNelPannello(r.slug)} style={{width:'100%', background: '#3498db', color: 'white', border: 'none', padding: '10px', cursor: 'pointer', borderRadius: '5px', fontWeight: 'bold'}}>
+                    {/* C. LINK PANNELLO */}
+                    <button onClick={() => entraNelPannello(r.slug)} style={{width:'100%', background: '#3498db', color: 'white', border: 'none', padding: '12px', cursor: 'pointer', borderRadius: '6px', fontWeight: 'bold'}}>
                         ⚙️ GESTISCI PANNELLO ↗
                     </button>
                 </div>
+
             </div>
-        )})}
+        ))}
       </div>
 
+      {/* MODALE */}
       {showModal && (
-          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-              <div style={{background: 'white', padding: '30px', borderRadius: '10px', width: '400px', maxWidth:'90%'}}>
-                  <h2 style={{marginTop:0}}>{editingId ? "Modifica" : "Nuovo"}</h2>
-                  <form onSubmit={handleSalva} style={{display:'flex', flexDirection:'column', gap:'10px'}}>
-                      <input required name="nome" value={formData.nome} onChange={handleInputChange} placeholder="Nome" style={inputStyle} />
-                      <input required name="slug" value={formData.slug} onChange={handleInputChange} placeholder="Slug" style={inputStyle} />
-                      <input name="email" value={formData.email} onChange={handleInputChange} placeholder="Email" style={inputStyle} />
-                      <input name="telefono" value={formData.telefono} onChange={handleInputChange} placeholder="Telefono" style={inputStyle} />
-                      <input name="password" type="password" value={formData.password} onChange={handleInputChange} placeholder="Password (opzionale)" style={inputStyle} />
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.7)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+              <div style={{background: 'white', padding: '30px', borderRadius: '10px', width: '400px', maxWidth:'90%', boxShadow:'0 10px 25px rgba(0,0,0,0.5)'}}>
+                  <h2 style={{marginTop:0, color:'#333'}}>{editingId ? "Modifica Ristorante" : "Nuovo Ristorante"}</h2>
+                  <form onSubmit={handleSalva} style={{display:'flex', flexDirection:'column', gap:'15px'}}>
+                      <div><label style={{color:'#333', fontWeight:'bold'}}>Nome Attività:</label><input required name="nome" value={formData.nome} onChange={handleInputChange} style={inputStyle} /></div>
+                      <div><label style={{color:'#333', fontWeight:'bold'}}>Slug (URL):</label><input required name="slug" value={formData.slug} onChange={handleInputChange} style={inputStyle} /></div>
+                      <div><label style={{color:'#333', fontWeight:'bold'}}>Email:</label><input name="email" value={formData.email} onChange={handleInputChange} style={inputStyle} /></div>
+                      <div><label style={{color:'#333', fontWeight:'bold'}}>Telefono:</label><input name="telefono" value={formData.telefono} onChange={handleInputChange} style={inputStyle} /></div>
+                      <div style={{borderTop:'1px solid #eee', paddingTop:'10px'}}><label style={{color:'#333', fontWeight:'bold'}}>Password Admin:</label><input name="password" type="password" value={formData.password} onChange={handleInputChange} placeholder={editingId ? "Lascia vuoto per non cambiare" : "Obbligatoria"} style={inputStyle} /></div>
                       <div style={{display:'flex', gap:'10px', marginTop:'10px'}}>
-                          <button type="submit" style={{flex:1, background:'#27ae60', color:'white', border:'none', padding:'10px', borderRadius:'5px', cursor:'pointer'}}>SALVA</button>
-                          <button type="button" onClick={chiudiModale} style={{flex:1, background:'#777', color:'white', border:'none', padding:'10px', borderRadius:'5px', cursor:'pointer'}}>ANNULLA</button>
+                          <button type="submit" style={{flex:1, background:'#27ae60', color:'white', border:'none', padding:'12px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold'}}>SALVA</button>
+                          <button type="button" onClick={chiudiModale} style={{flex:1, background:'#95a5a6', color:'white', border:'none', padding:'12px', borderRadius:'5px', cursor:'pointer'}}>ANNULLA</button>
                       </div>
                   </form>
               </div>
