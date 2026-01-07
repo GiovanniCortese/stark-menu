@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - VERSIONE V38 (BAR IN FONDO AL RIEPILOGO) 🍹
+// client/src/Menu.jsx - VERSIONE V41 (BLOCCO PAUSA + SERVIZIO) ⛔
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 
@@ -9,8 +9,11 @@ function Menu() {
   const [ristoranteId, setRistoranteId] = useState(null);
   const [style, setStyle] = useState({});
   
+  // --- STATI LOGICI ---
+  const [canOrder, setCanOrder] = useState(true); // Servizio Cucina (Aperto/Chiuso)
+  const [isSuspended, setIsSuspended] = useState(false); // Blocco Totale (Pausa SuperAdmin)
+  
   // --- STATI CARRELLO E ORDINE ---
-  const [canOrder, setCanOrder] = useState(true); 
   const [carrello, setCarrello] = useState([]); 
   const [error, setError] = useState(false);
   
@@ -38,11 +41,25 @@ function Menu() {
             setError(true); 
             return; 
         }
+
+        // --- A. CONTROLLO PAUSA TOTALE (SUPER ADMIN) ---
+        // Se ordini_abilitati è false, blocchiamo TUTTO.
+        if (data.ordini_abilitati === false) {
+            setIsSuspended(true);
+            setRistorante(data.ristorante); // Mostriamo almeno il nome
+            if (data.style) setStyle(data.style); // E lo sfondo
+            return; // STOP! Non carichiamo il menu.
+        }
+
+        // --- B. CARICAMENTO NORMALE ---
         setRistorante(data.ristorante);
         setMenu(data.menu || []);
         setRistoranteId(data.id);
         if (data.style) setStyle(data.style);
-        setCanOrder(data.ordini_abilitati && data.servizio_attivo);
+        
+        // --- C. CONTROLLO SERVIZIO CUCINA (ADMIN) ---
+        // Se servizio_attivo è false, vedo il menu ma non ordino.
+        setCanOrder(data.servizio_attivo);
       })
       .catch(err => {
           console.error("Errore fetch menu:", err);
@@ -50,25 +67,45 @@ function Menu() {
       });
   }, [currentSlug]);
 
+  // --- RENDER SCREEN "ATTIVITÀ SOSPESA" ---
+  if (isSuspended) {
+      return (
+          <div style={{
+              backgroundColor: style?.bg || '#222',
+              color: style?.text || '#fff',
+              fontFamily: style?.font || 'sans-serif',
+              minHeight: '100vh',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              padding: '20px', textAlign: 'center'
+          }}>
+              <div style={{fontSize: '4rem', marginBottom: '20px'}}>⛔</div>
+              <h1 style={{fontSize: '2rem', color: 'red', textTransform: 'uppercase'}}>Attività Sospesa</h1>
+              <h2 style={{marginTop: '10px'}}>{ristorante}</h2>
+              <p style={{marginTop: '20px', fontSize: '1.2rem', opacity: 0.8}}>
+                  Il servizio è momentaneamente non disponibile.<br/>
+                  Si prega di contattare l'amministrazione.
+              </p>
+          </div>
+      );
+  }
+
   // --- LOGICA Uscita (BAR = 0) ---
   const getDefaultCourse = (categoria, isBar) => {
-      if (isBar) return 0; // Bar non ha priorità
-
+      if (isBar) return 0; 
       const cat = categoria.toLowerCase();
-      // Uscita 1: Antipasti, Fritti
       if (cat.includes('antipast') || cat.includes('fritti') || cat.includes('stuzzicheri')) return 1;
-      // Uscita 3: Dessert, Caffè (se non bar)
       if (cat.includes('dessert') || cat.includes('dolci')) return 3;
-      // Uscita 2: Tutto il resto
       return 2;
   };
 
   // --- 2. AGGIUNGI AL CARRELLO ---
   const aggiungiAlCarrello = (prodotto) => {
-    if (!canOrder) return alert("Il servizio ordini è momentaneamente chiuso.");
+    // BLOCCO AGGIUNTA SE SERVIZIO CHIUSO
+    if (!canOrder) {
+        return alert("⚠️ LA CUCINA È CHIUSA.\nPuoi solo consultare il menu, ma non ordinare.");
+    }
     
     const isBar = !!prodotto.categoria_is_bar;
-
     const item = { 
         ...prodotto, 
         tempId: Date.now() + Math.random(), 
@@ -107,7 +144,6 @@ function Menu() {
      if (!ristoranteId) return alert("Errore: Impossibile identificare il ristorante.");
      
      const totale = carrello.reduce((acc, i) => acc + parseFloat(i.prezzo || 0), 0);
-     
      const prodottiPerBackend = carrello.map(p => ({
          nome: p.nome,
          prezzo: p.prezzo,
@@ -149,13 +185,6 @@ function Menu() {
 
   const categorieOrdinate = [...new Set(menu.map(p => p.categoria))];
 
-  // --- Accordion handlers ---
-  const toggleAccordion = (catNome) => {
-      if (activeCategory === catNome) { setActiveCategory(null); setActiveSubCategory(null); } 
-      else { setActiveCategory(catNome); setActiveSubCategory(null); }
-  };
-  const toggleSubAccordion = (subName) => setActiveSubCategory(activeSubCategory === subName ? null : subName);
-
   // --- STILI BASE ---
   const appStyle = {
       backgroundColor: style?.bg || '#222',
@@ -169,6 +198,12 @@ function Menu() {
   const titleColor = style?.title || '#fff';   
   const priceColor = style?.price || '#27ae60'; 
 
+  const toggleAccordion = (catNome) => {
+      if (activeCategory === catNome) { setActiveCategory(null); setActiveSubCategory(null); } 
+      else { setActiveCategory(catNome); setActiveSubCategory(null); }
+  };
+  const toggleSubAccordion = (subName) => setActiveSubCategory(activeSubCategory === subName ? null : subName);
+
   return (
     <div style={appStyle}> 
       
@@ -180,18 +215,19 @@ function Menu() {
             <h1 style={{color: titleColor, fontSize:'2.5rem', margin:'0 0 10px 0'}}>{ristorante}</h1>
         )}
         
+        {/* BADGE STATO SERVIZIO */}
         {canOrder ? (
             <p style={{color: style?.text || '#ccc'}}>
                 Tavolo: <strong style={{fontSize:'1.2rem', color:'white'}}>{numeroTavolo}</strong>
             </p> 
         ) : (
-            <div className="badge-digital" style={{background:'red', color:'white', padding:'5px 10px', display:'inline-block', borderRadius:'5px'}}>
-                ⛔ Servizio Chiuso
+            <div className="badge-digital" style={{background:'red', color:'white', padding:'10px', display:'inline-block', borderRadius:'5px', fontWeight:'bold', fontSize:'14px'}}>
+                ⛔ CUCINA CHIUSA (Solo Consultazione)
             </div>
         )}
       </header>
 
-      {/* BARRA CARRELLO */}
+      {/* BARRA CARRELLO (Visibile solo se si può ordinare) */}
       {canOrder && carrello.length > 0 && !showCheckout && (
         <div className="carrello-bar">
           <div className="totale">
@@ -204,7 +240,7 @@ function Menu() {
         </div>
       )}
 
-      {/* LISTA MENU */}
+      {/* LISTA MENU (ACCORDION) */}
       <div style={{paddingBottom: '80px', marginTop: '0', width: '100%'}}> 
         {categorieOrdinate.map(catNome => (
             <div key={catNome} className="accordion-item" style={{marginBottom: '2px', borderRadius: '5px', overflow: 'hidden', width: '100%'}}>
@@ -245,6 +281,8 @@ function Menu() {
                                                         {prodotto.descrizione && (<p style={{fontSize:'12px', color:'#666', margin:'0 0 4px 0', lineHeight:'1.2'}}>{prodotto.descrizione}</p>)}
                                                         <div style={{fontSize:'14px', fontWeight:'bold', color: priceColor}}>{prodotto.prezzo} €</div>
                                                     </div>
+                                                    
+                                                    {/* BOTTONE +: VISIBILE SOLO SE CANORDER È TRUE */}
                                                     {canOrder && (
                                                         <button onClick={(e) => { e.stopPropagation(); aggiungiAlCarrello(prodotto); }} style={{ background:'#f0f0f0', color:'#333', borderRadius:'50%', width:'32px', height:'32px', border:'none', fontSize:'20px', display:'flex', alignItems:'center', justifyContent:'center', cursor: 'pointer' }}>+</button>
                                                     )}
@@ -261,7 +299,7 @@ function Menu() {
         ))}
       </div>
 
-      {/* --- CHECKOUT AGGIORNATO (Cibo PRIMA, Bar DOPO) --- */}
+      {/* --- CHECKOUT --- */}
       {showCheckout && (
           <div style={{
               position:'fixed', top:0, left:0, right:0, bottom:0, 
@@ -277,7 +315,7 @@ function Menu() {
               <div style={{flex:1, overflowY:'auto'}}>
                   {carrello.length === 0 && <p style={{color: style?.text, textAlign:'center'}}>Il carrello è vuoto.</p>}
                   
-                  {/* --- BLOCCO 1: PIATTI CON PRIORITÀ (Ora mostrati per primi) --- */}
+                  {/* --- BLOCCO 1: PIATTI CON PRIORITÀ --- */}
                   {[1, 2, 3].map(courseNum => {
                       const itemsInCourse = carrello.filter(i => !i.is_bar && i.course === courseNum);
                       if (itemsInCourse.length === 0) return null;
@@ -323,7 +361,7 @@ function Menu() {
                       );
                   })}
 
-                  {/* --- BLOCCO 2: BAR (Ora mostrato in fondo) --- */}
+                  {/* --- BLOCCO 2: BAR --- */}
                   {carrello.some(i => i.is_bar) && (
                       <div style={{marginBottom:'20px', marginTop:'30px', borderTop:'1px dashed #555', paddingTop:'10px'}}>
                            <h3 style={{color: '#3498db', paddingBottom:'5px', fontSize:'14px', textTransform:'uppercase'}}>
