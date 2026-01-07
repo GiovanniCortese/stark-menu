@@ -117,6 +117,12 @@ function Bar() {
               });
           }
       });
+          // Ordina: Prima "in_attesa", poi "servito"
+      return gruppi.sort((a, b) => {
+          if (a.stato === b.stato) return 0;
+          return a.stato === 'in_attesa' ? -1 : 1;
+      });
+  };
       
 // Raggruppa gli ordini per tavolo (V32)
   const ordiniPerTavolo = Object.values(ordini.reduce((acc, ordine) => {
@@ -127,13 +133,7 @@ function Bar() {
       return acc;
   }, {}));
 
-      // Ordina: Prima "in_attesa", poi "servito"
-      return gruppi.sort((a, b) => {
-          if (a.stato === b.stato) return 0;
-          return a.stato === 'in_attesa' ? -1 : 1;
-      });
-  };
-
+  
   if (!infoRistorante) return <div style={{textAlign:'center', padding:50}}><h1>⏳ Caricamento Bar...</h1></div>;
 
   if (!isAuthorized) return (
