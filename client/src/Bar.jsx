@@ -165,15 +165,44 @@ function Bar() {
       <div className="ordini-grid">
         {ordini.length === 0 && <div style={{textAlign: 'center', width: '100%', marginTop: '50px', color: '#fff'}}><h2>Tutto pulito al Bar! 🍺</h2></div>}
 
-  {prodottiRaggruppati.map((gruppoProd) => {
+        {ordiniPerTavolo.map(gruppo => (
+            <div key={gruppo.tavolo} className="ticket" style={{background:'#ecf0f1', borderTop:'5px solid #3498db'}}>
+                <div className="ticket-header" style={{background:'#2980b9', color:'white', padding:'10px'}}>
+                    <span style={{fontSize:'1.5rem'}}>Tavolo <strong>{gruppo.tavolo}</strong></span>
+                </div>
+                
+                <div className="ticket-body" style={{textAlign:'left', paddingBottom:'5px'}}>
+                    {gruppo.listaOrdini.map(ord => {
+                        // Creiamo i gruppi (es. 3x Coca Cola)
+                        const prodottiRaggruppati = getProdottiRaggruppati(ord.prodotti);
+                        if(prodottiRaggruppati.length === 0) return null;
+
+                        return (
+                            <div key={ord.id} style={{marginBottom: '10px', borderBottom:'2px solid #bdc3c7'}}>
+                                {/* Intestazione con Ora e Cameriere */}
+                                <div style={{
+                                    fontSize:'0.85rem', 
+                                    background:'#d6eaf8', 
+                                    padding:'4px 10px', 
+                                    color:'#2980b9', 
+                                    fontWeight:'bold',
+                                    display:'flex', justifyContent:'space-between'
+                                }}>
+                                    <span>Ore {new Date(ord.data_ora).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                    <span>{ord.cameriere}</span>
+                                </div>
+
+                                {/* Ciclo sui Prodotti Raggruppati */}
+                                {prodottiRaggruppati.map((gruppoProd) => {
                                     const isServito = gruppoProd.stato === 'servito';
-                                    // MODIFICA QUI: Passiamo TUTTI gli indici del gruppo
+                                    
+                                    // QUI STA LA MAGIA: Prendiamo TUTTI gli indici del gruppo (es. 3 indici per 3 Coca Cole)
                                     const indiciDaModificare = gruppoProd.indices; 
 
                                     return (
                                         <div 
                                             key={gruppoProd.key} 
-                                            // MODIFICA QUI: passiamo l'array indiciDaModificare
+                                            // Al click passiamo L'INTERO ARRAY DI INDICI alla funzione modificata
                                             onClick={() => segnaBibitaServita(ord.id, ord.prodotti, indiciDaModificare)}
                                             style={{
                                                 padding:'12px 10px', 
@@ -205,6 +234,12 @@ function Bar() {
                                         </div>
                                     );
                                 })}
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        ))}
       </div>
     </div>
   );
