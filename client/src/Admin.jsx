@@ -245,7 +245,7 @@ const handleOnDragEnd = async (result) => {
           nome: nuovaCat.nome, 
           descrizione: nuovaCat.descrizione, 
           ristorante_id: user.id,
-          is_bar: nuovaCat.is_bar // Inviamo il flag bar
+          is_bar: nuovaCat.is_bar, // Inviamo il flag bar
           is_pizzeria: nuovaCat.is_pizzeria // <--- AGGIUNTO
       };
 
@@ -427,10 +427,8 @@ const handleOnDragEnd = async (result) => {
               </form>
           </div>
 
-           {categorie.map(cat => (
-               {categorie.map(cat => (
+          {categorie.map(cat => (
                 <div key={cat.id} style={{marginBottom: '20px'}}>
-                    {/* MODIFICA QUI SOTTO */}
                     <h3 style={{marginTop:'30px', borderBottom:'2px solid #eee', paddingBottom:'5px', color:'#555'}}>
                         {cat.nome} {cat.is_bar && "🍹"} {cat.is_pizzeria && "🍕"}
                     </h3>
