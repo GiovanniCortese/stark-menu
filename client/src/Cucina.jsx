@@ -36,32 +36,39 @@ function Cucina() {
       fetch(`${API_URL}/api/polling/${infoRistorante.id}`)
         .then(r=>r.json())
         .then(data => {
-            const nuoviOrdini = data.nuovi_ordini || [];
+           nuoviOrdini.forEach(ord => {
+                // --- MODIFICA FONDAMENTALE: FILTRO "PACCHETTO CONCLUSO" ---
+                // 1. Prendiamo solo i cibi (escludiamo il Bar che non ci interessa)
+                const itemsDiCompetenza = Array.isArray(ord.prodotti) 
+                    ? ord.prodotti.filter(p => !p.is_bar) 
+                    : [];
 
-            // 1. RAGGRUPPIAMO PER TAVOLO (Logica "Cassa")
-            const gruppiTavolo = {};
+                // 2. Controlliamo se questo specifico invio è TUTTO servito
+                // (Se itemsDiCompetenza è vuoto, è probabilmente solo bar, quindi lo ignoriamo o meno a seconda della tua logica. Qui assumiamo che se è > 0 controlliamo lo stato)
+                const isTuttoServito = itemsDiCompetenza.length > 0 && itemsDiCompetenza.every(p => p.stato === 'servito');
 
-            nuoviOrdini.forEach(ord => {
+                // 3. SE È TUTTO SERVITO, SALTIAMO QUESTO ORDINE (RETURN)
+                // Così non verrà aggiunto alla lista del tavolo e sparirà dallo schermo.
+                if (isTuttoServito) return; 
+
+                // --- DA QUI IN POI È LA LOGICA STANDARD ---
                 const t = ord.tavolo;
                 if(!gruppiTavolo[t]) gruppiTavolo[t] = { tavolo: t, items: [], orarioMin: ord.data_ora };
                 
-                // Manteniamo l'orario del primo ordine arrivato per quel tavolo
                 if(new Date(ord.data_ora) < new Date(gruppiTavolo[t].orarioMin)) {
                     gruppiTavolo[t].orarioMin = ord.data_ora;
                 }
 
-                // 2. ESTRAIAMO I PRODOTTI, FILTRANDO IL BAR
                 if(Array.isArray(ord.prodotti)) {
                     ord.prodotti.forEach((prod, idx) => {
                         // --- FILTRO BAR: SE È BAR, LO SALTIAMO COMPLETAMENTE ---
                         if (prod.is_bar) return;
 
-                        // Aggiungiamo riferimento all'ordine padre per poterlo modificare dopo
                         gruppiTavolo[t].items.push({
                             ...prod,
-                            parentOrderId: ord.id,     // ID dell'ordine nel DB
-                            originalIndex: idx,        // Indice nell'array dell'ordine
-                            fullOrderProducts: ord.prodotti // Ci serve tutto l'array per fare il salvataggio
+                            parentOrderId: ord.id,
+                            originalIndex: idx,
+                            fullOrderProducts: ord.prodotti 
                         });
                     });
                 }
