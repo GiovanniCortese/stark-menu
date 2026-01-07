@@ -1,4 +1,4 @@
-// client/src/Cucina.jsx - VERSIONE V32 (RAGGRUPPAMENTO, 3X, BLOCCO CLICK) 👨‍🍳
+// client/src/Cucina.jsx - VERSIONE V35 (INTELLIGENTE: USCITE, BLOCCHI E VISIBILITÀ INCROCIATA) 👨‍🍳
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -42,16 +42,11 @@ function Cucina() {
 
             const ordiniDaMostrare = tuttiOrdini.filter(o => {
                 const prodotti = Array.isArray(o.prodotti) ? o.prodotti : [];
-                
-                // 1. Filtra: Tieni solo ciò che NON è Bar e NON è Pizzeria
-                const cibi = prodotti.filter(p => !p.is_bar && !p.is_pizzeria);
-                
-                // 2. Se vuoto, nascondi ticket
-                if (cibi.length === 0) return false;
-
-                // 3. Se TUTTI i cibi sono 'serviti', nascondi ticket
-                const tuttiFiniti = cibi.every(p => p.stato === 'servito');
-                return !tutteFiniti;
+                if (prodotti.length === 0) return false;
+                // Mostriamo il ticket finché non è TUTTO servito (anche roba della pizzeria)
+                // Così la cucina vede quando l'ordine è chiuso definitivamente
+                const tuttiFiniti = prodotti.every(p => p.stato === 'servito');
+                return !tuttiFiniti;
             });
 
             setOrdini(ordiniDaMostrare);
@@ -67,28 +62,24 @@ function Cucina() {
       } 
   }, [isAuthorized, infoRistorante]);
 
-  // Versione "One-Way": Una volta servito, non si torna indietro
+  // --- AZIONE: SEGNA COME SERVITO ---
   const segnaPiattoServito = async (ordineId, prodottiAttuali, indices) => {
       const nuoviProdotti = [...prodottiAttuali];
-      
-      // Controlliamo il primo item del gruppo
       const primoItem = nuoviProdotti[indices[0]];
 
-      // 🛑 BLOCCO: Se è già servito, esci subito. Non permettiamo modifiche.
       if (primoItem.stato === 'servito') return;
 
       const nuovoStato = 'servito';
+      const oraAttuale = new Date().toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'});
 
-      // Aggiorniamo TUTTI gli item del gruppo (es. tutte e 3 le carbonare)
       indices.forEach(idx => {
           const item = nuoviProdotti[idx];
           item.stato = nuovoStato;
-          item.ora_servizio = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+          item.ora_servizio = oraAttuale; // Salviamo l'orario
       });
 
-      // Messaggio Log per la Cassa
       const qty = indices.length;
-      const logMsg = `[CUCINA 👨‍🍳] HA SERVITO: ${qty > 1 ? qty + 'x ' : ''}${primoItem.nome}`;
+      const logMsg = `[CUCINA 👨‍🍳] HA SERVITO: ${qty > 1 ? qty + 'x ' : ''}${primoItem.nome} alle ${oraAttuale}`;
 
       await fetch(`${API_URL}/api/ordine/${ordineId}/update-items`, {
           method: 'PUT',
@@ -98,48 +89,68 @@ function Cucina() {
       aggiorna();
   };
 
-  // HELPER PER RAGGRUPPARE (3x Carbonara) E ORDINARE
-  const getProdottiRaggruppati = (prodotti) => {
-      const gruppi = [];
+  // --- LOGICA CORE: RAGGRUPPAMENTO PER USCITA E PRODOTTO ---
+  const processaOrdine = (prodotti) => {
+      // 1. Organizziamo per Uscita (Course)
+      // Default course = 2 se non specificato
+      const courses = { 1: [], 2: [], 3: [] };
       
-      prodotti.forEach((p, indexOriginale) => {
-          // MODIFICA QUI: Ignora Bar E Pizzeria
-          if (p.is_bar || p.is_pizzeria) return; 
+      prodotti.forEach((p, originalIndex) => {
+          const c = p.course || 2; 
+          if(!courses[c]) courses[c] = [];
+          courses[c].push({ ...p, originalIndex });
+      });
 
-          // Chiave unica: Nome + Stato
-          const key = `${p.nome}-${p.stato}`;
+      // 2. Calcoliamo lo stato di blocco
+      // L'Uscita 2 è bloccata se l'Uscita 1 ha elementi NON serviti.
+      // L'Uscita 3 è bloccata se l'Uscita 2 ha elementi NON serviti.
+      const isCourseComplete = (courseNum) => {
+          if (!courses[courseNum] || courses[courseNum].length === 0) return true; // Se vuota, è "completa"
+          return courses[courseNum].every(p => p.stato === 'servito');
+      };
+
+      const courseStatus = {
+          1: { locked: false, completed: isCourseComplete(1) },
+          2: { locked: !isCourseComplete(1), completed: isCourseComplete(2) },
+          3: { locked: !isCourseComplete(1) || !isCourseComplete(2), completed: isCourseComplete(3) }
+      };
+
+      // 3. Raggruppiamo i prodotti "3x Carbonara" all'interno di ogni course
+      const finalStructure = [];
+      [1, 2, 3].forEach(cNum => {
+          if (courses[cNum].length === 0) return;
+
+          const groups = [];
+          courses[cNum].forEach(p => {
+              const key = `${p.nome}-${p.stato}-${p.is_pizzeria ? 'piz' : 'cuc'}`;
+              const existing = groups.find(g => g.key === key);
+              if (existing) {
+                  existing.count++;
+                  existing.indices.push(p.originalIndex);
+              } else {
+                  groups.push({
+                      ...p,
+                      key,
+                      count: 1,
+                      indices: [p.originalIndex],
+                      // Flag per visualizzazione
+                      isMyStation: !p.is_bar && !p.is_pizzeria, 
+                      stationName: p.is_pizzeria ? "PIZZERIA" : (p.is_bar ? "BAR" : "CUCINA")
+                  });
+              }
+          });
           
-          const gruppoEsistente = gruppi.find(g => g.key === key);
-
-          if (gruppoEsistente) {
-              gruppoEsistente.count += 1;
-              gruppoEsistente.indices.push(indexOriginale); 
-          } else {
-              gruppi.push({
-                  ...p,
-                  key: key,
-                  count: 1,
-                  indices: [indexOriginale]
-              });
-          }
+          finalStructure.push({
+              courseNum: cNum,
+              locked: courseStatus[cNum].locked,
+              items: groups
+          });
       });
 
-      // Ordina: Prima "in_attesa", poi "servito"
-      return gruppi.sort((a, b) => {
-          if (a.stato === b.stato) return 0;
-          return a.stato === 'in_attesa' ? -1 : 1;
-      });
+      return finalStructure;
   };
 
-  // Raggruppa gli ordini per tavolo
-  const ordiniPerTavolo = Object.values(ordini.reduce((acc, ordine) => {
-      if (!acc[ordine.tavolo]) {
-          acc[ordine.tavolo] = { tavolo: ordine.tavolo, listaOrdini: [] };
-      }
-      acc[ordine.tavolo].listaOrdini.push(ordine);
-      return acc;
-  }, {}));
-
+  // --- RENDERING ---
   
   if (!infoRistorante) return <div style={{textAlign:'center', padding:50}}><h1>⏳ Caricamento...</h1></div>;
 
@@ -171,82 +182,137 @@ function Cucina() {
             </div>
         )}
 
-        {ordiniPerTavolo.map(gruppo => (
-            <div key={gruppo.tavolo} className="ticket" style={{borderTop: '5px solid #d35400'}}>
-                <div className="ticket-header">
-                    <span style={{fontSize:'1.5rem'}}>Tavolo <strong>{gruppo.tavolo}</strong></span>
-                </div>
-                
-                <div className="ticket-body" style={{textAlign:'left', paddingBottom:'5px'}}>
-                    {gruppo.listaOrdini.map(ord => {
-                        // Raggruppiamo i piatti (es. 3x Carbonara)
-                        const prodottiRaggruppati = getProdottiRaggruppati(ord.prodotti);
-                        if(prodottiRaggruppati.length === 0) return null;
+        {ordini.map(ordine => {
+            const strutturaOrdine = processaOrdine(ordine.prodotti);
+            
+            return (
+                <div key={ordine.id} className="ticket" style={{borderTop: '5px solid #d35400'}}>
+                    {/* Header Ticket */}
+                    <div className="ticket-header" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                        <span style={{fontSize:'1.5rem'}}>Tavolo <strong>{ordine.tavolo}</strong></span>
+                        <span style={{fontSize:'0.9rem', color:'#666'}}>{new Date(ordine.data_ora).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                    </div>
+                    
+                    <div className="ticket-body" style={{textAlign:'left', paddingBottom:'5px'}}>
+                        
+                        {strutturaOrdine.map(section => {
+                            // Colori Header Uscita
+                            let headerColor = "#7f8c8d"; // Default Locked
+                            let headerBg = "#ecf0f1";
+                            let title = `${section.courseNum}ª USCITA`;
+                            
+                            if (!section.locked) {
+                                if(section.courseNum === 1) { headerColor = "#27ae60"; headerBg = "#e8f8f5"; title += " (INIZIARE)"; }
+                                if(section.courseNum === 2) { headerColor = "#f39c12"; headerBg = "#fef9e7"; title += " (A SEGUIRE)"; }
+                                if(section.courseNum === 3) { headerColor = "#c0392b"; headerBg = "#f9ebea"; title += " (DESSERT)"; }
+                            } else {
+                                title += " (IN ATTESA)";
+                            }
 
-                        return (
-                            <div key={ord.id} style={{marginBottom: '10px', borderBottom:'2px solid #ddd'}}>
-                                {/* Intestazione con Ora e Cameriere */}
-                                <div style={{
-                                    fontSize:'0.85rem', 
-                                    background:'#fdebd0', // Arancio chiaro per cucina
-                                    padding:'4px 10px', 
-                                    color:'#d35400', 
-                                    fontWeight:'bold',
-                                    display:'flex', justifyContent:'space-between'
-                                }}>
-                                    <span>Ore {new Date(ord.data_ora).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                                    <span>{ord.cameriere}</span>
-                                </div>
+                            return (
+                                <div key={section.courseNum} style={{marginBottom:'15px'}}>
+                                    {/* Intestazione Uscita */}
+                                    <div style={{
+                                        background: headerBg, color: headerColor, 
+                                        padding:'5px 10px', fontSize:'0.85rem', fontWeight:'bold', 
+                                        borderBottom:`2px solid ${headerColor}`, marginBottom:'5px',
+                                        display:'flex', justifyContent:'space-between'
+                                    }}>
+                                        <span>{title}</span>
+                                        {section.locked && <span>🔒 BLOCCATO</span>}
+                                    </div>
 
-                                {prodottiRaggruppati.map((gruppoProd) => {
-                                    const isServito = gruppoProd.stato === 'servito';
-                                    
-                                    // PRENDIAMO TUTTI GLI INDICI DEL GRUPPO
-                                    const indiciDaModificare = gruppoProd.indices; 
+                                    {/* Lista Piatti */}
+                                    {section.items.map(item => {
+                                        const isServito = item.stato === 'servito';
+                                        
+                                        // LOGICA VISIVA
+                                        // 1. Se è bloccato e non è servito -> Opacità bassa, non cliccabile
+                                        // 2. Se non è mio (è pizzeria) -> Sfondo grigio, non cliccabile
+                                        // 3. Se è mio e attivo -> Bianco, Cliccabile
+                                        
+                                        let bg = 'white';
+                                        let opacity = 1;
+                                        let cursor = 'pointer';
 
-                                    return (
-                                        <div 
-                                            key={gruppoProd.key} 
-                                            // BLOCCO CLICK: Se già servito, non fa nulla
-                                            onClick={() => !isServito && segnaPiattoServito(ord.id, ord.prodotti, indiciDaModificare)}
-                                            style={{
-                                                padding:'12px 10px', 
-                                                borderBottom:'1px dashed #ddd',
-                                                // CURSORE: Freccia se servito, manina se attivo
-                                                cursor: isServito ? 'default' : 'pointer',
-                                                background: isServito ? '#e8f5e9' : 'white',
-                                                opacity: isServito ? 0.6 : 1,
-                                                display: 'flex', justifyContent:'space-between', alignItems:'center'
-                                            }}
-                                        >
-                                            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-                                                {/* Badge Quantità */}
-                                                <span style={{
-                                                    background: isServito ? '#95a5a6' : '#e67e22',
-                                                    color:'white', padding:'4px 8px', borderRadius:'50%',
-                                                    fontWeight:'bold', fontSize:'0.9rem', minWidth:'30px', textAlign:'center'
-                                                }}>
-                                                    {gruppoProd.count}x
-                                                </span>
-                                                <span style={{
-                                                    fontSize:'1.1rem', 
-                                                    fontWeight: isServito ? 'normal' : 'bold',
-                                                    textDecoration: isServito ? 'line-through' : 'none',
-                                                    color: isServito ? '#aaa' : '#000'
-                                                }}>
-                                                    {gruppoProd.nome}
-                                                </span>
+                                        if (section.locked && !isServito) {
+                                            opacity = 0.5;
+                                            cursor = 'not-allowed';
+                                            bg = '#f9f9f9';
+                                        } else if (!item.isMyStation) {
+                                            bg = '#f0f0f0'; // Grigio per Pizzeria/Bar
+                                            cursor = 'default'; // Non cliccabile
+                                        } else if (isServito) {
+                                            bg = '#e8f5e9'; // Verde servito
+                                            cursor = 'default';
+                                        }
+
+                                        return (
+                                            <div 
+                                                key={item.key}
+                                                onClick={() => {
+                                                    // Si può cliccare SOLO se: è mio, non è servito, non è bloccato
+                                                    if (item.isMyStation && !isServito && !section.locked) {
+                                                        segnaPiattoServito(ordine.id, ordine.prodotti, item.indices);
+                                                    }
+                                                }}
+                                                style={{
+                                                    padding:'10px', 
+                                                    borderBottom:'1px dashed #ddd',
+                                                    background: bg,
+                                                    opacity: opacity,
+                                                    cursor: cursor,
+                                                    display: 'flex', justifyContent:'space-between', alignItems:'center'
+                                                }}
+                                            >
+                                                <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+                                                    <span style={{
+                                                        background: isServito ? '#95a5a6' : (item.isMyStation ? '#d35400' : '#7f8c8d'),
+                                                        color:'white', padding:'2px 8px', borderRadius:'12px',
+                                                        fontWeight:'bold', fontSize:'0.8rem', minWidth:'25px', textAlign:'center'
+                                                    }}>
+                                                        {item.count}x
+                                                    </span>
+                                                    
+                                                    <div>
+                                                        <span style={{
+                                                            fontSize:'1rem', 
+                                                            fontWeight: isServito ? 'normal' : 'bold',
+                                                            textDecoration: isServito ? 'line-through' : 'none',
+                                                            color: isServito ? '#aaa' : '#000'
+                                                        }}>
+                                                            {item.nome}
+                                                        </span>
+                                                        {/* Badge competenza se non è mio */}
+                                                        {!item.isMyStation && (
+                                                            <span style={{fontSize:'0.7rem', marginLeft:'8px', background:'#bdc3c7', color:'white', padding:'2px 4px', borderRadius:'3px'}}>
+                                                                {item.stationName}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Stato / Orario */}
+                                                <div style={{textAlign:'right'}}>
+                                                    {isServito ? (
+                                                        <div style={{color:'green', fontSize:'0.8rem'}}>
+                                                            ✅ Fatto<br/>
+                                                            <small>{item.ora_servizio}</small>
+                                                        </div>
+                                                    ) : (
+                                                        section.locked ? <span style={{fontSize:'1.2rem'}}>⏳</span> : null
+                                                    )}
+                                                </div>
                                             </div>
-                                            {isServito && <span>✅</span>}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        );
-                    })}
+                                        );
+                                    })}
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
-            </div>
-        ))}
+            );
+        })}
       </div>
     </div>
   );

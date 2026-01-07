@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - VERSIONE V33 (MENU CLIENTE CON PIZZERIA) 🍕
+// client/src/Menu.jsx - VERSIONE V34 (CON GESTIONE USCITE/SEQUENZE) 🍕
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 
@@ -14,7 +14,7 @@ function Menu() {
   const [carrello, setCarrello] = useState([]); 
   const [error, setError] = useState(false);
   
-  // --- STATI INTERFACCIA (ACCORDION & MODAL) ---
+  // --- STATI INTERFACCIA ---
   const [activeCategory, setActiveCategory] = useState(null);       
   const [activeSubCategory, setActiveSubCategory] = useState(null); 
   const [selectedPiatto, setSelectedPiatto] = useState(null);
@@ -50,7 +50,18 @@ function Menu() {
       });
   }, [currentSlug]);
 
-  // --- 2. AGGIUNGI AL CARRELLO (Aggiornato per Pizzeria) ---
+  // --- *** MODIFICA: Logica per determinare l'uscita di default *** ---
+  const getDefaultCourse = (categoria) => {
+      const cat = categoria.toLowerCase();
+      // Uscita 1: Antipasti, Bevande
+      if (cat.includes('antipast') || cat.includes('bevande') || cat.includes('drink') || cat.includes('fritti')) return 1;
+      // Uscita 3: Dessert, Caffè, Amari
+      if (cat.includes('dessert') || cat.includes('dolci') || cat.includes('caff') || cat.includes('amari')) return 3;
+      // Uscita 2: Tutto il resto (Primi, Secondi, Pizze)
+      return 2;
+  };
+
+  // --- 2. AGGIUNGI AL CARRELLO (Con logica Course) ---
   const aggiungiAlCarrello = (prodotto) => {
     if (!canOrder) return alert("Il servizio ordini è momentaneamente chiuso.");
     
@@ -60,9 +71,10 @@ function Menu() {
         tempId: Date.now() + Math.random(), 
         categoria: prodotto.categoria || "Varie",
         categoria_posizione: prodotto.categoria_posizione || 999,
-        // CATTURIAMO I FLAG DAL DB
         is_bar: !!prodotto.categoria_is_bar,
-        is_pizzeria: !!prodotto.categoria_is_pizzeria // <--- CRUCIALE PER LO SMISTAMENTO
+        is_pizzeria: !!prodotto.categoria_is_pizzeria,
+        // *** MODIFICA: Assegnazione automatica uscita ***
+        course: getDefaultCourse(prodotto.categoria || "") 
     };
     
     setCarrello([...carrello, item]); 
@@ -76,20 +88,34 @@ function Menu() {
       if(nuovoCarrello.length === 0) setShowCheckout(false);
   };
 
+  // --- *** MODIFICA: Funzione per cambiare l'uscita (Sposta su/giù) *** ---
+  const cambiaUscita = (tempId, delta) => {
+      setCarrello(prevCarrello => prevCarrello.map(item => {
+          if (item.tempId === tempId) {
+              const newCourse = item.course + delta;
+              // Limitiamo tra 1 e 3 (o più se serve)
+              if (newCourse < 1 || newCourse > 3) return item;
+              return { ...item, course: newCourse };
+          }
+          return item;
+      }));
+  };
+
   // --- 4. INVIA ORDINE AL SERVER ---
   const inviaOrdine = async () => { 
-     if (!ristoranteId) return alert("Errore: Impossibile identificare il ristorante. Ricarica la pagina.");
+     if (!ristoranteId) return alert("Errore: Impossibile identificare il ristorante.");
      
      const totale = carrello.reduce((acc, i) => acc + parseFloat(i.prezzo || 0), 0);
      
-     // Puliamo i dati per il backend
      const prodottiPerBackend = carrello.map(p => ({
          nome: p.nome,
          prezzo: p.prezzo,
          categoria: p.categoria,
          categoria_posizione: p.categoria_posizione,
          is_bar: p.is_bar,
-         is_pizzeria: p.is_pizzeria // Inviamo il flag al server
+         is_pizzeria: p.is_pizzeria,
+         // *** MODIFICA: Inviamo l'uscita al backend ***
+         course: p.course 
      }));
 
      const payload = {
@@ -121,24 +147,16 @@ function Menu() {
 
   if (error) return <div className="container" style={{padding:'50px', textAlign:'center', color:'white'}}><h1>🚫 Ristorante non trovato (404)</h1></div>;
 
-  // --- LOGICA UI (Accordion) ---
   const categorieOrdinate = [...new Set(menu.map(p => p.categoria))];
 
+  // --- Accordion handlers (Invariati) ---
   const toggleAccordion = (catNome) => {
-      if (activeCategory === catNome) {
-          setActiveCategory(null);
-          setActiveSubCategory(null); 
-      } else {
-          setActiveCategory(catNome);
-          setActiveSubCategory(null); 
-      }
+      if (activeCategory === catNome) { setActiveCategory(null); setActiveSubCategory(null); } 
+      else { setActiveCategory(catNome); setActiveSubCategory(null); }
   };
+  const toggleSubAccordion = (subName) => setActiveSubCategory(activeSubCategory === subName ? null : subName);
 
-  const toggleSubAccordion = (subName) => {
-      setActiveSubCategory(activeSubCategory === subName ? null : subName);
-  };
-
-  // --- STILI DINAMICI ---
+  // --- STILI BASE (Invariati) ---
   const appStyle = {
       backgroundColor: style?.bg || '#222',
       color: style?.text || '#ccc',
@@ -146,14 +164,8 @@ function Menu() {
       backgroundImage: style?.cover ? `url(${style.cover})` : 'none',
       backgroundSize: 'cover',
       backgroundAttachment: 'fixed',
-      minHeight: '100vh',
-      width: '100%',
-      maxWidth: '100%',
-      margin: 0,
-      padding: '10px',
-      boxSizing: 'border-box'
+      minHeight: '100vh', width: '100%', maxWidth: '100%', margin: 0, padding: '10px', boxSizing: 'border-box'
   };
-
   const titleColor = style?.title || '#fff';   
   const priceColor = style?.price || '#27ae60'; 
 
@@ -179,7 +191,7 @@ function Menu() {
         )}
       </header>
 
-      {/* BARRA CARRELLO FLOTTANTE */}
+      {/* BARRA CARRELLO */}
       {canOrder && carrello.length > 0 && !showCheckout && (
         <div className="carrello-bar">
           <div className="totale">
@@ -192,22 +204,11 @@ function Menu() {
         </div>
       )}
 
-      {/* LISTA MENU (ACCORDION) */}
+      {/* LISTA MENU (ACCORDION) - LOGICA INVARIATA VISIVAMENTE */}
       <div style={{paddingBottom: '80px', marginTop: '0', width: '100%'}}> 
         {categorieOrdinate.map(catNome => (
             <div key={catNome} className="accordion-item" style={{marginBottom: '2px', borderRadius: '5px', overflow: 'hidden', width: '100%'}}>
-                
-                <div 
-                    onClick={() => toggleAccordion(catNome)}
-                    style={{
-                        background: activeCategory === catNome ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.1)',
-                        color: titleColor,
-                        padding: '15px',
-                        cursor: 'pointer',
-                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        borderBottom: activeCategory === catNome ? `1px solid ${priceColor}` : 'none'
-                    }}
-                >
+                <div onClick={() => toggleAccordion(catNome)} style={{ background: activeCategory === catNome ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.1)', color: titleColor, padding: '15px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: activeCategory === catNome ? `1px solid ${priceColor}` : 'none' }}>
                     <h2 style={{margin:0, fontSize:'18px', color: titleColor, width:'100%'}}>{catNome}</h2>
                     <span style={{color: titleColor}}>{activeCategory === catNome ? '▼' : '▶'}</span>
                 </div>
@@ -219,8 +220,7 @@ function Menu() {
                             const sottoCats = piattiCat.reduce((acc, p) => {
                                 const sc = (p.sottocategoria && p.sottocategoria.trim().length > 0) ? p.sottocategoria : "Generale";
                                 if(!acc[sc]) acc[sc] = [];
-                                acc[sc].push(p);
-                                return acc;
+                                acc[sc].push(p); return acc;
                             }, {});
 
                             const subKeys = Object.keys(sottoCats).sort();
@@ -228,59 +228,25 @@ function Menu() {
 
                             return subKeys.map(scKey => (
                                 <div key={scKey} style={{width: '100%'}}>
-                                    
                                     {!isSingleGroup && (
-                                        <div 
-                                            onClick={() => toggleSubAccordion(scKey)}
-                                            style={{
-                                                background: 'rgba(255,255,255,0.05)', 
-                                                borderLeft: `4px solid ${priceColor}`, 
-                                                padding: '10px', margin: '1px 0', width: '100%', boxSizing: 'border-box',
-                                                cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-                                            }}
-                                        >
-                                            <h3 style={{margin:0, fontSize:'16px', color: titleColor, textTransform:'uppercase'}}>
-                                                {scKey === "Generale" ? "Altri Piatti" : scKey}
-                                            </h3>
-                                            <span style={{color: titleColor, fontWeight:'bold'}}>
-                                                {activeSubCategory === scKey ? '▼' : '▶'}
-                                            </span>
+                                        <div onClick={() => toggleSubAccordion(scKey)} style={{ background: 'rgba(255,255,255,0.05)', borderLeft: `4px solid ${priceColor}`, padding: '10px', margin: '1px 0', width: '100%', boxSizing: 'border-box', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <h3 style={{margin:0, fontSize:'16px', color: titleColor, textTransform:'uppercase'}}>{scKey === "Generale" ? "Altri Piatti" : scKey}</h3>
+                                            <span style={{color: titleColor, fontWeight:'bold'}}>{activeSubCategory === scKey ? '▼' : '▶'}</span>
                                         </div>
                                     )}
 
                                     {(isSingleGroup || activeSubCategory === scKey) && (
                                         <div className="menu-list" style={{padding: '0', width: '100%'}}>
                                             {sottoCats[scKey].map((prodotto) => (
-                                                <div 
-                                                    key={prodotto.id} 
-                                                    className="card" 
-                                                    onClick={() => prodotto.immagine_url ? setSelectedPiatto(prodotto) : null}
-                                                    style={{
-                                                        display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px',
-                                                        width: '100%', boxSizing: 'border-box', cursor: prodotto.immagine_url ? 'pointer' : 'default',
-                                                        backgroundColor: 'white', marginBottom: '1px', borderRadius: '0'
-                                                    }}
-                                                >
-                                                    {prodotto.immagine_url && (
-                                                        <img src={prodotto.immagine_url} style={{width:'70px', height:'70px', objectFit:'cover', borderRadius:'5px', flexShrink: 0}} />
-                                                    )}
-
+                                                <div key={prodotto.id} className="card" onClick={() => prodotto.immagine_url ? setSelectedPiatto(prodotto) : null} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', cursor: prodotto.immagine_url ? 'pointer' : 'default', backgroundColor: 'white', marginBottom: '1px', borderRadius: '0' }}>
+                                                    {prodotto.immagine_url && <img src={prodotto.immagine_url} style={{width:'70px', height:'70px', objectFit:'cover', borderRadius:'5px', flexShrink: 0}} />}
                                                     <div className="info" style={{flex: 1}}>
                                                         <h3 style={{margin:'0 0 4px 0', fontSize:'16px', color: 'titleColor'}}>{prodotto.nome}</h3>
                                                         {prodotto.descrizione && (<p style={{fontSize:'12px', color:'#666', margin:'0 0 4px 0', lineHeight:'1.2'}}>{prodotto.descrizione}</p>)}
                                                         <div style={{fontSize:'14px', fontWeight:'bold', color: priceColor}}>{prodotto.prezzo} €</div>
                                                     </div>
-
                                                     {canOrder && (
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); aggiungiAlCarrello(prodotto); }} 
-                                                            style={{
-                                                                background:'#f0f0f0', color:'#333', borderRadius:'50%', width:'32px', height:'32px', 
-                                                                border:'none', fontSize:'20px', display:'flex', alignItems:'center', justifyContent:'center', cursor: 'pointer'
-                                                            }}
-                                                        >
-                                                            +
-                                                        </button>
+                                                        <button onClick={(e) => { e.stopPropagation(); aggiungiAlCarrello(prodotto); }} style={{ background:'#f0f0f0', color:'#333', borderRadius:'50%', width:'32px', height:'32px', border:'none', fontSize:'20px', display:'flex', alignItems:'center', justifyContent:'center', cursor: 'pointer' }}>+</button>
                                                     )}
                                                 </div>
                                             ))}
@@ -295,7 +261,7 @@ function Menu() {
         ))}
       </div>
 
-      {/* --- CHECKOUT --- */}
+      {/* --- *** CHECKOUT RIVOLUZIONATO (Raggruppato per Uscite) *** --- */}
       {showCheckout && (
           <div style={{
               position:'fixed', top:0, left:0, right:0, bottom:0, 
@@ -309,19 +275,54 @@ function Menu() {
               </div>
 
               <div style={{flex:1, overflowY:'auto'}}>
-                  {carrello.map((item) => (
-                      <div key={item.tempId} style={{display:'flex', justifyContent:'space-between', alignItems:'center', background:'rgba(255,255,255,0.1)', padding:'10px', marginBottom:'10px', borderRadius:'8px'}}>
-                          <div>
-                              <div style={{color: titleColor, fontWeight:'bold', fontSize:'16px'}}>{item.nome}</div>
-                              <div style={{color: '#888', fontSize:'12px'}}>
-                                {item.categoria} {item.is_bar ? '🍹' : ''} {item.is_pizzeria ? '🍕' : ''}
-                              </div>
-                              <div style={{color: priceColor}}>{item.prezzo} €</div>
-                          </div>
-                          <button onClick={() => rimuoviDalCarrello(item.tempId)} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 12px', borderRadius:'5px', cursor:'pointer'}}>🗑️</button>
-                      </div>
-                  ))}
                   {carrello.length === 0 && <p style={{color: style?.text, textAlign:'center'}}>Il carrello è vuoto.</p>}
+                  
+                  {/* Raggruppamento per Uscite */}
+                  {[1, 2, 3].map(courseNum => {
+                      const itemsInCourse = carrello.filter(i => i.course === courseNum);
+                      if (itemsInCourse.length === 0) return null;
+
+                      let courseTitle = "";
+                      let courseColor = "";
+                      if(courseNum === 1) { courseTitle = "🟢 1ª USCITA (Subito)"; courseColor = "#27ae60"; }
+                      if(courseNum === 2) { courseTitle = "🟡 2ª USCITA (A Seguire)"; courseColor = "#f1c40f"; }
+                      if(courseNum === 3) { courseTitle = "🔴 3ª USCITA (Dessert/Caffè)"; courseColor = "#e74c3c"; }
+
+                      return (
+                          <div key={courseNum} style={{marginBottom:'20px'}}>
+                              <h3 style={{color: courseColor, borderBottom:`1px solid ${courseColor}`, paddingBottom:'5px', fontSize:'14px', textTransform:'uppercase'}}>
+                                  {courseTitle}
+                              </h3>
+                              
+                              {itemsInCourse.map((item) => (
+                                  <div key={item.tempId} style={{display:'flex', justifyContent:'space-between', alignItems:'center', background:'rgba(255,255,255,0.1)', padding:'10px', marginBottom:'10px', borderRadius:'8px'}}>
+                                      <div style={{flex:1}}>
+                                          <div style={{color: titleColor, fontWeight:'bold', fontSize:'16px'}}>{item.nome}</div>
+                                          <div style={{color: '#888', fontSize:'12px'}}>
+                                            {item.prezzo} € • {item.is_pizzeria ? '🍕 Pizzeria' : (item.is_bar ? '🍹 Bar' : '🍳 Cucina')}
+                                          </div>
+                                      </div>
+
+                                      {/* Controlli Spostamento Uscita */}
+                                      <div style={{display:'flex', flexDirection:'column', gap:'5px', marginRight:'10px'}}>
+                                          {item.course > 1 && (
+                                              <button onClick={() => cambiaUscita(item.tempId, -1)} style={{fontSize:'12px', padding:'2px 8px', background:'rgba(255,255,255,0.2)', color:titleColor, border:'none', borderRadius:'4px', cursor:'pointer'}}>
+                                                  ⬆️ Prima
+                                              </button>
+                                          )}
+                                          {item.course < 3 && (
+                                              <button onClick={() => cambiaUscita(item.tempId, 1)} style={{fontSize:'12px', padding:'2px 8px', background:'rgba(255,255,255,0.2)', color:titleColor, border:'none', borderRadius:'4px', cursor:'pointer'}}>
+                                                  ⬇️ Dopo
+                                              </button>
+                                          )}
+                                      </div>
+
+                                      <button onClick={() => rimuoviDalCarrello(item.tempId)} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'5px', cursor:'pointer'}}>🗑️</button>
+                                  </div>
+                              ))}
+                          </div>
+                      );
+                  })}
               </div>
 
               <div style={{marginTop:'20px', borderTop:`1px solid ${style?.text||'#ccc'}`, paddingTop:'20px'}}>
