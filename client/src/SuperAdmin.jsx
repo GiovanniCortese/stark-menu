@@ -1,4 +1,4 @@
-// client/src/SuperAdmin.jsx - VERSIONE V7 (FIX STATO INIZIALE + GRAFICA PULITA) ✨
+// client/src/SuperAdmin.jsx - VERSIONE V14 (AGGIORNAMENTO RICHIESTO SU V7) ✨
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -73,20 +73,21 @@ function SuperAdmin() {
       catch(err) { alert("Errore eliminazione."); }
   };
 
-  // --- AZIONE 1: PAUSA GLOBALE (ACCOUNT SOSPESO) ---
+  // --- AZIONE 1: STATO ABBONAMENTO (Agisce su account_attivo) ---
   const toggleSospensione = async (id, statoAttuale) => {
     const nuovoStato = !statoAttuale; 
-    setRistoranti(ristoranti.map(r => r.id === id ? { ...r, ordini_abilitati: nuovoStato } : r));
+    // Aggiornamento ottimistico
+    setRistoranti(ristoranti.map(r => r.id === id ? { ...r, account_attivo: nuovoStato } : r));
     
     await fetch(`${API_URL}/api/super/ristoranti/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ordini_abilitati: nuovoStato }) 
+        body: JSON.stringify({ account_attivo: nuovoStato }) 
     });
   };
 
-  // --- AZIONE 2: SERVIZIO CUCINA (APERTO/CHIUSO) ---
-   const toggleSospensione = async (id, statoAttuale) => {
+  // --- AZIONE 2: APRI/CHIUDI CUCINA (Agisce su ordini_abilitati) ---
+  const toggleOrdini = async (id, statoAttuale) => {
     const nuovoStato = !statoAttuale; 
     setRistoranti(ristoranti.map(r => r.id === id ? { ...r, ordini_abilitati: nuovoStato } : r));
     
@@ -120,16 +121,20 @@ function SuperAdmin() {
       </header>
       
       <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '25px'}}>
-        {ristoranti.map(r => (
+        {ristoranti.map(r => {
+            // Se account_attivo è undefined (vecchi record), consideralo true (attivo)
+            const isAccountAttivo = r.account_attivo !== false;
+
+            return (
             <div key={r.id} style={{
                 border: '1px solid #ddd', borderRadius: '12px', overflow:'hidden',
-                background: r.ordini_abilitati ? '#ffffff' : '#f2f2f2',
+                background: isAccountAttivo ? '#ffffff' : '#f2f2f2',
                 boxShadow: '0 5px 15px rgba(0,0,0,0.08)', position:'relative',
                 display:'flex', flexDirection:'column'
             }}>
                 
                 {/* 1. HEADER CARD (Nome + Edit/Delete) */}
-                <div style={{padding:'15px', borderBottom:'1px solid #eee', background: r.ordini_abilitati ? '#fff' : '#e0e0e0', display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+                <div style={{padding:'15px', borderBottom:'1px solid #eee', background: isAccountAttivo ? '#fff' : '#e0e0e0', display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
                     <div>
                         <h2 style={{margin:'0 0 5px 0', fontSize:'1.4rem', color:'#333'}}>{r.nome}</h2>
                         <span style={{background:'#333', color:'#fff', padding:'3px 8px', borderRadius:'4px', fontSize:'0.8rem'}}>/{r.slug}</span>
@@ -149,39 +154,39 @@ function SuperAdmin() {
                 {/* 3. CONTROLS (Pulsantiere) */}
                 <div style={{padding:'15px', background:'#f9f9f9', borderTop:'1px solid #eee'}}>
                     
-                    {/* A. STATO ACCOUNT (PAUSA) */}
+                    {/* A. STATO ABBONAMENTO (Usa toggleSospensione su account_attivo) */}
                     <div style={{marginBottom:'15px'}}>
                         <div style={{fontSize:'0.8rem', fontWeight:'bold', color:'#888', marginBottom:'5px', textTransform:'uppercase'}}>Stato Abbonamento</div>
                         <button 
-                            onClick={() => toggleSospensione(r.id, r.ordini_abilitati)} 
+                            onClick={() => toggleSospensione(r.id, isAccountAttivo)} 
                             style={{
                                 width: '100%', padding:'10px', borderRadius:'6px', border:'none', cursor:'pointer', fontWeight:'bold',
-                                background: r.ordini_abilitati ? '#2c3e50' : '#e67e22', color:'white',
+                                background: isAccountAttivo ? '#2c3e50' : '#e67e22', color:'white',
                                 display:'flex', alignItems:'center', justifyContent:'center', gap:'10px'
                             }}
                         >
-                            {r.ordini_abilitati ? <span>⏸️ METTI IN PAUSA</span> : <span>▶️ RIATTIVA ACCOUNT</span>}
+                            {isAccountAttivo ? <span>⏸️ METTI IN PAUSA</span> : <span>▶️ RIATTIVA ACCOUNT</span>}
                         </button>
                     </div>
 
-                    {/* B. STATO CUCINA (SERVIZIO) - Visibile solo se account attivo */}
-                    {r.ordini_abilitati ? (
+                    {/* B. APRI/CHIUDI CUCINA (Usa toggleOrdini su ordini_abilitati) - Visibile solo se abbonamento attivo */}
+                    {isAccountAttivo ? (
                         <div style={{marginBottom:'15px'}}>
                             <div style={{fontSize:'0.8rem', fontWeight:'bold', color:'#888', marginBottom:'5px', textTransform:'uppercase'}}>Stato Cucina</div>
                             <button 
-                                onClick={() => toggleServizioCucina(r.id, r.servizio_attivo)} 
+                                onClick={() => toggleOrdini(r.id, r.ordini_abilitati)} 
                                 style={{
                                     width: '100%', padding:'10px', borderRadius:'6px', cursor:'pointer', fontWeight:'bold',
-                                    border: r.servizio_attivo ? '2px solid #e74c3c' : '2px solid #27ae60',
+                                    border: r.ordini_abilitati ? '2px solid #e74c3c' : '2px solid #27ae60',
                                     background: 'white',
-                                    color: r.servizio_attivo ? '#e74c3c' : '#27ae60',
+                                    color: r.ordini_abilitati ? '#e74c3c' : '#27ae60',
                                     display:'flex', alignItems:'center', justifyContent:'center', gap:'10px'
                                 }}
                             >
-                                {r.servizio_attivo ? <span>⛔ CHIUDI CUCINA</span> : <span>✅ APRI CUCINA</span>}
+                                {r.ordini_abilitati ? <span>⛔ CHIUDI CUCINA</span> : <span>✅ APRI CUCINA</span>}
                             </button>
-                            <div style={{textAlign:'center', fontSize:'0.8rem', marginTop:'5px', color: r.servizio_attivo ? '#27ae60' : '#e74c3c'}}>
-                                {r.servizio_attivo ? "Attualmente APERTA" : "Attualmente CHIUSA"}
+                            <div style={{textAlign:'center', fontSize:'0.8rem', marginTop:'5px', color: r.ordini_abilitati ? '#27ae60' : '#e74c3c'}}>
+                                {r.ordini_abilitati ? "Attualmente APERTA" : "Attualmente CHIUSA"}
                             </div>
                         </div>
                     ) : (
@@ -197,7 +202,7 @@ function SuperAdmin() {
                 </div>
 
             </div>
-        ))}
+        )})}
       </div>
 
       {/* MODALE */}
