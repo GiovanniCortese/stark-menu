@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE V31 (LOG + TOTALE DINAMICO) 🛠️
+// server/server.js - VERSIONE V32 (MERGE STORICO + LOG FIX) 🛠️
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -21,13 +21,14 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejec
 const initDb = async () => {
     const client = await pool.connect();
     try {
-        console.log("🛠️ AVVIO CONTROLLO DATABASE (V31)...");
+        console.log("🛠️ AVVIO CONTROLLO DATABASE (V32)...");
         await client.query(`
             CREATE TABLE IF NOT EXISTS ristoranti (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, slug TEXT UNIQUE NOT NULL, ordini_abilitati BOOLEAN DEFAULT FALSE, servizio_attivo BOOLEAN DEFAULT FALSE, logo_url TEXT, cover_url TEXT, colore_sfondo TEXT DEFAULT '#222', colore_titolo TEXT DEFAULT '#fff', colore_testo TEXT DEFAULT '#ccc', colore_prezzo TEXT DEFAULT '#27ae60', font_style TEXT DEFAULT 'sans-serif', email TEXT, telefono TEXT, password TEXT DEFAULT 'tonystark');
             CREATE TABLE IF NOT EXISTS categorie (id SERIAL PRIMARY KEY, ristorante_id INTEGER REFERENCES ristoranti(id), nome TEXT NOT NULL, descrizione TEXT, posizione INTEGER DEFAULT 0);
             CREATE TABLE IF NOT EXISTS prodotti (id SERIAL PRIMARY KEY, ristorante_id INTEGER REFERENCES ristoranti(id), categoria TEXT, sottocategoria TEXT, nome TEXT NOT NULL, descrizione TEXT, prezzo REAL, immagine_url TEXT, posizione INTEGER DEFAULT 0);
             CREATE TABLE IF NOT EXISTS ordini (id SERIAL PRIMARY KEY, ristorante_id INTEGER REFERENCES ristoranti(id), tavolo TEXT, stato TEXT DEFAULT 'in_attesa', data_ora TIMESTAMP DEFAULT CURRENT_TIMESTAMP, prodotti TEXT, totale REAL, dettagli TEXT);
         `);
+        // Aggiornamenti colonne mancanti
         await client.query(`
             DO $$ BEGIN 
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='categorie' AND column_name='is_bar') THEN ALTER TABLE categorie ADD COLUMN is_bar BOOLEAN DEFAULT FALSE; END IF;
@@ -37,7 +38,7 @@ const initDb = async () => {
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ordini' AND column_name='dettagli') THEN ALTER TABLE ordini ADD COLUMN dettagli TEXT; END IF;
             END $$;
         `);
-        console.log("✅ Database V31 Pronto.");
+        console.log("✅ Database V32 Pronto.");
         return true;
     } catch (err) { console.error("❌ Errore InitDB:", err); return false; } 
     finally { client.release(); }
@@ -65,10 +66,10 @@ app.get('/api/menu/:slug', async (req, res) => {
                 logo: data.logo_url, 
                 cover: data.cover_url, 
                 bg: data.colore_sfondo,
-                title: data.colore_titolo, // <--- MANCAVA QUESTO
-                text: data.colore_testo,   // <--- MANCAVA QUESTO
-                price: data.colore_prezzo, // <--- MANCAVA QUESTO
-                font: data.font_style      // <--- MANCAVA QUESTO
+                title: data.colore_titolo,
+                text: data.colore_testo,
+                price: data.colore_prezzo,
+                font: data.font_style
             }, 
             ordini_abilitati: data.ordini_abilitati, 
             servizio_attivo: data.servizio_attivo, 
@@ -86,20 +87,20 @@ app.get('/api/polling/:ristorante_id', async (req, res) => {
             try { parsed = typeof o.prodotti === 'string' ? JSON.parse(o.prodotti) : o.prodotti; } catch (e) { parsed = []; }
             if (!Array.isArray(parsed)) parsed = [];
             
-            // Assicura ID univoci per gestione singola
+            // Generazione ID univoci per il frontend
             parsed = parsed.map((item, idx) => ({
                 ...item,
                 uniqId: item.uniqId || `${o.id}_${idx}_${Date.now()}`,
                 stato: item.stato || 'in_attesa'
             }));
 
-            return { ...o, prodotti: parsed };
+            return { ...o, prodotti: parsed, dettagli: o.dettagli || "" };
         });
         res.json({ nuovi_ordini: ordini }); 
     } catch (e) { res.status(500).json({ error: "Errore Polling", details: e.message }); } 
 });
 
-// 3. UPDATE ITEMS (AGGIORNATO: Gestisce totale e log)
+// 3. UPDATE ITEMS (AGGIORNATO: Logica Robusta per Log)
 app.put('/api/ordine/:id/update-items', async (req, res) => {
     try {
         const { id } = req.params;
@@ -107,7 +108,6 @@ app.put('/api/ordine/:id/update-items', async (req, res) => {
         
         const prodottiStr = JSON.stringify(prodotti);
         
-        // Costruzione query dinamica per aggiornare anche il totale se serve
         let query = "UPDATE ordini SET prodotti = $1";
         const params = [prodottiStr];
         let paramIndex = 2;
@@ -118,7 +118,7 @@ app.put('/api/ordine/:id/update-items', async (req, res) => {
             paramIndex++;
         }
 
-        // Aggiunge log allo storico dell'ordine
+        // AGGIUNTA LOG: Usiamo COALESCE per assicurarci di non perdere i log precedenti
         if (logMsg) {
             const timestamp = new Date().toLocaleString('it-IT', { timeZone: 'Europe/Rome' });
             const logEntry = `\n[${timestamp}] ${logMsg}`;
@@ -138,7 +138,7 @@ app.put('/api/ordine/:id/update-items', async (req, res) => {
     }
 });
 
-// 4. PAGAMENTO (MERGE DEGLI ORDINI: Unisce tutto in un'unica riga di storico)
+// 4. PAGAMENTO (MERGE TOTALE: Crea UN SOLO ORDINE nello storico)
 app.post('/api/cassa/paga-tavolo', async (req, res) => {
     const client = await pool.connect();
     try {
@@ -157,7 +157,7 @@ app.post('/api/cassa/paga-tavolo', async (req, res) => {
             return res.json({ success: true }); 
         }
 
-        // 2. Prepariamo i dati unificati
+        // 2. Prepariamo i dati unificati (Merge)
         let primoOrdine = result.rows[0]; 
         let prodottiUnificati = [];
         let totaleUnificato = 0;
@@ -175,21 +175,23 @@ app.post('/api/cassa/paga-tavolo', async (req, res) => {
             // Unione Totale
             totaleUnificato += Number(ord.totale || 0);
 
-            // Unione Log
-            if (ord.dettagli) logUnificato += ord.dettagli + "\n";
+            // Unione Log: Aggiunge i log di ogni "pezzo" di ordine
+            if (ord.dettagli && ord.dettagli.trim() !== "") {
+                logUnificato += `\n--- ORDINE PARZIALE #${ord.id} ---\n` + ord.dettagli.trim() + "\n";
+            }
         });
 
         // Log finale di chiusura
         const timeLog = new Date().toLocaleString('it-IT', { timeZone: 'Europe/Rome' });
-        logUnificato += `\n[${timeLog}] 💰 CONTO CHIUSO E UNIFICATO.`;
+        logUnificato += `\n================================\n[${timeLog}] 💰 TAVOLO CHIUSO. TOTALE: ${totaleUnificato.toFixed(2)}€`;
 
-        // 3. Aggiorniamo il PRIMO ordine con tutto
+        // 3. Aggiorniamo il PRIMO ordine con tutto (così resta 1 sola riga nello storico)
         await client.query(
             "UPDATE ordini SET stato = 'pagato', prodotti = $1, totale = $2, dettagli = $3 WHERE id = $4",
             [JSON.stringify(prodottiUnificati), totaleUnificato, logUnificato, primoOrdine.id]
         );
 
-        // 4. Cancelliamo gli altri ordini (i "pezzetti" successivi)
+        // 4. Cancelliamo gli altri ordini "parziali" per non sporcare lo storico
         const idsDaCancellare = result.rows.slice(1).map(o => o.id);
         if (idsDaCancellare.length > 0) {
             await client.query("DELETE FROM ordini WHERE id = ANY($1::int[])", [idsDaCancellare]);
@@ -221,7 +223,7 @@ app.post('/api/ordine', async (req, res) => {
     } catch (e) { console.error(e); res.status(500).json({error: "Err"}); } 
 });
 
-// API CATEGORIE (FIX RIORDINO ADMIN)
+// API CATEGORIE E RISTORANTI
 app.put('/api/categorie/riordina', async (req, res) => { 
     const { categorie } = req.body; 
     try { 
@@ -259,6 +261,7 @@ app.put('/api/prodotti/riordina', async (req, res) => { const { prodotti } = req
 app.get('/api/categorie/:ristorante_id', async (req, res) => { try { const r = await pool.query('SELECT * FROM categorie WHERE ristorante_id = $1 ORDER BY posizione ASC', [req.params.ristorante_id]); res.json(r.rows); } catch (e) { res.status(500).json({error:"Err"}); } });
 app.put('/api/ristorante/servizio/:id', async (req, res) => { try { await pool.query('UPDATE ristoranti SET servizio_attivo = $1 WHERE id = $2', [req.body.servizio_attivo, req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({error:"Err"}); } });
 app.post('/api/upload', upload.single('photo'), async (req, res) => { try { res.json({ url: req.file.path }); } catch (e) { res.status(500).json({error:"Err"}); } });
+app.get('/api/cassa/storico/:ristorante_id', async (req, res) => { try { const r = await pool.query("SELECT * FROM ordini WHERE ristorante_id = $1 AND stato = 'pagato' ORDER BY data_ora DESC LIMIT 100", [req.params.ristorante_id]); const ordini = r.rows.map(o => { try { o.prodotti = JSON.parse(o.prodotti); } catch(e){ o.prodotti=[]; } return o; }); res.json(ordini); } catch (e) { res.status(500).json({error:"Err"}); } });
 app.post('/api/import-excel', uploadFile.single('file'), async (req, res) => { const { ristorante_id } = req.body; if (!req.file || !ristorante_id) return res.status(400).json({ error: "Dati mancanti." }); try { const workbook = xlsx.read(req.file.buffer, { type: 'buffer' }); const sheetName = workbook.SheetNames[0]; const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]); for (const row of data) { const nome = row['Nome'] ? String(row['Nome']).trim() : "Senza Nome"; const prezzo = row['Prezzo'] ? parseFloat(String(row['Prezzo']).replace(',', '.')) : 0; const categoria = row['Categoria'] ? String(row['Categoria']).trim() : "Generale"; const sottocategoria = row['Sottocategoria'] ? String(row['Sottocategoria']).trim() : ""; const descrizione = row['Descrizione'] ? String(row['Descrizione']).trim() : ""; let catCheck = await pool.query('SELECT * FROM categorie WHERE nome = $1 AND ristorante_id = $2', [categoria, ristorante_id]); if (catCheck.rows.length === 0) { const maxPos = await pool.query('SELECT MAX(posizione) as max FROM categorie WHERE ristorante_id = $1', [ristorante_id]); await pool.query('INSERT INTO categorie (nome, posizione, ristorante_id, descrizione) VALUES ($1, $2, $3, $4)', [categoria, (maxPos.rows[0].max||0)+1, ristorante_id, ""]); } await pool.query(`INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, posizione) VALUES ($1, $2, $3, $4, $5, $6, 999)`, [nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id]); } res.json({ success: true, message: `Importati ${data.length} piatti!` }); } catch (err) { res.status(500).json({ error: err.message }); } });
 app.get('/api/export-excel/:ristorante_id', async (req, res) => { try { const result = await pool.query(`SELECT nome as "Nome", prezzo as "Prezzo", categoria as "Categoria", sottocategoria as "Sottocategoria", descrizione as "Descrizione" FROM prodotti WHERE ristorante_id = $1 ORDER BY categoria, nome`, [req.params.ristorante_id]); const workbook = xlsx.utils.book_new(); const worksheet = xlsx.utils.json_to_sheet(result.rows); xlsx.utils.book_append_sheet(workbook, worksheet, "Menu"); const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' }); res.setHeader('Content-Disposition', 'attachment; filename="menu_export.xlsx"'); res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); res.send(buffer); } catch (err) { res.status(500).json({ error: "Errore Export" }); } });
 app.get('/api/super/ristoranti', async (req, res) => { try { const r = await pool.query('SELECT id, nome, slug, ordini_abilitati, email, telefono FROM ristoranti ORDER BY id ASC'); res.json(r.rows); } catch (e) { res.status(500).json({error:"Err"}); } });
@@ -268,4 +271,4 @@ app.delete('/api/super/ristoranti/:id', async (req, res) => { try { const id = r
 app.post('/api/ordine/completato', async (req, res) => { try { await pool.query("UPDATE ordini SET stato = 'servito' WHERE id = $1", [req.body.id]); res.json({ success: true }); } catch (e) { res.status(500).json({error:"Err"}); } });
 app.get('/api/reset-ordini', async (req, res) => { try { await pool.query('DELETE FROM ordini'); await pool.query('ALTER SEQUENCE ordini_id_seq RESTART WITH 1'); res.send("<h1>✅ TABULA RASA</h1>"); } catch (e) { res.status(500).send("Errore: " + e.message); } });
 
-initDb().then((ready) => { if (ready) app.listen(port, () => console.log(`🚀 SERVER V31 (LOG & TOTALE) - Porta ${port}`)); });
+initDb().then((ready) => { if (ready) app.listen(port, () => console.log(`🚀 SERVER V32 (LOG FIX) - Porta ${port}`)); });
