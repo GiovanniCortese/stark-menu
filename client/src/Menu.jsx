@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - VERSIONE V38 (BAR IN FONDO AL RIEPILOGO) 🍹
+// client/src/Menu.jsx - VERSIONE V39 (LOGICA SEPARATA: SUB=SERVIZIO, CUCINA=ORDINI) 🔒
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 
@@ -9,8 +9,11 @@ function Menu() {
   const [ristoranteId, setRistoranteId] = useState(null);
   const [style, setStyle] = useState({});
   
+  // --- STATI LOGICI (Nuova Mappatura) ---
+  const [isSuspended, setIsSuspended] = useState(false); // servizio_attivo (Abbonamento)
+  const [canOrder, setCanOrder] = useState(true);        // ordini_abilitati (Cucina)
+  
   // --- STATI CARRELLO E ORDINE ---
-  const [canOrder, setCanOrder] = useState(true); 
   const [carrello, setCarrello] = useState([]); 
   const [error, setError] = useState(false);
   
@@ -38,11 +41,25 @@ function Menu() {
             setError(true); 
             return; 
         }
+
+        // 1. CONTROLLO ABBONAMENTO (servizio_attivo)
+        // Se è false, blocchiamo tutto subito.
+        if (data.servizio_attivo === false) {
+            setIsSuspended(true);
+            setRistorante(data.ristorante); // Serve per mostrare il nome nella schermata di blocco
+            if (data.style) setStyle(data.style);
+            return; // Stop caricamento
+        }
+
+        // 2. CONTROLLO CUCINA (ordini_abilitati)
+        // Se è false, carichiamo il menu ma disabilitiamo i tasti "+"
+        setCanOrder(data.ordini_abilitati);
+
+        // 3. CARICAMENTO DATI
         setRistorante(data.ristorante);
         setMenu(data.menu || []);
         setRistoranteId(data.id);
         if (data.style) setStyle(data.style);
-        setCanOrder(data.ordini_abilitati && data.servizio_attivo);
       })
       .catch(err => {
           console.error("Errore fetch menu:", err);
@@ -50,22 +67,41 @@ function Menu() {
       });
   }, [currentSlug]);
 
+  // --- BLOCCO TOTALE SE SOSPESO ---
+  if (isSuspended) {
+      return (
+          <div style={{
+              backgroundColor: style?.bg || '#222',
+              color: style?.text || '#fff',
+              fontFamily: style?.font || 'sans-serif',
+              minHeight: '100vh',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              padding: '20px', textAlign: 'center'
+          }}>
+              <div style={{fontSize: '4rem', marginBottom: '20px'}}>⛔</div>
+              <h1 style={{fontSize: '2rem', color: 'red', textTransform: 'uppercase', margin: 0}}>Attività Sospesa</h1>
+              <h2 style={{marginTop: '10px', fontSize: '1.5rem'}}>{ristorante}</h2>
+              <p style={{marginTop: '20px', fontSize: '1.2rem', opacity: 0.8}}>
+                  Il servizio è momentaneamente non disponibile.<br/>
+                  Si prega di contattare l'amministrazione.
+              </p>
+          </div>
+      );
+  }
+
   // --- LOGICA Uscita (BAR = 0) ---
   const getDefaultCourse = (categoria, isBar) => {
       if (isBar) return 0; // Bar non ha priorità
-
       const cat = categoria.toLowerCase();
-      // Uscita 1: Antipasti, Fritti
       if (cat.includes('antipast') || cat.includes('fritti') || cat.includes('stuzzicheri')) return 1;
-      // Uscita 3: Dessert, Caffè (se non bar)
       if (cat.includes('dessert') || cat.includes('dolci')) return 3;
-      // Uscita 2: Tutto il resto
       return 2;
   };
 
   // --- 2. AGGIUNGI AL CARRELLO ---
   const aggiungiAlCarrello = (prodotto) => {
-    if (!canOrder) return alert("Il servizio ordini è momentaneamente chiuso.");
+    // Se la cucina è chiusa (ordini_abilitati = false), blocco l'azione
+    if (!canOrder) return alert("⚠️ LA CUCINA È CHIUSA.\nPuoi consultare il menu, ma non ordinare.");
     
     const isBar = !!prodotto.categoria_is_bar;
 
@@ -180,18 +216,19 @@ function Menu() {
             <h1 style={{color: titleColor, fontSize:'2.5rem', margin:'0 0 10px 0'}}>{ristorante}</h1>
         )}
         
+        {/* LOGICA VISUALIZZAZIONE STATO CUCINA */}
         {canOrder ? (
             <p style={{color: style?.text || '#ccc'}}>
                 Tavolo: <strong style={{fontSize:'1.2rem', color:'white'}}>{numeroTavolo}</strong>
             </p> 
         ) : (
-            <div className="badge-digital" style={{background:'red', color:'white', padding:'5px 10px', display:'inline-block', borderRadius:'5px'}}>
-                ⛔ Servizio Chiuso
+            <div className="badge-digital" style={{background:'red', color:'white', padding:'10px', display:'inline-block', borderRadius:'5px', fontWeight:'bold', fontSize:'14px'}}>
+                ⛔ ORDINI CHIUSI (Ordinare tramite il Cameriere)
             </div>
         )}
       </header>
 
-      {/* BARRA CARRELLO */}
+      {/* BARRA CARRELLO - Visibile solo se si può ordinare */}
       {canOrder && carrello.length > 0 && !showCheckout && (
         <div className="carrello-bar">
           <div className="totale">
@@ -245,6 +282,8 @@ function Menu() {
                                                         {prodotto.descrizione && (<p style={{fontSize:'12px', color:'#666', margin:'0 0 4px 0', lineHeight:'1.2'}}>{prodotto.descrizione}</p>)}
                                                         <div style={{fontSize:'14px', fontWeight:'bold', color: priceColor}}>{prodotto.prezzo} €</div>
                                                     </div>
+                                                    
+                                                    {/* BOTTONE AGGIUNGI: SOLO SE canOrder È TRUE */}
                                                     {canOrder && (
                                                         <button onClick={(e) => { e.stopPropagation(); aggiungiAlCarrello(prodotto); }} style={{ background:'#f0f0f0', color:'#333', borderRadius:'50%', width:'32px', height:'32px', border:'none', fontSize:'20px', display:'flex', alignItems:'center', justifyContent:'center', cursor: 'pointer' }}>+</button>
                                                     )}
@@ -261,7 +300,7 @@ function Menu() {
         ))}
       </div>
 
-      {/* --- CHECKOUT AGGIORNATO (Cibo PRIMA, Bar DOPO) --- */}
+      {/* --- CHECKOUT --- */}
       {showCheckout && (
           <div style={{
               position:'fixed', top:0, left:0, right:0, bottom:0, 
@@ -277,7 +316,7 @@ function Menu() {
               <div style={{flex:1, overflowY:'auto'}}>
                   {carrello.length === 0 && <p style={{color: style?.text, textAlign:'center'}}>Il carrello è vuoto.</p>}
                   
-                  {/* --- BLOCCO 1: PIATTI CON PRIORITÀ (Ora mostrati per primi) --- */}
+                  {/* --- BLOCCO 1: PIATTI CON PRIORITÀ --- */}
                   {[1, 2, 3].map(courseNum => {
                       const itemsInCourse = carrello.filter(i => !i.is_bar && i.course === courseNum);
                       if (itemsInCourse.length === 0) return null;
@@ -323,7 +362,7 @@ function Menu() {
                       );
                   })}
 
-                  {/* --- BLOCCO 2: BAR (Ora mostrato in fondo) --- */}
+                  {/* --- BLOCCO 2: BAR --- */}
                   {carrello.some(i => i.is_bar) && (
                       <div style={{marginBottom:'20px', marginTop:'30px', borderTop:'1px dashed #555', paddingTop:'10px'}}>
                            <h3 style={{color: '#3498db', paddingBottom:'5px', fontSize:'14px', textTransform:'uppercase'}}>
