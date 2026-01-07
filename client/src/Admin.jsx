@@ -82,20 +82,19 @@ function Admin() {
   }, [slug]);
 
   const caricaConfigurazioniExtra = (id) => {
-    // Fetch Config e Permessi
+    // Fetch Config
     fetch(`${API_URL}/api/ristorante/config/${id}`)
         .then(r=>r.json())
         .then(d => {
-            // Assicuriamoci di salvare anche ordini_abilitati (lo stato di pausa)
             const safeConfig = { 
-                ...d, // Questo include ordini_abilitati dal DB
+                ...d, 
                 colore_prezzo: d.colore_prezzo || '#27ae60', 
                 colore_titolo: d.colore_titolo || '#ffffff', 
                 colore_testo: d.colore_testo || '#cccccc', 
                 colore_sfondo: d.colore_sfondo || '#222222' 
             };
             setConfig(prev => ({...prev, ...safeConfig}));
-        });
+        }); 
     
     // Fetch Categorie
     fetch(`${API_URL}/api/categorie/${id}`)
