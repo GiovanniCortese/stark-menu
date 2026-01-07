@@ -1,4 +1,4 @@
-// client/src/SuperAdmin.jsx - VERSIONE V9 (LOGICA INVERTITA SU RICHIESTA) 🔄
+// client/src/SuperAdmin.jsx - VERSIONE V12 (CORRETTA: account_attivo vs servizio_attivo) ✅
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -70,20 +70,35 @@ function SuperAdmin() {
       try { await fetch(`${API_URL}/api/super/ristoranti/${id}`, { method: 'DELETE' }); caricaDati(); } catch(err) { alert("Errore."); }
   };
 
-  // --- AZIONE 1: PAUSA ABBONAMENTO (Ora gestisce 'servizio_attivo') ---
-  // [SPOSTATO] Ho scambiato la logica come richiesto
-  const toggleSospensione = async (id, statoAttuale) => {
-    const nuovoStato = !statoAttuale; 
-    setRistoranti(ristoranti.map(r => r.id === id ? { ...r, servizio_attivo: nuovoStato } : r)); // Nota: ora modifica servizio_attivo
-    await fetch(`${API_URL}/api/ristorante/servizio/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ servizio_attivo: nuovoStato }) });
+  // --- AZIONE 1: COMANDO "porco_dio" (BLOCCO TOTALE ABBONAMENTO) ---
+  // Agisce sul campo NUOVO: account_attivo
+  const porco_dio = async (id, statoAttualeAccount) => {
+    // Se è true diventa false (blocco), se è false diventa true (sblocco)
+    const nuovoStato = !statoAttualeAccount; 
+    
+    // Aggiornamento ottmistico UI
+    setRistoranti(ristoranti.map(r => r.id === id ? { ...r, account_attivo: nuovoStato } : r));
+    
+    // Chiamata Server sul campo account_attivo
+    await fetch(`${API_URL}/api/super/ristoranti/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account_attivo: nuovoStato })
+    });
   };
 
-  // --- AZIONE 2: STATO CUCINA (Ora gestisce 'ordini_abilitati') ---
-  // [SPOSTATO] Questo comando ora controlla 'ordini_abilitati' (quello che prima era nel tasto Pausa)
-  const toggleServizioCucina = async (id, statoAttuale) => {
-      const nuovoStato = !statoAttuale;
-      setRistoranti(ristoranti.map(r => r.id === id ? { ...r, ordini_abilitati: nuovoStato } : r)); // Nota: ora modifica ordini_abilitati
-      await fetch(`${API_URL}/api/super/ristoranti/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ordini_abilitati: nuovoStato }) });
+  // --- AZIONE 2: STATO CUCINA (SERVIZIO GIORNALIERO) ---
+  // Agisce sul campo: servizio_attivo (SOLO SE account_attivo è TRUE)
+  const toggleServizioCucina = async (id, statoAttualeServizio) => {
+      const nuovoStato = !statoAttualeServizio;
+      
+      setRistoranti(ristoranti.map(r => r.id === id ? { ...r, servizio_attivo: nuovoStato } : r));
+
+      await fetch(`${API_URL}/api/super/ristoranti/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ servizio_attivo: nuovoStato })
+      });
   };
 
   const entraNelPannello = (slug) => { localStorage.setItem(`stark_session_${slug}`, "true"); window.open(`/admin/${slug}`, '_blank'); };
@@ -105,7 +120,11 @@ function SuperAdmin() {
       </header>
       
       <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px'}}>
-        {ristoranti.map(r => (
+        {ristoranti.map(r => {
+            // Gestione robusta: se account_attivo non esiste ancora (vecchi record), consideralo true
+            const isAccountAttivo = r.account_attivo !== false;
+
+            return (
             <div key={r.id} style={{
                 background: '#fff', borderRadius: '10px', overflow:'hidden', color:'#333',
                 boxShadow: '0 4px 15px rgba(0,0,0,0.2)'
@@ -130,39 +149,44 @@ function SuperAdmin() {
                 {/* AREA CONTROLLI (GRIGIA) */}
                 <div style={{background:'#f5f5f5', padding:'20px', borderTop:'1px solid #eee'}}>
                     
-                    {/* SEZIONE 1: STATO ABBONAMENTO (Ora collegato a servizio_attivo) */}
+                    {/* SEZIONE 1: STATO ABBONAMENTO (COMANDO porco_dio) */}
                     <div style={{marginBottom:'20px'}}>
                         <div style={{fontSize:'0.7rem', fontWeight:'bold', color:'#888', textTransform:'uppercase', marginBottom:'8px'}}>STATO ABBONAMENTO</div>
                         <button 
-                            onClick={() => toggleSospensione(r.id, r.servizio_attivo)} 
+                            onClick={() => porco_dio(r.id, isAccountAttivo)} 
                             style={{
                                 width: '100%', padding:'12px', borderRadius:'6px', border:'none', cursor:'pointer', fontWeight:'bold', fontSize:'14px',
                                 background: '#2c3e50', color:'white', 
                                 display:'flex', alignItems:'center', justifyContent:'center', gap:'8px'
                             }}
                         >
-                            {r.servizio_attivo ? "⏸️ METTI IN PAUSA" : "▶️ RIATTIVA ABBONAMENTO"}
+                            {isAccountAttivo ? "⏸️ METTI IN PAUSA" : "▶️ RIATTIVA ABBONAMENTO"}
                         </button>
                     </div>
 
-                    {/* SEZIONE 2: STATO CUCINA (Ora collegato a ordini_abilitati) */}
+                    {/* SEZIONE 2: STATO CUCINA (SOLO SE ABBONAMENTO ATTIVO) */}
                     <div style={{marginBottom:'20px'}}>
                         <div style={{fontSize:'0.7rem', fontWeight:'bold', color:'#888', textTransform:'uppercase', marginBottom:'8px'}}>STATO CUCINA</div>
-                        {/* Qui usiamo ordini_abilitati come richiesto per la cucina */}
-                        <button 
-                            onClick={() => toggleServizioCucina(r.id, r.ordini_abilitati)} 
-                            style={{
-                                width: '100%', padding:'12px', borderRadius:'6px', cursor:'pointer', fontWeight:'bold', fontSize:'14px',
-                                border: r.ordini_abilitati ? '2px solid #e74c3c' : '2px solid #27ae60',
-                                background: 'white', color: r.ordini_abilitati ? '#e74c3c' : '#27ae60',
-                                display:'flex', alignItems:'center', justifyContent:'center', gap:'8px'
-                            }}
-                        >
-                            {r.ordini_abilitati ? "⛔ CHIUDI CUCINA" : "✅ APRI CUCINA"}
-                        </button>
-                        <div style={{textAlign:'center', fontSize:'0.75rem', marginTop:'5px', color: r.ordini_abilitati ? '#27ae60' : '#e74c3c', fontWeight:'bold'}}>
-                            {r.ordini_abilitati ? "Attualmente APERTA" : "Attualmente CHIUSA"}
-                        </div>
+                        {isAccountAttivo ? (
+                            <>
+                                <button 
+                                    onClick={() => toggleServizioCucina(r.id, r.servizio_attivo)} 
+                                    style={{
+                                        width: '100%', padding:'12px', borderRadius:'6px', cursor:'pointer', fontWeight:'bold', fontSize:'14px',
+                                        border: r.servizio_attivo ? '2px solid #e74c3c' : '2px solid #27ae60',
+                                        background: 'white', color: r.servizio_attivo ? '#e74c3c' : '#27ae60',
+                                        display:'flex', alignItems:'center', justifyContent:'center', gap:'8px'
+                                    }}
+                                >
+                                    {r.servizio_attivo ? "⛔ CHIUDI CUCINA" : "✅ APRI CUCINA"}
+                                </button>
+                                <div style={{textAlign:'center', fontSize:'0.75rem', marginTop:'5px', color: r.servizio_attivo ? '#27ae60' : '#e74c3c', fontWeight:'bold'}}>
+                                    {r.servizio_attivo ? "Attualmente APERTA" : "Attualmente CHIUSA"}
+                                </div>
+                            </>
+                        ) : (
+                            <div style={{background:'#ddd', color:'#777', padding:'10px', textAlign:'center', borderRadius:'6px', fontSize:'0.8rem'}}>🚫 Abbonamento Sospeso</div>
+                        )}
                     </div>
 
                     {/* FOOTER: GESTISCI PANNELLO */}
@@ -172,7 +196,7 @@ function SuperAdmin() {
                 </div>
 
             </div>
-        ))}
+        )})}
       </div>
 
       {/* MODALE (Stile Nero) */}
