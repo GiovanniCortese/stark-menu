@@ -156,7 +156,6 @@ app.get('/api/cassa/storico/:ristorante_id', async (req, res) => {
     try {
         // NOTA: Ho rimosso "AND stato = 'pagato'" per vedere anche i tavoli verdi (LIVE)
         const r = await pool.query("SELECT * FROM ordini WHERE ristorante_id = $1 ORDER BY data_ora DESC LIMIT 300", [req.params.ristorante_id]);
-        
         const ordini = r.rows.map(o => {
             let parsed = []; 
             try { parsed = JSON.parse(o.prodotti||"[]"); } catch(e){}
