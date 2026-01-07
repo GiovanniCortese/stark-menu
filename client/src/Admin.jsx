@@ -32,7 +32,7 @@ function Admin() {
   const [nuovoPiatto, setNuovoPiatto] = useState({ nome: '', prezzo: '', categoria: '', sottocategoria: '', descrizione: '', immagine_url: '' });
   
   // STATI CATEGORIE (Aggiornato per supportare is_bar)
-  const [nuovaCat, setNuovaCat] = useState({ nome: '', descrizione: '', is_bar: false });
+  const [nuovaCat, setNuovaCat] = useState({ nome: '', descrizione: '', is_bar: false, is_pizzeria: false });
   const [editCatId, setEditCatId] = useState(null); 
 
   const [editId, setEditId] = useState(null); 
@@ -246,6 +246,7 @@ const handleOnDragEnd = async (result) => {
           descrizione: nuovaCat.descrizione, 
           ristorante_id: user.id,
           is_bar: nuovaCat.is_bar // Inviamo il flag bar
+          is_pizzeria: nuovaCat.is_pizzeria // <--- AGGIUNTO
       };
 
       if (editCatId) {
@@ -261,16 +262,22 @@ const handleOnDragEnd = async (result) => {
               body:JSON.stringify(payload) 
           });
       }
-      setNuovaCat({ nome: '', descrizione: '', is_bar: false }); 
+      setNuovaCat({ nome: '', descrizione: '', is_bar: false, is_pizzeria: false });
       ricaricaDati(); 
   };
 
   const avviaModificaCat = (cat) => { 
       setEditCatId(cat.id); 
-      setNuovaCat({ nome: cat.nome, descrizione: cat.descrizione || '', is_bar: cat.is_bar || false }); 
+      // AGGIUNTO is_pizzeria
+      setNuovaCat({ nome: cat.nome, descrizione: cat.descrizione || '', is_bar: cat.is_bar || false, is_pizzeria: cat.is_pizzeria || false }); 
   };
   
-  const annullaModificaCat = () => { setEditCatId(null); setNuovaCat({ nome: '', descrizione: '', is_bar: false }); };
+  const annullaModificaCat = () => { 
+      setEditCatId(null); 
+      // AGGIUNTO is_pizzeria
+      setNuovaCat({ nome: '', descrizione: '', is_bar: false, is_pizzeria: false }); 
+  };
+
   const cancellaCategoria = async (id) => { if(confirm("Eliminare categoria?")) { await fetch(`${API_URL}/api/categorie/${id}`, {method:'DELETE'}); ricaricaDati(); }};
 
   const handleSalvaPiatto = async (e) => { 
@@ -421,9 +428,11 @@ const handleOnDragEnd = async (result) => {
           </div>
 
            {categorie.map(cat => (
+               {categorie.map(cat => (
                 <div key={cat.id} style={{marginBottom: '20px'}}>
+                    {/* MODIFICA QUI SOTTO */}
                     <h3 style={{marginTop:'30px', borderBottom:'2px solid #eee', paddingBottom:'5px', color:'#555'}}>
-                        {cat.nome} {cat.is_bar && "🍹"}
+                        {cat.nome} {cat.is_bar && "🍹"} {cat.is_pizzeria && "🍕"}
                     </h3>
                     <Droppable droppableId={`cat-${cat.nome}`} type="DISH">
                         {(provided, snapshot) => (
@@ -464,7 +473,7 @@ const handleOnDragEnd = async (result) => {
                     <input placeholder="Nome Categoria" value={nuovaCat.nome} onChange={e=>setNuovaCat({...nuovaCat, nome: e.target.value})} />
                     <input placeholder="Descrizione" value={nuovaCat.descrizione} onChange={e=>setNuovaCat({...nuovaCat, descrizione: e.target.value})} style={{fontSize: '14px'}}/>
                     
-                    {/* NUOVA CHECKBOX PER IL BAR */}
+                   {/* CHECKBOX PER IL BAR */}
                     <div style={{display:'flex', alignItems:'center', gap:'10px', background:'#f0f0f0', padding:'10px', borderRadius:'5px'}}>
                         <input 
                             type="checkbox" 
@@ -473,7 +482,19 @@ const handleOnDragEnd = async (result) => {
                             onChange={e => setNuovaCat({...nuovaCat, is_bar: e.target.checked})} 
                             style={{transform:'scale(1.5)', cursor:'pointer'}}
                         />
-                        <label htmlFor="is_bar" style={{cursor:'pointer', fontSize:'16px'}}>🍹 Questa categoria va al BAR (Bibite, Caffè, etc.)</label>
+                        <label htmlFor="is_bar" style={{cursor:'pointer', fontSize:'16px'}}>🍹 Questa categoria va al BAR (Bibite, caffè, amari...)</label>
+                    </div>
+
+                    {/* AGGIUNTA: CHECKBOX PER LA PIZZERIA */}
+                    <div style={{display:'flex', alignItems:'center', gap:'10px', background:'#fbeee6', padding:'10px', borderRadius:'5px', marginTop:'5px'}}>
+                        <input 
+                            type="checkbox" 
+                            id="is_pizzeria" 
+                            checked={nuovaCat.is_pizzeria} 
+                            onChange={e => setNuovaCat({...nuovaCat, is_pizzeria: e.target.checked})} 
+                            style={{transform:'scale(1.5)', cursor:'pointer'}}
+                        />
+                        <label htmlFor="is_pizzeria" style={{cursor:'pointer', fontSize:'16px'}}>🍕 Questa categoria va in PIZZERIA</label>
                     </div>
 
                     <div style={{display:'flex', gap:'5px'}}>
@@ -493,7 +514,8 @@ const handleOnDragEnd = async (result) => {
                                         <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className="card" style={{...provided.draggableProps.style, padding:'15px', flexDirection:'row', justifyContent:'space-between', borderLeft:'5px solid #333'}}>
                                             <div>
                                                 <span style={{fontSize:'18px'}}>
-                                                    ☰ <strong>{cat.nome}</strong> {cat.is_bar ? "🍹 (BAR)" : ""}
+                                                    {/* MODIFICA QUI SOTTO */}
+                                                    ☰ <strong>{cat.nome}</strong> {cat.is_bar ? "🍹 (BAR)" : ""} {cat.is_pizzeria ? "🍕 (PIZZA)" : ""}
                                                 </span>
                                                 {cat.descrizione && <div style={{fontSize:'12px', color:'#666', marginLeft:'20px'}}>{cat.descrizione}</div>}
                                             </div>

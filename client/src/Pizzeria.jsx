@@ -1,8 +1,8 @@
-// client/src/Cucina.jsx - VERSIONE V32 (RAGGRUPPAMENTO, 3X, BLOCCO CLICK) 👨‍🍳
+// client/src/Pizzeria.jsx - VERSIONE V33 (NUOVA PAGINA PIZZERIA) 🍕
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
-function Cucina() {
+function Pizzeria() {
   const [ordini, setOrdini] = useState([]);
   const [infoRistorante, setInfoRistorante] = useState(null); 
   const [isAuthorized, setIsAuthorized] = useState(false); 
@@ -12,7 +12,7 @@ function Cucina() {
 
   useEffect(() => {
     fetch(`${API_URL}/api/menu/${slug}`).then(r=>r.json()).then(setInfoRistorante);
-    const sessionKey = `cucina_session_${slug}`;
+    const sessionKey = `pizzeria_session_${slug}`;
     if (localStorage.getItem(sessionKey) === "true") setIsAuthorized(true);
   }, [slug]);
 
@@ -20,15 +20,15 @@ function Cucina() {
       e.preventDefault();
       if(passwordInput==="tonystark") { 
           setIsAuthorized(true); 
-          localStorage.setItem(`cucina_session_${slug}`,"true"); 
+          localStorage.setItem(`pizzeria_session_${slug}`,"true"); 
       } else {
           alert("Password Errata");
       }
   };
 
   const handleLogout = () => {
-      if(confirm("Uscire dalla cucina?")) {
-        localStorage.removeItem(`cucina_session_${slug}`);
+      if(confirm("Chiudere la Pizzeria?")) {
+        localStorage.removeItem(`pizzeria_session_${slug}`);
         setIsAuthorized(false);
       }
   };
@@ -43,14 +43,14 @@ function Cucina() {
             const ordiniDaMostrare = tuttiOrdini.filter(o => {
                 const prodotti = Array.isArray(o.prodotti) ? o.prodotti : [];
                 
-                // 1. Filtra: Tieni solo ciò che NON è Bar e NON è Pizzeria
-                const cibi = prodotti.filter(p => !p.is_bar && !p.is_pizzeria);
+                // 1. FILTRA SOLO PIZZE
+                const pizze = prodotti.filter(p => p.is_pizzeria);
                 
                 // 2. Se vuoto, nascondi ticket
-                if (cibi.length === 0) return false;
+                if (pizze.length === 0) return false;
 
-                // 3. Se TUTTI i cibi sono 'serviti', nascondi ticket
-                const tuttiFiniti = cibi.every(p => p.stato === 'servito');
+                // 3. Se TUTTE le pizze sono 'servite', nascondi ticket
+                const tutteFiniti = pizze.every(p => p.stato === 'servito');
                 return !tutteFiniti;
             });
 
@@ -67,28 +67,28 @@ function Cucina() {
       } 
   }, [isAuthorized, infoRistorante]);
 
-  // Versione "One-Way": Una volta servito, non si torna indietro
-  const segnaPiattoServito = async (ordineId, prodottiAttuali, indices) => {
+  // One-Way: Una volta servito, non si torna indietro
+  const segnaPizzaPronta = async (ordineId, prodottiAttuali, indices) => {
       const nuoviProdotti = [...prodottiAttuali];
       
       // Controlliamo il primo item del gruppo
       const primoItem = nuoviProdotti[indices[0]];
 
-      // 🛑 BLOCCO: Se è già servito, esci subito. Non permettiamo modifiche.
+      // 🛑 BLOCCO: Se è già servito, esci subito.
       if (primoItem.stato === 'servito') return;
 
       const nuovoStato = 'servito';
 
-      // Aggiorniamo TUTTI gli item del gruppo (es. tutte e 3 le carbonare)
+      // Aggiorniamo TUTTI gli item del gruppo
       indices.forEach(idx => {
           const item = nuoviProdotti[idx];
           item.stato = nuovoStato;
           item.ora_servizio = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
       });
 
-      // Messaggio Log per la Cassa
+      // Log per la Cassa
       const qty = indices.length;
-      const logMsg = `[CUCINA 👨‍🍳] HA SERVITO: ${qty > 1 ? qty + 'x ' : ''}${primoItem.nome}`;
+      const logMsg = `[PIZZERIA 🍕] HA SFORNATO: ${qty > 1 ? qty + 'x ' : ''}${primoItem.nome}`;
 
       await fetch(`${API_URL}/api/ordine/${ordineId}/update-items`, {
           method: 'PUT',
@@ -98,29 +98,22 @@ function Cucina() {
       aggiorna();
   };
 
-  // HELPER PER RAGGRUPPARE (3x Carbonara) E ORDINARE
+  // HELPER PER RAGGRUPPARE (3x Margherita) E ORDINARE
   const getProdottiRaggruppati = (prodotti) => {
       const gruppi = [];
       
       prodotti.forEach((p, indexOriginale) => {
-          // MODIFICA QUI: Ignora Bar E Pizzeria
-          if (p.is_bar || p.is_pizzeria) return; 
+          // FILTRO: SOLO PIZZE
+          if (!p.is_pizzeria) return; 
 
-          // Chiave unica: Nome + Stato
           const key = `${p.nome}-${p.stato}`;
-          
           const gruppoEsistente = gruppi.find(g => g.key === key);
 
           if (gruppoEsistente) {
               gruppoEsistente.count += 1;
               gruppoEsistente.indices.push(indexOriginale); 
           } else {
-              gruppi.push({
-                  ...p,
-                  key: key,
-                  count: 1,
-                  indices: [indexOriginale]
-              });
+              gruppi.push({ ...p, key: key, count: 1, indices: [indexOriginale] });
           }
       });
 
@@ -139,58 +132,54 @@ function Cucina() {
       acc[ordine.tavolo].listaOrdini.push(ordine);
       return acc;
   }, {}));
-
   
-  if (!infoRistorante) return <div style={{textAlign:'center', padding:50}}><h1>⏳ Caricamento...</h1></div>;
+  if (!infoRistorante) return <div style={{textAlign:'center', padding:50}}><h1>⏳ Caricamento Pizzeria...</h1></div>;
 
   if (!isAuthorized) return (
-      <div className="cucina-container" style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', flexDirection:'column'}}>
-          <div style={{background:'white', padding:'40px', borderRadius:'10px', width:'90%', maxWidth:'400px', textAlign:'center', boxShadow:'0 4px 10px rgba(0,0,0,0.1)'}}>
-              <h1>👨‍🍳 Cucina</h1>
-              <h3 style={{color:'#666'}}>{infoRistorante.ristorante}</h3>
+      <div className="cucina-container" style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', flexDirection:'column', background:'#c0392b'}}>
+          <div style={{background:'white', padding:'40px', borderRadius:'10px', width:'90%', maxWidth:'400px', textAlign:'center'}}>
+              <h1>🍕 Pizzeria</h1>
+              <h3>{infoRistorante.ristorante}</h3>
               <form onSubmit={handleLogin}>
-                  <input type="password" placeholder="Password" value={passwordInput} onChange={e=>setPasswordInput(e.target.value)} style={{width:'100%', padding:'10px', marginBottom:'15px', fontSize:'16px'}}/>
-                  <button className="btn-invia" style={{width:'100%', padding:'10px', background:'#27ae60', border:'none', color:'white', fontSize:'16px', borderRadius:'5px'}}>ENTRA</button>
+                  <input type="password" placeholder="Password" value={passwordInput} onChange={e=>setPasswordInput(e.target.value)} style={{width:'100%', padding:'10px', marginBottom:'15px'}}/>
+                  <button className="btn-invia" style={{width:'100%', padding:'10px', background:'#e74c3c', border:'none', color:'white', borderRadius:'5px'}}>ENTRA</button>
               </form>
           </div>
       </div>
   );
 
   return (
-    <div className="cucina-container">
-      <header style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 20px', background:'#fff', marginBottom:'20px', borderRadius:'8px'}}>
-          <h1 style={{margin:0, color:'#333'}}>👨‍🍳 Cucina: {infoRistorante.ristorante}</h1>
-          <button onClick={handleLogout} style={{background:'#e74c3c', color:'white', border:'none', padding:'8px 15px', borderRadius:'5px', cursor:'pointer'}}>Esci</button>
+    <div className="cucina-container" style={{minHeight:'100vh', padding:'20px', background:'#c0392b'}}>
+      <header style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px'}}>
+          <h1 style={{margin:0, color:'white'}}>🍕 Pizzeria: {infoRistorante.ristorante}</h1>
+          <button onClick={handleLogout} style={{background:'white', color:'#c0392b', border:'none', padding:'8px 15px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold'}}>Esci</button>
       </header>
       
       <div className="ordini-grid">
         {ordini.length === 0 && (
-            <div style={{textAlign: 'center', width: '100%', marginTop: '50px', color: '#888'}}>
-                <h2>Nessuna comanda in attesa 👨‍🍳</h2>
-                <p>Tutto pulito!</p>
+            <div style={{textAlign: 'center', width: '100%', marginTop: '50px', color: '#fff'}}>
+                <h2>Il forno è vuoto! 🔥</h2>
             </div>
         )}
 
         {ordiniPerTavolo.map(gruppo => (
-            <div key={gruppo.tavolo} className="ticket" style={{borderTop: '5px solid #d35400'}}>
-                <div className="ticket-header">
-                    <span style={{fontSize:'1.5rem'}}>Tavolo <strong>{gruppo.tavolo}</strong></span>
+            <div key={gruppo.tavolo} className="ticket" style={{background:'white', borderTop:'5px solid #e74c3c', marginBottom:20, borderRadius:8}}>
+                <div className="ticket-header" style={{padding:10, borderBottom:'1px solid #eee', background:'#fceceb'}}>
+                    <span style={{fontSize:'1.5rem', color:'#c0392b'}}>Tavolo <strong>{gruppo.tavolo}</strong></span>
                 </div>
                 
                 <div className="ticket-body" style={{textAlign:'left', paddingBottom:'5px'}}>
                     {gruppo.listaOrdini.map(ord => {
-                        // Raggruppiamo i piatti (es. 3x Carbonara)
                         const prodottiRaggruppati = getProdottiRaggruppati(ord.prodotti);
                         if(prodottiRaggruppati.length === 0) return null;
 
                         return (
                             <div key={ord.id} style={{marginBottom: '10px', borderBottom:'2px solid #ddd'}}>
-                                {/* Intestazione con Ora e Cameriere */}
                                 <div style={{
                                     fontSize:'0.85rem', 
-                                    background:'#fdebd0', // Arancio chiaro per cucina
+                                    background:'#fadbd8', 
                                     padding:'4px 10px', 
-                                    color:'#d35400', 
+                                    color:'#c0392b', 
                                     fontWeight:'bold',
                                     display:'flex', justifyContent:'space-between'
                                 }}>
@@ -200,19 +189,15 @@ function Cucina() {
 
                                 {prodottiRaggruppati.map((gruppoProd) => {
                                     const isServito = gruppoProd.stato === 'servito';
-                                    
-                                    // PRENDIAMO TUTTI GLI INDICI DEL GRUPPO
                                     const indiciDaModificare = gruppoProd.indices; 
 
                                     return (
                                         <div 
                                             key={gruppoProd.key} 
-                                            // BLOCCO CLICK: Se già servito, non fa nulla
-                                            onClick={() => !isServito && segnaPiattoServito(ord.id, ord.prodotti, indiciDaModificare)}
+                                            onClick={() => !isServito && segnaPizzaPronta(ord.id, ord.prodotti, indiciDaModificare)}
                                             style={{
                                                 padding:'12px 10px', 
                                                 borderBottom:'1px dashed #ddd',
-                                                // CURSORE: Freccia se servito, manina se attivo
                                                 cursor: isServito ? 'default' : 'pointer',
                                                 background: isServito ? '#e8f5e9' : 'white',
                                                 opacity: isServito ? 0.6 : 1,
@@ -220,9 +205,8 @@ function Cucina() {
                                             }}
                                         >
                                             <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-                                                {/* Badge Quantità */}
                                                 <span style={{
-                                                    background: isServito ? '#95a5a6' : '#e67e22',
+                                                    background: isServito ? '#95a5a6' : '#e74c3c',
                                                     color:'white', padding:'4px 8px', borderRadius:'50%',
                                                     fontWeight:'bold', fontSize:'0.9rem', minWidth:'30px', textAlign:'center'
                                                 }}>
@@ -252,4 +236,4 @@ function Cucina() {
   );
 }
 
-export default Cucina;
+export default Pizzeria;
