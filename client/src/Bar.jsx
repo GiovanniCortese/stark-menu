@@ -66,24 +66,36 @@ function Bar() {
       } 
   }, [isAuthorized, infoRistorante]);
 
-  // Toggle stato bibita (MASSIVO PER GRUPPO) + LOG STORICO
+// Versione "One-Way": Una volta servito, non si torna indietro
   const segnaBibitaServita = async (ordineId, prodottiAttuali, indices) => {
       const nuoviProdotti = [...prodottiAttuali];
       
-      // Prendiamo il primo per capire lo stato attuale (tanto sono tutti uguali nel gruppo)
+      // Controlliamo il primo
       const primoItem = nuoviProdotti[indices[0]];
-      const nuovoStato = primoItem.stato === 'servito' ? 'in_attesa' : 'servito';
+
+      // 🛑 BLOCCO: Se è già servito, esci subito.
+      if (primoItem.stato === 'servito') return; 
+
+      const nuovoStato = 'servito';
 
       // Aggiorniamo TUTTI gli item del gruppo
       indices.forEach(idx => {
           const item = nuoviProdotti[idx];
           item.stato = nuovoStato;
-          if (nuovoStato === 'servito') {
-              item.ora_servizio = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-          } else {
-              delete item.ora_servizio;
-          }
+          item.ora_servizio = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
       });
+
+      // Log
+      const qty = indices.length;
+      const logMsg = `[BAR 🍹] HA SERVITO: ${qty > 1 ? qty + 'x ' : ''}${primoItem.nome}`;
+
+      await fetch(`${API_URL}/api/ordine/${ordineId}/update-items`, {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ prodotti: nuoviProdotti, logMsg: logMsg })
+      });
+      aggiorna();
+  };
 
       // Messaggio Log con Quantità
       const qty = indices.length;
@@ -202,12 +214,13 @@ function Bar() {
                                     return (
                                         <div 
                                             key={gruppoProd.key} 
-                                            // Al click passiamo L'INTERO ARRAY DI INDICI alla funzione modificata
-                                            onClick={() => segnaBibitaServita(ord.id, ord.prodotti, indiciDaModificare)}
+                                            // MODIFICA 1: Il click funziona solo se NON è servito
+                                            onClick={() => !isServito && segnaBibitaServita(ord.id, ord.prodotti, indiciDaModificare)}
                                             style={{
                                                 padding:'12px 10px', 
                                                 borderBottom:'1px dashed #ecf0f1',
-                                                cursor:'pointer',
+                                                // MODIFICA 2: Se servito, il cursore non è più una manina
+                                                cursor: isServito ? 'default' : 'pointer',
                                                 background: isServito ? '#d4efdf' : 'white',
                                                 opacity: isServito ? 0.6 : 1,
                                                 display: 'flex', justifyContent:'space-between', alignItems:'center'
