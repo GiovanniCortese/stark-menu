@@ -1,3 +1,4 @@
+// client/src/components_admin/AdminMenu.jsx - VERSIONE V35 (LEGGE IL NUOVO BLOCCO ACCOUNT)
 import { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
@@ -8,10 +9,32 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
   // --- FUNZIONI DI SERVIZIO ---
   const toggleServizio = async () => { 
-      if (!user.superAdminAbilitato) { alert("⛔ Bloccato dal Super Admin"); return; }
+      // 1. CONTROLLO ABBONAMENTO (account_attivo)
+      // Se il campo non esiste (vecchi db) lo consideriamo attivo (true). Se è false, blocchiamo.
+      const isAccountAttivo = config.account_attivo !== false; 
+
+      if (!isAccountAttivo) { 
+          alert("⛔ ATTENZIONE: Il tuo abbonamento è SOSPESO.\nContatta l'amministrazione per riattivare il servizio."); 
+          return; 
+      }
+
+      // 2. GESTIONE CUCINA (servizio_attivo)
       const n = !config.servizio_attivo; 
+      
+      // Aggiornamento ottimistico
       setConfig({...config, servizio_attivo:n}); 
-      await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({servizio_attivo:n})}); 
+      
+      try {
+          // Nota: Il server farà un doppio controllo di sicurezza
+          await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, {
+              method:'PUT', 
+              headers:{'Content-Type':'application/json'}, 
+              body:JSON.stringify({servizio_attivo:n})
+          }); 
+      } catch (error) {
+          alert("Errore di connessione.");
+          setConfig({...config, servizio_attivo: !n});
+      }
   };
 
   const handleSalvaPiatto = async (e) => { 
@@ -49,80 +72,56 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const annullaModifica = () => { setEditId(null); setNuovoPiatto({nome:'', prezzo:'', categoria:categorie[0]?.nome || '', sottocategoria: '', descrizione:'', immagine_url:''}); };
   const duplicaPiatto = async (piattoOriginale) => { if(!confirm(`Duplicare?`)) return; const copia = { ...piattoOriginale, nome: `${piattoOriginale.nome} (Copia)`, ristorante_id: user.id }; await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(copia) }); ricaricaDati(); };
 
-  // --- LOGICA DRAG & DROP CON DEBUG ---
   const onDragEnd = async (result) => {
     if (!result.destination || result.type !== 'DISH') return;
-    
     const destCat = result.destination.droppableId.replace("cat-", "");
     const piattoId = parseInt(result.draggableId);
-
-    // 1. Trova piatto
     const piattoSpostato = menu.find(p => p.id === piattoId);
     if (!piattoSpostato) return;
 
-    // 2. Aggiornamento Ottimistico Locale
-    const newMenuState = menu.map(p => {
-        if (p.id === piattoId) return { ...p, categoria: destCat };
-        return p;
-    });
-
-    // 3. Calcolo Ordine
-    const piattiDestinazione = newMenuState
-        .filter(p => p.categoria === destCat && p.id !== piattoId)
-        .sort((a, b) => (a.posizione || 0) - (b.posizione || 0));
-
+    const newMenuState = menu.map(p => { if (p.id === piattoId) return { ...p, categoria: destCat }; return p; });
+    const piattiDestinazione = newMenuState.filter(p => p.categoria === destCat && p.id !== piattoId).sort((a, b) => (a.posizione || 0) - (b.posizione || 0));
     piattiDestinazione.splice(result.destination.index, 0, { ...piattoSpostato, categoria: destCat });
-
-    // Payload per il server
-    const updatePayload = piattiDestinazione.map((p, idx) => ({
-        id: p.id,
-        posizione: idx,
-        categoria: destCat
-    }));
-
-    // Applica visualmente subito
-    const finalMenu = newMenuState.map(p => {
-        const updatedP = updatePayload.find(up => up.id === p.id);
-        return updatedP ? { ...p, ...updatedP } : p;
-    });
+    const updatePayload = piattiDestinazione.map((p, idx) => ({ id: p.id, posizione: idx, categoria: destCat }));
+    
+    const finalMenu = newMenuState.map(p => { const updatedP = updatePayload.find(up => up.id === p.id); return updatedP ? { ...p, ...updatedP } : p; });
     setMenu(finalMenu);
 
-    // 4. CHIAMATA SERVER CON LOGGING
-    try {
-        const response = await fetch(`${API_URL}/api/prodotti/riordina`, { 
-            method: 'PUT', 
-            headers:{'Content-Type':'application/json'}, 
-            body: JSON.stringify({ prodotti: updatePayload }) 
-        });
-
-        const data = await response.json();
-
-        if (!response.ok || !data.success) {
-            alert("⚠️ ERRORE SERVER: " + (data.error || "Non salvato"));
-            ricaricaDati(); // Reverte in caso di errore
-        } else {
-            // Se va tutto bene, silenzioso o log console
-            console.log("✅ Ordine salvato correttamente sul server!");
-        }
-    } catch (error) {
-        alert("❌ ERRORE DI RETE: " + error.message);
-        ricaricaDati();
-    }
+    try { await fetch(`${API_URL}/api/prodotti/riordina`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prodotti: updatePayload }) }); } 
+    catch (error) { alert("❌ Errore rete"); ricaricaDati(); }
   };
+
+  // Determina se l'account è attivo (se undefined è true per compatibilità)
+  const isAccountAttivo = config.account_attivo !== false;
 
   return (
     <DragDropContext onDragEnd={onDragEnd}>
-        {/* Pulsante Servizio */}
-        <div className="card" style={{border: user.superAdminAbilitato ? '2px solid #333' : '2px solid red', background: user.superAdminAbilitato ? (config.servizio_attivo ? '#fff3cd' : '#f8d7da') : '#ffecec', marginBottom:'20px', textAlign:'center'}}>
-              {!user.superAdminAbilitato ? (
-                  <div><h2 style={{color:'red', margin:0}}>⛔ SERVIZIO DISABILITATO DAL SUPER ADMIN</h2></div>
+        {/* Pulsante Servizio / Blocco Abbonamento */}
+        <div className="card" style={{
+            border: isAccountAttivo ? '2px solid #333' : '2px solid red', 
+            background: isAccountAttivo ? (config.servizio_attivo ? '#fff3cd' : '#f8d7da') : '#ffecec', 
+            marginBottom:'20px', textAlign:'center', padding: '15px'
+        }}>
+              {!isAccountAttivo ? (
+                  /* CASO 1: ACCOUNT SOSPESO DAL SUPER ADMIN */
+                  <div>
+                      <h2 style={{color:'red', margin:0, fontSize:'1.5rem'}}>⛔ ABBONAMENTO SOSPESO</h2>
+                      <p style={{color:'#c0392b', fontWeight:'bold', margin:'5px 0'}}>Il pannello di controllo è disabilitato dall'amministrazione.</p>
+                  </div>
               ) : (
-                  <button onClick={toggleServizio} style={{background: config.servizio_attivo ? '#2ecc71':'#e74c3c', width:'100%', padding:'15px', color:'white', fontWeight:'bold', fontSize:'18px', border:'none', borderRadius:'5px', cursor:'pointer'}}>{config.servizio_attivo ? "✅ ORDINI APERTI" : "🛑 ORDINI CHIUSI"}</button>
+                  /* CASO 2: ACCOUNT ATTIVO -> MOSTRA GESTIONE CUCINA */
+                  <button onClick={toggleServizio} style={{
+                      background: config.servizio_attivo ? '#2ecc71':'#e74c3c', 
+                      width:'100%', padding:'15px', color:'white', fontWeight:'bold', fontSize:'18px', 
+                      border:'none', borderRadius:'5px', cursor:'pointer'
+                  }}>
+                      {config.servizio_attivo ? "✅ CUCINA APERTA (Clicca per Chiudere)" : "🛑 CUCINA CHIUSA (Clicca per Aprire)"}
+                  </button>
               )}
         </div>
 
-        {/* Form Aggiungi/Modifica */}
-        <div className="card" style={{background: editId ? '#e3f2fd' : '#f8f9fa', border: editId ? '2px solid #2196f3' : '2px dashed #ccc'}}>
+        {/* Form Aggiungi/Modifica (Disabilitato visivamente se sospeso, ma non strettamente necessario se il blocco sopra funziona) */}
+        <div className="card" style={{background: editId ? '#e3f2fd' : '#f8f9fa', border: editId ? '2px solid #2196f3' : '2px dashed #ccc', opacity: isAccountAttivo ? 1 : 0.5, pointerEvents: isAccountAttivo ? 'auto' : 'none'}}>
               <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                   <h3>{editId ? "✏️ Modifica Piatto" : "➕ Aggiungi Piatto"}</h3>
                   {editId && <button onClick={annullaModifica} style={{background:'#777', padding:'5px', fontSize:'12px', color:'white', border:'none', borderRadius:'3px'}}>Annulla</button>}
@@ -151,15 +150,12 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                 <Droppable droppableId={`cat-${cat.nome}`} type="DISH">
                     {(provided, snapshot) => (
                         <div {...provided.droppableProps} ref={provided.innerRef} className="menu-list" style={{background: snapshot.isDraggingOver ? '#f0f0f0' : 'transparent', minHeight: '50px', padding: '5px'}}>
-                            {menu
-                                .filter(p => p.categoria === cat.nome)
-                                .sort((a,b) => (a.posizione || 0) - (b.posizione || 0)) 
-                                .map((p, index) => (
-                                    <Draggable key={p.id} draggableId={String(p.id)} index={index}>
+                            {menu.filter(p => p.categoria === cat.nome).sort((a,b) => (a.posizione || 0) - (b.posizione || 0)).map((p, index) => (
+                                    <Draggable key={p.id} draggableId={String(p.id)} index={index} isDragDisabled={!isAccountAttivo}>
                                         {(provided, snapshot) => (
-                                            <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className="card" style={{...provided.draggableProps.style, flexDirection:'row', justifyContent:'space-between', background: snapshot.isDragging ? '#e3f2fd' : 'white', border: editId === p.id ? '2px solid #2196f3' : '1px solid #eee'}}>
+                                            <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className="card" style={{...provided.draggableProps.style, flexDirection:'row', justifyContent:'space-between', background: snapshot.isDragging ? '#e3f2fd' : 'white', border: editId === p.id ? '2px solid #2196f3' : '1px solid #eee', opacity: isAccountAttivo ? 1 : 0.6}}>
                                                 <div style={{display:'flex', alignItems:'center', gap:'10px', flex:1}}>
-                                                    <span style={{color:'#ccc', cursor:'grab', fontSize:'20px'}}>☰</span>
+                                                    <span style={{color:'#ccc', cursor: isAccountAttivo ? 'grab' : 'not-allowed', fontSize:'20px'}}>☰</span>
                                                     {p.immagine_url && <img src={p.immagine_url} style={{width:'40px', height:'40px', objectFit:'cover', borderRadius:'4px'}}/>}
                                                     <div style={{flex:1}}>
                                                         <div><strong>{p.nome}</strong>{p.sottocategoria && <span style={{fontSize:'11px', background:'#eee', padding:'2px 5px', borderRadius:'4px', marginLeft:'5px'}}>{p.sottocategoria}</span>}</div>
@@ -167,11 +163,13 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                                                         <div style={{fontSize:'12px', fontWeight:'bold', marginTop:'3px'}}>{p.prezzo}€</div>
                                                     </div>
                                                 </div>
-                                                <div style={{display:'flex', gap:'5px', alignItems:'center'}}>
-                                                    <button onClick={() => avviaModifica(p)} style={{background:'#f1c40f', padding:'5px 10px', borderRadius:'4px', border:'none', cursor:'pointer'}}>✏️</button>
-                                                    <button onClick={() => duplicaPiatto(p)} style={{background:'#3498db', padding:'5px 10px', borderRadius:'4px', border:'none', color:'white', cursor:'pointer'}}>❐</button>
-                                                    <button onClick={() => cancellaPiatto(p.id)} style={{background:'darkred', padding:'5px 10px', borderRadius:'4px', border:'none', cursor:'pointer'}}>🗑️</button>
-                                                </div>
+                                                {isAccountAttivo && (
+                                                    <div style={{display:'flex', gap:'5px', alignItems:'center'}}>
+                                                        <button onClick={() => avviaModifica(p)} style={{background:'#f1c40f', padding:'5px 10px', borderRadius:'4px', border:'none', cursor:'pointer'}}>✏️</button>
+                                                        <button onClick={() => duplicaPiatto(p)} style={{background:'#3498db', padding:'5px 10px', borderRadius:'4px', border:'none', color:'white', cursor:'pointer'}}>❐</button>
+                                                        <button onClick={() => cancellaPiatto(p.id)} style={{background:'darkred', padding:'5px 10px', borderRadius:'4px', border:'none', cursor:'pointer'}}>🗑️</button>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </Draggable>
