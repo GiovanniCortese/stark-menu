@@ -44,24 +44,58 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const annullaModifica = () => { setEditId(null); setNuovoPiatto({nome:'', prezzo:'', categoria:categorie[0]?.nome || '', sottocategoria: '', descrizione:'', immagine_url:''}); };
   const duplicaPiatto = async (piattoOriginale) => { if(!confirm(`Duplicare?`)) return; const copia = { ...piattoOriginale, nome: `${piattoOriginale.nome} (Copia)`, ristorante_id: user.id }; try { await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(copia) }); ricaricaDati(); } catch(e) { alert("Errore"); } };
 
+  // --- LOGICA DRAG & DROP CORRETTA ---
   const onDragEnd = async (result) => {
     if (!result.destination || result.type !== 'DISH') return;
+    
+    const sourceCat = result.source.droppableId.replace("cat-", "");
     const destCat = result.destination.droppableId.replace("cat-", "");
     const piattoId = parseInt(result.draggableId);
+
+    // 1. Trova il piatto spostato
     const piattoSpostato = menu.find(p => p.id === piattoId);
     if (!piattoSpostato) return;
 
-    piattoSpostato.categoria = destCat;
-    const menuSenzaPiatto = menu.filter(p => p.id !== piattoId);
-    const nuovoMenu = [...menuSenzaPiatto]; nuovoMenu.push(piattoSpostato); 
-    setMenu(nuovoMenu); 
+    // 2. Crea una copia del menu per lavorarci
+    // Aggiorna subito la categoria del piatto spostato
+    const newMenuState = menu.map(p => {
+        if (p.id === piattoId) return { ...p, categoria: destCat };
+        return p;
+    });
 
-    const piattiDestinazione = menu.filter(p => p.categoria === destCat && p.id !== piattoId);
-    piattiDestinazione.splice(result.destination.index, 0, piattoSpostato);
-    const updatePayload = piattiDestinazione.map((p, idx) => ({ id: p.id, posizione: idx, categoria: destCat }));
+    // 3. Prepara l'array della categoria di destinazione ORDINATO
+    // È CRUCIALE ordinare per posizione prima di fare lo splice, altrimenti l'indice è sbagliato
+    const piattiDestinazione = newMenuState
+        .filter(p => p.categoria === destCat && p.id !== piattoId)
+        .sort((a, b) => (a.posizione || 0) - (b.posizione || 0));
 
-    await fetch(`${API_URL}/api/prodotti/riordina`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prodotti: updatePayload }) });
-    ricaricaDati(); 
+    // 4. Inserisci il piatto nella nuova posizione
+    piattiDestinazione.splice(result.destination.index, 0, { ...piattoSpostato, categoria: destCat });
+
+    // 5. Ricalcola le posizioni per tutti i piatti di quella categoria
+    const updatePayload = piattiDestinazione.map((p, idx) => ({
+        id: p.id,
+        posizione: idx,
+        categoria: destCat
+    }));
+
+    // 6. Aggiorna lo stato locale immediatamente (Ottimistico)
+    // Dobbiamo aggiornare il 'menu' globale con i nuovi valori di posizione
+    const finalMenu = newMenuState.map(p => {
+        const updatedP = updatePayload.find(up => up.id === p.id);
+        return updatedP ? { ...p, ...updatedP } : p;
+    });
+    setMenu(finalMenu);
+
+    // 7. Salva su Server
+    await fetch(`${API_URL}/api/prodotti/riordina`, { 
+        method: 'PUT', 
+        headers:{'Content-Type':'application/json'}, 
+        body: JSON.stringify({ prodotti: updatePayload }) 
+    });
+    
+    // Non serve ricaricaDati() se l'aggiornamento locale è fatto bene, ma per sicurezza lo lasciamo
+    // ricaricaDati(); 
   };
 
   return (
@@ -105,41 +139,31 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                 <Droppable droppableId={`cat-${cat.nome}`} type="DISH">
                     {(provided, snapshot) => (
                         <div {...provided.droppableProps} ref={provided.innerRef} className="menu-list" style={{background: snapshot.isDraggingOver ? '#f0f0f0' : 'transparent', minHeight: '50px', padding: '5px'}}>
-                            {menu.filter(p => p.categoria === cat.nome).map((p, index) => (
-                                <Draggable key={p.id} draggableId={String(p.id)} index={index}>
-                                    {(provided, snapshot) => (
-                                        <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className="card" style={{...provided.draggableProps.style, flexDirection:'row', justifyContent:'space-between', background: snapshot.isDragging ? '#e3f2fd' : 'white', border: editId === p.id ? '2px solid #2196f3' : '1px solid #eee'}}>
-                                            <div style={{display:'flex', alignItems:'center', gap:'10px', flex:1}}>
-                                                <span style={{color:'#ccc', cursor:'grab', fontSize:'20px'}}>☰</span>
-                                                {p.immagine_url && <img src={p.immagine_url} style={{width:'40px', height:'40px', objectFit:'cover', borderRadius:'4px'}}/>}
-                                                
-                                                <div style={{flex:1}}>
-                                                    {/* NOME E TAG */}
-                                                    <div>
-                                                        <strong>{p.nome}</strong>
-                                                        {p.sottocategoria && <span style={{fontSize:'11px', background:'#eee', padding:'2px 5px', borderRadius:'4px', marginLeft:'5px'}}>{p.sottocategoria}</span>}
+                            {/* --- QUI LA SOLUZIONE: ORDINAMENTO PRIMA DEL MAP --- */}
+                            {menu
+                                .filter(p => p.categoria === cat.nome)
+                                .sort((a,b) => (a.posizione || 0) - (b.posizione || 0)) 
+                                .map((p, index) => (
+                                    <Draggable key={p.id} draggableId={String(p.id)} index={index}>
+                                        {(provided, snapshot) => (
+                                            <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className="card" style={{...provided.draggableProps.style, flexDirection:'row', justifyContent:'space-between', background: snapshot.isDragging ? '#e3f2fd' : 'white', border: editId === p.id ? '2px solid #2196f3' : '1px solid #eee'}}>
+                                                <div style={{display:'flex', alignItems:'center', gap:'10px', flex:1}}>
+                                                    <span style={{color:'#ccc', cursor:'grab', fontSize:'20px'}}>☰</span>
+                                                    {p.immagine_url && <img src={p.immagine_url} style={{width:'40px', height:'40px', objectFit:'cover', borderRadius:'4px'}}/>}
+                                                    <div style={{flex:1}}>
+                                                        <div><strong>{p.nome}</strong>{p.sottocategoria && <span style={{fontSize:'11px', background:'#eee', padding:'2px 5px', borderRadius:'4px', marginLeft:'5px'}}>{p.sottocategoria}</span>}</div>
+                                                        {p.descrizione && (<div style={{fontSize:'12px', color:'#777', fontStyle:'italic', marginTop:'2px', lineHeight:'1.2'}}>{p.descrizione.length > 60 ? p.descrizione.substring(0,60) + "..." : p.descrizione}</div>)}
+                                                        <div style={{fontSize:'12px', fontWeight:'bold', marginTop:'3px'}}>{p.prezzo}€</div>
                                                     </div>
-                                                    
-                                                    {/* --- MODIFICA QUI: DESCRIZIONE --- */}
-                                                    {p.descrizione && (
-                                                        <div style={{fontSize:'12px', color:'#777', fontStyle:'italic', marginTop:'2px', lineHeight:'1.2'}}>
-                                                            {p.descrizione.length > 60 ? p.descrizione.substring(0,60) + "..." : p.descrizione}
-                                                        </div>
-                                                    )}
-                                                    
-                                                    {/* PREZZO */}
-                                                    <div style={{fontSize:'12px', fontWeight:'bold', marginTop:'3px'}}>{p.prezzo}€</div>
                                                 </div>
-
+                                                <div style={{display:'flex', gap:'5px', alignItems:'center'}}>
+                                                    <button onClick={() => avviaModifica(p)} style={{background:'#f1c40f', padding:'5px 10px', borderRadius:'4px', border:'none', cursor:'pointer'}}>✏️</button>
+                                                    <button onClick={() => duplicaPiatto(p)} style={{background:'#3498db', padding:'5px 10px', borderRadius:'4px', border:'none', color:'white', cursor:'pointer'}}>❐</button>
+                                                    <button onClick={() => cancellaPiatto(p.id)} style={{background:'darkred', padding:'5px 10px', borderRadius:'4px', border:'none', cursor:'pointer'}}>🗑️</button>
+                                                </div>
                                             </div>
-                                            <div style={{display:'flex', gap:'5px', alignItems:'center'}}>
-                                                <button onClick={() => avviaModifica(p)} style={{background:'#f1c40f', padding:'5px 10px', borderRadius:'4px', border:'none', cursor:'pointer'}}>✏️</button>
-                                                <button onClick={() => duplicaPiatto(p)} style={{background:'#3498db', padding:'5px 10px', borderRadius:'4px', border:'none', color:'white', cursor:'pointer'}}>❐</button>
-                                                <button onClick={() => cancellaPiatto(p.id)} style={{background:'darkred', padding:'5px 10px', borderRadius:'4px', border:'none', cursor:'pointer'}}>🗑️</button>
-                                            </div>
-                                        </div>
-                                    )}
-                                </Draggable>
+                                        )}
+                                    </Draggable>
                             ))}
                             {provided.placeholder}
                         </div>
