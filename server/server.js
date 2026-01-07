@@ -151,12 +151,15 @@ app.post('/api/cassa/paga-tavolo', async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Errore Pagamento" }); }
 });
 
-// 5. STORICO (Con log e limite aumentato)
+// 5. STORICO (MODIFICATO: MOSTRA ANCHE I TAVOLI APERTI)
 app.get('/api/cassa/storico/:ristorante_id', async (req, res) => {
     try {
-        const r = await pool.query("SELECT * FROM ordini WHERE ristorante_id = $1 AND stato = 'pagato' ORDER BY data_ora DESC LIMIT 300", [req.params.ristorante_id]);
+        // NOTA: Ho rimosso "AND stato = 'pagato'" per vedere anche i tavoli verdi (LIVE)
+        const r = await pool.query("SELECT * FROM ordini WHERE ristorante_id = $1 ORDER BY data_ora DESC LIMIT 300", [req.params.ristorante_id]);
+        
         const ordini = r.rows.map(o => {
-            let parsed = []; try { parsed = JSON.parse(o.prodotti||"[]"); } catch(e){}
+            let parsed = []; 
+            try { parsed = JSON.parse(o.prodotti||"[]"); } catch(e){}
             return { ...o, prodotti: Array.isArray(parsed)?parsed:[] };
         });
         res.json(ordini);
