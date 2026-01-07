@@ -1,9 +1,9 @@
-// client/src/Cucina.jsx - VERSIONE V35 (INTELLIGENTE: USCITE, BLOCCHI E VISIBILITÀ INCROCIATA) 👨‍🍳
+// client/src/Cucina.jsx - VERSIONE V36 (TAVOLO UNIFICATO + NO BAR) 👨‍🍳
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
 function Cucina() {
-  const [ordini, setOrdini] = useState([]);
+  const [tavoli, setTavoli] = useState([]); // Ora gestiamo array di Tavoli, non di ordini
   const [infoRistorante, setInfoRistorante] = useState(null); 
   const [isAuthorized, setIsAuthorized] = useState(false); 
   const [passwordInput, setPasswordInput] = useState("");
@@ -21,9 +21,7 @@ function Cucina() {
       if(passwordInput==="tonystark") { 
           setIsAuthorized(true); 
           localStorage.setItem(`cucina_session_${slug}`,"true"); 
-      } else {
-          alert("Password Errata");
-      }
+      } else { alert("Password Errata"); }
   };
 
   const handleLogout = () => {
@@ -38,18 +36,51 @@ function Cucina() {
       fetch(`${API_URL}/api/polling/${infoRistorante.id}`)
         .then(r=>r.json())
         .then(data => {
-            const tuttiOrdini = data.nuovi_ordini || [];
+            const nuoviOrdini = data.nuovi_ordini || [];
 
-            const ordiniDaMostrare = tuttiOrdini.filter(o => {
-                const prodotti = Array.isArray(o.prodotti) ? o.prodotti : [];
-                if (prodotti.length === 0) return false;
-                // Mostriamo il ticket finché non è TUTTO servito (anche roba della pizzeria)
-                // Così la cucina vede quando l'ordine è chiuso definitivamente
-                const tuttiFiniti = prodotti.every(p => p.stato === 'servito');
+            // 1. RAGGRUPPIAMO PER TAVOLO (Logica "Cassa")
+            const gruppiTavolo = {};
+
+            nuoviOrdini.forEach(ord => {
+                const t = ord.tavolo;
+                if(!gruppiTavolo[t]) gruppiTavolo[t] = { tavolo: t, items: [], orarioMin: ord.data_ora };
+                
+                // Manteniamo l'orario del primo ordine arrivato per quel tavolo
+                if(new Date(ord.data_ora) < new Date(gruppiTavolo[t].orarioMin)) {
+                    gruppiTavolo[t].orarioMin = ord.data_ora;
+                }
+
+                // 2. ESTRAIAMO I PRODOTTI, FILTRANDO IL BAR
+                if(Array.isArray(ord.prodotti)) {
+                    ord.prodotti.forEach((prod, idx) => {
+                        // --- FILTRO BAR: SE È BAR, LO SALTIAMO COMPLETAMENTE ---
+                        if (prod.is_bar) return;
+
+                        // Aggiungiamo riferimento all'ordine padre per poterlo modificare dopo
+                        gruppiTavolo[t].items.push({
+                            ...prod,
+                            parentOrderId: ord.id,     // ID dell'ordine nel DB
+                            originalIndex: idx,        // Indice nell'array dell'ordine
+                            fullOrderProducts: ord.prodotti // Ci serve tutto l'array per fare il salvataggio
+                        });
+                    });
+                }
+            });
+
+            // Convertiamo in array e filtriamo tavoli vuoti (es. solo bibite) o completati
+            const listaTavoli = Object.values(gruppiTavolo).filter(gruppo => {
+                if (gruppo.items.length === 0) return false;
+                // Mostra il tavolo finché c'è almeno un piatto non servito
+                // O se vuoi vedere lo storico finché non pagano, togli questo check.
+                // Qui: nascondiamo se TUTTO è servito.
+                const tuttiFiniti = gruppo.items.every(p => p.stato === 'servito');
                 return !tuttiFiniti;
             });
 
-            setOrdini(ordiniDaMostrare);
+            // Ordiniamo per orario di arrivo
+            listaTavoli.sort((a,b) => new Date(a.orarioMin) - new Date(b.orarioMin));
+
+            setTavoli(listaTavoli);
         })
         .catch(e => console.error("Polling error:", e));
   };
@@ -62,50 +93,63 @@ function Cucina() {
       } 
   }, [isAuthorized, infoRistorante]);
 
-  // --- AZIONE: SEGNA COME SERVITO ---
-  const segnaPiattoServito = async (ordineId, prodottiAttuali, indices) => {
-      const nuoviProdotti = [...prodottiAttuali];
-      const primoItem = nuoviProdotti[indices[0]];
+  // --- AZIONE: SEGNA COME SERVITO (GESTIONE MULTI-ORDINE) ---
+  const segnaPiattoServito = async (targetItems) => {
+      // targetItems è un array di oggetti { parentOrderId, originalIndex, ... }
+      // Dobbiamo raggruppare le modifiche per Ordine ID, perché l'API lavora per ordine
+      
+      const updatesPorOrdine = {};
 
-      if (primoItem.stato === 'servito') return;
-
-      const nuovoStato = 'servito';
-      const oraAttuale = new Date().toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'});
-
-      indices.forEach(idx => {
-          const item = nuoviProdotti[idx];
-          item.stato = nuovoStato;
-          item.ora_servizio = oraAttuale; // Salviamo l'orario
+      targetItems.forEach(item => {
+          if(!updatesPorOrdine[item.parentOrderId]) {
+              updatesPorOrdine[item.parentOrderId] = {
+                  originalProducts: item.fullOrderProducts, // Array originale completo (clonato dopo)
+                  indicesToUpdate: []
+              };
+          }
+          updatesPorOrdine[item.parentOrderId].indicesToUpdate.push(item.originalIndex);
       });
 
-      const qty = indices.length;
-      const logMsg = `[CUCINA 👨‍🍳] HA SERVITO: ${qty > 1 ? qty + 'x ' : ''}${primoItem.nome} alle ${oraAttuale}`;
+      // Eseguiamo le chiamate API (una per ogni ordine coinvolto)
+      const promises = Object.keys(updatesPorOrdine).map(async (orderId) => {
+          const data = updatesPorOrdine[orderId];
+          const nuoviProdotti = [...data.originalProducts]; // Copia array
+          const oraAttuale = new Date().toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'});
+          
+          let nomePiattoLog = "";
 
-      await fetch(`${API_URL}/api/ordine/${ordineId}/update-items`, {
-          method: 'PUT',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ prodotti: nuoviProdotti, logMsg: logMsg })
+          data.indicesToUpdate.forEach(idx => {
+              nuoviProdotti[idx].stato = 'servito';
+              nuoviProdotti[idx].ora_servizio = oraAttuale;
+              nomePiattoLog = nuoviProdotti[idx].nome; // Prendiamo un nome per il log
+          });
+
+          const logMsg = `[CUCINA 👨‍🍳] HA SERVITO: ${nomePiattoLog} (x${data.indicesToUpdate.length})`;
+
+          return fetch(`${API_URL}/api/ordine/${orderId}/update-items`, {
+              method: 'PUT',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ prodotti: nuoviProdotti, logMsg: logMsg })
+          });
       });
+
+      await Promise.all(promises);
       aggiorna();
   };
 
-  // --- LOGICA CORE: RAGGRUPPAMENTO PER USCITA E PRODOTTO ---
-  const processaOrdine = (prodotti) => {
-      // 1. Organizziamo per Uscita (Course)
-      // Default course = 2 se non specificato
+  // --- LOGICA CORE: RAGGRUPPAMENTO PER USCITA ---
+  const processaTavolo = (items) => {
       const courses = { 1: [], 2: [], 3: [] };
       
-      prodotti.forEach((p, originalIndex) => {
+      items.forEach(p => {
           const c = p.course || 2; 
           if(!courses[c]) courses[c] = [];
-          courses[c].push({ ...p, originalIndex });
+          courses[c].push(p);
       });
 
-      // 2. Calcoliamo lo stato di blocco
-      // L'Uscita 2 è bloccata se l'Uscita 1 ha elementi NON serviti.
-      // L'Uscita 3 è bloccata se l'Uscita 2 ha elementi NON serviti.
+      // Calcolo Blocchi (Wait Logic) - IL BAR NON ESISTE PIÙ QUI, QUINDI NON BLOCCA
       const isCourseComplete = (courseNum) => {
-          if (!courses[courseNum] || courses[courseNum].length === 0) return true; // Se vuota, è "completa"
+          if (!courses[courseNum] || courses[courseNum].length === 0) return true; 
           return courses[courseNum].every(p => p.stato === 'servito');
       };
 
@@ -115,27 +159,27 @@ function Cucina() {
           3: { locked: !isCourseComplete(1) || !isCourseComplete(2), completed: isCourseComplete(3) }
       };
 
-      // 3. Raggruppiamo i prodotti "3x Carbonara" all'interno di ogni course
       const finalStructure = [];
       [1, 2, 3].forEach(cNum => {
           if (courses[cNum].length === 0) return;
 
           const groups = [];
           courses[cNum].forEach(p => {
+              // Raggruppiamo visivamente (es. 3x Carbonara anche se di ordini diversi)
               const key = `${p.nome}-${p.stato}-${p.is_pizzeria ? 'piz' : 'cuc'}`;
               const existing = groups.find(g => g.key === key);
+              
               if (existing) {
                   existing.count++;
-                  existing.indices.push(p.originalIndex);
+                  existing.sourceItems.push(p); // Salviamo i riferimenti per il click
               } else {
                   groups.push({
-                      ...p,
+                      ...p, // Copia dati base per visualizzazione
                       key,
                       count: 1,
-                      indices: [p.originalIndex],
-                      // Flag per visualizzazione
-                      isMyStation: !p.is_bar && !p.is_pizzeria, 
-                      stationName: p.is_pizzeria ? "PIZZERIA" : (p.is_bar ? "BAR" : "CUCINA")
+                      sourceItems: [p], // Array di items reali (con ID ordine)
+                      isMyStation: !p.is_pizzeria, // CUCINA: mio se NON è pizzeria
+                      stationName: p.is_pizzeria ? "PIZZERIA" : "CUCINA"
                   });
               }
           });
@@ -175,43 +219,36 @@ function Cucina() {
       </header>
       
       <div className="ordini-grid">
-        {ordini.length === 0 && (
+        {tavoli.length === 0 && (
             <div style={{textAlign: 'center', width: '100%', marginTop: '50px', color: '#888'}}>
                 <h2>Nessuna comanda in attesa 👨‍🍳</h2>
                 <p>Tutto pulito!</p>
             </div>
         )}
 
-        {ordini.map(ordine => {
-            const strutturaOrdine = processaOrdine(ordine.prodotti);
+        {tavoli.map(tavoloData => {
+            const strutturaOrdine = processaTavolo(tavoloData.items);
             
             return (
-                <div key={ordine.id} className="ticket" style={{borderTop: '5px solid #d35400'}}>
-                    {/* Header Ticket */}
+                <div key={tavoloData.tavolo} className="ticket" style={{borderTop: '5px solid #d35400'}}>
                     <div className="ticket-header" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                        <span style={{fontSize:'1.5rem'}}>Tavolo <strong>{ordine.tavolo}</strong></span>
-                        <span style={{fontSize:'0.9rem', color:'#666'}}>{new Date(ordine.data_ora).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                        <span style={{fontSize:'1.8rem'}}>Tavolo <strong>{tavoloData.tavolo}</strong></span>
+                        <span style={{fontSize:'0.9rem', color:'#666'}}>{new Date(tavoloData.orarioMin).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
                     </div>
                     
                     <div className="ticket-body" style={{textAlign:'left', paddingBottom:'5px'}}>
                         
                         {strutturaOrdine.map(section => {
-                            // Colori Header Uscita
-                            let headerColor = "#7f8c8d"; // Default Locked
-                            let headerBg = "#ecf0f1";
-                            let title = `${section.courseNum}ª USCITA`;
+                            let headerColor = "#7f8c8d"; let headerBg = "#ecf0f1"; let title = `${section.courseNum}ª USCITA`;
                             
                             if (!section.locked) {
                                 if(section.courseNum === 1) { headerColor = "#27ae60"; headerBg = "#e8f8f5"; title += " (INIZIARE)"; }
                                 if(section.courseNum === 2) { headerColor = "#f39c12"; headerBg = "#fef9e7"; title += " (A SEGUIRE)"; }
                                 if(section.courseNum === 3) { headerColor = "#c0392b"; headerBg = "#f9ebea"; title += " (DESSERT)"; }
-                            } else {
-                                title += " (IN ATTESA)";
-                            }
+                            } else { title += " (IN ATTESA)"; }
 
                             return (
                                 <div key={section.courseNum} style={{marginBottom:'15px'}}>
-                                    {/* Intestazione Uscita */}
                                     <div style={{
                                         background: headerBg, color: headerColor, 
                                         padding:'5px 10px', fontSize:'0.85rem', fontWeight:'bold', 
@@ -222,46 +259,30 @@ function Cucina() {
                                         {section.locked && <span>🔒 BLOCCATO</span>}
                                     </div>
 
-                                    {/* Lista Piatti */}
                                     {section.items.map(item => {
                                         const isServito = item.stato === 'servito';
                                         
-                                        // LOGICA VISIVA
-                                        // 1. Se è bloccato e non è servito -> Opacità bassa, non cliccabile
-                                        // 2. Se non è mio (è pizzeria) -> Sfondo grigio, non cliccabile
-                                        // 3. Se è mio e attivo -> Bianco, Cliccabile
-                                        
-                                        let bg = 'white';
-                                        let opacity = 1;
-                                        let cursor = 'pointer';
+                                        let bg = 'white'; let opacity = 1; let cursor = 'pointer';
 
                                         if (section.locked && !isServito) {
-                                            opacity = 0.5;
-                                            cursor = 'not-allowed';
-                                            bg = '#f9f9f9';
+                                            opacity = 0.5; cursor = 'not-allowed'; bg = '#f9f9f9';
                                         } else if (!item.isMyStation) {
-                                            bg = '#f0f0f0'; // Grigio per Pizzeria/Bar
-                                            cursor = 'default'; // Non cliccabile
+                                            bg = '#f0f0f0'; cursor = 'default';
                                         } else if (isServito) {
-                                            bg = '#e8f5e9'; // Verde servito
-                                            cursor = 'default';
+                                            bg = '#e8f5e9'; cursor = 'default';
                                         }
 
                                         return (
                                             <div 
                                                 key={item.key}
                                                 onClick={() => {
-                                                    // Si può cliccare SOLO se: è mio, non è servito, non è bloccato
                                                     if (item.isMyStation && !isServito && !section.locked) {
-                                                        segnaPiattoServito(ordine.id, ordine.prodotti, item.indices);
+                                                        segnaPiattoServito(item.sourceItems);
                                                     }
                                                 }}
                                                 style={{
-                                                    padding:'10px', 
-                                                    borderBottom:'1px dashed #ddd',
-                                                    background: bg,
-                                                    opacity: opacity,
-                                                    cursor: cursor,
+                                                    padding:'10px', borderBottom:'1px dashed #ddd',
+                                                    background: bg, opacity: opacity, cursor: cursor,
                                                     display: 'flex', justifyContent:'space-between', alignItems:'center'
                                                 }}
                                             >
@@ -269,21 +290,18 @@ function Cucina() {
                                                     <span style={{
                                                         background: isServito ? '#95a5a6' : (item.isMyStation ? '#d35400' : '#7f8c8d'),
                                                         color:'white', padding:'2px 8px', borderRadius:'12px',
-                                                        fontWeight:'bold', fontSize:'0.8rem', minWidth:'25px', textAlign:'center'
+                                                        fontWeight:'bold', fontSize:'0.9rem', minWidth:'25px', textAlign:'center'
                                                     }}>
                                                         {item.count}x
                                                     </span>
-                                                    
                                                     <div>
                                                         <span style={{
-                                                            fontSize:'1rem', 
-                                                            fontWeight: isServito ? 'normal' : 'bold',
+                                                            fontSize:'1.1rem', fontWeight: isServito ? 'normal' : 'bold',
                                                             textDecoration: isServito ? 'line-through' : 'none',
                                                             color: isServito ? '#aaa' : '#000'
                                                         }}>
                                                             {item.nome}
                                                         </span>
-                                                        {/* Badge competenza se non è mio */}
                                                         {!item.isMyStation && (
                                                             <span style={{fontSize:'0.7rem', marginLeft:'8px', background:'#bdc3c7', color:'white', padding:'2px 4px', borderRadius:'3px'}}>
                                                                 {item.stationName}
@@ -292,16 +310,10 @@ function Cucina() {
                                                     </div>
                                                 </div>
 
-                                                {/* Stato / Orario */}
                                                 <div style={{textAlign:'right'}}>
                                                     {isServito ? (
-                                                        <div style={{color:'green', fontSize:'0.8rem'}}>
-                                                            ✅ Fatto<br/>
-                                                            <small>{item.ora_servizio}</small>
-                                                        </div>
-                                                    ) : (
-                                                        section.locked ? <span style={{fontSize:'1.2rem'}}>⏳</span> : null
-                                                    )}
+                                                        <div style={{color:'green', fontSize:'0.8rem'}}>✅ {item.ora_servizio}</div>
+                                                    ) : ( section.locked ? <span style={{fontSize:'1.2rem'}}>⏳</span> : null )}
                                                 </div>
                                             </div>
                                         );
