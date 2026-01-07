@@ -25,7 +25,7 @@ function Cassa() {
     else alert("Password Errata");
   };
 
-  const aggiornaDati = () => {
+const aggiornaDati = () => {
     if (!infoRistorante?.id) return;
     fetch(`${API_URL}/api/polling/${infoRistorante.id}`)
       .then(res => res.json())
@@ -35,9 +35,18 @@ function Cassa() {
         
         ordini.forEach(ord => {
             const t = ord.tavolo;
-            if(!raggruppati[t]) raggruppati[t] = { ordini: [], totale: 0 };
+            if(!raggruppati[t]) raggruppati[t] = { 
+                ordini: [], 
+                totale: 0,
+                fullLog: "" // Aggiungiamo il campo per il log completo
+            };
             raggruppati[t].ordini.push(ord);
             raggruppati[t].totale += Number(ord.totale || 0);
+            
+            // Concateniamo i dettagli (log) se presenti
+            if(ord.dettagli && ord.dettagli.trim() !== "") {
+                raggruppati[t].fullLog += ord.dettagli + "\n";
+            }
         });
         setTavoliAttivi(raggruppati);
       })
@@ -198,8 +207,17 @@ const eliminaProdotto = async (ord, indexDaEliminare) => {
                   </thead>
                   <tbody>
                       {storico.map(ord => (
-                          <tr key={ord.id} style={{borderBottom:'1px solid #eee'}}>
-                              <td style={{padding:10}}>{new Date(ord.data_ora).toLocaleString()}</td>
+                          <tr key={ord.id} style={{
+                              borderBottom:'1px solid #eee', 
+                              // SE NON E' PAGATO -> SFONDO VERDINO E BORDO VERDE
+                              background: ord.stato !== 'pagato' ? '#e8f8f5' : 'white', 
+                              borderLeft: ord.stato !== 'pagato' ? '5px solid #27ae60' : 'none' 
+                          }}>
+                              <td style={{padding:10}}>
+                                  {new Date(ord.data_ora).toLocaleString()}
+                                  {/* SE NON E' PAGATO -> SCRITTA LIVE */}
+                                  {ord.stato !== 'pagato' && <div style={{color:'#27ae60', fontWeight:'bold', fontSize:'11px'}}>🟢 LIVE (APERTO)</div>}
+                              </td>
                               <td style={{padding:10}}>Tavolo {ord.tavolo}</td>
                               <td style={{padding:10, fontSize:13}}>{ord.prodotti.map(p=>p.nome).join(', ')}</td>
                               <td style={{padding:10, fontWeight:'bold'}}>{ord.totale}€</td>
