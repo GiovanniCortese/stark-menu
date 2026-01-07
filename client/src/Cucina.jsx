@@ -1,9 +1,9 @@
-// client/src/Cucina.jsx - VERSIONE V36 (TAVOLO UNIFICATO + NO BAR) 👨‍🍳
+// client/src/Cucina.jsx - VERSIONE V39 (FILTRO PACCHETTI COMPLETATI) 👨‍🍳
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
 function Cucina() {
-  const [tavoli, setTavoli] = useState([]); // Ora gestiamo array di Tavoli, non di ordini
+  const [tavoli, setTavoli] = useState([]); 
   const [infoRistorante, setInfoRistorante] = useState(null); 
   const [isAuthorized, setIsAuthorized] = useState(false); 
   const [passwordInput, setPasswordInput] = useState("");
@@ -36,32 +36,35 @@ function Cucina() {
       fetch(`${API_URL}/api/polling/${infoRistorante.id}`)
         .then(r=>r.json())
         .then(data => {
-           nuoviOrdini.forEach(ord => {
-                // --- MODIFICA FONDAMENTALE: FILTRO "PACCHETTO CONCLUSO" ---
-                // 1. Prendiamo solo i cibi (escludiamo il Bar che non ci interessa)
+            const nuoviOrdini = data.nuovi_ordini || [];
+            const gruppiTavolo = {}; // Contenitore per raggruppare i tavoli
+
+            nuoviOrdini.forEach(ord => {
+                // --- 1. FILTRO PACCHETTO "GIÀ MANGIATO" ---
+                // Se questo specifico invio è stato completato, lo ignoriamo.
+                
+                // Prendiamo solo i cibi (escludiamo il Bar)
                 const itemsDiCompetenza = Array.isArray(ord.prodotti) 
                     ? ord.prodotti.filter(p => !p.is_bar) 
                     : [];
 
-                // 2. Controlliamo se questo specifico invio è TUTTO servito
-                // (Se itemsDiCompetenza è vuoto, è probabilmente solo bar, quindi lo ignoriamo o meno a seconda della tua logica. Qui assumiamo che se è > 0 controlliamo lo stato)
+                // Se ci sono cibi e sono TUTTI serviti, saltiamo il giro (return)
                 const isTuttoServito = itemsDiCompetenza.length > 0 && itemsDiCompetenza.every(p => p.stato === 'servito');
-
-                // 3. SE È TUTTO SERVITO, SALTIAMO QUESTO ORDINE (RETURN)
-                // Così non verrà aggiunto alla lista del tavolo e sparirà dallo schermo.
+                
                 if (isTuttoServito) return; 
 
-                // --- DA QUI IN POI È LA LOGICA STANDARD ---
+                // --- 2. LOGICA DI RAGGRUPPAMENTO TAVOLO ---
                 const t = ord.tavolo;
                 if(!gruppiTavolo[t]) gruppiTavolo[t] = { tavolo: t, items: [], orarioMin: ord.data_ora };
                 
+                // Manteniamo l'orario del primo ordine attivo
                 if(new Date(ord.data_ora) < new Date(gruppiTavolo[t].orarioMin)) {
                     gruppiTavolo[t].orarioMin = ord.data_ora;
                 }
 
                 if(Array.isArray(ord.prodotti)) {
                     ord.prodotti.forEach((prod, idx) => {
-                        // --- FILTRO BAR: SE È BAR, LO SALTIAMO COMPLETAMENTE ---
+                        // Escludiamo il Bar dalla vista Cucina
                         if (prod.is_bar) return;
 
                         gruppiTavolo[t].items.push({
@@ -74,17 +77,15 @@ function Cucina() {
                 }
             });
 
-            // Convertiamo in array e filtriamo tavoli vuoti (es. solo bibite) o completati
+            // Convertiamo in array e filtriamo tavoli vuoti
             const listaTavoli = Object.values(gruppiTavolo).filter(gruppo => {
                 if (gruppo.items.length === 0) return false;
-                // Mostra il tavolo finché c'è almeno un piatto non servito
-                // O se vuoi vedere lo storico finché non pagano, togli questo check.
-                // Qui: nascondiamo se TUTTO è servito.
+                // Controllo di sicurezza finale (anche se il filtro sopra fa già il grosso del lavoro)
                 const tuttiFiniti = gruppo.items.every(p => p.stato === 'servito');
                 return !tuttiFiniti;
             });
 
-            // Ordiniamo per orario di arrivo
+            // Ordiniamo per orario
             listaTavoli.sort((a,b) => new Date(a.orarioMin) - new Date(b.orarioMin));
 
             setTavoli(listaTavoli);
@@ -100,27 +101,23 @@ function Cucina() {
       } 
   }, [isAuthorized, infoRistorante]);
 
-  // --- AZIONE: SEGNA COME SERVITO (GESTIONE MULTI-ORDINE) ---
+  // --- AZIONE: SEGNA COME SERVITO ---
   const segnaPiattoServito = async (targetItems) => {
-      // targetItems è un array di oggetti { parentOrderId, originalIndex, ... }
-      // Dobbiamo raggruppare le modifiche per Ordine ID, perché l'API lavora per ordine
-      
       const updatesPorOrdine = {};
 
       targetItems.forEach(item => {
           if(!updatesPorOrdine[item.parentOrderId]) {
               updatesPorOrdine[item.parentOrderId] = {
-                  originalProducts: item.fullOrderProducts, // Array originale completo (clonato dopo)
+                  originalProducts: item.fullOrderProducts,
                   indicesToUpdate: []
               };
           }
           updatesPorOrdine[item.parentOrderId].indicesToUpdate.push(item.originalIndex);
       });
 
-      // Eseguiamo le chiamate API (una per ogni ordine coinvolto)
       const promises = Object.keys(updatesPorOrdine).map(async (orderId) => {
           const data = updatesPorOrdine[orderId];
-          const nuoviProdotti = [...data.originalProducts]; // Copia array
+          const nuoviProdotti = [...data.originalProducts];
           const oraAttuale = new Date().toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'});
           
           let nomePiattoLog = "";
@@ -128,7 +125,7 @@ function Cucina() {
           data.indicesToUpdate.forEach(idx => {
               nuoviProdotti[idx].stato = 'servito';
               nuoviProdotti[idx].ora_servizio = oraAttuale;
-              nomePiattoLog = nuoviProdotti[idx].nome; // Prendiamo un nome per il log
+              nomePiattoLog = nuoviProdotti[idx].nome;
           });
 
           const logMsg = `[CUCINA 👨‍🍳] HA SERVITO: ${nomePiattoLog} (x${data.indicesToUpdate.length})`;
@@ -154,7 +151,6 @@ function Cucina() {
           courses[c].push(p);
       });
 
-      // Calcolo Blocchi (Wait Logic) - IL BAR NON ESISTE PIÙ QUI, QUINDI NON BLOCCA
       const isCourseComplete = (courseNum) => {
           if (!courses[courseNum] || courses[courseNum].length === 0) return true; 
           return courses[courseNum].every(p => p.stato === 'servito');
@@ -172,20 +168,19 @@ function Cucina() {
 
           const groups = [];
           courses[cNum].forEach(p => {
-              // Raggruppiamo visivamente (es. 3x Carbonara anche se di ordini diversi)
               const key = `${p.nome}-${p.stato}-${p.is_pizzeria ? 'piz' : 'cuc'}`;
               const existing = groups.find(g => g.key === key);
               
               if (existing) {
                   existing.count++;
-                  existing.sourceItems.push(p); // Salviamo i riferimenti per il click
+                  existing.sourceItems.push(p);
               } else {
                   groups.push({
-                      ...p, // Copia dati base per visualizzazione
+                      ...p,
                       key,
                       count: 1,
-                      sourceItems: [p], // Array di items reali (con ID ordine)
-                      isMyStation: !p.is_pizzeria, // CUCINA: mio se NON è pizzeria
+                      sourceItems: [p],
+                      isMyStation: !p.is_pizzeria, 
                       stationName: p.is_pizzeria ? "PIZZERIA" : "CUCINA"
                   });
               }
