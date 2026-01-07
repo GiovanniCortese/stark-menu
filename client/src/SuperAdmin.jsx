@@ -211,7 +211,7 @@ function SuperAdmin() {
       {showModal && (
           <div style={{
               position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-              backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 9999,
+              backgroundColor: 'rgba(0, 0, 0, 0.7)', zIndex: 9999,
               display: 'flex', justifyContent: 'center', alignItems: 'center'
           }}>
               <div style={{background: 'white', padding: '30px', borderRadius: '10px', width: '400px', maxWidth:'90%'}}>
@@ -224,7 +224,7 @@ function SuperAdmin() {
                       </div>
                       <div>
                           <label>Slug (URL):</label>
-                          <input required name="slug" value={formData.slug} onChange={handleInputChange} placeholder="es. pizzeria-da-mario" style={{width:'100%', padding:'8px', marginTop:'5px', background:'#eee'}} />
+                          <input required name="slug" value={formData.slug} onChange={handleInputChange} placeholder="es. pizzeria-da-mario" style={{width:'100%', padding:'8px', marginTop:'5px', background:'#000000ff'}} />
                           <small style={{color:'gray'}}>L'indirizzo sarà: .../admin/<strong>{formData.slug}</strong></small>
                       </div>
                       <div>
@@ -235,7 +235,7 @@ function SuperAdmin() {
                           <label>Telefono:</label>
                           <input name="telefono" value={formData.telefono} onChange={handleInputChange} style={{width:'100%', padding:'8px', marginTop:'5px'}} />
                       </div>
-                      <div style={{borderTop:'1px solid #eee', paddingTop:'10px'}}>
+                      <div style={{borderTop:'1px solid #000000ff', paddingTop:'10px'}}>
                           <label>Password Admin:</label>
                           <input name="password" type="password" value={formData.password} onChange={handleInputChange} placeholder={editingId ? "Lascia vuoto per non cambiare" : "Password richiesta"} style={{width:'100%', padding:'8px', marginTop:'5px'}} />
                       </div>
