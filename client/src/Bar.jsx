@@ -117,6 +117,15 @@ function Bar() {
               });
           }
       });
+      
+// Raggruppa gli ordini per tavolo (V32)
+  const ordiniPerTavolo = Object.values(ordini.reduce((acc, ordine) => {
+      if (!acc[ordine.tavolo]) {
+          acc[ordine.tavolo] = { tavolo: ordine.tavolo, listaOrdini: [] };
+      }
+      acc[ordine.tavolo].listaOrdini.push(ordine);
+      return acc;
+  }, {}));
 
       // Ordina: Prima "in_attesa", poi "servito"
       return gruppi.sort((a, b) => {
@@ -150,74 +159,78 @@ function Bar() {
       <div className="ordini-grid">
         {ordini.length === 0 && <div style={{textAlign: 'center', width: '100%', marginTop: '50px', color: '#fff'}}><h2>Tutto pulito al Bar! 🍺</h2></div>}
 
-        {ordini.map(ord => {
-            // Calcoliamo i gruppi da mostrare per questo ticket
-            const gruppiProdotti = getProdottiRaggruppati(ord.prodotti);
-
-            return (
-                <div key={ord.id} className="ticket" style={{background:'#ecf0f1', borderTop:'5px solid #3498db'}}>
-                    <div className="ticket-header" style={{background:'#2980b9', color:'white'}}>
-                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                            <span style={{fontSize:'1.3rem'}}>Tavolo <strong>{ord.tavolo}</strong></span>
-                            <span style={{fontSize:'0.9rem', opacity:0.9}}>{ord.cameriere || ''}</span>
-                        </div>
-                        <div style={{fontSize:'0.9rem', marginTop:'5px'}}>{new Date(ord.data_ora).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
-                    </div>
-                    
-                    <div className="ticket-body" style={{textAlign:'left'}}>
-                        {gruppiProdotti.map((gruppo, idx) => {
-                            const isServito = gruppo.stato === 'servito';
-                            
-                            // Al click passiamo il PRIMO indice disponibile di questo gruppo
-                            // Così se clicchi "3x Birra", ne spunti una sola e il contatore scende a 2x
-                            const indiceDaModificare = gruppo.indices[0]; 
-
-                            return (
-                                <div 
-                                    key={gruppo.key} 
-                                    onClick={() => segnaBibitaServita(ord.id, ord.prodotti, indiceDaModificare)}
-                                    style={{
-                                        padding:'15px 10px', 
-                                        borderBottom:'1px dashed #bdc3c7',
-                                        cursor:'pointer',
-                                        background: isServito ? '#d4efdf' : 'white',
-                                        opacity: isServito ? 0.6 : 1,
-                                        display: 'flex', justifyContent:'space-between', alignItems:'center'
-                                    }}
-                                >
-                                    <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-                                        {/* Badge Quantità */}
-                                        <span style={{
-                                            background: isServito ? '#95a5a6' : '#e67e22',
-                                            color:'white',
-                                            padding:'4px 8px',
-                                            borderRadius:'50%',
-                                            fontWeight:'bold',
-                                            fontSize:'0.9rem',
-                                            minWidth:'30px',
-                                            textAlign:'center'
-                                        }}>
-                                            {gruppo.count}x
-                                        </span>
-
-                                        <span style={{
-                                            fontSize:'1.1rem', 
-                                            fontWeight: isServito ? 'normal' : 'bold',
-                                            textDecoration: isServito ? 'line-through' : 'none',
-                                            color: isServito ? '#7f8c8d' : '#2c3e50'
-                                        }}>
-                                            {gruppo.nome}
-                                        </span>
-                                    </div>
-                                    
-                                    {isServito && <span style={{fontSize:'1.2rem'}}>✅</span>}
-                                </div>
-                            );
-                        })}
-                    </div>
+   {ordiniPerTavolo.map(gruppo => (
+            <div key={gruppo.tavolo} className="ticket" style={{background:'#ecf0f1', borderTop:'5px solid #3498db'}}>
+                <div className="ticket-header" style={{background:'#2980b9', color:'white', padding:'10px'}}>
+                    <span style={{fontSize:'1.5rem'}}>Tavolo <strong>{gruppo.tavolo}</strong></span>
                 </div>
-            );
-        })}
+                
+                <div className="ticket-body" style={{textAlign:'left', paddingBottom:'5px'}}>
+                    {gruppo.listaOrdini.map(ord => {
+                        // Usiamo la funzione helper creata prima per raggruppare i prodotti di QUESTO ordine
+                        const prodottiRaggruppati = getProdottiRaggruppati(ord.prodotti);
+                        if(prodottiRaggruppati.length === 0) return null;
+
+                        return (
+                            <div key={ord.id} style={{marginBottom: '10px', borderBottom:'2px solid #bdc3c7'}}>
+                                {/* Intestazione dell'ordine specifico (Orario) */}
+                                <div style={{
+                                    fontSize:'0.85rem', 
+                                    background:'#d6eaf8', 
+                                    padding:'4px 10px', 
+                                    color:'#2980b9', 
+                                    fontWeight:'bold',
+                                    display:'flex', justifyContent:'space-between'
+                                }}>
+                                    <span>Ore {new Date(ord.data_ora).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                    <span>{ord.cameriere}</span>
+                                </div>
+
+                                {/* Lista Prodotti */}
+                                {prodottiRaggruppati.map((gruppoProd) => {
+                                    const isServito = gruppoProd.stato === 'servito';
+                                    const indiceDaModificare = gruppoProd.indices[0]; 
+
+                                    return (
+                                        <div 
+                                            key={gruppoProd.key} 
+                                            onClick={() => segnaBibitaServita(ord.id, ord.prodotti, indiceDaModificare)}
+                                            style={{
+                                                padding:'12px 10px', 
+                                                borderBottom:'1px dashed #ecf0f1',
+                                                cursor:'pointer',
+                                                background: isServito ? '#d4efdf' : 'white',
+                                                opacity: isServito ? 0.6 : 1,
+                                                display: 'flex', justifyContent:'space-between', alignItems:'center'
+                                            }}
+                                        >
+                                            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+                                                <span style={{
+                                                    background: isServito ? '#95a5a6' : '#e67e22',
+                                                    color:'white', padding:'4px 8px', borderRadius:'50%',
+                                                    fontWeight:'bold', fontSize:'0.9rem', minWidth:'30px', textAlign:'center'
+                                                }}>
+                                                    {gruppoProd.count}x
+                                                </span>
+                                                <span style={{
+                                                    fontSize:'1.1rem', 
+                                                    fontWeight: isServito ? 'normal' : 'bold',
+                                                    textDecoration: isServito ? 'line-through' : 'none',
+                                                    color: isServito ? '#7f8c8d' : '#2c3e50'
+                                                }}>
+                                                    {gruppoProd.nome}
+                                                </span>
+                                            </div>
+                                            {isServito && <span>✅</span>}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        ))}
       </div>
     </div>
   );
