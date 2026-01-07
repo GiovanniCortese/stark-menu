@@ -86,18 +86,15 @@ function SuperAdmin() {
   };
 
   // --- AZIONE 2: SERVIZIO CUCINA (APERTO/CHIUSO) ---
-  const toggleServizioCucina = async (id, statoAttuale) => {
-      // FIX LOGICA: Se è true diventa false, se è false diventa true.
-      // Il problema precedente era che lo stato iniziale era undefined.
-      const nuovoStato = !statoAttuale;
-      
-      setRistoranti(ristoranti.map(r => r.id === id ? { ...r, servizio_attivo: nuovoStato } : r));
-
-      await fetch(`${API_URL}/api/ristorante/servizio/${id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ servizio_attivo: nuovoStato })
-      });
+   const toggleSospensione = async (id, statoAttuale) => {
+    const nuovoStato = !statoAttuale; 
+    setRistoranti(ristoranti.map(r => r.id === id ? { ...r, ordini_abilitati: nuovoStato } : r));
+    
+    await fetch(`${API_URL}/api/super/ristoranti/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ordini_abilitati: nuovoStato }) 
+    });
   };
 
   const entraNelPannello = (slug) => { localStorage.setItem(`stark_session_${slug}`, "true"); window.open(`/admin/${slug}`, '_blank'); };
