@@ -1,3 +1,4 @@
+// client/src/components_admin/AdminMenu.jsx
 import { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
@@ -8,10 +9,28 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
   // --- FUNZIONI DI SERVIZIO ---
   const toggleServizio = async () => { 
-      if (!user.superAdminAbilitato) { alert("⛔ Bloccato dal Super Admin"); return; }
+      // 🛑 BLOCCO DI SICUREZZA: Se il Super Admin ha disabilitato (PAUSA), l'admin NON può fare nulla.
+      if (!user.superAdminAbilitato) { 
+          alert("⛔ ATTENZIONE: Il servizio è stato BLOCCATO dal Super Admin.\nNon puoi riattivare gli ordini finché l'account è in pausa."); 
+          return; 
+      }
+
       const n = !config.servizio_attivo; 
+      
+      // Aggiornamento ottimistico
       setConfig({...config, servizio_attivo:n}); 
-      await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({servizio_attivo:n})}); 
+      
+      try {
+          await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, {
+              method:'PUT', 
+              headers:{'Content-Type':'application/json'}, 
+              body:JSON.stringify({servizio_attivo:n})
+          }); 
+      } catch (error) {
+          alert("Errore di connessione. Impossibile cambiare stato.");
+          // Revert in caso di errore
+          setConfig({...config, servizio_attivo: !n});
+      }
   };
 
   const handleSalvaPiatto = async (e) => { 
@@ -101,7 +120,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             alert("⚠️ ERRORE SERVER: " + (data.error || "Non salvato"));
             ricaricaDati(); // Reverte in caso di errore
         } else {
-            // Se va tutto bene, silenzioso o log console
             console.log("✅ Ordine salvato correttamente sul server!");
         }
     } catch (error) {
@@ -113,11 +131,24 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   return (
     <DragDropContext onDragEnd={onDragEnd}>
         {/* Pulsante Servizio */}
-        <div className="card" style={{border: user.superAdminAbilitato ? '2px solid #333' : '2px solid red', background: user.superAdminAbilitato ? (config.servizio_attivo ? '#fff3cd' : '#f8d7da') : '#ffecec', marginBottom:'20px', textAlign:'center'}}>
+        <div className="card" style={{
+            border: user.superAdminAbilitato ? '2px solid #333' : '2px solid red', 
+            background: user.superAdminAbilitato ? (config.servizio_attivo ? '#fff3cd' : '#f8d7da') : '#ffecec', 
+            marginBottom:'20px', textAlign:'center', padding: '15px'
+        }}>
               {!user.superAdminAbilitato ? (
-                  <div><h2 style={{color:'red', margin:0}}>⛔ SERVIZIO DISABILITATO DAL SUPER ADMIN</h2></div>
+                  <div>
+                      <h2 style={{color:'red', margin:0, fontSize:'1.5rem'}}>⛔ ATTIVITÀ SOSPESA DAL SUPER ADMIN</h2>
+                      <p style={{color:'#c0392b', fontWeight:'bold'}}>Non puoi aprire gli ordini finché l'account è in pausa.</p>
+                  </div>
               ) : (
-                  <button onClick={toggleServizio} style={{background: config.servizio_attivo ? '#2ecc71':'#e74c3c', width:'100%', padding:'15px', color:'white', fontWeight:'bold', fontSize:'18px', border:'none', borderRadius:'5px', cursor:'pointer'}}>{config.servizio_attivo ? "✅ ORDINI APERTI" : "🛑 ORDINI CHIUSI"}</button>
+                  <button onClick={toggleServizio} style={{
+                      background: config.servizio_attivo ? '#2ecc71':'#e74c3c', 
+                      width:'100%', padding:'15px', color:'white', fontWeight:'bold', fontSize:'18px', 
+                      border:'none', borderRadius:'5px', cursor:'pointer'
+                  }}>
+                      {config.servizio_attivo ? "✅ ORDINI APERTI (Clicca per Chiudere)" : "🛑 ORDINI CHIUSI (Clicca per Aprire)"}
+                  </button>
               )}
         </div>
 
