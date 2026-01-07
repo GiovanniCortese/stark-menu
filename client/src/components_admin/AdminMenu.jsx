@@ -6,6 +6,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const [editId, setEditId] = useState(null); 
   const [uploading, setUploading] = useState(false);
 
+  // --- FUNZIONI DI SERVIZIO ---
   const toggleServizio = async () => { 
       if (!user.superAdminAbilitato) { alert("⛔ Bloccato dal Super Admin"); return; }
       const n = !config.servizio_attivo; 
@@ -19,83 +20,94 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       const cat = nuovoPiatto.categoria || (categorie.length > 0 ? categorie[0].nome : "");
       const payload = {...nuovoPiatto, categoria:cat, ristorante_id:user.id};
       
-      if(editId) {
-          await fetch(`${API_URL}/api/prodotti/${editId}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }); 
-          alert("Piatto modificato!");
-      } else {
-          if(categorie.length===0) return alert("Crea prima una categoria!"); 
-          await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }); 
-          alert("Piatto aggiunto!");
-      }
-      setNuovoPiatto({nome:'', prezzo:'', categoria:cat, sottocategoria: '', descrizione:'', immagine_url:''}); 
-      setEditId(null);
-      ricaricaDati(); 
+      try {
+          if(editId) {
+              await fetch(`${API_URL}/api/prodotti/${editId}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }); 
+              alert("✅ Piatto modificato!");
+          } else {
+              if(categorie.length===0) return alert("Crea prima una categoria!"); 
+              await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }); 
+              alert("✅ Piatto aggiunto!");
+          }
+          setNuovoPiatto({nome:'', prezzo:'', categoria:cat, sottocategoria: '', descrizione:'', immagine_url:''}); 
+          setEditId(null);
+          ricaricaDati(); 
+      } catch(err) { alert("❌ Errore salvataggio: " + err.message); }
   };
 
   const handleFileChange = async (e) => { 
       const f=e.target.files[0]; if(!f)return; setUploading(true); 
       const fd=new FormData(); fd.append('photo',f); 
-      const r=await fetch(`${API_URL}/api/upload`,{method:'POST',body:fd}); const d=await r.json(); 
-      if(d.url) setNuovoPiatto(p=>({...p, immagine_url:d.url})); setUploading(false); 
+      try {
+        const r=await fetch(`${API_URL}/api/upload`,{method:'POST',body:fd}); const d=await r.json(); 
+        if(d.url) setNuovoPiatto(p=>({...p, immagine_url:d.url})); 
+      } catch(e) { console.error(e); } finally { setUploading(false); }
   };
 
   const cancellaPiatto = async (id) => { if(confirm("Eliminare?")) { await fetch(`${API_URL}/api/prodotti/${id}`, {method:'DELETE'}); ricaricaDati(); }};
   const avviaModifica = (piatto) => { setEditId(piatto.id); setNuovoPiatto(piatto); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const annullaModifica = () => { setEditId(null); setNuovoPiatto({nome:'', prezzo:'', categoria:categorie[0]?.nome || '', sottocategoria: '', descrizione:'', immagine_url:''}); };
-  const duplicaPiatto = async (piattoOriginale) => { if(!confirm(`Duplicare?`)) return; const copia = { ...piattoOriginale, nome: `${piattoOriginale.nome} (Copia)`, ristorante_id: user.id }; try { await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(copia) }); ricaricaDati(); } catch(e) { alert("Errore"); } };
+  const duplicaPiatto = async (piattoOriginale) => { if(!confirm(`Duplicare?`)) return; const copia = { ...piattoOriginale, nome: `${piattoOriginale.nome} (Copia)`, ristorante_id: user.id }; await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(copia) }); ricaricaDati(); };
 
-  // --- LOGICA DRAG & DROP CORRETTA ---
+  // --- LOGICA DRAG & DROP CON DEBUG ---
   const onDragEnd = async (result) => {
     if (!result.destination || result.type !== 'DISH') return;
     
-    const sourceCat = result.source.droppableId.replace("cat-", "");
     const destCat = result.destination.droppableId.replace("cat-", "");
     const piattoId = parseInt(result.draggableId);
 
-    // 1. Trova il piatto spostato
+    // 1. Trova piatto
     const piattoSpostato = menu.find(p => p.id === piattoId);
     if (!piattoSpostato) return;
 
-    // 2. Crea una copia del menu per lavorarci
-    // Aggiorna subito la categoria del piatto spostato
+    // 2. Aggiornamento Ottimistico Locale
     const newMenuState = menu.map(p => {
         if (p.id === piattoId) return { ...p, categoria: destCat };
         return p;
     });
 
-    // 3. Prepara l'array della categoria di destinazione ORDINATO
-    // È CRUCIALE ordinare per posizione prima di fare lo splice, altrimenti l'indice è sbagliato
+    // 3. Calcolo Ordine
     const piattiDestinazione = newMenuState
         .filter(p => p.categoria === destCat && p.id !== piattoId)
         .sort((a, b) => (a.posizione || 0) - (b.posizione || 0));
 
-    // 4. Inserisci il piatto nella nuova posizione
     piattiDestinazione.splice(result.destination.index, 0, { ...piattoSpostato, categoria: destCat });
 
-    // 5. Ricalcola le posizioni per tutti i piatti di quella categoria
+    // Payload per il server
     const updatePayload = piattiDestinazione.map((p, idx) => ({
         id: p.id,
         posizione: idx,
         categoria: destCat
     }));
 
-    // 6. Aggiorna lo stato locale immediatamente (Ottimistico)
-    // Dobbiamo aggiornare il 'menu' globale con i nuovi valori di posizione
+    // Applica visualmente subito
     const finalMenu = newMenuState.map(p => {
         const updatedP = updatePayload.find(up => up.id === p.id);
         return updatedP ? { ...p, ...updatedP } : p;
     });
     setMenu(finalMenu);
 
-    // 7. Salva su Server
-    await fetch(`${API_URL}/api/prodotti/riordina`, { 
-        method: 'PUT', 
-        headers:{'Content-Type':'application/json'}, 
-        body: JSON.stringify({ prodotti: updatePayload }) 
-    });
-    
-    // Non serve ricaricaDati() se l'aggiornamento locale è fatto bene, ma per sicurezza lo lasciamo
-    // ricaricaDati(); 
+    // 4. CHIAMATA SERVER CON LOGGING
+    try {
+        const response = await fetch(`${API_URL}/api/prodotti/riordina`, { 
+            method: 'PUT', 
+            headers:{'Content-Type':'application/json'}, 
+            body: JSON.stringify({ prodotti: updatePayload }) 
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+            alert("⚠️ ERRORE SERVER: " + (data.error || "Non salvato"));
+            ricaricaDati(); // Reverte in caso di errore
+        } else {
+            // Se va tutto bene, silenzioso o log console
+            console.log("✅ Ordine salvato correttamente sul server!");
+        }
+    } catch (error) {
+        alert("❌ ERRORE DI RETE: " + error.message);
+        ricaricaDati();
+    }
   };
 
   return (
@@ -139,7 +151,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                 <Droppable droppableId={`cat-${cat.nome}`} type="DISH">
                     {(provided, snapshot) => (
                         <div {...provided.droppableProps} ref={provided.innerRef} className="menu-list" style={{background: snapshot.isDraggingOver ? '#f0f0f0' : 'transparent', minHeight: '50px', padding: '5px'}}>
-                            {/* --- QUI LA SOLUZIONE: ORDINAMENTO PRIMA DEL MAP --- */}
                             {menu
                                 .filter(p => p.categoria === cat.nome)
                                 .sort((a,b) => (a.posizione || 0) - (b.posizione || 0)) 
