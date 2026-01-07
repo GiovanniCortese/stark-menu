@@ -8,10 +8,12 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const [uploading, setUploading] = useState(false);
 
   // --- FUNZIONI DI SERVIZIO ---
+// --- FUNZIONI DI SERVIZIO ---
   const toggleServizio = async () => { 
-      // 🛑 BLOCCO DI SICUREZZA: Se il Super Admin ha disabilitato (PAUSA), l'admin NON può fare nulla.
-      if (!user.superAdminAbilitato) { 
-          alert("⛔ ATTENZIONE: Il servizio è stato BLOCCATO dal Super Admin.\nNon puoi riattivare gli ordini finché l'account è in pausa."); 
+      // MODIFICA QUI: Controlliamo config.ordini_abilitati, NON user.superAdminAbilitato
+      // config.ordini_abilitati è il dato aggiornato in tempo reale dal server
+      if (config.ordini_abilitati === false) { 
+          alert("⛔ ATTENZIONE: L'attività è in PAUSA (Sospesa dal Super Admin).\nNon puoi aprire la cucina finché l'account è sospeso."); 
           return; 
       }
 
@@ -28,7 +30,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
           }); 
       } catch (error) {
           alert("Errore di connessione. Impossibile cambiare stato.");
-          // Revert in caso di errore
           setConfig({...config, servizio_attivo: !n});
       }
   };
