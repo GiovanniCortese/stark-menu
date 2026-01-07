@@ -1,321 +1,140 @@
-// client/src/Admin.jsx - VERSIONE V12 (SUPPORTO BAR + MENU) 🛠️
+// client/src/Admin.jsx - VERSIONE V14 (MODULARE CON PATH CORRETTI) 🧱
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+
+// *** IMPORTIAMO I SOTTO-COMPONENTI DALLA CARTELLA SPECIFICA ***
+import AdminMenu from './components_admin/AdminMenu';
+import AdminCategorie from './components_admin/AdminCategorie';
+import AdminGrafica from './components_admin/AdminGrafica';
+import AdminExcel from './components_admin/AdminExcel';
 
 function Admin() {
   const { slug } = useParams(); 
   const navigate = useNavigate();
 
-  // STATI DATI
+  // --- STATI GLOBALI (Condivisi tra i tab) ---
   const [user, setUser] = useState(null); 
   const [loading, setLoading] = useState(true); 
-  
   const [tab, setTab] = useState('menu'); 
+  
+  // Dati condivisi
   const [menu, setMenu] = useState([]); 
   const [categorie, setCategorie] = useState([]); 
   
-  // STATO CONFIG
+  // Configurazione (Grafica e Stato Servizio)
   const [config, setConfig] = useState({ 
-      ordini_abilitati: false, 
-      servizio_attivo: false,
-      logo_url: '',
-      cover_url: '',
-      colore_sfondo: '#222222',
-      colore_titolo: '#ffffff',
-      colore_testo: '#cccccc',
-      colore_prezzo: '#27ae60',
+      ordini_abilitati: false, servizio_attivo: false,
+      logo_url: '', cover_url: '',
+      colore_sfondo: '#222222', colore_titolo: '#ffffff',
+      colore_testo: '#cccccc', colore_prezzo: '#27ae60',
       font_style: 'sans-serif'
   });
 
-  const [uploading, setUploading] = useState(false);
-  const [nuovoPiatto, setNuovoPiatto] = useState({ nome: '', prezzo: '', categoria: '', sottocategoria: '', descrizione: '', immagine_url: '' });
-  
-  // STATI CATEGORIE (Aggiornato per supportare is_bar)
-  const [nuovaCat, setNuovaCat] = useState({ nome: '', descrizione: '', is_bar: false, is_pizzeria: false });
-  const [editCatId, setEditCatId] = useState(null); 
-
-  const [editId, setEditId] = useState(null); 
-  const [fileExcel, setFileExcel] = useState(null);
-
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
-  // --- 1. INIZIALIZZAZIONE SICURA ---
+  // --- INIZIALIZZAZIONE E AUTH ---
   useEffect(() => {
     if (!slug) return;
 
     const init = async () => {
         setLoading(true);
-
         const sessionKey = `stark_session_${slug}`;
         const isGodMode = localStorage.getItem(sessionKey); 
         
         if (!isGodMode) {
             const pass = prompt(`🔒 Admin Panel: ${slug}\nInserisci Password:`);
             if (pass !== "tonystark") {
-                alert("Password Errata");
-                window.location.href = "/"; 
-                return;
+                alert("Password Errata"); window.location.href = "/"; return;
             }
             localStorage.setItem(sessionKey, "true");
         }
 
         try {
+            // 1. Carica Info Ristorante
             const res = await fetch(`${API_URL}/api/menu/${slug}`);
             const data = await res.json();
 
             if (data && data.id) {
-                const userData = {
-                    id: data.id,
+                const userData = { 
+                    id: data.id, 
                     nome: data.ristorante, 
-                    slug: slug,
+                    slug: slug, 
                     superAdminAbilitato: data.ordini_abilitati 
                 };
                 setUser(userData);
                 setMenu(data.menu || []);
+                
+                // 2. Carica Config Extra e Categorie
                 caricaConfigurazioniExtra(userData.id);
-            } else {
-                alert("Ristorante non trovato.");
-                navigate('/');
+            } else { 
+                alert("Ristorante non trovato."); 
+                navigate('/'); 
             }
-        } catch (error) {
-            console.error(error);
-            alert("Errore di connessione al server.");
-        } finally {
-            setLoading(false);
+        } catch (error) { 
+            console.error(error); 
+            alert("Errore connessione."); 
+        } finally { 
+            setLoading(false); 
         }
     };
 
     init();
   }, [slug]);
 
-const caricaConfigurazioniExtra = (id) => {
-    // Carica config e preserva lo stato esistente
+  const caricaConfigurazioniExtra = (id) => {
+    // Fetch Config
     fetch(`${API_URL}/api/ristorante/config/${id}`)
         .then(r=>r.json())
         .then(d => {
-            // Assicuriamoci che i colori abbiano dei valori di default se nulli
-            const safeConfig = {
-                ...d,
-                colore_prezzo: d.colore_prezzo || '#27ae60',
-                colore_titolo: d.colore_titolo || '#ffffff',
-                colore_testo: d.colore_testo || '#cccccc',
-                colore_sfondo: d.colore_sfondo || '#222222',
+            const safeConfig = { 
+                ...d, 
+                colore_prezzo: d.colore_prezzo || '#27ae60', 
+                colore_titolo: d.colore_titolo || '#ffffff', 
+                colore_testo: d.colore_testo || '#cccccc', 
+                colore_sfondo: d.colore_sfondo || '#222222' 
             };
             setConfig(prev => ({...prev, ...safeConfig}));
         }); 
     
+    // Fetch Categorie
     fetch(`${API_URL}/api/categorie/${id}`)
-      .then(res => res.json())
-      .then(data => {
-          const sorted = data.sort((a,b) => (a.posizione || 0) - (b.posizione || 0));
-          setCategorie(sorted);
-          if(sorted.length > 0 && !nuovoPiatto.categoria && !editId) setNuovoPiatto(prev => ({...prev, categoria: sorted[0].nome}));
-      });
+        .then(res => res.json())
+        .then(data => {
+            const sorted = data.sort((a,b) => (a.posizione || 0) - (b.posizione || 0));
+            setCategorie(sorted);
+        });
   };
 
   const ricaricaDati = () => {
       if(!user) return;
+      // Ricarica Menu
       fetch(`${API_URL}/api/menu/${slug}`).then(r=>r.json()).then(d=>{if(d.menu) setMenu(d.menu)});
+      // Ricarica Categorie
       fetch(`${API_URL}/api/categorie/${user.id}`).then(r=>r.json()).then(data => {
           const sorted = data.sort((a,b) => (a.posizione || 0) - (b.posizione || 0));
           setCategorie(sorted);
       });
+      // Ricarica Stato Servizio
+      fetch(`${API_URL}/api/ristorante/config/${user.id}`).then(r=>r.json()).then(d => {
+        if(d) setConfig(prev => ({...prev, servizio_attivo: d.servizio_attivo}));
+      });
   };
 
-  const handleLogout = () => {
-      if(confirm("Uscire dal pannello?")) {
-          localStorage.removeItem(`stark_session_${slug}`);
-          navigate('/');
-      }
+  const handleLogout = () => { 
+      if(confirm("Uscire dal pannello?")) { 
+          localStorage.removeItem(`stark_session_${slug}`); 
+          navigate('/'); 
+      } 
   };
-
+  
   const apriMenuFrontend = () => { window.open(`/${slug}`, '_blank'); };
 
-  // --- FUNZIONI OPERATIVE ---
-
-  const handleSaveStyle = async () => {
-      try {
-        await fetch(`${API_URL}/api/ristorante/style/${user.id}`, {
-            method: 'PUT',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(config)
-        });
-        alert("🎨 Grafica aggiornata con successo!");
-      } catch (e) { alert("Errore salvataggio grafica"); }
-  };
-
-  const handleUploadLogo = async (e) => {
-      const f = e.target.files[0]; if(!f) return;
-      setUploading(true);
-      const fd = new FormData(); fd.append('photo', f);
-      const r = await fetch(`${API_URL}/api/upload`, {method:'POST', body:fd});
-      const d = await r.json();
-      if(d.url) setConfig(prev => ({...prev, logo_url: d.url}));
-      setUploading(false);
-  };
-  
-  const handleUploadCover = async (e) => {
-      const f = e.target.files[0]; if(!f) return;
-      setUploading(true);
-      const fd = new FormData(); fd.append('photo', f);
-      const r = await fetch(`${API_URL}/api/upload`, {method:'POST', body:fd});
-      const d = await r.json();
-      if(d.url) setConfig(prev => ({...prev, cover_url: d.url}));
-      setUploading(false);
-  };
-
-  const handleImportExcel = async () => {
-    if(!fileExcel) return alert("Seleziona un file .xlsx prima!");
-    const formData = new FormData(); formData.append('file', fileExcel); formData.append('ristorante_id', user.id);
-    try {
-        setUploading(true);
-        const res = await fetch(`${API_URL}/api/import-excel`, { method: 'POST', body: formData });
-        const data = await res.json();
-        if(data.success) { alert(data.message); ricaricaDati(); } else { alert("ERRORE SERVER: " + (data.error || "Errore sconosciuto")); }
-    } catch(err) { alert("Errore di connessione al server"); } 
-    finally { setUploading(false); setFileExcel(null); }
-  };
-
-  const handleExportExcel = () => { window.open(`${API_URL}/api/export-excel/${user.id}`, '_blank'); };
-
-const handleOnDragEnd = async (result) => {
-    if (!result.destination) return;
-
-    // 1. SPOSTAMENTO CATEGORIE
-    if (result.type === 'CATEGORY') {
-        const items = Array.from(categorie);
-        const [reorderedItem] = items.splice(result.source.index, 1);
-        items.splice(result.destination.index, 0, reorderedItem);
-
-        const updatedItems = items.map((item, index) => ({ ...item, posizione: index }));
-        setCategorie(updatedItems); 
-
-        await fetch(`${API_URL}/api/categorie/riordina`, { 
-            method: 'PUT', 
-            headers:{'Content-Type':'application/json'}, 
-            body: JSON.stringify({ categorie: updatedItems }) 
-        });
-        return;
-    }
-
-    // 2. SPOSTAMENTO PIATTI
-    if (result.type === 'DISH') {
-        const sourceCat = result.source.droppableId.replace("cat-", "");
-        const destCat = result.destination.droppableId.replace("cat-", "");
-        const piattoId = parseInt(result.draggableId);
-
-        const piattoSpostato = menu.find(p => p.id === piattoId);
-        if (!piattoSpostato) return;
-        
-        // Aggiorna localmente
-        piattoSpostato.categoria = destCat;
-        const menuSenzaPiatto = menu.filter(p => p.id !== piattoId);
-        
-        // Logica semplificata per UI immediata
-        const nuovoMenu = [...menuSenzaPiatto];
-        // Inseriamo in fondo alla nuova categoria (per semplicità visuale immediata) o ricarichiamo
-        nuovoMenu.push(piattoSpostato); 
-        setMenu(nuovoMenu);
-
-        // Calcolo preciso per il server
-        const piattiDestinazione = menu.filter(p => p.categoria === destCat && p.id !== piattoId);
-        piattiDestinazione.splice(result.destination.index, 0, piattoSpostato);
-        
-        const updatePayload = piattiDestinazione.map((p, idx) => ({
-            id: p.id,
-            posizione: idx,
-            categoria: destCat
-        }));
-
-        await fetch(`${API_URL}/api/prodotti/riordina`, { 
-            method: 'PUT', 
-            headers:{'Content-Type':'application/json'}, 
-            body: JSON.stringify({ prodotti: updatePayload }) 
-        });
-        ricaricaDati(); 
-    }
-  };
-  
-  // LOGICA CATEGORIE (UPDATED per is_bar)
-  const handleSalvaCategoria = async () => { 
-      if(!nuovaCat.nome) return; 
-      
-      const payload = { 
-          nome: nuovaCat.nome, 
-          descrizione: nuovaCat.descrizione, 
-          ristorante_id: user.id,
-          is_bar: nuovaCat.is_bar, // Inviamo il flag bar
-          is_pizzeria: nuovaCat.is_pizzeria // <--- AGGIUNTO
-      };
-
-      if (editCatId) {
-          await fetch(`${API_URL}/api/categorie/${editCatId}`, { 
-              method:'PUT', headers:{'Content-Type':'application/json'}, 
-              body:JSON.stringify(payload) 
-          });
-          alert("Categoria modificata!");
-          setEditCatId(null);
-      } else {
-          await fetch(`${API_URL}/api/categorie`, { 
-              method:'POST', headers:{'Content-Type':'application/json'}, 
-              body:JSON.stringify(payload) 
-          });
-      }
-      setNuovaCat({ nome: '', descrizione: '', is_bar: false, is_pizzeria: false });
-      ricaricaDati(); 
-  };
-
-  const avviaModificaCat = (cat) => { 
-      setEditCatId(cat.id); 
-      // AGGIUNTO is_pizzeria
-      setNuovaCat({ nome: cat.nome, descrizione: cat.descrizione || '', is_bar: cat.is_bar || false, is_pizzeria: cat.is_pizzeria || false }); 
-  };
-  
-  const annullaModificaCat = () => { 
-      setEditCatId(null); 
-      // AGGIUNTO is_pizzeria
-      setNuovaCat({ nome: '', descrizione: '', is_bar: false, is_pizzeria: false }); 
-  };
-
-  const cancellaCategoria = async (id) => { if(confirm("Eliminare categoria?")) { await fetch(`${API_URL}/api/categorie/${id}`, {method:'DELETE'}); ricaricaDati(); }};
-
-  const handleSalvaPiatto = async (e) => { 
-      e.preventDefault(); 
-      if(!nuovoPiatto.nome) return alert("Nome mancante"); 
-      const cat = nuovoPiatto.categoria || (categorie.length > 0 ? categorie[0].nome : "");
-      if(editId) {
-          await fetch(`${API_URL}/api/prodotti/${editId}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({...nuovoPiatto, categoria:cat, ristorante_id:user.id}) }); 
-          alert("Piatto modificato!");
-      } else {
-          if(categorie.length===0) return alert("Crea prima una categoria!"); 
-          await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({...nuovoPiatto, categoria:cat, ristorante_id:user.id}) }); 
-          alert("Piatto aggiunto!");
-      }
-      setNuovoPiatto({nome:'', prezzo:'', categoria:cat, sottocategoria: '', descrizione:'', immagine_url:''}); 
-      setEditId(null);
-      ricaricaDati(); 
-  };
-  
-  const avviaModifica = (piatto) => { setEditId(piatto.id); setNuovoPiatto({nome: piatto.nome, prezzo: piatto.prezzo, categoria: piatto.categoria, sottocategoria: piatto.sottocategoria || '', descrizione: piatto.descrizione || '', immagine_url: piatto.immagine_url || ''}); window.scrollTo({ top: 0, behavior: 'smooth' }); };
-  const annullaModifica = () => { setEditId(null); setNuovoPiatto({nome:'', prezzo:'', categoria:categorie[0]?.nome || '', sottocategoria: '', descrizione:'', immagine_url:''}); };
-  const duplicaPiatto = async (piattoOriginale) => { if(!confirm(`Vuoi duplicare "${piattoOriginale.nome}"?`)) return; const copia = { ...piattoOriginale, nome: `${piattoOriginale.nome} (Copia)`, ristorante_id: user.id }; try { await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(copia) }); ricaricaDati(); } catch(e) { alert("Errore duplicazione"); } };
-  const handleFileChange = async (e) => { const f=e.target.files[0]; if(!f)return; setUploading(true); const fd=new FormData(); fd.append('photo',f); const r=await fetch(`${API_URL}/api/upload`,{method:'POST',body:fd}); const d=await r.json(); if(d.url) setNuovoPiatto(p=>({...p, immagine_url:d.url})); setUploading(false); };
-  
-  const toggleServizio = async () => { 
-      if (!user.superAdminAbilitato) { alert("⛔ Impossibile aprire gli ordini.\nIl Super Admin ha disabilitato il tuo account."); return; }
-      const n = !config.servizio_attivo; 
-      setConfig({...config, servizio_attivo:n}); 
-      await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({servizio_attivo:n})}); 
-  };
-
-  const cancellaPiatto = async (id) => { if(confirm("Eliminare piatto?")) { await fetch(`${API_URL}/api/prodotti/${id}`, {method:'DELETE'}); ricaricaDati(); }};
-
-  if (loading) return <div style={{padding:'50px', textAlign:'center', fontSize:'24px'}}>🔄 Caricamento Admin <strong>{slug}</strong>...</div>;
+  if (loading) return <div style={{padding:'50px', textAlign:'center', fontSize:'20px'}}>🔄 Caricamento Admin...</div>;
   if (!user) return null;
 
   return (
     <div className="container">
+      {/* HEADER GLOBALE */}
       <header style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
         <h1>⚙️ Admin: {user.nome}</h1>
         <div style={{display:'flex', gap:'10px'}}>
@@ -324,214 +143,52 @@ const handleOnDragEnd = async (result) => {
         </div>
       </header>
       
-        <div style={{display:'flex', gap:'5px', flexWrap:'wrap', marginTop:'10px'}}>
-            <button onClick={() => setTab('menu')} style={{background: tab==='menu'?'#333':'#ccc', flex:1}}>🍔 Menu</button>
-            <button onClick={() => setTab('categorie')} style={{background: tab==='categorie'?'#333':'#ccc', flex:1}}>📂 Categorie</button>
-            <button onClick={() => setTab('style')} style={{background: tab==='style'?'#9b59b6':'#ccc', flex:1}}>🎨 Grafica</button>
-            <button onClick={() => setTab('excel')} style={{background: tab==='excel'?'#27ae60':'#ccc', flex:1}}>📊 Excel</button>
-        </div>
+      {/* MENU TAB DI NAVIGAZIONE */}
+      <div style={{display:'flex', gap:'5px', flexWrap:'wrap', marginTop:'10px', marginBottom: '20px'}}>
+            <button onClick={() => setTab('menu')} style={{background: tab==='menu'?'#333':'#ccc', flex:1, padding:10, border:'none', cursor:'pointer', color: tab==='menu'?'white':'black', fontWeight:'bold'}}>🍔 Menu</button>
+            <button onClick={() => setTab('categorie')} style={{background: tab==='categorie'?'#333':'#ccc', flex:1, padding:10, border:'none', cursor:'pointer', color: tab==='categorie'?'white':'black', fontWeight:'bold'}}>📂 Categorie</button>
+            <button onClick={() => setTab('style')} style={{background: tab==='style'?'#9b59b6':'#ccc', flex:1, padding:10, border:'none', cursor:'pointer', color: tab==='style'?'white':'black', fontWeight:'bold'}}>🎨 Grafica</button>
+            <button onClick={() => setTab('excel')} style={{background: tab==='excel'?'#27ae60':'#ccc', flex:1, padding:10, border:'none', cursor:'pointer', color: tab==='excel'?'white':'black', fontWeight:'bold'}}>📊 Excel</button>
+      </div>
+
+      {/* --- CARICAMENTO DINAMICO DEI COMPONENTI --- */}
       
-      {tab === 'style' && (
-          <div className="card">
-              <h3>🎨 Personalizzazione Grafica</h3>
-              <div style={{display:'flex', flexDirection:'column', gap:'15px'}}>
-                  <div style={{borderBottom:'1px solid #ccc', paddingBottom:'10px'}}>
-                      <h4>Logo Attività</h4>
-                      <input type="file" onChange={handleUploadLogo} />
-                      {uploading && <span>Caricamento...</span>}
-                      {config.logo_url && (
-                          <div style={{marginTop:'10px'}}>
-                              <img src={config.logo_url} style={{height:'60px', marginBottom:'5px', display:'block', border:'1px solid #ccc'}} />
-                              <button onClick={() => setConfig({...config, logo_url: ''})} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}>🗑️ Rimuovi Logo</button>
-                          </div>
-                      )}
-                  </div>
-                  <div style={{borderBottom:'1px solid #ccc', paddingBottom:'10px'}}>
-                      <h4>Sfondo</h4>
-                      <div style={{display:'flex', alignItems:'center', gap:'10px', marginBottom:'10px'}}>
-                        <input type="color" value={config.colore_sfondo} onChange={e => setConfig({...config, colore_sfondo: e.target.value})} />
-                        <span>Colore Sfondo</span>
-                      </div>
-                      <p><small>Oppure immagine sfondo:</small></p>
-                      <input type="file" onChange={handleUploadCover} />
-                      {config.cover_url && (
-                          <div style={{marginTop:'10px'}}>
-                              <img src={config.cover_url} style={{height:'60px', marginBottom:'5px', display:'block', border:'1px solid #ccc'}} />
-                              <button onClick={() => setConfig({...config, cover_url: ''})} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'4px', cursor:'pointer', fontSize:'12px'}}>🗑️ Rimuovi Sfondo</button>
-                          </div>
-                      )}
-                  </div>
-                  <div style={{display:'flex', gap:'20px', flexWrap:'wrap'}}>
-                      <div style={{flex:1}}><h4>Titoli</h4><input type="color" value={config.colore_titolo} onChange={e => setConfig({...config, colore_titolo: e.target.value})} style={{width:'100%', height:'40px'}}/></div>
-                      <div style={{flex:1}}><h4>Testo Descrizioni</h4><input type="color" value={config.colore_testo} onChange={e => setConfig({...config, colore_testo: e.target.value})} style={{width:'100%', height:'40px'}}/></div>
-                      <div style={{flex:1}}><h4>Prezzi</h4><input type="color" value={config.colore_prezzo} onChange={e => setConfig({...config, colore_prezzo: e.target.value})} style={{width:'100%', height:'40px'}}/></div>
-                  </div>
-                  <div>
-                      <h4>Font</h4>
-                      <select value={config.font_style} onChange={e => setConfig({...config, font_style: e.target.value})} style={{width:'100%', padding:'10px'}}>
-                          <option value="sans-serif">Moderno</option>
-                          <option value="serif">Classico</option>
-                          <option value="'Courier New', monospace">Macchina da scrivere</option>
-                          <option value="'Brush Script MT', cursive">Corsivo</option>
-                      </select>
-                  </div>
-                  <button onClick={handleSaveStyle} className="btn-invia" style={{background:'#9b59b6', marginTop:'10px'}}>💾 SALVA MODIFICHE</button>
-              </div>
-          </div>
-      )}
-
-      {tab === 'excel' && (
-          <div className="card">
-              <h3>Gestione Massiva (Excel)</h3>
-              <div style={{margin:'20px 0', padding:'20px', background:'#f0f0f0', borderRadius:'10px'}}>
-                  <h4>📤 Esporta Menu</h4>
-                  <button onClick={handleExportExcel} className="btn-invia" style={{background:'#27ae60'}}>Scarica Excel</button>
-              </div>
-              <div style={{margin:'20px 0', padding:'20px', background:'#f0f0f0', borderRadius:'10px'}}>
-                  <h4>📥 Importa Menu</h4>
-                  <input type="file" accept=".xlsx, .xls" onChange={(e) => setFileExcel(e.target.files[0])} />
-                  <button onClick={handleImportExcel} className="btn-invia" disabled={uploading}>{uploading ? "Caricamento..." : "Carica Excel"}</button>
-              </div>
-          </div>
-      )}
-
       {tab === 'menu' && (
-        <DragDropContext onDragEnd={handleOnDragEnd}>
-          <div className="card" style={{border: user.superAdminAbilitato ? '2px solid #333' : '2px solid red', background: user.superAdminAbilitato ? (config.servizio_attivo ? '#fff3cd' : '#f8d7da') : '#ffecec', marginBottom:'20px', textAlign:'center'}}>
-              {!user.superAdminAbilitato ? (
-                  <div><h2 style={{color:'red', margin:0}}>⛔ SERVIZIO DISABILITATO DAL SUPER ADMIN</h2><p>Contatta l'amministrazione per riattivare gli ordini.</p></div>
-              ) : (
-                  <button onClick={toggleServizio} style={{background: config.servizio_attivo ? '#2ecc71':'#e74c3c', width:'100%', padding:'15px', color:'white', fontWeight:'bold', fontSize:'18px', border:'none', borderRadius:'5px', cursor:'pointer'}}>{config.servizio_attivo ? "✅ ORDINI APERTI (Clicca per Chiudere)" : "🛑 ORDINI CHIUSI (Clicca per Aprire)"}</button>
-              )}
-          </div>
-
-          <div className="card" style={{background: editId ? '#e3f2fd' : '#f8f9fa', border: editId ? '2px solid #2196f3' : '2px dashed #ccc'}}>
-              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                  <h3>{editId ? "✏️ Modifica Piatto" : "➕ Aggiungi Piatto Manuale"}</h3>
-                  {editId && <button onClick={annullaModifica} style={{background:'#777', padding:'5px 10px', fontSize:'12px', color:'white', border:'none', borderRadius:'3px', cursor:'pointer'}}>Annulla Modifica</button>}
-              </div>
-              <form onSubmit={handleSalvaPiatto} style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
-                  <input placeholder="Nome Piatto" value={nuovoPiatto.nome} onChange={e => setNuovoPiatto({...nuovoPiatto, nome: e.target.value})} />
-                  <div style={{display:'flex', gap:'10px'}}>
-                    <select value={nuovoPiatto.categoria} onChange={e => setNuovoPiatto({...nuovoPiatto, categoria: e.target.value})} style={{flex:1, padding:'10px'}}>
-                        {categorie.map(cat => <option key={cat.id} value={cat.nome}>{cat.nome}</option>)}
-                    </select>
-                    <input placeholder="Sottocategoria (es. Bianchi)" value={nuovoPiatto.sottocategoria} onChange={e => setNuovoPiatto({...nuovoPiatto, sottocategoria: e.target.value})} style={{flex:1}} />
-                  </div>
-                  <textarea placeholder="Descrizione / Ingredienti" value={nuovoPiatto.descrizione} onChange={e => setNuovoPiatto({...nuovoPiatto, descrizione: e.target.value})} style={{padding:'10px', borderRadius:'5px', border:'1px solid #ccc', minHeight:'60px'}}/>
-                  <div style={{display:'flex', gap:'10px'}}>
-                      <input type="number" placeholder="Prezzo" value={nuovoPiatto.prezzo} onChange={e => setNuovoPiatto({...nuovoPiatto, prezzo: e.target.value})} style={{flex:1}}/>
-                       <div style={{background:'white', padding:'5px', flex:1}}><input type="file" onChange={handleFileChange} />{uploading && "..."}{nuovoPiatto.immagine_url && "✅"}</div>
-                  </div>
-                  <button type="submit" className="btn-invia" style={{background: editId ? '#2196f3' : '#333'}}>{editId ? "AGGIORNA PIATTO" : "SALVA PIATTO"}</button>
-              </form>
-          </div>
-
-          {categorie.map(cat => (
-                <div key={cat.id} style={{marginBottom: '20px'}}>
-                    <h3 style={{marginTop:'30px', borderBottom:'2px solid #eee', paddingBottom:'5px', color:'#555'}}>
-                        {cat.nome} {cat.is_bar && "🍹"} {cat.is_pizzeria && "🍕"}
-                    </h3>
-                    <Droppable droppableId={`cat-${cat.nome}`} type="DISH">
-                        {(provided, snapshot) => (
-                            <div {...provided.droppableProps} ref={provided.innerRef} className="menu-list" style={{background: snapshot.isDraggingOver ? '#f0f0f0' : 'transparent', minHeight: '50px', padding: '5px'}}>
-                                {menu.filter(p => p.categoria === cat.nome).map((p, index) => (
-                                    <Draggable key={p.id} draggableId={String(p.id)} index={index}>
-                                        {(provided, snapshot) => (
-                                            <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className="card" style={{...provided.draggableProps.style, flexDirection:'row', justifyContent:'space-between', background: snapshot.isDragging ? '#e3f2fd' : 'white', border: editId === p.id ? '2px solid #2196f3' : '1px solid #eee'}}>
-                                                <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-                                                    <span style={{color:'#ccc', cursor:'grab', fontSize:'20px'}}>☰</span>
-                                                    {p.immagine_url && <img src={p.immagine_url} style={{width:'40px', height:'40px', objectFit:'cover', borderRadius:'4px'}}/>}
-                                                    <div><strong>{p.nome}</strong>{p.sottocategoria && <span style={{fontSize:'11px', background:'#eee', padding:'2px 5px', borderRadius:'4px', marginLeft:'5px'}}>{p.sottocategoria}</span>}<div style={{fontSize:'12px', fontWeight:'bold'}}>{p.prezzo}€</div></div>
-                                                </div>
-                                                <div style={{display:'flex', gap:'5px'}}>
-                                                    <button onClick={() => avviaModifica(p)} style={{background:'#f1c40f', padding:'5px 10px', borderRadius:'4px', border:'none', cursor:'pointer'}}>✏️</button>
-                                                    <button onClick={() => duplicaPiatto(p)} style={{background:'#3498db', padding:'5px 10px', borderRadius:'4px', border:'none', cursor:'pointer', color:'white'}}>❐</button>
-                                                    <button onClick={() => cancellaPiatto(p.id)} style={{background:'darkred', padding:'5px 10px', borderRadius:'4px', border:'none', cursor:'pointer'}}>🗑️</button>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </Draggable>
-                                ))}
-                                {provided.placeholder}
-                            </div>
-                        )}
-                    </Droppable>
-                </div>
-            ))}
-        </DragDropContext>
+          <AdminMenu 
+            user={user} 
+            menu={menu} setMenu={setMenu}
+            categorie={categorie} 
+            config={config} setConfig={setConfig}
+            API_URL={API_URL} 
+            ricaricaDati={ricaricaDati} 
+          />
       )}
 
       {tab === 'categorie' && (
-        <DragDropContext onDragEnd={handleOnDragEnd}>
-            <div className="card">
-                <h3>{editCatId ? "✏️ Modifica Categoria" : "➕ Gestisci Categorie"}</h3>
-                
-                <div style={{display:'flex', flexDirection:'column', gap:'10px', marginBottom:'20px'}}>
-                    <input placeholder="Nome Categoria" value={nuovaCat.nome} onChange={e=>setNuovaCat({...nuovaCat, nome: e.target.value})} />
-                    <input placeholder="Descrizione" value={nuovaCat.descrizione} onChange={e=>setNuovaCat({...nuovaCat, descrizione: e.target.value})} style={{fontSize: '14px'}}/>
-                    
-                   {/* CHECKBOX PER IL BAR */}
-                    <div style={{display:'flex', alignItems:'center', gap:'10px', background:'#f0f0f0', padding:'10px', borderRadius:'5px'}}>
-                        <input 
-                            type="checkbox" 
-                            id="is_bar" 
-                            checked={nuovaCat.is_bar} 
-                            onChange={e => setNuovaCat({...nuovaCat, is_bar: e.target.checked})} 
-                            style={{transform:'scale(1.5)', cursor:'pointer'}}
-                        />
-                        <label htmlFor="is_bar" style={{cursor:'pointer', fontSize:'16px'}}>🍹 Questa categoria va al BAR (Bibite, caffè, amari...)</label>
-                    </div>
-
-                    {/* AGGIUNTA: CHECKBOX PER LA PIZZERIA */}
-                    <div style={{display:'flex', alignItems:'center', gap:'10px', background:'#fbeee6', padding:'10px', borderRadius:'5px', marginTop:'5px'}}>
-                        <input 
-                            type="checkbox" 
-                            id="is_pizzeria" 
-                            checked={nuovaCat.is_pizzeria} 
-                            onChange={e => setNuovaCat({...nuovaCat, is_pizzeria: e.target.checked})} 
-                            style={{transform:'scale(1.5)', cursor:'pointer'}}
-                        />
-                        <label htmlFor="is_pizzeria" style={{cursor:'pointer', fontSize:'16px'}}>🍕 Questa categoria va in PIZZERIA</label>
-                    </div>
-
-                    <div style={{display:'flex', gap:'5px'}}>
-                        <button onClick={handleSalvaCategoria} className="btn-invia" style={{flex:1, background: editCatId ? '#f1c40f' : '#333'}}>
-                            {editCatId ? "AGGIORNA CATEGORIA" : "CREA CATEGORIA"}
-                        </button>
-                        {editCatId && <button onClick={annullaModificaCat} style={{background:'#777', color:'white', border:'none', padding:'10px', borderRadius:'5px', cursor:'pointer'}}>Annulla</button>}
-                    </div>
-                </div>
-                
-                <Droppable droppableId="all-categories" type="CATEGORY">
-                    {(provided) => (
-                        <div {...provided.droppableProps} ref={provided.innerRef} style={{display:'flex', flexDirection:'column', gap:'10px'}}>
-                            {categorie.map((cat, index) => (
-                                <Draggable key={cat.id} draggableId={String(cat.id)} index={index}>
-                                    {(provided) => (
-                                        <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className="card" style={{...provided.draggableProps.style, padding:'15px', flexDirection:'row', justifyContent:'space-between', borderLeft:'5px solid #333'}}>
-                                            <div>
-                                                <span style={{fontSize:'18px'}}>
-                                                    {/* MODIFICA QUI SOTTO */}
-                                                    ☰ <strong>{cat.nome}</strong> {cat.is_bar ? "🍹 (BAR)" : ""} {cat.is_pizzeria ? "🍕 (PIZZA)" : ""}
-                                                </span>
-                                                {cat.descrizione && <div style={{fontSize:'12px', color:'#666', marginLeft:'20px'}}>{cat.descrizione}</div>}
-                                            </div>
-                                            <div style={{display:'flex', gap:'5px'}}>
-                                                <button onClick={() => avviaModificaCat(cat)} style={{background:'#f1c40f', padding:'5px 10px', borderRadius:'4px', border:'none', cursor:'pointer'}}>✏️</button>
-                                                <button onClick={()=>cancellaCategoria(cat.id)} style={{background:'red', padding:'5px 10px', color:'white'}}>X</button>
-                                            </div>
-                                        </div>
-                                    )}
-                                </Draggable>
-                            ))}
-                            {provided.placeholder}
-                        </div>
-                    )}
-                </Droppable>
-            </div>
-        </DragDropContext>
+          <AdminCategorie 
+            user={user} 
+            categorie={categorie} setCategorie={setCategorie}
+            API_URL={API_URL} 
+            ricaricaDati={ricaricaDati} 
+          />
       )}
+
+      {tab === 'style' && (
+          <AdminGrafica 
+            user={user} 
+            config={config} setConfig={setConfig}
+            API_URL={API_URL} 
+          />
+      )}
+
+      {tab === 'excel' && (
+          <AdminExcel 
+            user={user} 
+            API_URL={API_URL} 
+            ricaricaDati={ricaricaDati} 
+          />
+      )}
+
     </div>
   );
 }
