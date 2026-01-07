@@ -65,12 +65,11 @@ function Cassa() {
 
   // --- AZIONI ---
 
-  const modificaStatoProdotto = async (ord, indexDaModificare) => {
+const modificaStatoProdotto = async (ord, indexDaModificare) => {
       const nuoviProdotti = [...ord.prodotti];
       const item = nuoviProdotti[indexDaModificare];
       const nuovoStato = item.stato === 'servito' ? 'in_attesa' : 'servito';
       
-      // Aggiorna stato e orario
       item.stato = nuovoStato;
       if (nuovoStato === 'servito') {
           item.ora_servizio = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
@@ -78,7 +77,8 @@ function Cassa() {
           delete item.ora_servizio;
       }
       
-      const logMsg = `${item.nome} segnato come ${nuovoStato.toUpperCase()}`;
+      // LOG MODIFICATO CON PREFISSO CASSA
+      const logMsg = `[CASSA 💶] HA SEGNATO ${nuovoStato === 'servito' ? 'SERVITO' : 'IN ATTESA'}: ${item.nome}`;
 
       await fetch(`${API_URL}/api/ordine/${ord.id}/update-items`, {
           method: 'PUT',
@@ -88,15 +88,16 @@ function Cassa() {
       aggiornaDati();
   };
 
-  const eliminaProdotto = async (ord, indexDaEliminare) => {
-      if(!confirm("Eliminare questo piatto? Il totale verrà ricalcolato.")) return;
+const eliminaProdotto = async (ord, indexDaEliminare) => {
+      if(!confirm("Eliminare questo piatto?")) return;
       
       const itemEliminato = ord.prodotti[indexDaEliminare];
       const nuoviProdotti = ord.prodotti.filter((_, idx) => idx !== indexDaEliminare);
       
-      // CALCOLO NUOVO TOTALE CLIENT-SIDE
       const nuovoTotale = Number(ord.totale) - Number(itemEliminato.prezzo || 0);
-      const logMsg = `ELIMINATO: ${itemEliminato.nome} (${itemEliminato.prezzo}€). Nuovo Totale: ${nuovoTotale.toFixed(2)}€`;
+      
+      // LOG MODIFICATO CON PREFISSO CASSA
+      const logMsg = `[CASSA 💶] HA ELIMINATO: ${itemEliminato.nome} (${itemEliminato.prezzo}€). Nuovo Totale: ${nuovoTotale.toFixed(2)}€`;
 
       await fetch(`${API_URL}/api/ordine/${ord.id}/update-items`, {
           method: 'PUT',
@@ -135,10 +136,19 @@ function Cassa() {
               
               {Object.keys(tavoliAttivi).map(tavolo => (
                   <div key={tavolo} style={{background:'white', padding:20, borderRadius:10, boxShadow:'0 4px 10px rgba(0,0,0,0.1)'}}>
-                      <div style={{display:'flex', justifyContent:'space-between', borderBottom:'2px solid #ddd', paddingBottom:10, marginBottom:10}}>
-                          <h2 style={{margin:0, color:'#000000ff'}}>Tavolo {tavolo}</h2>
-                          <h2 style={{margin:0, color:'#27ae60'}}>{tavoliAttivi[tavolo].totale.toFixed(2)}€</h2>
-                      </div>
+                      <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', borderBottom:'2px solid #ddd', paddingBottom:10, marginBottom:10}}>
+                         <h2 style={{margin:0, color:'#000000ff'}}>Tavolo {tavolo}</h2>
+                          <div style={{textAlign:'right'}}>
+        <h2 style={{margin:0, color:'#27ae60', marginBottom:'5px'}}>{tavoliAttivi[tavolo].totale.toFixed(2)}€</h2>
+        {/* BOTTONE VERDE LIVE */}
+        <button 
+          onClick={() => setSelectedLog({ id: `Tavolo ${tavolo} (LIVE)`, dettagli: tavoliAttivi[tavolo].fullLog })}
+          style={{background:'#27ae60', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:11, fontWeight:'bold'}}
+        >
+            🟢 LOG LIVE
+        </button>
+    </div>
+</div>
 
                       {tavoliAttivi[tavolo].ordini.map(ord => (
                           <div key={ord.id} style={{marginBottom:15, borderLeft:'4px solid #eee', paddingLeft:10}}>
