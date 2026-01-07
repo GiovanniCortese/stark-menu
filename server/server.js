@@ -142,7 +142,7 @@ app.put('/api/ordine/:id/update-items', async (req, res) => {
 app.post('/api/cassa/paga-tavolo', async (req, res) => {
     const client = await pool.connect();
     try {
-        await client.query('BEGIN'); // Inizia transazione sicura
+        await client.query('BEGIN'); // Inizia transazione
         
         const { ristorante_id, tavolo } = req.body;
         
@@ -154,51 +154,52 @@ app.post('/api/cassa/paga-tavolo', async (req, res) => {
 
         if (result.rows.length === 0) {
             await client.query('ROLLBACK');
-            return res.json({ success: true }); // Nessun ordine da pagare
+            return res.json({ success: true }); 
         }
 
         // 2. Prepariamo i dati unificati
-        let primoOrdine = result.rows[0]; // Terremo buono il primo (quello aperto prima)
+        let primoOrdine = result.rows[0]; 
         let prodottiUnificati = [];
         let totaleUnificato = 0;
         let logUnificato = "";
 
-        // Cicliamo su tutti gli ordini trovati per unirli
         result.rows.forEach(ord => {
             // Unione Prodotti
             let prodottiProd = [];
-            try { prodottiProd = JSON.parse(ord.prodotti || "[]"); } catch(e) {}
+            try { 
+                prodottiProd = typeof ord.prodotti === 'string' ? JSON.parse(ord.prodotti || "[]") : ord.prodotti;
+            } catch(e) {}
+            
             if(Array.isArray(prodottiProd)) prodottiUnificati = [...prodottiUnificati, ...prodottiProd];
 
             // Unione Totale
             totaleUnificato += Number(ord.totale || 0);
 
-            // Unione Log (Dettagli)
+            // Unione Log
             if (ord.dettagli) logUnificato += ord.dettagli + "\n";
         });
 
-        // Aggiungiamo il log finale di chiusura
+        // Log finale di chiusura
         const timeLog = new Date().toLocaleString('it-IT', { timeZone: 'Europe/Rome' });
         logUnificato += `\n[${timeLog}] 💰 CONTO CHIUSO E UNIFICATO.`;
 
-        // 3. Aggiorniamo il PRIMO ordine con tutti i dati uniti
+        // 3. Aggiorniamo il PRIMO ordine con tutto
         await client.query(
             "UPDATE ordini SET stato = 'pagato', prodotti = $1, totale = $2, dettagli = $3 WHERE id = $4",
             [JSON.stringify(prodottiUnificati), totaleUnificato, logUnificato, primoOrdine.id]
         );
 
-        // 4. Cancelliamo gli altri ordini (dal secondo in poi) perché ora sono dentro il primo
+        // 4. Cancelliamo gli altri ordini (i "pezzetti" successivi)
         const idsDaCancellare = result.rows.slice(1).map(o => o.id);
         if (idsDaCancellare.length > 0) {
-            // Usiamo ANY per cancellare un array di ID
             await client.query("DELETE FROM ordini WHERE id = ANY($1::int[])", [idsDaCancellare]);
         }
 
-        await client.query('COMMIT'); // Conferma le modifiche
+        await client.query('COMMIT');
         res.json({ success: true });
 
     } catch (e) { 
-        await client.query('ROLLBACK'); // Annulla se c'è errore
+        await client.query('ROLLBACK'); 
         console.error("Errore Pagamento Merge:", e);
         res.status(500).json({ error: "Errore Pagamento" }); 
     } finally {
