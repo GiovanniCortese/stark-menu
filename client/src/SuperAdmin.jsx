@@ -1,4 +1,4 @@
-// client/src/SuperAdmin.jsx - VERSIONE V14 (AGGIORNAMENTO RICHIESTO SU V7) ✨
+// client/src/SuperAdmin.jsx - VERSIONE V15 (LOGICA INVERTITA SU COLONNE ESISTENTI) 🛠️
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -73,24 +73,31 @@ function SuperAdmin() {
       catch(err) { alert("Errore eliminazione."); }
   };
 
-  // --- AZIONE 1: STATO ABBONAMENTO (Agisce su account_attivo) ---
+  // --- AZIONE 1: STATO ABBONAMENTO (PAUSA) ---
+  // NOTA: Qui usi 'servizio_attivo' come interruttore dell'abbonamento
   const toggleSospensione = async (id, statoAttuale) => {
     const nuovoStato = !statoAttuale; 
-    // Aggiornamento ottimistico
-    setRistoranti(ristoranti.map(r => r.id === id ? { ...r, account_attivo: nuovoStato } : r));
     
-    await fetch(`${API_URL}/api/super/ristoranti/${id}`, {
+    // Aggiornamento ottimistico
+    setRistoranti(ristoranti.map(r => r.id === id ? { ...r, servizio_attivo: nuovoStato } : r));
+    
+    // Chiamata Server su 'servizio_attivo' (usiamo l'endpoint specifico del servizio)
+    await fetch(`${API_URL}/api/ristorante/servizio/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ account_attivo: nuovoStato }) 
+        body: JSON.stringify({ servizio_attivo: nuovoStato }) 
     });
   };
 
-  // --- AZIONE 2: APRI/CHIUDI CUCINA (Agisce su ordini_abilitati) ---
+  // --- AZIONE 2: APRI/CHIUDI CUCINA ---
+  // NOTA: Qui usi 'ordini_abilitati' come interruttore della cucina
   const toggleOrdini = async (id, statoAttuale) => {
     const nuovoStato = !statoAttuale; 
+    
+    // Aggiornamento ottimistico
     setRistoranti(ristoranti.map(r => r.id === id ? { ...r, ordini_abilitati: nuovoStato } : r));
     
+    // Chiamata Server su 'ordini_abilitati'
     await fetch(`${API_URL}/api/super/ristoranti/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -121,20 +128,16 @@ function SuperAdmin() {
       </header>
       
       <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '25px'}}>
-        {ristoranti.map(r => {
-            // Se account_attivo è undefined (vecchi record), consideralo true (attivo)
-            const isAccountAttivo = r.account_attivo !== false;
-
-            return (
+        {ristoranti.map(r => (
             <div key={r.id} style={{
                 border: '1px solid #ddd', borderRadius: '12px', overflow:'hidden',
-                background: isAccountAttivo ? '#ffffff' : '#f2f2f2',
+                background: r.servizio_attivo ? '#ffffff' : '#f2f2f2', // Sfondo basato sull'abbonamento (servizio_attivo)
                 boxShadow: '0 5px 15px rgba(0,0,0,0.08)', position:'relative',
                 display:'flex', flexDirection:'column'
             }}>
                 
-                {/* 1. HEADER CARD (Nome + Edit/Delete) */}
-                <div style={{padding:'15px', borderBottom:'1px solid #eee', background: isAccountAttivo ? '#fff' : '#e0e0e0', display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+                {/* HEADER CARD */}
+                <div style={{padding:'15px', borderBottom:'1px solid #eee', background: r.servizio_attivo ? '#fff' : '#e0e0e0', display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
                     <div>
                         <h2 style={{margin:'0 0 5px 0', fontSize:'1.4rem', color:'#333'}}>{r.nome}</h2>
                         <span style={{background:'#333', color:'#fff', padding:'3px 8px', borderRadius:'4px', fontSize:'0.8rem'}}>/{r.slug}</span>
@@ -145,32 +148,33 @@ function SuperAdmin() {
                     </div>
                 </div>
 
-                {/* 2. BODY CARD (Info) */}
+                {/* BODY CARD */}
                 <div style={{padding:'15px', color:'#666', fontSize:'0.9rem', flex:1}}>
                     <p style={{margin:'5px 0'}}>📧 {r.email || '-'}</p>
                     <p style={{margin:'5px 0'}}>📞 {r.telefono || '-'}</p>
                 </div>
                 
-                {/* 3. CONTROLS (Pulsantiere) */}
+                {/* CONTROLS */}
                 <div style={{padding:'15px', background:'#f9f9f9', borderTop:'1px solid #eee'}}>
                     
-                    {/* A. STATO ABBONAMENTO (Usa toggleSospensione su account_attivo) */}
+                    {/* A. STATO ABBONAMENTO (Usa toggleSospensione -> servizio_attivo) */}
                     <div style={{marginBottom:'15px'}}>
                         <div style={{fontSize:'0.8rem', fontWeight:'bold', color:'#888', marginBottom:'5px', textTransform:'uppercase'}}>Stato Abbonamento</div>
                         <button 
-                            onClick={() => toggleSospensione(r.id, isAccountAttivo)} 
+                            onClick={() => toggleSospensione(r.id, r.servizio_attivo)} 
                             style={{
                                 width: '100%', padding:'10px', borderRadius:'6px', border:'none', cursor:'pointer', fontWeight:'bold',
-                                background: isAccountAttivo ? '#2c3e50' : '#e67e22', color:'white',
+                                background: r.servizio_attivo ? '#2c3e50' : '#e67e22', color:'white',
                                 display:'flex', alignItems:'center', justifyContent:'center', gap:'10px'
                             }}
                         >
-                            {isAccountAttivo ? <span>⏸️ METTI IN PAUSA</span> : <span>▶️ RIATTIVA ACCOUNT</span>}
+                            {r.servizio_attivo ? <span>⏸️ METTI IN PAUSA</span> : <span>▶️ RIATTIVA ACCOUNT</span>}
                         </button>
                     </div>
 
-                    {/* B. APRI/CHIUDI CUCINA (Usa toggleOrdini su ordini_abilitati) - Visibile solo se abbonamento attivo */}
-                    {isAccountAttivo ? (
+                    {/* B. STATO CUCINA (Usa toggleOrdini -> ordini_abilitati) */}
+                    {/* Mostra i controlli cucina SOLO se l'abbonamento (servizio_attivo) è TRUE */}
+                    {r.servizio_attivo ? (
                         <div style={{marginBottom:'15px'}}>
                             <div style={{fontSize:'0.8rem', fontWeight:'bold', color:'#888', marginBottom:'5px', textTransform:'uppercase'}}>Stato Cucina</div>
                             <button 
@@ -202,7 +206,7 @@ function SuperAdmin() {
                 </div>
 
             </div>
-        )})}
+        ))}
       </div>
 
       {/* MODALE */}
