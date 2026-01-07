@@ -97,19 +97,6 @@ function Bar() {
       aggiorna();
   };
 
-      // Messaggio Log con Quantità
-      const qty = indices.length;
-      const azione = nuovoStato === 'servito' ? 'HA SERVITO' : 'HA RIMESSO IN ATTESA';
-      const logMsg = `[BAR 🍹] ${azione}: ${qty > 1 ? qty + 'x ' : ''}${primoItem.nome}`;
-
-      await fetch(`${API_URL}/api/ordine/${ordineId}/update-items`, {
-          method: 'PUT',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ prodotti: nuoviProdotti, logMsg: logMsg })
-      });
-      aggiorna();
-  };
-
   // HELPER PER RAGGRUPPARE (3x Coca Cola) E ORDINARE
   const getProdottiRaggruppati = (prodotti) => {
       const gruppi = [];
