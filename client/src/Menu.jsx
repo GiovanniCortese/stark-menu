@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - VERSIONE V34 (CON GESTIONE USCITE/SEQUENZE) 🍕
+// client/src/Menu.jsx - VERSIONE V37 (BAR ESENTE DA PRIORITÀ + CHECKOUT SEPARATO) 🍹
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 
@@ -50,31 +50,36 @@ function Menu() {
       });
   }, [currentSlug]);
 
-  // --- *** MODIFICA: Logica per determinare l'uscita di default *** ---
-  const getDefaultCourse = (categoria) => {
+  // --- *** MODIFICA: Logica Uscita (BAR = 0) *** ---
+  const getDefaultCourse = (categoria, isBar) => {
+      // SE È BAR, NESSUNA PRIORITÀ (Course 0)
+      if (isBar) return 0;
+
       const cat = categoria.toLowerCase();
-      // Uscita 1: Antipasti, Bevande
-      if (cat.includes('antipast') || cat.includes('bevande') || cat.includes('drink') || cat.includes('fritti')) return 1;
-      // Uscita 3: Dessert, Caffè, Amari
-      if (cat.includes('dessert') || cat.includes('dolci') || cat.includes('caff') || cat.includes('amari')) return 3;
+      // Uscita 1: Antipasti, Fritti, Stuzzichini
+      if (cat.includes('antipast') || cat.includes('fritti') || cat.includes('stuzzicheri')) return 1;
+      // Uscita 3: Dessert, Caffè, Amari (se non sono taggati bar)
+      if (cat.includes('dessert') || cat.includes('dolci')) return 3;
       // Uscita 2: Tutto il resto (Primi, Secondi, Pizze)
       return 2;
   };
 
-  // --- 2. AGGIUNGI AL CARRELLO (Con logica Course) ---
+  // --- 2. AGGIUNGI AL CARRELLO (Aggiornato) ---
   const aggiungiAlCarrello = (prodotto) => {
     if (!canOrder) return alert("Il servizio ordini è momentaneamente chiuso.");
     
-    // Creiamo l'oggetto per il carrello
+    // Catturiamo il flag BAR dal database
+    const isBar = !!prodotto.categoria_is_bar;
+
     const item = { 
         ...prodotto, 
         tempId: Date.now() + Math.random(), 
         categoria: prodotto.categoria || "Varie",
         categoria_posizione: prodotto.categoria_posizione || 999,
-        is_bar: !!prodotto.categoria_is_bar,
+        is_bar: isBar,
         is_pizzeria: !!prodotto.categoria_is_pizzeria,
-        // *** MODIFICA: Assegnazione automatica uscita ***
-        course: getDefaultCourse(prodotto.categoria || "") 
+        // *** MODIFICA: Passiamo isBar al calcolo del course ***
+        course: getDefaultCourse(prodotto.categoria || "", isBar) 
     };
     
     setCarrello([...carrello, item]); 
@@ -88,12 +93,12 @@ function Menu() {
       if(nuovoCarrello.length === 0) setShowCheckout(false);
   };
 
-  // --- *** MODIFICA: Funzione per cambiare l'uscita (Sposta su/giù) *** ---
+  // --- CAMBIA PRIORITÀ (Solo per cibi, course > 0) ---
   const cambiaUscita = (tempId, delta) => {
       setCarrello(prevCarrello => prevCarrello.map(item => {
-          if (item.tempId === tempId) {
+          // Modifichiamo solo se NON è Bar (course > 0)
+          if (item.tempId === tempId && item.course > 0) {
               const newCourse = item.course + delta;
-              // Limitiamo tra 1 e 3 (o più se serve)
               if (newCourse < 1 || newCourse > 3) return item;
               return { ...item, course: newCourse };
           }
@@ -114,7 +119,6 @@ function Menu() {
          categoria_posizione: p.categoria_posizione,
          is_bar: p.is_bar,
          is_pizzeria: p.is_pizzeria,
-         // *** MODIFICA: Inviamo l'uscita al backend ***
          course: p.course 
      }));
 
@@ -149,14 +153,14 @@ function Menu() {
 
   const categorieOrdinate = [...new Set(menu.map(p => p.categoria))];
 
-  // --- Accordion handlers (Invariati) ---
+  // --- Accordion handlers ---
   const toggleAccordion = (catNome) => {
       if (activeCategory === catNome) { setActiveCategory(null); setActiveSubCategory(null); } 
       else { setActiveCategory(catNome); setActiveSubCategory(null); }
   };
   const toggleSubAccordion = (subName) => setActiveSubCategory(activeSubCategory === subName ? null : subName);
 
-  // --- STILI BASE (Invariati) ---
+  // --- STILI BASE ---
   const appStyle = {
       backgroundColor: style?.bg || '#222',
       color: style?.text || '#ccc',
@@ -204,7 +208,7 @@ function Menu() {
         </div>
       )}
 
-      {/* LISTA MENU (ACCORDION) - LOGICA INVARIATA VISIVAMENTE */}
+      {/* LISTA MENU (ACCORDION) */}
       <div style={{paddingBottom: '80px', marginTop: '0', width: '100%'}}> 
         {categorieOrdinate.map(catNome => (
             <div key={catNome} className="accordion-item" style={{marginBottom: '2px', borderRadius: '5px', overflow: 'hidden', width: '100%'}}>
@@ -261,7 +265,7 @@ function Menu() {
         ))}
       </div>
 
-      {/* --- *** CHECKOUT RIVOLUZIONATO (Raggruppato per Uscite) *** --- */}
+      {/* --- *** CHECKOUT RIVOLUZIONATO CON SEZIONE BAR *** --- */}
       {showCheckout && (
           <div style={{
               position:'fixed', top:0, left:0, right:0, bottom:0, 
@@ -277,16 +281,36 @@ function Menu() {
               <div style={{flex:1, overflowY:'auto'}}>
                   {carrello.length === 0 && <p style={{color: style?.text, textAlign:'center'}}>Il carrello è vuoto.</p>}
                   
-                  {/* Raggruppamento per Uscite */}
+                  {/* --- SEZIONE 1: BAR (SENZA PRIORITÀ) --- */}
+                  {carrello.some(i => i.is_bar) && (
+                      <div style={{marginBottom:'20px'}}>
+                           <h3 style={{color: '#3498db', borderBottom:'1px solid #3498db', paddingBottom:'5px', fontSize:'14px', textTransform:'uppercase'}}>
+                               🍹 BEVANDE & BAR
+                           </h3>
+                           {carrello.filter(i => i.is_bar).map(item => (
+                               <div key={item.tempId} style={{display:'flex', justifyContent:'space-between', alignItems:'center', background:'rgba(255,255,255,0.05)', padding:'10px', marginBottom:'10px', borderRadius:'8px'}}>
+                                   <div style={{flex:1}}>
+                                       <div style={{color: titleColor, fontWeight:'bold', fontSize:'16px'}}>{item.nome}</div>
+                                       <div style={{color: '#888', fontSize:'12px'}}>{item.prezzo} €</div>
+                                   </div>
+                                   {/* Niente frecce per il bar */}
+                                   <button onClick={() => rimuoviDalCarrello(item.tempId)} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'5px', cursor:'pointer'}}>🗑️</button>
+                               </div>
+                           ))}
+                      </div>
+                  )}
+
+                  {/* --- SEZIONE 2: PIATTI CON PRIORITÀ (FILTRIAMO IL BAR) --- */}
                   {[1, 2, 3].map(courseNum => {
-                      const itemsInCourse = carrello.filter(i => i.course === courseNum);
+                      // Filtra solo chi NON è Bar E ha questo numero di uscita
+                      const itemsInCourse = carrello.filter(i => !i.is_bar && i.course === courseNum);
                       if (itemsInCourse.length === 0) return null;
 
                       let courseTitle = "";
                       let courseColor = "";
                       if(courseNum === 1) { courseTitle = "🟢 1ª USCITA (Subito)"; courseColor = "#27ae60"; }
                       if(courseNum === 2) { courseTitle = "🟡 2ª USCITA (A Seguire)"; courseColor = "#f1c40f"; }
-                      if(courseNum === 3) { courseTitle = "🔴 3ª USCITA (Dessert/Caffè)"; courseColor = "#e74c3c"; }
+                      if(courseNum === 3) { courseTitle = "🔴 3ª USCITA (Dessert)"; courseColor = "#e74c3c"; }
 
                       return (
                           <div key={courseNum} style={{marginBottom:'20px'}}>
@@ -299,7 +323,7 @@ function Menu() {
                                       <div style={{flex:1}}>
                                           <div style={{color: titleColor, fontWeight:'bold', fontSize:'16px'}}>{item.nome}</div>
                                           <div style={{color: '#888', fontSize:'12px'}}>
-                                            {item.prezzo} € • {item.is_pizzeria ? '🍕 Pizzeria' : (item.is_bar ? '🍹 Bar' : '🍳 Cucina')}
+                                            {item.prezzo} € • {item.is_pizzeria ? '🍕 Pizzeria' : '🍳 Cucina'}
                                           </div>
                                       </div>
 
