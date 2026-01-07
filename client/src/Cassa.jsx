@@ -35,9 +35,18 @@ function Cassa() {
         
         ordini.forEach(ord => {
             const t = ord.tavolo;
-            if(!raggruppati[t]) raggruppati[t] = { ordini: [], totale: 0 };
+            if(!raggruppati[t]) raggruppati[t] = { 
+                ordini: [], 
+                totale: 0,
+                fullLog: "" // Aggiungiamo il campo per il log completo
+            };
             raggruppati[t].ordini.push(ord);
             raggruppati[t].totale += Number(ord.totale || 0);
+            
+            // Concateniamo i dettagli (log) se presenti
+            if(ord.dettagli && ord.dettagli.trim() !== "") {
+                raggruppati[t].fullLog += ord.dettagli + "\n";
+            }
         });
         setTavoliAttivi(raggruppati);
       })
@@ -136,10 +145,19 @@ const eliminaProdotto = async (ord, indexDaEliminare) => {
               
               {Object.keys(tavoliAttivi).map(tavolo => (
                   <div key={tavolo} style={{background:'white', padding:20, borderRadius:10, boxShadow:'0 4px 10px rgba(0,0,0,0.1)'}}>
-                      <div style={{display:'flex', justifyContent:'space-between', borderBottom:'2px solid #ddd', paddingBottom:10, marginBottom:10}}>
-                          <h2 style={{margin:0, color:'#000000ff'}}>Tavolo {tavolo}</h2>
-                          <h2 style={{margin:0, color:'#27ae60'}}>{tavoliAttivi[tavolo].totale.toFixed(2)}€</h2>
-                      </div>
+                      <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', borderBottom:'2px solid #ddd', paddingBottom:10, marginBottom:10}}>
+    <h2 style={{margin:0, color:'#000000ff'}}>Tavolo {tavolo}</h2>
+    <div style={{textAlign:'right'}}>
+        <h2 style={{margin:0, color:'#27ae60', marginBottom:'5px'}}>{tavoliAttivi[tavolo].totale.toFixed(2)}€</h2>
+        {/* BOTTONE VERDE LIVE */}
+        <button 
+          onClick={() => setSelectedLog({ id: `Tavolo ${tavolo} (LIVE)`, dettagli: tavoliAttivi[tavolo].fullLog })}
+          style={{background:'#27ae60', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:11, fontWeight:'bold'}}
+        >
+            🟢 LOG LIVE
+        </button>
+    </div>
+</div>
 
                       {tavoliAttivi[tavolo].ordini.map(ord => (
                           <div key={ord.id} style={{marginBottom:15, borderLeft:'4px solid #eee', paddingLeft:10}}>
