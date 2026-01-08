@@ -1,4 +1,4 @@
-// client/src/components_admin/AdminMenu.jsx - VERSIONE V38 (LOGICA INVERTITA: SERVIZIO=SUB, ORDINI=CUCINA) 🔄
+// client/src/components_admin/AdminMenu.jsx - VERSIONE V40 (FIX GERARCHIA PERMESSI) 🛡️
 import { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
@@ -7,20 +7,20 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const [editId, setEditId] = useState(null); 
   const [uploading, setUploading] = useState(false);
 
-  // --- LOGICA STATI ---
-  // servizio_attivo = ABBONAMENTO (Gestito da SuperAdmin)
-  // ordini_abilitati = CUCINA (Gestito da Ristoratore)
+  // --- LOGICA STATI (V40) ---
+  // account_attivo = ABBONAMENTO (Gestito da SuperAdmin, blocca tutto)
+  // cucina_super_active = MASTER SWITCH (Gestito da SuperAdmin, blocca solo cucina)
+  // ordini_abilitati = INTERRUTTORE RISTORATORE (Gestito qui)
   
-  const isAbbonamentoAttivo = config.servizio_attivo !== false; // Se è false, è sospeso.
-  const isCucinaAperta = config.ordini_abilitati; // True = Aperta, False = Chiusa
+  const isAbbonamentoAttivo = config.account_attivo !== false; // Default true
+  const isMasterBlock = config.cucina_super_active === false;  // Se false, è bloccato dagli admin
+  const isCucinaAperta = config.ordini_abilitati;
 
   // --- FUNZIONI DI SERVIZIO ---
   const toggleCucina = async () => { 
-      // 1. BLOCCO SICUREZZA: Se l'abbonamento è scaduto, fermati.
-      if (!isAbbonamentoAttivo) { 
-          alert("⛔ ABBONAMENTO SOSPESO.\nContatta l'amministrazione per sbloccare il pannello."); 
-          return; 
-      }
+      // 1. BLOCCO SICUREZZA
+      if (!isAbbonamentoAttivo) return alert("⛔ ABBONAMENTO SOSPESO."); 
+      if (isMasterBlock) return alert("⛔ CUCINA BLOCCATA DAGLI ADMIN.");
 
       // 2. TOGGLE CUCINA (ordini_abilitati)
       const nuovoStatoCucina = !isCucinaAperta; 
@@ -29,7 +29,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       setConfig({...config, ordini_abilitati: nuovoStatoCucina}); 
       
       try {
-          // Inviamo al server il comando per cambiare 'ordini_abilitati'
           await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, {
               method:'PUT', 
               headers:{'Content-Type':'application/json'}, 
@@ -121,12 +120,24 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
     }
   };
 
+  // --- DEFINIZIONE STILI CARD STATO ---
+  let cardBg = '#fff3cd'; 
+  let cardBorder = '2px solid #333';
+  
+  if (!isAbbonamentoAttivo) {
+      cardBg = '#ffecec'; cardBorder = '2px solid red';
+  } else if (isMasterBlock) {
+      cardBg = '#fadbd8'; cardBorder = '2px solid #c0392b';
+  } else if (!isCucinaAperta) {
+      cardBg = '#f8d7da';
+  }
+
   return (
     <DragDropContext onDragEnd={onDragEnd}>
-        {/* Pulsante Servizio (CONTROLLO ABBONAMENTO + CUCINA) */}
+        {/* Pulsante Servizio (CONTROLLO GERARCHICO) */}
         <div className="card" style={{
-            border: isAbbonamentoAttivo ? '2px solid #333' : '2px solid red', 
-            background: isAbbonamentoAttivo ? (isCucinaAperta ? '#fff3cd' : '#f8d7da') : '#ffecec', 
+            border: cardBorder, 
+            background: cardBg, 
             marginBottom:'20px', textAlign:'center', padding: '15px'
         }}>
               {!isAbbonamentoAttivo ? (
@@ -135,8 +146,14 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                       <h2 style={{color:'red', margin:0, fontSize:'1.5rem'}}>⛔ ABBONAMENTO SOSPESO</h2>
                       <p style={{color:'#c0392b', fontWeight:'bold', margin:'5px 0'}}>Contatta l'amministrazione per sbloccare il pannello.</p>
                   </div>
+              ) : isMasterBlock ? (
+                  /* CASO 2: BLOCCO SUPER ADMIN (Cucina Disabilitata Centralmente) */
+                  <div>
+                      <h2 style={{color:'#c0392b', margin:0, fontSize:'1.5rem'}}>👮 CUCINA BLOCCATA DAGLI ADMIN</h2>
+                      <p style={{color:'#c0392b', fontWeight:'bold', margin:'5px 0'}}>La gestione ordini è disabilitata temporaneamente.</p>
+                  </div>
               ) : (
-                  /* CASO 2: ABBONAMENTO ATTIVO -> MOSTRA GESTIONE CUCINA */
+                  /* CASO 3: NORMALE -> MOSTRA BOTTONE */
                   <button onClick={toggleCucina} style={{
                       background: isCucinaAperta ? '#2ecc71':'#e74c3c', 
                       width:'100%', padding:'15px', color:'white', fontWeight:'bold', fontSize:'18px', 
