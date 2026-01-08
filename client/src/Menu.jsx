@@ -324,7 +324,17 @@ function Menu() {
                                     {(isSingleGroup || activeSubCategory === scKey) && (
                                         <div className="menu-list" style={{padding: '0', width: '100%'}}>
                                             {sottoCats[scKey].map((prodotto) => (
-                                                <div key={prodotto.id} className="card" onClick={() => setSelectedPiatto(prodotto)} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', cursor: prodotto.immagine_url ? 'pointer' : 'default', backgroundColor: 'white', marginBottom: '1px', borderRadius: '0' }}>
+                                                <div key={prodotto.id} 
+    className="card" 
+    // MODIFICA QUI: Se ha la foto apre la scheda, altrimenti NULL (non fa nulla)
+    onClick={() => prodotto.immagine_url ? setSelectedPiatto(prodotto) : null} 
+    style={{ 
+        display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', 
+        // Il cursore diventa una manina SOLO se c'è la foto
+        cursor: prodotto.immagine_url ? 'pointer' : 'default', 
+        backgroundColor: 'white', marginBottom: '1px', borderRadius: '0' 
+    }}
+>
                                                     {prodotto.immagine_url && <img src={prodotto.immagine_url} style={{width:'70px', height:'70px', objectFit:'cover', borderRadius:'5px', flexShrink: 0}} />}
                                                     <div className="info" style={{flex: 1}}>
                                                         <h3 style={{margin:'0 0 4px 0', fontSize:'16px', color: 'titleColor'}}>{prodotto.nome}</h3>
