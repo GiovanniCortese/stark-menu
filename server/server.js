@@ -149,47 +149,48 @@ app.get('/api/export-excel/:ristorante_id', async (req, res) => { try { const re
 
 // --- RIORDINO: CATEGORIE (FIX DEFINITIVO) ---
 app.put('/api/categorie/riordina', async (req, res) => {
+    const { categorie } = req.body;
     const client = await pool.connect();
     try {
-        console.log("📥 [Categorie] Ricevuto:", JSON.stringify(req.body)); 
-        if (!req.body.categorie || !Array.isArray(req.body.categorie)) throw new Error("Dati mancanti");
         await client.query('BEGIN');
-        for (const cat of req.body.categorie) {
-            await client.query('UPDATE categorie SET posizione = $1 WHERE id = $2', [cat.posizione, cat.id]);
+        for (const cat of categorie) {
+            await client.query(
+                'UPDATE categorie SET posizione = $1 WHERE id = $2',
+                [cat.posizione, cat.id]
+            );
         }
         await client.query('COMMIT');
         res.json({ success: true });
-    } catch (e) {
+    } catch (err) {
         await client.query('ROLLBACK');
-        console.error("❌ ERRORE SERVER (Categorie):", e.message);
-        res.status(500).json({ error: e.message });
-    } finally { client.release(); }
+        console.error("ERRORE RIORDINO CATEGORIE:", err);
+        res.status(500).json({ error: "Errore interno riordino categorie" });
+    } finally {
+        client.release();
+    }
 });
 
 // --- RIORDINO: PRODOTTI (FIX DEFINITIVO) ---
 app.put('/api/prodotti/riordina', async (req, res) => {
-    const { prodotti } = req.body; // Array di {id, posizione, categoria}
+    const { prodotti } = req.body; 
+    const client = await pool.connect();
     try {
-        const client = await pool.connect();
-        try {
-            await client.query('BEGIN');
-            for (const prod of prodotti) {
-                // Aggiorniamo sia la posizione che la categoria (fondamentale per lo spostamento tra gruppi)
-                await client.query(
-                    'UPDATE prodotti SET posizione = $1, categoria = $2 WHERE id = $3',
-                    [prod.posizione, prod.categoria, prod.id]
-                );
-            }
-            await client.query('COMMIT');
-            res.json({ success: true });
-        } catch (e) {
-            await client.query('ROLLBACK');
-            throw e;
-        } finally {
-            client.release();
+        await client.query('BEGIN');
+        for (const prod of prodotti) {
+            // Aggiorniamo sia posizione che categoria per gestire lo spostamento tra gruppi
+            await client.query(
+                'UPDATE prodotti SET posizione = $1, categoria = $2 WHERE id = $3',
+                [prod.posizione, prod.categoria, prod.id]
+            );
         }
+        await client.query('COMMIT');
+        res.json({ success: true });
     } catch (err) {
-        res.status(500).json({ error: "Errore riordino prodotti" });
+        await client.query('ROLLBACK');
+        console.error("ERRORE RIORDINO PRODOTTI:", err);
+        res.status(500).json({ error: "Errore interno riordino prodotti" });
+    } finally {
+        client.release();
     }
 });
 
