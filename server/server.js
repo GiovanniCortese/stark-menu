@@ -119,10 +119,41 @@ app.get('/api/polling/:ristorante_id', async (req, res) => { try { const r = awa
 app.put('/api/ordine/:id/update-items', async (req, res) => { try { const { id } = req.params; const { prodotti, totale, logMsg } = req.body; let q = "UPDATE ordini SET prodotti = $1"; const p = [JSON.stringify(prodotti)]; let i = 2; if(totale!==undefined){q+=`, totale=$${i}`;p.push(totale);i++} if(logMsg){q+=`, dettagli=COALESCE(dettagli,'')||$${i}`;p.push(`\n[${new Date().toLocaleString()}] ${logMsg}`);i++} q+=` WHERE id=$${i}`; p.push(id); await pool.query(q, p); res.json({success:true}); } catch(e){ res.status(500).json({error:"Err"}); } });
 app.post('/api/cassa/paga-tavolo', async (req, res) => { const c = await pool.connect(); try { await c.query('BEGIN'); const r = await c.query("SELECT * FROM ordini WHERE ristorante_id=$1 AND tavolo=$2 AND stato!='pagato'", [req.body.ristorante_id, String(req.body.tavolo)]); if(r.rows.length===0){await c.query('ROLLBACK');return res.json({success:true});} let tot=0, prod=[], log=""; r.rows.forEach(o=>{ tot+=Number(o.totale||0); let p=[]; try{p=JSON.parse(o.prodotti)}catch(e){} prod=[...prod, ...p]; if(o.dettagli) log+=`\nORDINE #${o.id}\n${o.dettagli}`; }); log+=`\nCHIUSO: ${tot}€`; await c.query("UPDATE ordini SET stato='pagato', prodotti=$1, totale=$2, dettagli=$3 WHERE id=$4", [JSON.stringify(prod), tot, log, r.rows[0].id]); if(r.rows.length>1) await c.query("DELETE FROM ordini WHERE id = ANY($1::int[])", [r.rows.slice(1).map(o=>o.id)]); await c.query('COMMIT'); res.json({success:true}); } catch(e){await c.query('ROLLBACK'); res.status(500).json({error:"Err"});} finally{c.release();} });
 app.post('/api/ordine', async (req, res) => { try { const { ristorante_id, tavolo, prodotti, totale } = req.body; await pool.query("INSERT INTO ordini (ristorante_id, tavolo, prodotti, totale, stato) VALUES ($1, $2, $3, $4, 'in_attesa')", [ristorante_id, String(tavolo), JSON.stringify(prodotti), totale]); res.json({ success: true }); } catch (e) { res.status(500).json({error: "Err"}); } });
-app.post('/api/categorie', async (req, res) => { try { const r = await pool.query('INSERT INTO categorie (nome, posizione, ristorante_id, is_bar, is_pizzeria) VALUES ($1, 999, $2, $3, $4) RETURNING *', [req.body.nome, req.body.ristorante_id, req.body.is_bar, req.body.is_pizzeria]); res.json(r.rows[0]); } catch (e) { res.status(500).json({error:"Err"}); } });
+
+// --- FIX CREAZIONE CATEGORIA (Calcola posizione corretta invece di 999) ---
+app.post('/api/categorie', async (req, res) => { 
+    try { 
+        // 1. Trova l'ultimo numero usato
+        const max = await pool.query('SELECT MAX(posizione) as max FROM categorie WHERE ristorante_id = $1', [req.body.ristorante_id]); 
+        // 2. Aggiunge 1
+        const next = (max.rows[0].max || 0) + 1; 
+        
+        // 3. Salva con il numero corretto
+        const r = await pool.query(
+            'INSERT INTO categorie (nome, posizione, ristorante_id, is_bar, is_pizzeria) VALUES ($1, $2, $3, $4, $5) RETURNING *', 
+            [req.body.nome, next, req.body.ristorante_id, req.body.is_bar, req.body.is_pizzeria]
+        ); 
+        res.json(r.rows[0]); 
+    } catch (e) { res.status(500).json({error:"Err"}); } 
+});
+
 app.put('/api/categorie/:id', async (req, res) => { try { await pool.query('UPDATE categorie SET nome=$1, is_bar=$2, is_pizzeria=$3 WHERE id=$4', [req.body.nome, req.body.is_bar, req.body.is_pizzeria, req.params.id]); res.json({success:true}); } catch(e){res.status(500).json({error:"Err"});} });
 app.delete('/api/categorie/:id', async (req, res) => { try { await pool.query('DELETE FROM categorie WHERE id=$1', [req.params.id]); res.json({success:true}); } catch(e){res.status(500).json({error:"Err"});} });
-app.post('/api/prodotti', async (req, res) => { try { await pool.query('INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, immagine_url, posizione) VALUES ($1, $2, $3, $4, $5, $6, $7, 999)', [req.body.nome, req.body.prezzo, req.body.categoria, req.body.sottocategoria, req.body.descrizione, req.body.ristorante_id, req.body.immagine_url]); res.json({success:true}); } catch(e){res.status(500).json({error:"Err"});} });
+
+// --- FIX CREAZIONE PRODOTTI (Calcola posizione corretta invece di 999) ---
+app.post('/api/prodotti', async (req, res) => { 
+    try { 
+        const max = await pool.query('SELECT MAX(posizione) as max FROM prodotti WHERE ristorante_id = $1', [req.body.ristorante_id]);
+        const next = (max.rows[0].max || 0) + 1;
+
+        await pool.query(
+            'INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, immagine_url, posizione) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', 
+            [req.body.nome, req.body.prezzo, req.body.categoria, req.body.sottocategoria, req.body.descrizione, req.body.ristorante_id, req.body.immagine_url, next]
+        ); 
+        res.json({success:true}); 
+    } catch(e){res.status(500).json({error:"Err"});} 
+});
+
 app.put('/api/prodotti/:id', async (req, res) => { try { await pool.query('UPDATE prodotti SET nome=$1, prezzo=$2, categoria=$3, sottocategoria=$4, descrizione=$5, immagine_url=$6 WHERE id=$7', [req.body.nome, req.body.prezzo, req.body.categoria, req.body.sottocategoria, req.body.descrizione, req.body.immagine_url, req.params.id]); res.json({success:true}); } catch(e){res.status(500).json({error:"Err"});} });
 app.delete('/api/prodotti/:id', async (req, res) => { try { await pool.query('DELETE FROM prodotti WHERE id=$1', [req.params.id]); res.json({success:true}); } catch(e){res.status(500).json({error:"Err"});} });
 app.get('/api/categorie/:ristorante_id', async (req, res) => { try { const r = await pool.query('SELECT * FROM categorie WHERE ristorante_id=$1 ORDER BY posizione', [req.params.ristorante_id]); res.json(r.rows); } catch(e){res.status(500).json({error:"Err"});} });
