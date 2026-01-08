@@ -83,9 +83,6 @@ function Menu() {
               <p style={{marginTop: '20px', fontSize: '1.2rem', opacity: 0.8, maxWidth:'500px'}}>
                   Il servizio menu digitale non è al momento disponibile per questa attività.
               </p>
-              <div style={{marginTop: '30px', padding:'10px', border:'1px solid #555', borderRadius:'5px', fontSize:'0.9rem', color:'#888'}}>
-                  Codice Errore: SUB_SUSPENDED
-              </div>
           </div>
       );
   }
