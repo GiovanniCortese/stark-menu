@@ -226,41 +226,61 @@ function Menu() {
         )}
       </header>
 
-      {/* --- MODALE SCHEDA PIATTO DETTAGLIATA --- */}
+      {/* --- MODALE SCHEDA PIATTO DETTAGLIATA (MODIFICATA) --- */}
       {selectedPiatto && (
         <div style={{
             position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 3000,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding:'20px'
+            backgroundColor: 'rgba(0,0,0,0.9)', zIndex: 3000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding:'10px'
         }} onClick={() => setSelectedPiatto(null)}>
             <div style={{
-                background: style?.bg === '#222' ? '#333' : 'white', // Adatta colore al tema
-                color: style?.text || '#333',
-                borderRadius: '15px', overflow: 'hidden',
-                maxWidth: '500px', width: '100%', maxHeight:'90vh', overflowY:'auto',
+                background: 'white', // Sfondo sempre bianco
+                color: '#000',       // Testo sempre nero
+                borderRadius: '10px', overflow: 'hidden',
+                maxWidth: '600px',   // Contenitore più largo
+                width: '100%', maxHeight:'95vh', overflowY:'auto',
                 boxShadow: '0 10px 30px rgba(0,0,0,0.5)', position:'relative'
             }} onClick={e => e.stopPropagation()}>
                 
                 {/* Immagine */}
                 {selectedPiatto.immagine_url && (
-                    <img src={selectedPiatto.immagine_url} alt={selectedPiatto.nome} style={{width:'100%', height:'250px', objectFit:'cover'}} />
+                    <div style={{width:'100%', background:'#000', textAlign:'center'}}>
+                        <img 
+                            src={selectedPiatto.immagine_url} 
+                            alt={selectedPiatto.nome} 
+                            style={{
+                                maxWidth:'100%', 
+                                maxHeight:'50vh', // Altezza massima dinamica (non taglia)
+                                objectFit:'contain', // Mostra tutta la foto
+                                display:'block', margin:'0 auto'
+                            }} 
+                        />
+                    </div>
                 )}
 
                 {/* Contenuto */}
-                <div style={{padding:'20px'}}>
-                    <h2 style={{margin:'0 0 10px 0', fontSize:'1.8rem', color: style?.title || 'inherit'}}>{selectedPiatto.nome}</h2>
-                    <p style={{opacity: 0.8, fontSize:'1rem', lineHeight:'1.5', fontStyle:'italic', marginBottom:'20px'}}>
+                <div style={{padding:'25px'}}>
+                    <h2 style={{margin:'0 0 10px 0', fontSize:'1.8rem', color: '#000', fontWeight:'800'}}>
+                        {selectedPiatto.nome}
+                    </h2>
+                    <p style={{color:'#000', fontSize:'1.1rem', lineHeight:'1.6', marginBottom:'25px'}}>
                         {selectedPiatto.descrizione || "Nessuna descrizione disponibile."}
                     </p>
                     
-                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', borderTop:'1px solid #555', paddingTop:'20px'}}>
-                        <div style={{fontSize:'1.5rem', fontWeight:'bold', color: priceColor}}>
+                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', borderTop:'1px solid #ddd', paddingTop:'20px'}}>
+                        <div style={{fontSize:'1.8rem', fontWeight:'bold', color: '#000'}}>
                             {selectedPiatto.prezzo} €
                         </div>
                         {canOrder && (
                             <button 
                                 onClick={() => aggiungiAlCarrello(selectedPiatto)}
-                                style={{background: priceColor, color:'white', border:'none', padding:'12px 25px', borderRadius:'30px', fontSize:'1rem', fontWeight:'bold', display:'flex', alignItems:'center', gap:'10px', cursor:'pointer'}}
+                                style={{
+                                    background: priceColor, // Il bottone mantiene il colore del tema per risaltare
+                                    color:'white', border:'none', 
+                                    padding:'15px 30px', borderRadius:'30px', 
+                                    fontSize:'1.1rem', fontWeight:'bold', 
+                                    display:'flex', alignItems:'center', gap:'10px', cursor:'pointer'
+                                }}
                             >
                                 AGGIUNGI 🛒
                             </button>
@@ -271,7 +291,13 @@ function Menu() {
                 {/* Tasto Chiudi */}
                 <button 
                     onClick={() => setSelectedPiatto(null)}
-                    style={{position:'absolute', top:'10px', right:'10px', background:'rgba(0,0,0,0.6)', color:'white', border:'none', borderRadius:'50%', width:'35px', height:'35px', cursor:'pointer', fontSize:'18px'}}
+                    style={{
+                        position:'absolute', top:'15px', right:'15px', 
+                        background:'white', color:'black', border:'none', 
+                        borderRadius:'50%', width:'40px', height:'40px', 
+                        cursor:'pointer', fontSize:'20px', boxShadow:'0 2px 10px rgba(0,0,0,0.3)',
+                        display:'flex', alignItems:'center', justifyContent:'center'
+                    }}
                 >✕</button>
             </div>
         </div>
