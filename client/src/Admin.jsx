@@ -1,8 +1,8 @@
-// client/src/Admin.jsx - VERSIONE V14 (MODULARE CON PATH CORRETTI) 🧱
+// client/src/Admin.jsx - VERSIONE V41 (BLOCCO TOTALE ABBONAMENTO) 🔒
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
-// *** IMPORTIAMO I SOTTO-COMPONENTI DALLA CARTELLA SPECIFICA ***
+// *** IMPORTIAMO I SOTTO-COMPONENTI ***
 import AdminMenu from './components_admin/AdminMenu';
 import AdminCategorie from './components_admin/AdminCategorie';
 import AdminGrafica from './components_admin/AdminGrafica';
@@ -12,7 +12,7 @@ function Admin() {
   const { slug } = useParams(); 
   const navigate = useNavigate();
 
-  // --- STATI GLOBALI (Condivisi tra i tab) ---
+  // --- STATI GLOBALI ---
   const [user, setUser] = useState(null); 
   const [loading, setLoading] = useState(true); 
   const [tab, setTab] = useState('menu'); 
@@ -21,9 +21,12 @@ function Admin() {
   const [menu, setMenu] = useState([]); 
   const [categorie, setCategorie] = useState([]); 
   
-  // Configurazione (Grafica e Stato Servizio)
+  // CONFIGURAZIONE COMPLETA (include account_attivo e cucina_super_active)
   const [config, setConfig] = useState({ 
-      ordini_abilitati: false, servizio_attivo: false,
+      account_attivo: true, // Default true per evitare flash rossi al caricamento
+      cucina_super_active: true,
+      ordini_abilitati: false, 
+      servizio_attivo: false,
       logo_url: '', cover_url: '',
       colore_sfondo: '#222222', colore_titolo: '#ffffff',
       colore_testo: '#cccccc', colore_prezzo: '#27ae60',
@@ -50,7 +53,7 @@ function Admin() {
         }
 
         try {
-            // 1. Carica Info Ristorante
+            // 1. Carica Info Ristorante Base
             const res = await fetch(`${API_URL}/api/menu/${slug}`);
             const data = await res.json();
 
@@ -58,13 +61,12 @@ function Admin() {
                 const userData = { 
                     id: data.id, 
                     nome: data.ristorante, 
-                    slug: slug, 
-                    superAdminAbilitato: data.ordini_abilitati 
+                    slug: slug 
                 };
                 setUser(userData);
                 setMenu(data.menu || []);
                 
-                // 2. Carica Config Extra e Categorie
+                // 2. Carica Configurazione Completa (Permessi, Colori, ecc.)
                 caricaConfigurazioniExtra(userData.id);
             } else { 
                 alert("Ristorante non trovato."); 
@@ -86,14 +88,8 @@ function Admin() {
     fetch(`${API_URL}/api/ristorante/config/${id}`)
         .then(r=>r.json())
         .then(d => {
-            const safeConfig = { 
-                ...d, 
-                colore_prezzo: d.colore_prezzo || '#27ae60', 
-                colore_titolo: d.colore_titolo || '#ffffff', 
-                colore_testo: d.colore_testo || '#cccccc', 
-                colore_sfondo: d.colore_sfondo || '#222222' 
-            };
-            setConfig(prev => ({...prev, ...safeConfig}));
+            // Uniamo i dati ricevuti allo stato config
+            setConfig(prev => ({...prev, ...d}));
         }); 
     
     // Fetch Categorie
@@ -114,9 +110,9 @@ function Admin() {
           const sorted = data.sort((a,b) => (a.posizione || 0) - (b.posizione || 0));
           setCategorie(sorted);
       });
-      // Ricarica Stato Servizio
+      // Ricarica Stato Servizio/Config
       fetch(`${API_URL}/api/ristorante/config/${user.id}`).then(r=>r.json()).then(d => {
-        if(d) setConfig(prev => ({...prev, servizio_attivo: d.servizio_attivo}));
+        if(d) setConfig(prev => ({...prev, ...d}));
       });
   };
 
@@ -131,6 +127,26 @@ function Admin() {
 
   if (loading) return <div style={{padding:'50px', textAlign:'center', fontSize:'20px'}}>🔄 Caricamento Admin...</div>;
   if (!user) return null;
+
+  // --- BLOCCO TOTALE: SE ABBONAMENTO SCADUTO ---
+  // Questo controllo avviene PRIMA di renderizzare qualsiasi tab.
+  if (config.account_attivo === false) {
+      return (
+          <div className="container" style={{textAlign:'center', padding:'50px', maxWidth:'600px', margin:'50px auto'}}>
+              <h1 style={{fontSize:'4rem', marginBottom:'10px'}}>⛔</h1>
+              <h2 style={{color:'red', textTransform:'uppercase'}}>Abbonamento Sospeso</h2>
+              <p style={{fontSize:'1.2rem', color:'#666'}}>
+                  L'accesso al pannello di gestione per <strong>{user.nome}</strong> è stato momentaneamente bloccato.
+              </p>
+              <div style={{background:'#fff3cd', border:'1px solid #ffeeba', padding:'15px', borderRadius:'5px', margin:'20px 0', color:'#856404'}}>
+                  Contatta l'amministrazione Stark Enterprise per regolarizzare la posizione e riattivare il servizio.
+              </div>
+              <button onClick={handleLogout} style={{background:'#333', color:'white', border:'none', padding:'10px 20px', borderRadius:'5px', cursor:'pointer'}}>
+                  Esci
+              </button>
+          </div>
+      );
+  }
 
   return (
     <div className="container">

@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - VERSIONE V39 (LOGICA SEPARATA: SUB=SERVIZIO, CUCINA=ORDINI) 🔒
+// client/src/Menu.jsx - VERSIONE V41 (BLOCCO CLIENTE ABBONAMENTO) 🔒
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 
@@ -9,9 +9,9 @@ function Menu() {
   const [ristoranteId, setRistoranteId] = useState(null);
   const [style, setStyle] = useState({});
   
-  // --- STATI LOGICI (Nuova Mappatura) ---
-  const [isSuspended, setIsSuspended] = useState(false); // servizio_attivo (Abbonamento)
-  const [canOrder, setCanOrder] = useState(true);        // ordini_abilitati (Cucina)
+  // --- STATI LOGICI ---
+  const [isSuspended, setIsSuspended] = useState(false); // ABBONAMENTO SCADUTO
+  const [canOrder, setCanOrder] = useState(true);        // CUCINA APERTA/CHIUSA
   
   // --- STATI CARRELLO E ORDINE ---
   const [carrello, setCarrello] = useState([]); 
@@ -42,20 +42,19 @@ function Menu() {
             return; 
         }
 
-        // 1. CONTROLLO ABBONAMENTO (servizio_attivo)
-        // Se è false, blocchiamo tutto subito.
-        if (data.servizio_attivo === false) {
+        // 1. CONTROLLO ABBONAMENTO (subscription_active viene dal server V40)
+        // Se false, l'abbonamento è scaduto -> BLOCCO TOTALE
+        if (data.subscription_active === false) {
             setIsSuspended(true);
-            setRistorante(data.ristorante); // Serve per mostrare il nome nella schermata di blocco
+            setRistorante(data.ristorante); // Impostiamo il nome per mostrarlo nella schermata di blocco
             if (data.style) setStyle(data.style);
-            return; // Stop caricamento
+            return; // Fermiamo qui, non carichiamo il resto
         }
 
-        // 2. CONTROLLO CUCINA (ordini_abilitati)
-        // Se è false, carichiamo il menu ma disabilitiamo i tasti "+"
+        // 2. CONTROLLO CUCINA (ordini_abilitati viene dal server V40 combinando Admin e Owner)
         setCanOrder(data.ordini_abilitati);
 
-        // 3. CARICAMENTO DATI
+        // 3. CARICAMENTO DATI NORMALE
         setRistorante(data.ristorante);
         setMenu(data.menu || []);
         setRistoranteId(data.id);
@@ -67,7 +66,7 @@ function Menu() {
       });
   }, [currentSlug]);
 
-  // --- BLOCCO TOTALE SE SOSPESO ---
+  // --- SCHERMATA BLOCCO (Se Abbonamento Scaduto) ---
   if (isSuspended) {
       return (
           <div style={{
@@ -78,18 +77,20 @@ function Menu() {
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
               padding: '20px', textAlign: 'center'
           }}>
-              <div style={{fontSize: '4rem', marginBottom: '20px'}}>⛔</div>
-              <h1 style={{fontSize: '2rem', color: 'red', textTransform: 'uppercase', margin: 0}}>Attività Sospesa</h1>
-              <h2 style={{marginTop: '10px', fontSize: '1.5rem'}}>{ristorante}</h2>
-              <p style={{marginTop: '20px', fontSize: '1.2rem', opacity: 0.8}}>
-                  Il servizio è momentaneamente non disponibile.<br/>
-                  Si prega di contattare l'amministrazione.
+              <div style={{fontSize: '5rem', marginBottom: '20px'}}>⛔</div>
+              <h1 style={{fontSize: '2rem', color: '#e74c3c', textTransform: 'uppercase', margin: 0}}>Attività Sospesa</h1>
+              <h2 style={{marginTop: '10px', fontSize: '1.5rem', color: style?.title || '#fff'}}>{ristorante}</h2>
+              <p style={{marginTop: '20px', fontSize: '1.2rem', opacity: 0.8, maxWidth:'500px'}}>
+                  Il servizio menu digitale non è al momento disponibile per questa attività.
               </p>
+              <div style={{marginTop: '30px', padding:'10px', border:'1px solid #555', borderRadius:'5px', fontSize:'0.9rem', color:'#888'}}>
+                  Codice Errore: SUB_SUSPENDED
+              </div>
           </div>
       );
   }
 
-  // --- LOGICA Uscita (BAR = 0) ---
+  // --- Logica Uscita (BAR = 0) ---
   const getDefaultCourse = (categoria, isBar) => {
       if (isBar) return 0; // Bar non ha priorità
       const cat = categoria.toLowerCase();
@@ -100,8 +101,7 @@ function Menu() {
 
   // --- 2. AGGIUNGI AL CARRELLO ---
   const aggiungiAlCarrello = (prodotto) => {
-    // Se la cucina è chiusa (ordini_abilitati = false), blocco l'azione
-    if (!canOrder) return alert("⚠️ LA CUCINA È CHIUSA.\nPuoi consultare il menu, ma non ordinare.");
+    if (!canOrder) return alert("⚠️ LA CUCINA È MOMENTANEAMENTE CHIUSA.\nPuoi consultare il menu, ma non ordinare.");
     
     const isBar = !!prodotto.categoria_is_bar;
 
