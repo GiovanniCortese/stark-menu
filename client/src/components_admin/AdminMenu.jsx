@@ -1,4 +1,4 @@
-// client/src/components_admin/AdminMenu.jsx - VERSIONE V40 (FIX GERARCHIA PERMESSI) 🛡️
+// client/src/components_admin/AdminMenu.jsx - VERSIONE V46 (DEBUG POPUP) 🐞
 import { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
@@ -7,37 +7,18 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const [editId, setEditId] = useState(null); 
   const [uploading, setUploading] = useState(false);
 
-  // --- LOGICA STATI (V40) ---
-  // account_attivo = ABBONAMENTO (Gestito da SuperAdmin, blocca tutto)
-  // cucina_super_active = MASTER SWITCH (Gestito da SuperAdmin, blocca solo cucina)
-  // ordini_abilitati = INTERRUTTORE RISTORATORE (Gestito qui)
-  
-  const isAbbonamentoAttivo = config.account_attivo !== false; // Default true
-  const isMasterBlock = config.cucina_super_active === false;  // Se false, è bloccato dagli admin
+  const isAbbonamentoAttivo = config.account_attivo !== false; 
+  const isMasterBlock = config.cucina_super_active === false;  
   const isCucinaAperta = config.ordini_abilitati;
 
-  // --- FUNZIONI DI SERVIZIO ---
   const toggleCucina = async () => { 
-      // 1. BLOCCO SICUREZZA
       if (!isAbbonamentoAttivo) return alert("⛔ ABBONAMENTO SOSPESO."); 
       if (isMasterBlock) return alert("⛔ CUCINA BLOCCATA DAGLI ADMIN.");
-
-      // 2. TOGGLE CUCINA (ordini_abilitati)
       const nuovoStatoCucina = !isCucinaAperta; 
-      
-      // Aggiornamento Ottimistico
       setConfig({...config, ordini_abilitati: nuovoStatoCucina}); 
-      
       try {
-          await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, {
-              method:'PUT', 
-              headers:{'Content-Type':'application/json'}, 
-              body:JSON.stringify({ ordini_abilitati: nuovoStatoCucina })
-          }); 
-      } catch (error) {
-          alert("Errore di connessione.");
-          setConfig({...config, ordini_abilitati: !nuovoStatoCucina}); // Revert
-      }
+          await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ ordini_abilitati: nuovoStatoCucina }) }); 
+      } catch (error) { alert("Errore connessione."); setConfig({...config, ordini_abilitati: !nuovoStatoCucina}); }
   };
 
   const handleSalvaPiatto = async (e) => { 
@@ -45,7 +26,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       if(!nuovoPiatto.nome) return alert("Nome mancante"); 
       const cat = nuovoPiatto.categoria || (categorie.length > 0 ? categorie[0].nome : "");
       const payload = {...nuovoPiatto, categoria:cat, ristorante_id:user.id};
-      
       try {
           if(editId) {
               await fetch(`${API_URL}/api/prodotti/${editId}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }); 
@@ -64,10 +44,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const handleFileChange = async (e) => { 
       const f=e.target.files[0]; if(!f)return; setUploading(true); 
       const fd=new FormData(); fd.append('photo',f); 
-      try {
-        const r=await fetch(`${API_URL}/api/upload`,{method:'POST',body:fd}); const d=await r.json(); 
-        if(d.url) setNuovoPiatto(p=>({...p, immagine_url:d.url})); 
-      } catch(e) { console.error(e); } finally { setUploading(false); }
+      try { const r=await fetch(`${API_URL}/api/upload`,{method:'POST',body:fd}); const d=await r.json(); if(d.url) setNuovoPiatto(p=>({...p, immagine_url:d.url})); } catch(e) { console.error(e); } finally { setUploading(false); }
   };
 
   const cancellaPiatto = async (id) => { if(confirm("Eliminare?")) { await fetch(`${API_URL}/api/prodotti/${id}`, {method:'DELETE'}); ricaricaDati(); }};
@@ -75,111 +52,88 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const annullaModifica = () => { setEditId(null); setNuovoPiatto({nome:'', prezzo:'', categoria:categorie[0]?.nome || '', sottocategoria: '', descrizione:'', immagine_url:''}); };
   const duplicaPiatto = async (piattoOriginale) => { if(!confirm(`Duplicare?`)) return; const copia = { ...piattoOriginale, nome: `${piattoOriginale.nome} (Copia)`, ristorante_id: user.id }; await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(copia) }); ricaricaDati(); };
 
-// --- LOGICA DRAG & DROP PIATTI (FIX DEFINITIVO) ---
+  // --- LOGICA DRAG & DROP CON DEBUGGER ATTIVO 🐞 ---
   const onDragEnd = async (result) => {
-    // Se l'utente molla il piatto fuori o non è un piatto, esci
-    if (!result.destination || result.type !== 'DISH') return;
+    // 1. Controllo se il drag è valido
+    if (!result.destination) return; 
+    if (result.type !== 'DISH') {
+        alert(`⚠️ DEBUG: Stai spostando un elemento di tipo '${result.type}', ma mi aspetto 'DISH'.`);
+        return;
+    }
 
-    // 1. Capiamo dove sta andando il piatto (Nome Categoria di destinazione)
-    // Il replace toglie il prefisso "cat-" dall'ID della colonna
+    // 2. Recupero Dati
     const destCat = result.destination.droppableId.replace("cat-", "");
     const piattoId = parseInt(result.draggableId);
 
-    // 2. Creiamo una copia sicura del menu
+    // DEBUG: Avviso inizio operazione
+    alert(`🔵 DEBUG: Inizio spostamento.\nPiatto ID: ${piattoId}\nDestinazione: ${destCat}`);
+
+    // 3. Logica Spostamento Locale
     const allItems = [...menu];
-    
-    // 3. Troviamo e rimuoviamo il piatto dalla sua vecchia posizione
     const itemIndex = allItems.findIndex(p => p.id === piattoId);
-    if(itemIndex === -1) return;
-    const [movedItem] = allItems.splice(itemIndex, 1);
-
-    // 4. AGGIORNAMENTO FONDAMENTALE: Cambiamo la categoria nel dato locale
-    movedItem.categoria = destCat;
-
-    // 5. Creiamo la lista dei piatti della categoria di destinazione
-    const destItems = allItems.filter(p => p.categoria === destCat);
     
-    // Inseriamo il piatto nella nuova posizione visiva
+    if(itemIndex === -1) {
+        alert("❌ ERRORE DEBUG: Il piatto non è stato trovato nell'array 'menu'.");
+        return;
+    }
+
+    const [movedItem] = allItems.splice(itemIndex, 1);
+    movedItem.categoria = destCat; // Aggiorna categoria
+
+    const destItems = allItems.filter(p => p.categoria === destCat);
     destItems.splice(result.destination.index, 0, movedItem);
 
-    // 6. Riassegniamo i numeri di posizione (0, 1, 2...) e prepariamo i dati per il server
+    // 4. Preparazione Dati per Server
     const destItemsUpdated = destItems.map((p, idx) => ({
         ...p,
         posizione: idx,
-        categoria: destCat // <--- QUESTO È IL DATO CHE MANCAVA!
+        categoria: destCat
     }));
 
-    // 7. Ricomponiamo il menu totale per aggiornare la grafica
+    // Aggiorna UI
     const otherItems = allItems.filter(p => p.categoria !== destCat);
-    const finalMenu = [...otherItems, ...destItemsUpdated];
+    setMenu([...otherItems, ...destItemsUpdated]);
 
-    setMenu(finalMenu); // Aggiorna subito la vista
+    // DEBUG: Avviso tentativo invio
+    // alert(`🟠 DEBUG: Sto inviando ${destItemsUpdated.length} piatti al server...`);
 
-    // 8. Inviamo al server i dati corretti
     try {
-        await fetch(`${API_URL}/api/prodotti/riordina`, { 
+        const response = await fetch(`${API_URL}/api/prodotti/riordina`, { 
             method: 'PUT', 
             headers:{'Content-Type':'application/json'}, 
             body: JSON.stringify({ prodotti: destItemsUpdated }) 
         });
+
+        const data = await response.json();
+        
+        if (data.success) {
+             alert("✅ DEBUG: IL SERVER HA RISPOSTO 'SUCCESS'!\nSe ricarichi ora, dovrebbe rimanere.");
+        } else {
+             alert("❌ DEBUG: IL SERVER HA RISPOSTO CON ERRORE:\n" + JSON.stringify(data));
+        }
+
     } catch (error) {
-        console.error("Errore salvataggio piatti:", error);
-        ricaricaDati(); // Se fallisce, ricarica i dati originali
+        alert("💀 DEBUG: ERRORE DI RETE GRAVE.\nIl server non è raggiungibile o l'URL è sbagliato.\nErrore: " + error.message);
+        ricaricaDati(); 
     }
   };
 
-  // --- DEFINIZIONE STILI CARD STATO ---
-  let cardBg = '#fff3cd'; 
-  let cardBorder = '2px solid #333';
-  
-  if (!isAbbonamentoAttivo) {
-      cardBg = '#ffecec'; cardBorder = '2px solid red';
-  } else if (isMasterBlock) {
-      cardBg = '#fadbd8'; cardBorder = '2px solid #c0392b';
-  } else if (!isCucinaAperta) {
-      cardBg = '#f8d7da';
-  }
+  let cardBg = '#fff3cd'; let cardBorder = '2px solid #333';
+  if (!isAbbonamentoAttivo) { cardBg = '#ffecec'; cardBorder = '2px solid red'; } else if (isMasterBlock) { cardBg = '#fadbd8'; cardBorder = '2px solid #c0392b'; } else if (!isCucinaAperta) { cardBg = '#f8d7da'; }
 
   return (
     <DragDropContext onDragEnd={onDragEnd}>
-        {/* Pulsante Servizio (CONTROLLO GERARCHICO) */}
-        <div className="card" style={{
-            border: cardBorder, 
-            background: cardBg, 
-            marginBottom:'20px', textAlign:'center', padding: '15px'
-        }}>
+        <div className="card" style={{border: cardBorder, background: cardBg, marginBottom:'20px', textAlign:'center', padding: '15px'}}>
               {!isAbbonamentoAttivo ? (
-                  /* CASO 1: ABBONAMENTO SCADUTO (Blocco Totale) */
-                  <div>
-                      <h2 style={{color:'red', margin:0, fontSize:'1.5rem'}}>⛔ ABBONAMENTO SOSPESO</h2>
-                      <p style={{color:'#c0392b', fontWeight:'bold', margin:'5px 0'}}>Contatta l'amministrazione per sbloccare il pannello.</p>
-                  </div>
+                  <div><h2 style={{color:'red', margin:0, fontSize:'1.5rem'}}>⛔ ABBONAMENTO SOSPESO</h2><p style={{color:'#c0392b', fontWeight:'bold', margin:'5px 0'}}>Contatta l'amministrazione per sbloccare il pannello.</p></div>
               ) : isMasterBlock ? (
-                  /* CASO 2: BLOCCO SUPER ADMIN (Cucina Disabilitata Centralmente) */
-                  <div>
-                      <h2 style={{color:'#c0392b', margin:0, fontSize:'1.5rem'}}>👮 CUCINA BLOCCATA DAGLI ADMIN</h2>
-                      <p style={{color:'#c0392b', fontWeight:'bold', margin:'5px 0'}}>La gestione ordini è disabilitata temporaneamente.</p>
-                  </div>
+                  <div><h2 style={{color:'#c0392b', margin:0, fontSize:'1.5rem'}}>👮 CUCINA BLOCCATA DAGLI ADMIN</h2><p style={{color:'#c0392b', fontWeight:'bold', margin:'5px 0'}}>La gestione ordini è disabilitata temporaneamente.</p></div>
               ) : (
-                  /* CASO 3: NORMALE -> MOSTRA BOTTONE */
-                  <button onClick={toggleCucina} style={{
-                      background: isCucinaAperta ? '#2ecc71':'#e74c3c', 
-                      width:'100%', padding:'15px', color:'white', fontWeight:'bold', fontSize:'18px', 
-                      border:'none', borderRadius:'5px', cursor:'pointer'
-                  }}>
-                      {isCucinaAperta ? "✅ ORDINI APERTI (Clicca per Chiudere)" : "🛑 ORDINI CHIUSI (Clicca per Aprire)"}
-                  </button>
+                  <button onClick={toggleCucina} style={{background: isCucinaAperta ? '#2ecc71':'#e74c3c', width:'100%', padding:'15px', color:'white', fontWeight:'bold', fontSize:'18px', border:'none', borderRadius:'5px', cursor:'pointer'}}>{isCucinaAperta ? "✅ ORDINI APERTI (Clicca per Chiudere)" : "🛑 ORDINI CHIUSI (Clicca per Aprire)"}</button>
               )}
         </div>
 
-        {/* --- SEZIONE EDITING (Disabilitata visivamente se sospeso) --- */}
-        <div style={{
-            opacity: isAbbonamentoAttivo ? 1 : 0.4, 
-            pointerEvents: isAbbonamentoAttivo ? 'auto' : 'none', 
-            filter: isAbbonamentoAttivo ? 'none' : 'grayscale(100%)'
-        }}>
-            
-            {/* Form Aggiungi/Modifica */}
+        <div style={{opacity: isAbbonamentoAttivo ? 1 : 0.4, pointerEvents: isAbbonamentoAttivo ? 'auto' : 'none', filter: isAbbonamentoAttivo ? 'none' : 'grayscale(100%)'}}>
             <div className="card" style={{background: editId ? '#e3f2fd' : '#f8f9fa', border: editId ? '2px solid #2196f3' : '2px dashed #ccc'}}>
                   <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                       <h3>{editId ? "✏️ Modifica Piatto" : "➕ Aggiungi Piatto"}</h3>
@@ -202,17 +156,13 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                   </form>
             </div>
 
-            {/* Lista Piatti */}
             {categorie.map(cat => (
                 <div key={cat.id} style={{marginBottom: '20px'}}>
                     <h3 style={{marginTop:'30px', borderBottom:'2px solid #eee', paddingBottom:'5px', color:'#555'}}>{cat.nome} {cat.is_bar && "🍹"} {cat.is_pizzeria && "🍕"}</h3>
                     <Droppable droppableId={`cat-${cat.nome}`} type="DISH">
                         {(provided, snapshot) => (
                             <div {...provided.droppableProps} ref={provided.innerRef} className="menu-list" style={{background: snapshot.isDraggingOver ? '#f0f0f0' : 'transparent', minHeight: '50px', padding: '5px'}}>
-                                {menu
-                                    .filter(p => p.categoria === cat.nome)
-                                    .sort((a,b) => (a.posizione || 0) - (b.posizione || 0)) 
-                                    .map((p, index) => (
+                                {menu.filter(p => p.categoria === cat.nome).sort((a,b) => (a.posizione || 0) - (b.posizione || 0)).map((p, index) => (
                                         <Draggable key={p.id} draggableId={String(p.id)} index={index}>
                                             {(provided, snapshot) => (
                                                 <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className="card" style={{...provided.draggableProps.style, flexDirection:'row', justifyContent:'space-between', background: snapshot.isDragging ? '#e3f2fd' : 'white', border: editId === p.id ? '2px solid #2196f3' : '1px solid #eee'}}>
