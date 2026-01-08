@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE V47 (PULITA E FUNZIONANTE) ✨
+// server/server.js - VERSIONE DEFINITIVA V48 (SENZA DUPLICATI)
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -17,7 +17,7 @@ app.use(express.json());
 if (!process.env.DATABASE_URL) { console.error("❌ ERRORE CRITICO: Manca DATABASE_URL"); process.exit(1); }
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 
-// --- SISTEMA DI AUTO-RIPARAZIONE ---
+// --- INIT DATABASE ---
 const initDb = async () => {
     const client = await pool.connect();
     try {
@@ -28,7 +28,6 @@ const initDb = async () => {
             CREATE TABLE IF NOT EXISTS prodotti (id SERIAL PRIMARY KEY, ristorante_id INTEGER REFERENCES ristoranti(id), categoria TEXT, sottocategoria TEXT, nome TEXT NOT NULL, descrizione TEXT, prezzo REAL, immagine_url TEXT, posizione INTEGER DEFAULT 0);
             CREATE TABLE IF NOT EXISTS ordini (id SERIAL PRIMARY KEY, ristorante_id INTEGER REFERENCES ristoranti(id), tavolo TEXT, stato TEXT DEFAULT 'in_attesa', data_ora TIMESTAMP DEFAULT CURRENT_TIMESTAMP, prodotti TEXT, totale REAL, dettagli TEXT);
         `);
-        
         // Colonne extra
         await client.query(`
             DO $$ BEGIN 
@@ -115,7 +114,7 @@ app.put('/api/super/ristoranti/:id', async (req, res) => {
 });
 app.delete('/api/super/ristoranti/:id', async (req, res) => { try { const id = req.params.id; await pool.query('DELETE FROM prodotti WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM categorie WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM ordini WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM ristoranti WHERE id = $1', [id]); res.json({ success: true }); } catch (e) { res.status(500).json({error: "Err"}); } });
 
-// --- STANDARD API (PULITE DAI DUPLICATI) ---
+// --- STANDARD API (PULITE E CORRETTE) ---
 app.get('/api/polling/:ristorante_id', async (req, res) => { try { const r = await pool.query("SELECT * FROM ordini WHERE ristorante_id = $1 AND (stato IS NULL OR stato != 'pagato') ORDER BY data_ora ASC", [req.params.ristorante_id]); const ordini = r.rows.map(o => { let p=[]; try{p=JSON.parse(o.prodotti||"[]")}catch(e){} return {...o, prodotti:Array.isArray(p)?p:[]}; }); res.json({ nuovi_ordini: ordini }); } catch (e) { res.status(500).json({ error: "Err" }); } });
 app.put('/api/ordine/:id/update-items', async (req, res) => { try { const { id } = req.params; const { prodotti, totale, logMsg } = req.body; let q = "UPDATE ordini SET prodotti = $1"; const p = [JSON.stringify(prodotti)]; let i = 2; if(totale!==undefined){q+=`, totale=$${i}`;p.push(totale);i++} if(logMsg){q+=`, dettagli=COALESCE(dettagli,'')||$${i}`;p.push(`\n[${new Date().toLocaleString()}] ${logMsg}`);i++} q+=` WHERE id=$${i}`; p.push(id); await pool.query(q, p); res.json({success:true}); } catch(e){ res.status(500).json({error:"Err"}); } });
 app.post('/api/cassa/paga-tavolo', async (req, res) => { const c = await pool.connect(); try { await c.query('BEGIN'); const r = await c.query("SELECT * FROM ordini WHERE ristorante_id=$1 AND tavolo=$2 AND stato!='pagato'", [req.body.ristorante_id, String(req.body.tavolo)]); if(r.rows.length===0){await c.query('ROLLBACK');return res.json({success:true});} let tot=0, prod=[], log=""; r.rows.forEach(o=>{ tot+=Number(o.totale||0); let p=[]; try{p=JSON.parse(o.prodotti)}catch(e){} prod=[...prod, ...p]; if(o.dettagli) log+=`\nORDINE #${o.id}\n${o.dettagli}`; }); log+=`\nCHIUSO: ${tot}€`; await c.query("UPDATE ordini SET stato='pagato', prodotti=$1, totale=$2, dettagli=$3 WHERE id=$4", [JSON.stringify(prod), tot, log, r.rows[0].id]); if(r.rows.length>1) await c.query("DELETE FROM ordini WHERE id = ANY($1::int[])", [r.rows.slice(1).map(o=>o.id)]); await c.query('COMMIT'); res.json({success:true}); } catch(e){await c.query('ROLLBACK'); res.status(500).json({error:"Err"});} finally{c.release();} });
@@ -148,7 +147,7 @@ app.get('/api/reset-ordini', async (req, res) => { try { await pool.query('DELET
 app.post('/api/import-excel', uploadFile.single('file'), async (req, res) => { const { ristorante_id } = req.body; if (!req.file || !ristorante_id) return res.status(400).json({ error: "Dati mancanti." }); try { const workbook = xlsx.read(req.file.buffer, { type: 'buffer' }); const sheetName = workbook.SheetNames[0]; const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]); for (const row of data) { const nome = row['Nome'] ? String(row['Nome']).trim() : "Senza Nome"; const prezzo = row['Prezzo'] ? parseFloat(String(row['Prezzo']).replace(',', '.')) : 0; const categoria = row['Categoria'] ? String(row['Categoria']).trim() : "Generale"; const sottocategoria = row['Sottocategoria'] ? String(row['Sottocategoria']).trim() : ""; const descrizione = row['Descrizione'] ? String(row['Descrizione']).trim() : ""; let catCheck = await pool.query('SELECT * FROM categorie WHERE nome = $1 AND ristorante_id = $2', [categoria, ristorante_id]); if (catCheck.rows.length === 0) { const maxPos = await pool.query('SELECT MAX(posizione) as max FROM categorie WHERE ristorante_id = $1', [ristorante_id]); await pool.query('INSERT INTO categorie (nome, posizione, ristorante_id, descrizione) VALUES ($1, $2, $3, $4)', [categoria, (maxPos.rows[0].max||0)+1, ristorante_id, ""]); } await pool.query(`INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, posizione) VALUES ($1, $2, $3, $4, $5, $6, 999)`, [nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id]); } res.json({ success: true, message: `Importati ${data.length} piatti!` }); } catch (err) { res.status(500).json({ error: err.message }); } });
 app.get('/api/export-excel/:ristorante_id', async (req, res) => { try { const result = await pool.query(`SELECT nome as "Nome", prezzo as "Prezzo", categoria as "Categoria", sottocategoria as "Sottocategoria", descrizione as "Descrizione" FROM prodotti WHERE ristorante_id = $1 ORDER BY categoria, nome`, [req.params.ristorante_id]); const workbook = xlsx.utils.book_new(); const worksheet = xlsx.utils.json_to_sheet(result.rows); xlsx.utils.book_append_sheet(workbook, worksheet, "Menu"); const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' }); res.setHeader('Content-Disposition', 'attachment; filename="menu_export.xlsx"'); res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); res.send(buffer); } catch (err) { res.status(500).json({ error: "Errore Export" }); } });
 
-// --- 4. RIORDINO CATEGORIE (VERSIONE DEFINITIVA E CORRETTA) ---
+// --- RIORDINO: CATEGORIE (FIX DEFINITIVO) ---
 app.put('/api/categorie/riordina', async (req, res) => {
     const client = await pool.connect();
     try {
@@ -167,7 +166,7 @@ app.put('/api/categorie/riordina', async (req, res) => {
     } finally { client.release(); }
 });
 
-// --- 5. RIORDINO PRODOTTI (VERSIONE DEFINITIVA E CORRETTA) ---
+// --- RIORDINO: PRODOTTI (FIX DEFINITIVO) ---
 app.put('/api/prodotti/riordina', async (req, res) => {
     const client = await pool.connect();
     try {
@@ -175,8 +174,11 @@ app.put('/api/prodotti/riordina', async (req, res) => {
         if (!req.body.prodotti || !Array.isArray(req.body.prodotti)) throw new Error("Dati mancanti");
         await client.query('BEGIN');
         for (const prod of req.body.prodotti) {
-            // AGGIORNA POSIZIONE E CATEGORIA!
-            await client.query('UPDATE prodotti SET posizione = $1, categoria = COALESCE($2, categoria) WHERE id = $3', [prod.posizione, prod.categoria, prod.id]);
+            // AGGIORNA POSIZIONE E CATEGORIA (Senza tornare indietro)
+            await client.query(
+                'UPDATE prodotti SET posizione = $1, categoria = COALESCE($2, categoria) WHERE id = $3', 
+                [prod.posizione, prod.categoria, prod.id]
+            );
         }
         await client.query('COMMIT');
         res.json({ success: true });
@@ -187,4 +189,4 @@ app.put('/api/prodotti/riordina', async (req, res) => {
     } finally { client.release(); }
 });
 
-initDb().then((ready) => { if (ready) app.listen(port, () => console.log(`🚀 SERVER V47 (CLEAN) - Porta ${port}`)); });
+initDb().then((ready) => { if (ready) app.listen(port, () => console.log(`🚀 SERVER V48 (FINAL) - Porta ${port}`)); });
