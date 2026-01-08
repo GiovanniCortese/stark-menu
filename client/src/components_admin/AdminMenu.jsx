@@ -77,63 +77,56 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
 // --- LOGICA DRAG & DROP PIATTI (FIX DEFINITIVO) ---
 const onDragEnd = async (result) => {
-    const { source, destination, draggableId } = result;
+    if (!result.destination) return; // Droppato fuori
 
-    // Se non c'è destinazione o se l'oggetto è stato lasciato nello stesso punto
-    if (!destination) return;
-    if (source.droppableId === destination.droppableId && source.index === destination.index) return;
+    // 1. Identifica IDs
+    const startCat = result.source.droppableId.replace("cat-", "");
+    const destCat = result.destination.droppableId.replace("cat-", "");
+    const piattoId = parseInt(result.draggableId);
 
-    const startCat = source.droppableId.replace("cat-", "");
-    const endCat = destination.droppableId.replace("cat-", "");
+    // 2. Clona il menu attuale
+    const nuovoMenu = Array.from(menu);
     
-    // Creiamo una copia profonda del menu per non mutare lo stato direttamente
-    let newMenu = [...menu];
+    // 3. Trova e rimuovi l'elemento dalla posizione originale
+    // Nota: findIndex è più sicuro di splice basato solo su source.index quando si usano filtri
+    const indexOriginale = nuovoMenu.findIndex(p => p.id === piattoId);
+    if(indexOriginale === -1) return;
     
-    // Troviamo l'oggetto trascinato
-    const draggedItem = newMenu.find(p => String(p.id) === draggableId);
-    if (!draggedItem) return;
+    const [piattoSpostato] = nuovoMenu.splice(indexOriginale, 1);
 
-    // 1. Rimuoviamo l'oggetto dalla lista (indipendentemente da dove sia)
-    newMenu = newMenu.filter(p => String(p.id) !== draggableId);
+    // 4. Aggiorna la categoria del piatto
+    piattoSpostato.categoria = destCat;
 
-    // 2. Aggiorniamo la categoria dell'oggetto
-    draggedItem.categoria = endCat;
+    // 5. Calcola dove inserirlo
+    // Dobbiamo trovare l'indice corretto nell'array GLOBALE 'nuovoMenu'
+    // Filtriamo gli elementi della destinazione per capire dove va
+    const itemsDestinazione = nuovoMenu.filter(p => p.categoria === destCat);
+    
+    // Inseriamo "visivamente"
+    itemsDestinazione.splice(result.destination.index, 0, piattoSpostato);
 
-    // 3. Prepariamo la lista di destinazione
-    // Prendiamo tutti gli item che sono GIA' nella categoria di destinazione
-    const destList = newMenu
-        .filter(p => p.categoria === endCat)
-        .sort((a, b) => (a.posizione || 0) - (b.posizione || 0));
-
-    // 4. Inseriamo l'oggetto nella nuova posizione nella lista di destinazione
-    destList.splice(destination.index, 0, draggedItem);
-
-    // 5. Ricalcoliamo le posizioni SOLO per la categoria di destinazione
-    const itemsToUpdate = destList.map((item, index) => ({
-        ...item,
-        posizione: index
+    // 6. Ricostruiamo il menu ordinato per il backend
+    // Creiamo un payload solo con gli elementi della categoria toccata
+    const payloadUpdate = itemsDestinazione.map((p, index) => ({
+        id: p.id,
+        posizione: index, // 0, 1, 2...
+        categoria: destCat
     }));
 
-    // 6. Ricostruiamo il menu completo:
-    // (Tutto ciò che NON è nella categoria di destinazione) + (La categoria di destinazione aggiornata)
-    const finalMenu = [
-        ...newMenu.filter(p => p.categoria !== endCat),
-        ...itemsToUpdate
+    // 7. Aggiorniamo lo stato locale (per non far scattare l'interfaccia)
+    // Rimuoviamo tutti i vecchi item di questa categoria e mettiamo i nuovi ordinati
+    const menuFinale = [
+        ...nuovoMenu.filter(p => p.categoria !== destCat), 
+        ...itemsDestinazione
     ];
+    setMenu(menuFinale);
 
-    setMenu(finalMenu); // Aggiorna UI
-
-    // 7. Chiamata Server (Salviamo solo quelli che sono cambiati)
-    try {
-        await fetch(`${API_URL}/api/prodotti/riordina`, { 
-            method: 'PUT', 
-            headers:{'Content-Type':'application/json'}, 
-            body: JSON.stringify({ prodotti: itemsToUpdate.map(p => ({ id: p.id, posizione: p.posizione, categoria: p.categoria })) }) 
-        });
-    } catch (error) {
-        console.error("Errore salvataggio piatti:", error);
-        ricaricaDati();
-    }
+    // 8. Chiamata Server (Usa la logica V33)
+    await fetch(`${API_URL}/api/prodotti/riordina`, { 
+        method: 'PUT', 
+        headers:{'Content-Type':'application/json'}, 
+        body: JSON.stringify({ prodotti: payloadUpdate }) 
+    });
 };
 
   // --- DEFINIZIONE STILI CARD STATO ---
