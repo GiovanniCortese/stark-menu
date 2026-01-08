@@ -190,5 +190,27 @@ app.put('/api/prodotti/riordina', async (req, res) => {
         client.release();
     }
 });
+// AGGIUNGI QUESTO PER LE CATEGORIE
+app.put('/api/categorie/riordina', async (req, res) => {
+    try {
+        const { categorie } = req.body;
+        for (const cat of categorie) {
+            await pool.query('UPDATE categorie SET posizione = $1 WHERE id = $2', [parseInt(cat.posizione), cat.id]);
+        }
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// AGGIUNGI QUESTO PER I PRODOTTI
+app.put('/api/prodotti/riordina', async (req, res) => {
+    try {
+        const { prodotti } = req.body;
+        for (const prod of prodotti) {
+            await pool.query('UPDATE prodotti SET posizione = $1, categoria = $2 WHERE id = $3', 
+            [parseInt(prod.posizione), prod.categoria, prod.id]);
+        }
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 initDb().then((ready) => { if (ready) app.listen(port, () => console.log(`🚀 SERVER V48 (FINAL) - Porta ${port}`)); });
