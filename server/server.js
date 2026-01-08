@@ -213,6 +213,20 @@ app.post('/api/ordine', async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Err" }); }
 });
 
+app.get('/api/ristorante/config/:id', async (req, res) => {
+    try {
+        const r = await pool.query('SELECT * FROM ristoranti WHERE id = $1', [req.params.id]);
+        if (r.rows.length > 0) {
+            res.json(r.rows[0]);
+        } else {
+            res.status(404).json({ error: "Ristorante non trovato" });
+        }
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: "Errore Server Config" });
+    }
+});
+
 app.post('/api/upload', upload.single('photo'), (req, res) => res.json({ url: req.file.path }));
 
 app.listen(port, () => console.log(`🚀 SERVER CORRETTO (Porta ${port})`));
