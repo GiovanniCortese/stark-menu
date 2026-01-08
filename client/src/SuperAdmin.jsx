@@ -81,10 +81,8 @@ function SuperAdmin() {
     // Aggiornamento ottimistico
     setRistoranti(ristoranti.map(r => r.id === id ? { ...r, servizio_attivo: nuovoStato } : r));
     
-    // Chiamata Server su 'servizio_attivo' (usiamo l'endpoint specifico del servizio, ma qui come super admin usiamo la rotta put servizio)
-    // O meglio, usiamo la rotta super admin generica se vogliamo coerenza, ma nel tuo esempio usavi servizio.
-    // Qui uso la rotta SUPER ADMIN per essere sicuri che funzioni sempre.
-    await fetch(`${API_URL}/api/super/ristoranti/${id}`, {
+    // Chiamata Server su 'servizio_attivo' (usiamo l'endpoint specifico del servizio)
+    await fetch(`${API_URL}/api/ristorante/servizio/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ servizio_attivo: nuovoStato }) 
