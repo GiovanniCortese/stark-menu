@@ -248,19 +248,17 @@ app.post('/api/login', async (req, res) => {
 
 app.put('/api/ristorante/style/:id', async (req, res) => { try { await pool.query(`UPDATE ristoranti SET logo_url=$1, cover_url=$2, colore_sfondo=$3, colore_titolo=$4, colore_testo=$5, colore_prezzo=$6, font_style=$7 WHERE id=$8`, [req.body.logo_url, req.body.cover_url, req.body.colore_sfondo, req.body.colore_titolo, req.body.colore_testo, req.body.colore_prezzo, req.body.font_style, req.params.id]); res.json({success:true}); } catch(e){res.status(500).json({error:"Err"});} });
 
-// --- 4. RIORDINO CATEGORIE (DEBUG + FIX) ---
+// --- 4. RIORDINO CATEGORIE (VERSIONE ESTESA DEBUG) ---
 app.put('/api/categorie/riordina', async (req, res) => {
     const client = await pool.connect();
     try {
-        console.log("📥 [Categorie] Dati ricevuti:", JSON.stringify(req.body)); // VEDIAMO COSA ARRIVA
-        
-        // Controllo di sicurezza
+        console.log("📥 [Categorie] Ricevuto:", JSON.stringify(req.body)); // Logga cosa arriva
+
         if (!req.body.categorie || !Array.isArray(req.body.categorie)) {
-            throw new Error("Il server non ha ricevuto un elenco di categorie valido.");
+            throw new Error("Dati mancanti: mi aspetto un array 'categorie'");
         }
 
-        await client.query('BEGIN'); // Inizia transazione sicura
-
+        await client.query('BEGIN'); // Inizia transazione
         for (const cat of req.body.categorie) {
             // Aggiorna posizione
             await client.query(
@@ -268,47 +266,45 @@ app.put('/api/categorie/riordina', async (req, res) => {
                 [cat.posizione, cat.id]
             );
         }
-        
-        await client.query('COMMIT'); // Salva tutto
-        console.log("✅ [Categorie] Riordino salvato con successo.");
+        await client.query('COMMIT'); // Conferma tutto
+        console.log("✅ [Categorie] Salvataggio completato.");
         res.json({ success: true });
 
     } catch (e) {
-        await client.query('ROLLBACK'); // Annulla tutto se c'è un errore
-        console.error("❌ ERRORE CRITICO (Categorie):", e.message); // STAMPA L'ERRORE NEL TERMINALE
+        await client.query('ROLLBACK'); // Annulla in caso di errore
+        console.error("❌ ERRORE SERVER (Categorie):", e.message); // <--- GUARDA QUI NEL TERMINALE
         res.status(500).json({ error: e.message });
     } finally {
         client.release();
     }
 });
 
-// --- 5. RIORDINO PRODOTTI (DEBUG + FIX) ---
+// --- 5. RIORDINO PRODOTTI (VERSIONE ESTESA DEBUG) ---
 app.put('/api/prodotti/riordina', async (req, res) => {
     const client = await pool.connect();
     try {
-        console.log("📥 [Prodotti] Dati ricevuti:", JSON.stringify(req.body)); // VEDIAMO COSA ARRIVA
+        console.log("📥 [Prodotti] Ricevuto:", JSON.stringify(req.body)); // Logga cosa arriva
 
         if (!req.body.prodotti || !Array.isArray(req.body.prodotti)) {
-             throw new Error("Il server non ha ricevuto un elenco di prodotti valido.");
+             throw new Error("Dati mancanti: mi aspetto un array 'prodotti'");
         }
 
         await client.query('BEGIN');
-
         for (const prod of req.body.prodotti) {
-            // Aggiorna Posizione E Categoria
+            // Aggiorna posizione E categoria
+            // Usa COALESCE per evitare che la categoria diventi NULL se manca
             await client.query(
-                'UPDATE prodotti SET posizione = $1, categoria = $2 WHERE id = $3',
+                'UPDATE prodotti SET posizione = $1, categoria = COALESCE($2, categoria) WHERE id = $3',
                 [prod.posizione, prod.categoria, prod.id]
             );
         }
-
         await client.query('COMMIT');
-        console.log("✅ [Prodotti] Riordino salvato con successo.");
+        console.log("✅ [Prodotti] Salvataggio completato.");
         res.json({ success: true });
 
     } catch (e) {
         await client.query('ROLLBACK');
-        console.error("❌ ERRORE CRITICO (Prodotti):", e.message); // STAMPA L'ERRORE NEL TERMINALE
+        console.error("❌ ERRORE SERVER (Prodotti):", e.message); // <--- GUARDA QUI NEL TERMINALE
         res.status(500).json({ error: e.message });
     } finally {
         client.release();
