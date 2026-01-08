@@ -77,42 +77,62 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
 // --- LOGICA DRAG & DROP PIATTI (FIX DEFINITIVO) ---
 const onDragEnd = async (result) => {
-    if (!result.destination || result.type !== 'DISH') return;
+    const { source, destination, draggableId } = result;
 
-    const destCat = result.destination.droppableId.replace("cat-", "");
-    const piattoId = parseInt(result.draggableId);
+    // Se non c'è destinazione o se l'oggetto è stato lasciato nello stesso punto
+    if (!destination) return;
+    if (source.droppableId === destination.droppableId && source.index === destination.index) return;
 
-    // 1. Aggiornamento locale immediato (UI fluida)
-    const allItems = [...menu];
-    const itemIndex = allItems.findIndex(p => p.id === piattoId);
-    if(itemIndex === -1) return;
+    const startCat = source.droppableId.replace("cat-", "");
+    const endCat = destination.droppableId.replace("cat-", "");
     
-    const [movedItem] = allItems.splice(itemIndex, 1);
-    movedItem.categoria = destCat; // Cambio categoria fondamentale
+    // Creiamo una copia profonda del menu per non mutare lo stato direttamente
+    let newMenu = [...menu];
+    
+    // Troviamo l'oggetto trascinato
+    const draggedItem = newMenu.find(p => String(p.id) === draggableId);
+    if (!draggedItem) return;
 
-    const destItems = allItems.filter(p => p.categoria === destCat);
-    destItems.splice(result.destination.index, 0, movedItem);
+    // 1. Rimuoviamo l'oggetto dalla lista (indipendentemente da dove sia)
+    newMenu = newMenu.filter(p => String(p.id) !== draggableId);
 
-    const destItemsUpdated = destItems.map((p, idx) => ({
-        id: p.id,
-        posizione: idx,
-        categoria: destCat // Dati puliti per il server
+    // 2. Aggiorniamo la categoria dell'oggetto
+    draggedItem.categoria = endCat;
+
+    // 3. Prepariamo la lista di destinazione
+    // Prendiamo tutti gli item che sono GIA' nella categoria di destinazione
+    const destList = newMenu
+        .filter(p => p.categoria === endCat)
+        .sort((a, b) => (a.posizione || 0) - (b.posizione || 0));
+
+    // 4. Inseriamo l'oggetto nella nuova posizione nella lista di destinazione
+    destList.splice(destination.index, 0, draggedItem);
+
+    // 5. Ricalcoliamo le posizioni SOLO per la categoria di destinazione
+    const itemsToUpdate = destList.map((item, index) => ({
+        ...item,
+        posizione: index
     }));
 
-    const otherItems = allItems.filter(p => p.categoria !== destCat);
-    setMenu([...otherItems, ...destItemsUpdated]);
+    // 6. Ricostruiamo il menu completo:
+    // (Tutto ciò che NON è nella categoria di destinazione) + (La categoria di destinazione aggiornata)
+    const finalMenu = [
+        ...newMenu.filter(p => p.categoria !== endCat),
+        ...itemsToUpdate
+    ];
 
-    // 2. Invio al server
+    setMenu(finalMenu); // Aggiorna UI
+
+    // 7. Chiamata Server (Salviamo solo quelli che sono cambiati)
     try {
-        const res = await fetch(`${API_URL}/api/prodotti/riordina`, { 
+        await fetch(`${API_URL}/api/prodotti/riordina`, { 
             method: 'PUT', 
             headers:{'Content-Type':'application/json'}, 
-            body: JSON.stringify({ prodotti: destItemsUpdated }) 
+            body: JSON.stringify({ prodotti: itemsToUpdate.map(p => ({ id: p.id, posizione: p.posizione, categoria: p.categoria })) }) 
         });
-        if (!res.ok) throw new Error("Errore Server");
     } catch (error) {
         console.error("Errore salvataggio piatti:", error);
-        ricaricaDati(); // Revert in caso di errore
+        ricaricaDati();
     }
 };
 
