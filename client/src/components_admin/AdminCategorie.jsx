@@ -26,36 +26,34 @@ function AdminCategorie({ user, categorie, setCategorie, API_URL, ricaricaDati }
   const cancellaCategoria = async (id) => { if(confirm("Eliminare?")) { await fetch(`${API_URL}/api/categorie/${id}`, {method:'DELETE'}); ricaricaDati(); }};
   const avviaModificaCat = (cat) => { setEditCatId(cat.id); setNuovaCat({ nome: cat.nome, descrizione: cat.descrizione||'', is_bar: cat.is_bar, is_pizzeria: cat.is_pizzeria }); };
 
-  // --- LOGICA DRAG & DROP ROBUSTA ---
+  // --- LOGICA DRAG & DROP CATEGORIE (FIX DEFINITIVO) ---
   const onDragEnd = async (result) => {
       if (!result.destination) return;
 
-      // 1. Clona e riordina l'array locale
       const items = Array.from(categorie);
       const [reorderedItem] = items.splice(result.source.index, 1);
       items.splice(result.destination.index, 0, reorderedItem);
 
-      // 2. Ricalcola esplicitamente la proprietà 'posizione' per TUTTI gli elementi
-      // (Questo è il passaggio che mancava: il server vuole vedere il numero aggiornato)
+      // 1. Assegna i nuovi indici di posizione a TUTTI gli elementi
       const updatedItems = items.map((item, index) => ({
           ...item,
-          posizione: index // 0, 1, 2, 3...
+          posizione: index 
       }));
 
-      // 3. Aggiorna la UI subito
+      // 2. Aggiorna la vista subito
       setCategorie(updatedItems);
 
-      // 4. Invia al server l'intero array aggiornato
+      // 3. Invia al server la lista con ID e POSIZIONE
       try {
           await fetch(`${API_URL}/api/categorie/riordina`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
+              // Il server V39/V40 si aspetta { categorie: [...] }
               body: JSON.stringify({ categorie: updatedItems })
           });
       } catch (error) {
-          console.error("Errore salvataggio ordine:", error);
-          alert("Errore di rete: l'ordine non è stato salvato.");
-          ricaricaDati(); // Revert in caso di errore
+          console.error("Errore salvataggio:", error);
+          ricaricaDati();
       }
   };
 
