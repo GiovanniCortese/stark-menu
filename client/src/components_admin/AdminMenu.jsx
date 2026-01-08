@@ -1,4 +1,4 @@
-// client/src/components_admin/AdminMenu.jsx - VERSIONE V43 (3 LIVELLI) 🔒
+// client/src/components_admin/AdminMenu.jsx - VERSIONE V38 (LOGICA INVERTITA: SERVIZIO=SUB, ORDINI=CUCINA) 🔄
 import { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
@@ -7,34 +7,37 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const [editId, setEditId] = useState(null); 
   const [uploading, setUploading] = useState(false);
 
-  // --- LOGICA LIVELLI ---
-  // 1. Abbonamento (Sito visibile o no)
-  const accountAttivo = config.account_attivo !== false;   
-  // 2. Pacchetto Cucina (Funzione ordini inclusa o no)
-  const pacchettoCucina = config.servizio_attivo !== false; 
-  // 3. Stato Giornaliero (Aperto/Chiuso dal ristoratore)
-  const cucinaAperta = config.ordini_abilitati;            
+  // --- LOGICA STATI ---
+  // servizio_attivo = ABBONAMENTO (Gestito da SuperAdmin)
+  // ordini_abilitati = CUCINA (Gestito da Ristoratore)
+  
+  const isAbbonamentoAttivo = config.servizio_attivo !== false; // Se è false, è sospeso.
+  const isCucinaAperta = config.ordini_abilitati; // True = Aperta, False = Chiusa
 
-  // --- FUNZIONE TOGGLE CUCINA (Livello 3) ---
+  // --- FUNZIONI DI SERVIZIO ---
   const toggleCucina = async () => { 
-      // CONTROLLI DI SICUREZZA
-      if (!accountAttivo) return alert("⛔ ABBONAMENTO SOSPESO. Contatta l'amministrazione.");
-      if (!pacchettoCucina) return alert("⛔ FUNZIONE NON INCLUSA.\nIl tuo piano prevede solo il Menu Digitale.");
+      // 1. BLOCCO SICUREZZA: Se l'abbonamento è scaduto, fermati.
+      if (!isAbbonamentoAttivo) { 
+          alert("⛔ ABBONAMENTO SOSPESO.\nContatta l'amministrazione per sbloccare il pannello."); 
+          return; 
+      }
 
-      // Se i permessi ci sono, inverte lo stato giornaliero
-      const n = !cucinaAperta; 
-      setConfig({...config, ordini_abilitati: n}); 
+      // 2. TOGGLE CUCINA (ordini_abilitati)
+      const nuovoStatoCucina = !isCucinaAperta; 
       
-      // Invia comando al server su 'ordini_abilitati'
+      // Aggiornamento Ottimistico
+      setConfig({...config, ordini_abilitati: nuovoStatoCucina}); 
+      
       try {
+          // Inviamo al server il comando per cambiare 'ordini_abilitati'
           await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, {
               method:'PUT', 
               headers:{'Content-Type':'application/json'}, 
-              body:JSON.stringify({ ordini_abilitati: n })
+              body:JSON.stringify({ ordini_abilitati: nuovoStatoCucina })
           }); 
       } catch (error) {
           alert("Errore di connessione.");
-          setConfig({...config, ordini_abilitati: !n}); // Revert in caso di errore
+          setConfig({...config, ordini_abilitati: !nuovoStatoCucina}); // Revert
       }
   };
 
@@ -73,11 +76,13 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const annullaModifica = () => { setEditId(null); setNuovoPiatto({nome:'', prezzo:'', categoria:categorie[0]?.nome || '', sottocategoria: '', descrizione:'', immagine_url:''}); };
   const duplicaPiatto = async (piattoOriginale) => { if(!confirm(`Duplicare?`)) return; const copia = { ...piattoOriginale, nome: `${piattoOriginale.nome} (Copia)`, ristorante_id: user.id }; await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(copia) }); ricaricaDati(); };
 
+  // --- LOGICA DRAG & DROP ---
   const onDragEnd = async (result) => {
     if (!result.destination || result.type !== 'DISH') return;
     
     const destCat = result.destination.droppableId.replace("cat-", "");
     const piattoId = parseInt(result.draggableId);
+
     const piattoSpostato = menu.find(p => p.id === piattoId);
     if (!piattoSpostato) return;
 
@@ -118,42 +123,35 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
   return (
     <DragDropContext onDragEnd={onDragEnd}>
-        {/* BLOCCO COMANDI (Gestione Stati) */}
-        <div className="card" style={{border: accountAttivo ? '2px solid #333' : '2px solid red', background: accountAttivo ? '#fff' : '#ffecec', marginBottom:'20px', textAlign:'center', padding:'15px'}}>
-              
-              {!accountAttivo ? (
-                  /* CASO 1: ABBONAMENTO SCADUTO */
+        {/* Pulsante Servizio (CONTROLLO ABBONAMENTO + CUCINA) */}
+        <div className="card" style={{
+            border: isAbbonamentoAttivo ? '2px solid #333' : '2px solid red', 
+            background: isAbbonamentoAttivo ? (isCucinaAperta ? '#fff3cd' : '#f8d7da') : '#ffecec', 
+            marginBottom:'20px', textAlign:'center', padding: '15px'
+        }}>
+              {!isAbbonamentoAttivo ? (
+                  /* CASO 1: ABBONAMENTO SCADUTO (Blocco Totale) */
                   <div>
-                      <h2 style={{color:'red', margin:0}}>⛔ ABBONAMENTO SCADUTO</h2>
-                      <p style={{color:'#c0392b', margin:'5px 0'}}>Contatta l'amministrazione per riattivare il servizio.</p>
-                  </div>
-              ) : !pacchettoCucina ? (
-                  /* CASO 2: PACCHETTO SOLO MENU */
-                  <div style={{color:'#555'}}>
-                      <h3 style={{margin:0, color:'#2980b9'}}>📄 MENU DIGITALE ATTIVO</h3>
-                      <p style={{fontSize:'13px', margin:'5px 0'}}>Il tuo piano attuale <b>non include</b> la ricezione ordini al tavolo.</p>
-                      <button disabled style={{background:'#ccc', border:'none', padding:'10px', borderRadius:'5px', cursor:'not-allowed'}}>Cucina Disabilitata</button>
+                      <h2 style={{color:'red', margin:0, fontSize:'1.5rem'}}>⛔ ABBONAMENTO SOSPESO</h2>
+                      <p style={{color:'#c0392b', fontWeight:'bold', margin:'5px 0'}}>Contatta l'amministrazione per sbloccare il pannello.</p>
                   </div>
               ) : (
-                  /* CASO 3: PACCHETTO COMPLETO -> TASTO APRI/CHIUDI */
-                  <div>
-                      <div style={{fontSize:'12px', color:'#888', marginBottom:'5px', textTransform:'uppercase'}}>Gestione Servizio</div>
-                      <button onClick={toggleCucina} style={{
-                          background: cucinaAperta ? '#2ecc71':'#e74c3c', 
-                          width:'100%', padding:'15px', color:'white', fontWeight:'bold', fontSize:'18px', 
-                          border:'none', borderRadius:'5px', cursor:'pointer'
-                      }}>
-                          {cucinaAperta ? "✅ ORDINI APERTI (Clicca per Chiudere)" : "🛑 ORDINI CHIUSI (Clicca per Aprire)"}
-                      </button>
-                  </div>
+                  /* CASO 2: ABBONAMENTO ATTIVO -> MOSTRA GESTIONE CUCINA */
+                  <button onClick={toggleCucina} style={{
+                      background: isCucinaAperta ? '#2ecc71':'#e74c3c', 
+                      width:'100%', padding:'15px', color:'white', fontWeight:'bold', fontSize:'18px', 
+                      border:'none', borderRadius:'5px', cursor:'pointer'
+                  }}>
+                      {isCucinaAperta ? "✅ ORDINI APERTI (Clicca per Chiudere)" : "🛑 ORDINI CHIUSI (Clicca per Aprire)"}
+                  </button>
               )}
         </div>
 
-        {/* RESTO DEL PANNELLO (Edit/List) - Disabilitato visivamente se abbonamento scaduto */}
+        {/* --- SEZIONE EDITING (Disabilitata visivamente se sospeso) --- */}
         <div style={{
-            opacity: accountAttivo ? 1 : 0.4, 
-            pointerEvents: accountAttivo ? 'auto' : 'none', 
-            filter: accountAttivo ? 'none' : 'grayscale(100%)'
+            opacity: isAbbonamentoAttivo ? 1 : 0.4, 
+            pointerEvents: isAbbonamentoAttivo ? 'auto' : 'none', 
+            filter: isAbbonamentoAttivo ? 'none' : 'grayscale(100%)'
         }}>
             
             {/* Form Aggiungi/Modifica */}

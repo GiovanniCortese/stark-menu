@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - VERSIONE V44 (LOGICA 3 LIVELLI COMPLETA & BLINDATA) 🍹
+// client/src/Menu.jsx - VERSIONE V39 (LOGICA SEPARATA: SUB=SERVIZIO, CUCINA=ORDINI) 🔒
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 
@@ -9,9 +9,9 @@ function Menu() {
   const [ristoranteId, setRistoranteId] = useState(null);
   const [style, setStyle] = useState({});
   
-  // --- STATI LOGICI (3 LIVELLI) ---
-  const [canOrder, setCanOrder] = useState(true);       // Gestisce la visibilità dei tasti "+"
-  const [isSuspended, setIsSuspended] = useState(false); // Gestisce il blocco totale del sito
+  // --- STATI LOGICI (Nuova Mappatura) ---
+  const [isSuspended, setIsSuspended] = useState(false); // servizio_attivo (Abbonamento)
+  const [canOrder, setCanOrder] = useState(true);        // ordini_abilitati (Cucina)
   
   // --- STATI CARRELLO E ORDINE ---
   const [carrello, setCarrello] = useState([]); 
@@ -31,7 +31,7 @@ function Menu() {
   
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
-  // --- 1. CARICAMENTO MENU E LOGICA DI BLOCCO ---
+  // --- 1. CARICAMENTO MENU ---
   useEffect(() => {
     fetch(`${API_URL}/api/menu/${currentSlug}`)
       .then(res => res.json())
@@ -42,27 +42,20 @@ function Menu() {
             return; 
         }
 
-        // --- LIVELLO 1: ABBONAMENTO (account_attivo) ---
-        // Se l'account è disattivato dal Super Admin -> BLOCCO TOTALE
-        // Nota: il check !== false serve perché vecchi record potrebbero non avere il campo (default true)
-        if (data.account_attivo === false) { 
-            setIsSuspended(true); 
-            setRistorante(data.ristorante); 
-            if(data.style) setStyle(data.style);
-            return; // Interrompe il resto, non serve caricare il menu
+        // 1. CONTROLLO ABBONAMENTO (servizio_attivo)
+        // Se è false, blocchiamo tutto subito.
+        if (data.servizio_attivo === false) {
+            setIsSuspended(true);
+            setRistorante(data.ristorante); // Serve per mostrare il nome nella schermata di blocco
+            if (data.style) setStyle(data.style);
+            return; // Stop caricamento
         }
 
-        // --- LIVELLO 2 & 3: ABILITAZIONE ORDINI ---
-        // Per ordinare servono DUE condizioni vere contemporaneamente:
-        // A. Il Super Admin deve aver abilitato il pacchetto cucina (servizio_attivo)
-        // B. Il Ristoratore deve aver aperto la cucina (ordini_abilitati)
-        const pacchettoCucinaAttivo = data.servizio_attivo !== false;
-        const cucinaApertaDalRistoratore = data.ordini_abilitati === true;
-        
-        // Se una delle due è falsa, canOrder diventa false (Solo Consultazione)
-        setCanOrder(pacchettoCucinaAttivo && cucinaApertaDalRistoratore);
-        
-        // Caricamento dati standard
+        // 2. CONTROLLO CUCINA (ordini_abilitati)
+        // Se è false, carichiamo il menu ma disabilitiamo i tasti "+"
+        setCanOrder(data.ordini_abilitati);
+
+        // 3. CARICAMENTO DATI
         setRistorante(data.ristorante);
         setMenu(data.menu || []);
         setRistoranteId(data.id);
@@ -74,7 +67,7 @@ function Menu() {
       });
   }, [currentSlug]);
 
-  // --- RENDER: SCHERMATA DI BLOCCO (Se Abbonamento Scaduto) ---
+  // --- BLOCCO TOTALE SE SOSPESO ---
   if (isSuspended) {
       return (
           <div style={{
@@ -96,10 +89,7 @@ function Menu() {
       );
   }
 
-  // --- RENDER: ERRORE 404 ---
-  if (error) return <div className="container" style={{padding:'50px', textAlign:'center', color:'white'}}><h1>🚫 Ristorante non trovato (404)</h1></div>;
-
-  // --- LOGICA PRIORITÀ USCITE ---
+  // --- LOGICA Uscita (BAR = 0) ---
   const getDefaultCourse = (categoria, isBar) => {
       if (isBar) return 0; // Bar non ha priorità
       const cat = categoria.toLowerCase();
@@ -110,8 +100,8 @@ function Menu() {
 
   // --- 2. AGGIUNGI AL CARRELLO ---
   const aggiungiAlCarrello = (prodotto) => {
-    // Se la cucina è chiusa (per pacchetto mancante o scelta ristoratore), blocca.
-    if (!canOrder) return alert("⚠️ IL SERVIZIO ORDINI NON È ATTIVO AL MOMENTO.\nPuoi consultare il menu, ma non inviare comande.");
+    // Se la cucina è chiusa (ordini_abilitati = false), blocco l'azione
+    if (!canOrder) return alert("⚠️ LA CUCINA È CHIUSA.\nPuoi consultare il menu, ma non ordinare.");
     
     const isBar = !!prodotto.categoria_is_bar;
 
@@ -191,6 +181,8 @@ function Menu() {
      }
   };
 
+  if (error) return <div className="container" style={{padding:'50px', textAlign:'center', color:'white'}}><h1>🚫 Ristorante non trovato (404)</h1></div>;
+
   const categorieOrdinate = [...new Set(menu.map(p => p.categoria))];
 
   // --- Accordion handlers ---
@@ -230,8 +222,8 @@ function Menu() {
                 Tavolo: <strong style={{fontSize:'1.2rem', color:'white'}}>{numeroTavolo}</strong>
             </p> 
         ) : (
-            <div className="badge-digital" style={{background:'red', color:'white', padding:'10px', display:'inline-block', borderRadius:'5px', fontWeight:'bold', fontSize:'14px', marginTop:'10px', boxShadow:'0 2px 5px rgba(0,0,0,0.3)'}}>
-                ⛔ ORDINI CHIUSI (Solo Consultazione)
+            <div className="badge-digital" style={{background:'red', color:'white', padding:'10px', display:'inline-block', borderRadius:'5px', fontWeight:'bold', fontSize:'14px'}}>
+                ⛔ ORDINI CHIUSI (Ordinare tramite il Cameriere)
             </div>
         )}
       </header>
@@ -286,7 +278,7 @@ function Menu() {
                                                 <div key={prodotto.id} className="card" onClick={() => prodotto.immagine_url ? setSelectedPiatto(prodotto) : null} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', cursor: prodotto.immagine_url ? 'pointer' : 'default', backgroundColor: 'white', marginBottom: '1px', borderRadius: '0' }}>
                                                     {prodotto.immagine_url && <img src={prodotto.immagine_url} style={{width:'70px', height:'70px', objectFit:'cover', borderRadius:'5px', flexShrink: 0}} />}
                                                     <div className="info" style={{flex: 1}}>
-                                                        <h3 style={{margin:'0 0 4px 0', fontSize:'16px', color: 'black'}}>{prodotto.nome}</h3>
+                                                        <h3 style={{margin:'0 0 4px 0', fontSize:'16px', color: 'titleColor'}}>{prodotto.nome}</h3>
                                                         {prodotto.descrizione && (<p style={{fontSize:'12px', color:'#666', margin:'0 0 4px 0', lineHeight:'1.2'}}>{prodotto.descrizione}</p>)}
                                                         <div style={{fontSize:'14px', fontWeight:'bold', color: priceColor}}>{prodotto.prezzo} €</div>
                                                     </div>
