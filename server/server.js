@@ -147,70 +147,63 @@ app.get('/api/reset-ordini', async (req, res) => { try { await pool.query('DELET
 app.post('/api/import-excel', uploadFile.single('file'), async (req, res) => { const { ristorante_id } = req.body; if (!req.file || !ristorante_id) return res.status(400).json({ error: "Dati mancanti." }); try { const workbook = xlsx.read(req.file.buffer, { type: 'buffer' }); const sheetName = workbook.SheetNames[0]; const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]); for (const row of data) { const nome = row['Nome'] ? String(row['Nome']).trim() : "Senza Nome"; const prezzo = row['Prezzo'] ? parseFloat(String(row['Prezzo']).replace(',', '.')) : 0; const categoria = row['Categoria'] ? String(row['Categoria']).trim() : "Generale"; const sottocategoria = row['Sottocategoria'] ? String(row['Sottocategoria']).trim() : ""; const descrizione = row['Descrizione'] ? String(row['Descrizione']).trim() : ""; let catCheck = await pool.query('SELECT * FROM categorie WHERE nome = $1 AND ristorante_id = $2', [categoria, ristorante_id]); if (catCheck.rows.length === 0) { const maxPos = await pool.query('SELECT MAX(posizione) as max FROM categorie WHERE ristorante_id = $1', [ristorante_id]); await pool.query('INSERT INTO categorie (nome, posizione, ristorante_id, descrizione) VALUES ($1, $2, $3, $4)', [categoria, (maxPos.rows[0].max||0)+1, ristorante_id, ""]); } await pool.query(`INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, posizione) VALUES ($1, $2, $3, $4, $5, $6, 999)`, [nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id]); } res.json({ success: true, message: `Importati ${data.length} piatti!` }); } catch (err) { res.status(500).json({ error: err.message }); } });
 app.get('/api/export-excel/:ristorante_id', async (req, res) => { try { const result = await pool.query(`SELECT nome as "Nome", prezzo as "Prezzo", categoria as "Categoria", sottocategoria as "Sottocategoria", descrizione as "Descrizione" FROM prodotti WHERE ristorante_id = $1 ORDER BY categoria, nome`, [req.params.ristorante_id]); const workbook = xlsx.utils.book_new(); const worksheet = xlsx.utils.json_to_sheet(result.rows); xlsx.utils.book_append_sheet(workbook, worksheet, "Menu"); const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' }); res.setHeader('Content-Disposition', 'attachment; filename="menu_export.xlsx"'); res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); res.send(buffer); } catch (err) { res.status(500).json({ error: "Errore Export" }); } });
 
-// FIX CATEGORIE
+// --- FIX RIORDINAMENTO (VERSIONE ROBUSTA) ---
+
+// 1. RIORDINA CATEGORIE
 app.put('/api/categorie/riordina', async (req, res) => {
     const { categorie } = req.body;
+    if (!categorie || !Array.isArray(categorie)) {
+        return res.status(400).json({ error: "Dati mancanti o formato errato" });
+    }
+
     const client = await pool.connect();
     try {
-        await client.query('BEGIN');
+        await client.query('BEGIN'); // Inizia transazione sicura
         for (const cat of categorie) {
             await client.query(
                 'UPDATE categorie SET posizione = $1 WHERE id = $2',
                 [parseInt(cat.posizione), parseInt(cat.id)]
             );
         }
-        await client.query('COMMIT');
+        await client.query('COMMIT'); // Salva tutto
+        console.log("✅ Categorie riordinate con successo");
         res.json({ success: true });
     } catch (err) {
-        await client.query('ROLLBACK');
+        await client.query('ROLLBACK'); // Annulla se c'è errore
+        console.error("❌ Errore riordino categorie:", err);
         res.status(500).json({ error: err.message });
     } finally {
         client.release();
     }
 });
 
-// FIX PRODOTTI
+// 2. RIORDINA PRODOTTI
 app.put('/api/prodotti/riordina', async (req, res) => {
     const { prodotti } = req.body;
+    if (!prodotti || !Array.isArray(prodotti)) {
+        return res.status(400).json({ error: "Dati mancanti o formato errato" });
+    }
+
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
         for (const prod of prodotti) {
+            // Nota: aggiorniamo anche la categoria in caso sia stato spostato
             await client.query(
                 'UPDATE prodotti SET posizione = $1, categoria = $2 WHERE id = $3',
                 [parseInt(prod.posizione), prod.categoria, parseInt(prod.id)]
             );
         }
         await client.query('COMMIT');
+        console.log("✅ Prodotti riordinati con successo");
         res.json({ success: true });
     } catch (err) {
         await client.query('ROLLBACK');
+        console.error("❌ Errore riordino prodotti:", err);
         res.status(500).json({ error: err.message });
     } finally {
         client.release();
     }
-});
-// AGGIUNGI QUESTO PER LE CATEGORIE
-app.put('/api/categorie/riordina', async (req, res) => {
-    try {
-        const { categorie } = req.body;
-        for (const cat of categorie) {
-            await pool.query('UPDATE categorie SET posizione = $1 WHERE id = $2', [parseInt(cat.posizione), cat.id]);
-        }
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// AGGIUNGI QUESTO PER I PRODOTTI
-app.put('/api/prodotti/riordina', async (req, res) => {
-    try {
-        const { prodotti } = req.body;
-        for (const prod of prodotti) {
-            await pool.query('UPDATE prodotti SET posizione = $1, categoria = $2 WHERE id = $3', 
-            [parseInt(prod.posizione), prod.categoria, prod.id]);
-        }
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 initDb().then((ready) => { if (ready) app.listen(port, () => console.log(`🚀 SERVER V48 (FINAL) - Porta ${port}`)); });
