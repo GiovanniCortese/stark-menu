@@ -149,52 +149,42 @@ app.get('/api/export-excel/:ristorante_id', async (req, res) => { try { const re
 
 // --- FIX RIORDINAMENTO (Logica estratta dalla V33 funzionante) ---
 
+// --- FIX RIORDINAMENTO (Logica V12 Funzionante) ---
+
 // 1. RIORDINA CATEGORIE
 app.put('/api/categorie/riordina', async (req, res) => {
-    const { categorie } = req.body;
+    const { categorie } = req.body; 
     try {
-        const client = await pool.connect();
-        try {
-            await client.query('BEGIN');
-            for (const cat of categorie) {
-                // Aggiorniamo solo la posizione
-                await client.query('UPDATE categorie SET posizione = $1 WHERE id = $2', [cat.posizione, cat.id]);
-            }
-            await client.query('COMMIT');
-            res.json({ success: true });
-        } catch (e) {
-            await client.query('ROLLBACK');
-            throw e;
-        } finally {
-            client.release();
+        for (const cat of categorie) {
+            // Aggiorna solo la posizione, semplice e diretto
+            await pool.query('UPDATE categorie SET posizione = $1 WHERE id = $2', [cat.posizione, cat.id]);
         }
-    } catch (err) {
-        console.error("Errore riordino categorie:", err);
-        res.status(500).json({ error: "Errore Server Riordino Categorie" });
+        res.json({ success: true });
+    } catch (err) { 
+        console.error("Errore server categorie:", err);
+        res.status(500).json({ error: "Errore durante il riordino categorie" }); 
     }
 });
 
 // 2. RIORDINA PRODOTTI
 app.put('/api/prodotti/riordina', async (req, res) => {
-    const { prodotti } = req.body;
+    const { prodotti } = req.body; 
     try {
-        // Non usiamo transazioni complesse qui per rispecchiare la V33 che funzionava, 
-        // ma facciamo un ciclo diretto che è più tollerante.
         for (const prod of prodotti) {
-            if (prod.categoria) {
-                // Se c'è la categoria, aggiorniamo sia posizione che categoria (Spostamento tra liste)
+            if(prod.categoria) {
+                // Se c'è la categoria nel payload, aggiorniamo anche quella (spostamento tra liste)
                 await pool.query('UPDATE prodotti SET posizione = $1, categoria = $2 WHERE id = $3', 
                     [prod.posizione, prod.categoria, prod.id]);
             } else {
-                // Altrimenti aggiorniamo solo la posizione (Spostamento nella stessa lista)
+                // Altrimenti solo la posizione (spostamento nella stessa lista)
                 await pool.query('UPDATE prodotti SET posizione = $1 WHERE id = $2', 
                     [prod.posizione, prod.id]);
             }
         }
         res.json({ success: true });
-    } catch (err) {
-        console.error("Errore riordino prodotti:", err);
-        res.status(500).json({ error: "Errore Server Riordino Prodotti" });
+    } catch (err) { 
+        console.error("Errore server prodotti:", err);
+        res.status(500).json({ error: "Errore durante il riordino prodotti" }); 
     }
 });
 

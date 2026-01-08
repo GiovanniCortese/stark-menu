@@ -77,55 +77,52 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
 // --- LOGICA DRAG & DROP PIATTI (FIX DEFINITIVO) ---
 const onDragEnd = async (result) => {
-    if (!result.destination) return; // Droppato fuori
+    if (!result.destination) return;
 
-    // 1. Identifica IDs
-    const startCat = result.source.droppableId.replace("cat-", "");
+    // 1. Logica visiva (React)
+    const sourceCat = result.source.droppableId.replace("cat-", "");
     const destCat = result.destination.droppableId.replace("cat-", "");
     const piattoId = parseInt(result.draggableId);
 
-    // 2. Clona il menu attuale
-    const nuovoMenu = Array.from(menu);
+    // Clona menu
+    let nuovoMenu = [...menu];
+    const piattoSpostato = nuovoMenu.find(p => p.id === piattoId);
+    if (!piattoSpostato) return;
+
+    // Rimuovi dalla vecchia posizione
+    nuovoMenu = nuovoMenu.filter(p => p.id !== piattoId);
     
-    // 3. Trova e rimuovi l'elemento dalla posizione originale
-    // Nota: findIndex è più sicuro di splice basato solo su source.index quando si usano filtri
-    const indexOriginale = nuovoMenu.findIndex(p => p.id === piattoId);
-    if(indexOriginale === -1) return;
+    // Aggiorna dati piatto
+    const piattoAggiornato = { ...piattoSpostato, categoria: destCat };
+
+    // Inserisci nella nuova posizione
+    const piattiDestinazione = nuovoMenu
+        .filter(p => p.categoria === destCat)
+        .sort((a,b) => (a.posizione||0) - (b.posizione||0)); // Ordine essenziale!
     
-    const [piattoSpostato] = nuovoMenu.splice(indexOriginale, 1);
+    piattiDestinazione.splice(result.destination.index, 0, piattoAggiornato);
 
-    // 4. Aggiorna la categoria del piatto
-    piattoSpostato.categoria = destCat;
-
-    // 5. Calcola dove inserirlo
-    // Dobbiamo trovare l'indice corretto nell'array GLOBALE 'nuovoMenu'
-    // Filtriamo gli elementi della destinazione per capire dove va
-    const itemsDestinazione = nuovoMenu.filter(p => p.categoria === destCat);
+    // Ricostruisci menu globale
+    const altriPiatti = nuovoMenu.filter(p => p.categoria !== destCat);
     
-    // Inseriamo "visivamente"
-    itemsDestinazione.splice(result.destination.index, 0, piattoSpostato);
-
-    // 6. Ricostruiamo il menu ordinato per il backend
-    // Creiamo un payload solo con gli elementi della categoria toccata
-    const payloadUpdate = itemsDestinazione.map((p, index) => ({
-        id: p.id,
-        posizione: index, // 0, 1, 2...
-        categoria: destCat
-    }));
-
-    // 7. Aggiorniamo lo stato locale (per non far scattare l'interfaccia)
-    // Rimuoviamo tutti i vecchi item di questa categoria e mettiamo i nuovi ordinati
-    const menuFinale = [
-        ...nuovoMenu.filter(p => p.categoria !== destCat), 
-        ...itemsDestinazione
-    ];
+    // Assegna nuove posizioni (0, 1, 2...)
+    const piattiDestinazioneFinali = piattiDestinazione.map((p, idx) => ({ ...p, posizione: idx }));
+    
+    const menuFinale = [...altriPiatti, ...piattiDestinazioneFinali];
     setMenu(menuFinale);
 
-    // 8. Chiamata Server (Usa la logica V33)
+    // 2. Chiamata Server (Payload pulito)
+    // Inviamo solo quelli che sono cambiati (la categoria di destinazione)
     await fetch(`${API_URL}/api/prodotti/riordina`, { 
         method: 'PUT', 
         headers:{'Content-Type':'application/json'}, 
-        body: JSON.stringify({ prodotti: payloadUpdate }) 
+        body: JSON.stringify({ 
+            prodotti: piattiDestinazioneFinali.map(p => ({ 
+                id: p.id, 
+                posizione: p.posizione, 
+                categoria: destCat 
+            })) 
+        }) 
     });
 };
 
