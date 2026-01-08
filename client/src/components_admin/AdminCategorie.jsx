@@ -34,7 +34,7 @@ function AdminCategorie({ user, categorie, setCategorie, API_URL, ricaricaDati }
       const [reorderedItem] = items.splice(result.source.index, 1);
       items.splice(result.destination.index, 0, reorderedItem);
 
-      // 1. Assegna i nuovi indici di posizione a TUTTI gli elementi
+      // 1. Assegna i nuovi numeri di posizione (0, 1, 2...)
       const updatedItems = items.map((item, index) => ({
           ...item,
           posizione: index 
@@ -43,16 +43,15 @@ function AdminCategorie({ user, categorie, setCategorie, API_URL, ricaricaDati }
       // 2. Aggiorna la vista subito
       setCategorie(updatedItems);
 
-      // 3. Invia al server la lista con ID e POSIZIONE
+      // 3. Invia al server il pacchetto dati corretto
       try {
           await fetch(`${API_URL}/api/categorie/riordina`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
-              // Il server V39/V40 si aspetta { categorie: [...] }
               body: JSON.stringify({ categorie: updatedItems })
           });
       } catch (error) {
-          console.error("Errore salvataggio:", error);
+          console.error("Errore salvataggio ordine categorie:", error);
           ricaricaDati();
       }
   };

@@ -247,13 +247,14 @@ app.post('/api/login', async (req, res) => {
 });
 
 app.put('/api/ristorante/style/:id', async (req, res) => { try { await pool.query(`UPDATE ristoranti SET logo_url=$1, cover_url=$2, colore_sfondo=$3, colore_titolo=$4, colore_testo=$5, colore_prezzo=$6, font_style=$7 WHERE id=$8`, [req.body.logo_url, req.body.cover_url, req.body.colore_sfondo, req.body.colore_titolo, req.body.colore_testo, req.body.colore_prezzo, req.body.font_style, req.params.id]); res.json({success:true}); } catch(e){res.status(500).json({error:"Err"});} });
+
 // --- 4. RIORDINO CATEGORIE (Fix Salvataggio) ---
 app.put('/api/categorie/riordina', async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
         for (const cat of req.body.categorie) {
-            // Aggiorna solo la posizione
+            // Aggiorna la posizione per ogni categoria
             await client.query('UPDATE categorie SET posizione = $1 WHERE id = $2', [cat.posizione, cat.id]);
         }
         await client.query('COMMIT');
@@ -273,7 +274,8 @@ app.put('/api/prodotti/riordina', async (req, res) => {
     try {
         await client.query('BEGIN');
         for (const prod of req.body.prodotti) {
-            // Qui forziamo l'aggiornamento della CATEGORIA oltre alla posizione
+            // Qui è il trucco: aggiorniamo SIA la posizione CHE la categoria
+            // Il frontend DEVE mandare "categoria", altrimenti il piatto sparisce o non si sposta
             await client.query(
                 'UPDATE prodotti SET posizione = $1, categoria = $2 WHERE id = $3',
                 [prod.posizione, prod.categoria, prod.id]
@@ -289,6 +291,7 @@ app.put('/api/prodotti/riordina', async (req, res) => {
         client.release();
     }
 });
+
 app.post('/api/upload', upload.single('photo'), (req,res)=>res.json({url:req.file.path}));
 app.post('/api/ordine/completato', async (req, res) => { try { await pool.query("UPDATE ordini SET stato = 'servito' WHERE id = $1", [req.body.id]); res.json({ success: true }); } catch (e) { res.status(500).json({error:"Err"}); } });
 app.get('/api/reset-ordini', async (req, res) => { try { await pool.query('DELETE FROM ordini'); await pool.query('ALTER SEQUENCE ordini_id_seq RESTART WITH 1'); res.send("<h1>✅ TABULA RASA</h1>"); } catch (e) { res.status(500).send("Errore: " + e.message); } });
