@@ -22,6 +22,7 @@ function Menu() {
   const [activeSubCategory, setActiveSubCategory] = useState(null); 
   const [selectedPiatto, setSelectedPiatto] = useState(null);
   const [showCheckout, setShowCheckout] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
 
   // --- PARAMETRI URL ---
   const { slug } = useParams();
@@ -225,6 +226,19 @@ function Menu() {
         )}
       </header>
 
+      {/* --- (MODALE FOTO) --- */}
+      {selectedImage && (
+        <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.9)', zIndex: 3000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer'
+        }} onClick={() => setSelectedImage(null)}>
+            <img src={selectedImage} alt="Piatto" style={{maxWidth:'95%', maxHeight:'90%', borderRadius:'10px', boxShadow:'0 0 20px rgba(255,255,255,0.2)'}} />
+            <div style={{position:'absolute', bottom:'20px', color:'white', background:'rgba(0,0,0,0.5)', padding:'5px 15px', borderRadius:'20px'}}>Clicca per chiudere</div>
+        </div>
+      )}
+
       {/* BARRA CARRELLO - Visibile solo se si può ordinare */}
       {canOrder && carrello.length > 0 && !showCheckout && (
         <div className="carrello-bar">
@@ -272,7 +286,7 @@ function Menu() {
                                     {(isSingleGroup || activeSubCategory === scKey) && (
                                         <div className="menu-list" style={{padding: '0', width: '100%'}}>
                                             {sottoCats[scKey].map((prodotto) => (
-                                                <div key={prodotto.id} className="card" onClick={() => prodotto.immagine_url ? setSelectedPiatto(prodotto) : null} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', cursor: prodotto.immagine_url ? 'pointer' : 'default', backgroundColor: 'white', marginBottom: '1px', borderRadius: '0' }}>
+                                                <div key={prodotto.id} className="card" onClick={() => prodotto.immagine_url ? setSelectedImage(prodotto.immagine_url) : null} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', cursor: prodotto.immagine_url ? 'pointer' : 'default', backgroundColor: 'white', marginBottom: '1px', borderRadius: '0' }}>
                                                     {prodotto.immagine_url && <img src={prodotto.immagine_url} style={{width:'70px', height:'70px', objectFit:'cover', borderRadius:'5px', flexShrink: 0}} />}
                                                     <div className="info" style={{flex: 1}}>
                                                         <h3 style={{margin:'0 0 4px 0', fontSize:'16px', color: 'titleColor'}}>{prodotto.nome}</h3>
