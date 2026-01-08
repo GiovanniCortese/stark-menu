@@ -1,4 +1,4 @@
-// client/src/components_admin/AdminCategorie.jsx - VERSIONE V41 (FIX PERSISTENZA DRAG & DROP) 📂
+// client/src/components_admin/AdminCategorie.jsx - VERSIONE V45 (FIX SALVATAGGIO ROBUSTO) 📂
 import { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
@@ -9,6 +9,7 @@ function AdminCategorie({ user, categorie, setCategorie, API_URL, ricaricaDati }
   const handleSalvaCategoria = async () => { 
       if(!nuovaCat.nome) return; 
       const payload = { ...nuovaCat, ristorante_id: user.id };
+
       try {
           if (editCatId) {
               await fetch(`${API_URL}/api/categorie/${editCatId}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
@@ -25,36 +26,36 @@ function AdminCategorie({ user, categorie, setCategorie, API_URL, ricaricaDati }
   const cancellaCategoria = async (id) => { if(confirm("Eliminare?")) { await fetch(`${API_URL}/api/categorie/${id}`, {method:'DELETE'}); ricaricaDati(); }};
   const avviaModificaCat = (cat) => { setEditCatId(cat.id); setNuovaCat({ nome: cat.nome, descrizione: cat.descrizione||'', is_bar: cat.is_bar, is_pizzeria: cat.is_pizzeria }); };
 
-  // --- LOGICA DRAG & DROP CORRETTA ---
+  // --- LOGICA DRAG & DROP ROBUSTA ---
   const onDragEnd = async (result) => {
       if (!result.destination) return;
 
+      // 1. Clona e riordina l'array locale
       const items = Array.from(categorie);
       const [reorderedItem] = items.splice(result.source.index, 1);
       items.splice(result.destination.index, 0, reorderedItem);
 
-      // 1. Aggiorniamo la UI subito
-      const updatedItems = items.map((item, index) => ({ ...item, posizione: index }));
-      setCategorie(updatedItems);
-
-      // 2. Prepariamo un payload pulito (SOLO ID e POSIZIONE) per evitare errori server
-      const payloadLite = updatedItems.map(item => ({
-          id: item.id,
-          posizione: item.posizione
+      // 2. Ricalcola esplicitamente la proprietà 'posizione' per TUTTI gli elementi
+      // (Questo è il passaggio che mancava: il server vuole vedere il numero aggiornato)
+      const updatedItems = items.map((item, index) => ({
+          ...item,
+          posizione: index // 0, 1, 2, 3...
       }));
 
+      // 3. Aggiorna la UI subito
+      setCategorie(updatedItems);
+
+      // 4. Invia al server l'intero array aggiornato
       try {
           await fetch(`${API_URL}/api/categorie/riordina`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ categorie: payloadLite })
+              body: JSON.stringify({ categorie: updatedItems })
           });
-          // Non chiamiamo ricaricaDati() qui per evitare glitch visivi,
-          // ci fidiamo che il server abbia salvato. Se fallisce, il catch ci avvisa.
       } catch (error) {
           console.error("Errore salvataggio ordine:", error);
-          alert("Errore nel salvataggio dell'ordine. Ricarica la pagina.");
-          ricaricaDati(); // Revert
+          alert("Errore di rete: l'ordine non è stato salvato.");
+          ricaricaDati(); // Revert in caso di errore
       }
   };
 

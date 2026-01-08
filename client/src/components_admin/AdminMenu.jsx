@@ -75,48 +75,57 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const annullaModifica = () => { setEditId(null); setNuovoPiatto({nome:'', prezzo:'', categoria:categorie[0]?.nome || '', sottocategoria: '', descrizione:'', immagine_url:''}); };
   const duplicaPiatto = async (piattoOriginale) => { if(!confirm(`Duplicare?`)) return; const copia = { ...piattoOriginale, nome: `${piattoOriginale.nome} (Copia)`, ristorante_id: user.id }; await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(copia) }); ricaricaDati(); };
 
-  // --- LOGICA DRAG & DROP ---
+// --- LOGICA DRAG & DROP (FIX DEFINITIVO SALVATAGGIO) ---
   const onDragEnd = async (result) => {
     if (!result.destination || result.type !== 'DISH') return;
     
+    // 1. Identifica Categoria Destinazione e Piatto
     const destCat = result.destination.droppableId.replace("cat-", "");
     const piattoId = parseInt(result.draggableId);
 
-    const piattoSpostato = menu.find(p => p.id === piattoId);
-    if (!piattoSpostato) return;
+    // 2. Lavoriamo su una copia dell'array menu per evitare riferimenti errati
+    let allItems = [...menu];
+    const itemIndex = allItems.findIndex(p => p.id === piattoId);
+    if(itemIndex === -1) return;
+    
+    // 3. Rimuovi il piatto dalla sua posizione originale (ovunque essa sia)
+    const [movedItem] = allItems.splice(itemIndex, 1);
+    
+    // 4. Aggiorna la categoria del piatto spostato
+    movedItem.categoria = destCat;
 
-    const newMenuState = menu.map(p => {
-        if (p.id === piattoId) return { ...p, categoria: destCat };
-        return p;
-    });
+    // 5. Isola i piatti della categoria di destinazione e inserisci quello nuovo
+    const destItems = allItems
+        .filter(p => p.categoria === destCat)
+        .sort((a,b) => (a.posizione||0) - (b.posizione||0));
+    
+    destItems.splice(result.destination.index, 0, movedItem);
 
-    const piattiDestinazione = newMenuState
-        .filter(p => p.categoria === destCat && p.id !== piattoId)
-        .sort((a, b) => (a.posizione || 0) - (b.posizione || 0));
-
-    piattiDestinazione.splice(result.destination.index, 0, { ...piattoSpostato, categoria: destCat });
-
-    const updatePayload = piattiDestinazione.map((p, idx) => ({
-        id: p.id,
-        posizione: idx,
-        categoria: destCat
+    // 6. Ricalcola posizioni e forza la categoria per TUTTI i piatti della lista destinazione
+    const destItemsUpdated = destItems.map((p, idx) => ({ 
+        ...p, 
+        posizione: idx, 
+        categoria: destCat // Fondamentale per il DB
     }));
 
-    const finalMenu = newMenuState.map(p => {
-        const updatedP = updatePayload.find(up => up.id === p.id);
-        return updatedP ? { ...p, ...updatedP } : p;
-    });
+    // 7. Ricostruisci il menu completo: (Tutti gli altri) + (Quelli aggiornati)
+    const otherItems = allItems.filter(p => p.categoria !== destCat);
+    const finalMenu = [...otherItems, ...destItemsUpdated];
+    
+    // 8. Aggiorna Stato Locale (Feedback immediato)
     setMenu(finalMenu);
 
+    // 9. Invia al Server (Solo i piatti della categoria toccata)
     try {
         await fetch(`${API_URL}/api/prodotti/riordina`, { 
             method: 'PUT', 
             headers:{'Content-Type':'application/json'}, 
-            body: JSON.stringify({ prodotti: updatePayload }) 
+            body: JSON.stringify({ prodotti: destItemsUpdated }) 
         });
     } catch (error) {
-        alert("❌ ERRORE DI RETE");
-        ricaricaDati();
+        console.error("Errore salvataggio:", error);
+        alert("Errore di salvataggio. Ricarica la pagina.");
+        ricaricaDati(); 
     }
   };
 
