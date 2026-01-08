@@ -150,21 +150,26 @@ app.get('/api/export-excel/:ristorante_id', async (req, res) => { try { const re
 // --- RIORDINO: CATEGORIE (FIX DEFINITIVO) ---
 app.put('/api/categorie/riordina', async (req, res) => {
     const { categorie } = req.body;
+    console.log("📦 Ricevuto riordino categorie:", categorie); // LOG DI DEBUG
+    
+    if (!Array.isArray(categorie)) return res.status(400).json({ error: "Dati non validi" });
+
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
         for (const cat of categorie) {
+            // Usiamo parametri sicuri per evitare crash se cat.id è mancante
             await client.query(
                 'UPDATE categorie SET posizione = $1 WHERE id = $2',
-                [cat.posizione, cat.id]
+                [parseInt(cat.posizione), parseInt(cat.id)]
             );
         }
         await client.query('COMMIT');
         res.json({ success: true });
     } catch (err) {
         await client.query('ROLLBACK');
-        console.error("ERRORE RIORDINO CATEGORIE:", err);
-        res.status(500).json({ error: "Errore interno riordino categorie" });
+        console.error("❌ Errore SQL Categorie:", err.message);
+        res.status(500).json({ error: err.message });
     } finally {
         client.release();
     }
@@ -172,23 +177,26 @@ app.put('/api/categorie/riordina', async (req, res) => {
 
 // --- RIORDINO: PRODOTTI (FIX DEFINITIVO) ---
 app.put('/api/prodotti/riordina', async (req, res) => {
-    const { prodotti } = req.body; 
+    const { prodotti } = req.body;
+    console.log("🍱 Ricevuto riordino prodotti:", prodotti); // LOG DI DEBUG
+
+    if (!Array.isArray(prodotti)) return res.status(400).json({ error: "Dati non validi" });
+
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
         for (const prod of prodotti) {
-            // Aggiorniamo sia posizione che categoria per gestire lo spostamento tra gruppi
             await client.query(
                 'UPDATE prodotti SET posizione = $1, categoria = $2 WHERE id = $3',
-                [prod.posizione, prod.categoria, prod.id]
+                [parseInt(prod.posizione), prod.categoria, parseInt(prod.id)]
             );
         }
         await client.query('COMMIT');
         res.json({ success: true });
     } catch (err) {
         await client.query('ROLLBACK');
-        console.error("ERRORE RIORDINO PRODOTTI:", err);
-        res.status(500).json({ error: "Errore interno riordino prodotti" });
+        console.error("❌ Errore SQL Prodotti:", err.message);
+        res.status(500).json({ error: err.message });
     } finally {
         client.release();
     }

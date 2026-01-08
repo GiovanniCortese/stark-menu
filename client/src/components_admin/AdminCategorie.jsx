@@ -27,34 +27,32 @@ function AdminCategorie({ user, categorie, setCategorie, API_URL, ricaricaDati }
   const avviaModificaCat = (cat) => { setEditCatId(cat.id); setNuovaCat({ nome: cat.nome, descrizione: cat.descrizione||'', is_bar: cat.is_bar, is_pizzeria: cat.is_pizzeria }); };
 
   // --- LOGICA DRAG & DROP CATEGORIE (FIX DEFINITIVO) ---
-  const onDragEnd = async (result) => {
-      if (!result.destination) return;
+    const onDragEnd = async (result) => {
+    if (!result.destination) return;
 
-      const items = Array.from(categorie);
-      const [reorderedItem] = items.splice(result.source.index, 1);
-      items.splice(result.destination.index, 0, reorderedItem);
+    const items = Array.from(categorie);
+    const [reorderedItem] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, reorderedItem);
 
-      // 1. Assegna i nuovi numeri di posizione (0, 1, 2...)
-      const updatedItems = items.map((item, index) => ({
-          ...item,
-          posizione: index 
-      }));
+    const updatedItems = items.map((item, index) => ({
+        id: item.id,
+        posizione: index 
+    }));
 
-      // 2. Aggiorna la vista subito
-      setCategorie(updatedItems);
+    setCategorie(items); // Aggiorna UI
 
-      // 3. Invia al server il pacchetto dati corretto
-      try {
-          await fetch(`${API_URL}/api/categorie/riordina`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ categorie: updatedItems })
-          });
-      } catch (error) {
-          console.error("Errore salvataggio ordine categorie:", error);
-          ricaricaDati();
-      }
-  };
+    try {
+        const res = await fetch(`${API_URL}/api/categorie/riordina`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ categorie: updatedItems })
+        });
+        if (!res.ok) throw new Error("Errore Server");
+    } catch (error) {
+        console.error("Errore riordino categorie:", error);
+        ricaricaDati();
+    }
+};
 
   return (
     <DragDropContext onDragEnd={onDragEnd}>
