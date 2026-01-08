@@ -168,25 +168,29 @@ app.put('/api/categorie/riordina', async (req, res) => {
 
 // --- RIORDINO: PRODOTTI (FIX DEFINITIVO) ---
 app.put('/api/prodotti/riordina', async (req, res) => {
-    const client = await pool.connect();
+    const { prodotti } = req.body; // Array di {id, posizione, categoria}
     try {
-        console.log("📥 [Prodotti] Ricevuto:", JSON.stringify(req.body));
-        if (!req.body.prodotti || !Array.isArray(req.body.prodotti)) throw new Error("Dati mancanti");
-        await client.query('BEGIN');
-        for (const prod of req.body.prodotti) {
-            // AGGIORNA POSIZIONE E CATEGORIA (Senza tornare indietro)
-            await client.query(
-                'UPDATE prodotti SET posizione = $1, categoria = COALESCE($2, categoria) WHERE id = $3', 
-                [prod.posizione, prod.categoria, prod.id]
-            );
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            for (const prod of prodotti) {
+                // Aggiorniamo sia la posizione che la categoria (fondamentale per lo spostamento tra gruppi)
+                await client.query(
+                    'UPDATE prodotti SET posizione = $1, categoria = $2 WHERE id = $3',
+                    [prod.posizione, prod.categoria, prod.id]
+                );
+            }
+            await client.query('COMMIT');
+            res.json({ success: true });
+        } catch (e) {
+            await client.query('ROLLBACK');
+            throw e;
+        } finally {
+            client.release();
         }
-        await client.query('COMMIT');
-        res.json({ success: true });
-    } catch (e) {
-        await client.query('ROLLBACK');
-        console.error("❌ ERRORE SERVER (Prodotti):", e.message);
-        res.status(500).json({ error: e.message });
-    } finally { client.release(); }
+    } catch (err) {
+        res.status(500).json({ error: "Errore riordino prodotti" });
+    }
 });
 
 initDb().then((ready) => { if (ready) app.listen(port, () => console.log(`🚀 SERVER V48 (FINAL) - Porta ${port}`)); });
