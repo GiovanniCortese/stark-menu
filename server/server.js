@@ -247,8 +247,48 @@ app.post('/api/login', async (req, res) => {
 });
 
 app.put('/api/ristorante/style/:id', async (req, res) => { try { await pool.query(`UPDATE ristoranti SET logo_url=$1, cover_url=$2, colore_sfondo=$3, colore_titolo=$4, colore_testo=$5, colore_prezzo=$6, font_style=$7 WHERE id=$8`, [req.body.logo_url, req.body.cover_url, req.body.colore_sfondo, req.body.colore_titolo, req.body.colore_testo, req.body.colore_prezzo, req.body.font_style, req.params.id]); res.json({success:true}); } catch(e){res.status(500).json({error:"Err"});} });
-app.put('/api/categorie/riordina', async(req,res)=>{const c=await pool.connect();try{await c.query('BEGIN');for(const x of req.body.categorie){await c.query('UPDATE categorie SET posizione=$1 WHERE id=$2',[x.posizione,x.id])}await c.query('COMMIT');res.json({success:true});}catch(e){await c.query('ROLLBACK');res.status(500).json({error:"Err"});}finally{c.release();}});
-app.put('/api/prodotti/riordina', async(req,res)=>{const c=await pool.connect();try{await c.query('BEGIN');for(const x of req.body.prodotti){await c.query('UPDATE prodotti SET posizione=$1, categoria=$2 WHERE id=$3',[x.posizione,x.categoria||"",x.id])}await c.query('COMMIT');res.json({success:true});}catch(e){await c.query('ROLLBACK');res.status(500).json({error:"Err"});}finally{c.release();}});
+// --- 4. RIORDINO CATEGORIE (Fix Salvataggio) ---
+app.put('/api/categorie/riordina', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        for (const cat of req.body.categorie) {
+            // Aggiorna solo la posizione
+            await client.query('UPDATE categorie SET posizione = $1 WHERE id = $2', [cat.posizione, cat.id]);
+        }
+        await client.query('COMMIT');
+        res.json({ success: true });
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error("Errore riordino categorie:", e);
+        res.status(500).json({ error: "Errore salvataggio" });
+    } finally {
+        client.release();
+    }
+});
+
+// --- 5. RIORDINO PRODOTTI (Fix Salvataggio + Categoria) ---
+app.put('/api/prodotti/riordina', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        for (const prod of req.body.prodotti) {
+            // Qui forziamo l'aggiornamento della CATEGORIA oltre alla posizione
+            await client.query(
+                'UPDATE prodotti SET posizione = $1, categoria = $2 WHERE id = $3',
+                [prod.posizione, prod.categoria, prod.id]
+            );
+        }
+        await client.query('COMMIT');
+        res.json({ success: true });
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error("Errore riordino prodotti:", e);
+        res.status(500).json({ error: "Errore salvataggio" });
+    } finally {
+        client.release();
+    }
+});
 app.post('/api/upload', upload.single('photo'), (req,res)=>res.json({url:req.file.path}));
 app.post('/api/ordine/completato', async (req, res) => { try { await pool.query("UPDATE ordini SET stato = 'servito' WHERE id = $1", [req.body.id]); res.json({ success: true }); } catch (e) { res.status(500).json({error:"Err"}); } });
 app.get('/api/reset-ordini', async (req, res) => { try { await pool.query('DELETE FROM ordini'); await pool.query('ALTER SEQUENCE ordini_id_seq RESTART WITH 1'); res.send("<h1>✅ TABULA RASA</h1>"); } catch (e) { res.status(500).send("Errore: " + e.message); } });
