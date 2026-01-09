@@ -202,30 +202,6 @@ function Menu() {
           alert("✅ Ordine Inviato!"); setCarrello([]); setShowCheckout(false);
       } catch(e) { alert("Errore connessione server."); }
   };
-      const payload = {
-          ristorante_id: ristoranteId,
-          tavolo: numeroTavolo,
-          cliente: user ? user.nome : "Ospite", 
-          prodotti: prodottiNormalizzati,
-          totale: carrello.reduce((a,b)=>a+Number(b.prezzo),0)
-      };
-
-      try {
-          const res = await fetch(`${API_URL}/api/ordine`, {
-              method: 'POST',
-              headers: {'Content-Type': 'application/json'},
-              body: JSON.stringify(payload)
-          });
-          const data = await res.json();
-          if(data.success) {
-              alert("✅ Ordine Inviato! Arriva subito.");
-              setCarrello([]);
-              setShowCheckout(false);
-          } else {
-              alert("Errore invio ordine.");
-          }
-      } catch(e) { alert("Errore connessione server."); }
-  };
 
   // --- STYLE HELPERS ---
   const bg = style.bg || '#222';
