@@ -1,4 +1,4 @@
-// client/src/Pizzeria.jsx - VERSIONE V5 (LOGICA SINCRONIZZATA + FIX VISIBILITÀ) 🍕
+// client/src/Pizzeria.jsx - VERSIONE V36 (TAVOLO UNIFICATO + NO BAR) 🍕
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -40,15 +40,21 @@ function Pizzeria() {
             const gruppiTavolo = {};
 
             nuoviOrdini.forEach(ord => {
-                // Filtriamo solo i cibi (escluso Bar)
+                // --- MODIFICA FONDAMENTALE: FILTRO "PACCHETTO CONCLUSO" ---
+                // 1. Prendiamo solo i cibi (escludiamo il Bar che non ci interessa)
                 const itemsDiCompetenza = Array.isArray(ord.prodotti) 
                     ? ord.prodotti.filter(p => !p.is_bar) 
                     : [];
 
-                // Se tutto servito, nascondiamo il tavolo
+                // 2. Controlliamo se questo specifico invio è TUTTO servito
+                // (Se itemsDiCompetenza è vuoto, è probabilmente solo bar, quindi lo ignoriamo o meno a seconda della tua logica. Qui assumiamo che se è > 0 controlliamo lo stato)
                 const isTuttoServito = itemsDiCompetenza.length > 0 && itemsDiCompetenza.every(p => p.stato === 'servito');
+
+                // 3. SE È TUTTO SERVITO, SALTIAMO QUESTO ORDINE (RETURN)
+                // Così non verrà aggiunto alla lista del tavolo e sparirà dallo schermo.
                 if (isTuttoServito) return; 
 
+                // --- DA QUI IN POI È LA LOGICA STANDARD ---
                 const t = ord.tavolo;
                 if(!gruppiTavolo[t]) gruppiTavolo[t] = { tavolo: t, items: [], orarioMin: ord.data_ora };
                 
@@ -58,6 +64,7 @@ function Pizzeria() {
 
                 if(Array.isArray(ord.prodotti)) {
                     ord.prodotti.forEach((prod, idx) => {
+                        // --- FILTRO BAR: SE È BAR, LO SALTIAMO COMPLETAMENTE ---
                         if (prod.is_bar) return;
 
                         gruppiTavolo[t].items.push({
@@ -72,6 +79,7 @@ function Pizzeria() {
 
             const listaTavoli = Object.values(gruppiTavolo).filter(gruppo => {
                 if (gruppo.items.length === 0) return false;
+                // Nascondi se tutto servito
                 const tuttiFiniti = gruppo.items.every(p => p.stato === 'servito');
                 return !tuttiFiniti;
             });
@@ -82,6 +90,15 @@ function Pizzeria() {
         .catch(e => console.error("Polling error:", e));
   };
 
+  useEffect(() => { 
+      if(isAuthorized && infoRistorante) { 
+          aggiorna(); 
+          const i = setInterval(aggiorna, 2000); 
+          return () => clearInterval(i); 
+      } 
+  }, [isAuthorized, infoRistorante]);
+
+  // --- AZIONE: SEGNA PIZZA PRONTA ---
   const segnaPizzaPronta = async (targetItems) => {
       const updatesPorOrdine = {};
 
@@ -120,41 +137,32 @@ function Pizzeria() {
       aggiorna();
   };
 
-  // --- LOGICA CORE: 4 USCITE (SINCRONIZZATE CON CUCINA) ---
+  // --- LOGICA CORE ---
   const processaTavolo = (items) => {
-      const courses = { 1: [], 2: [], 3: [], 4: [] };
-      
+      const courses = { 1: [], 2: [], 3: [] };
       items.forEach(p => {
-          // FIX: Se 'course' manca, prova a indovinare se è pizza (3) o cucina generica (2)
-          let c = p.course || (p.is_pizzeria ? 3 : 2);
-          
-          if(c < 1) c = 1; if(c > 4) c = 4;
-          
+          const c = p.course || 2; 
           if(!courses[c]) courses[c] = [];
           courses[c].push(p);
       });
 
-      // Controlliamo se le uscite precedenti sono complete per sbloccare le successive
       const isCourseComplete = (courseNum) => {
           if (!courses[courseNum] || courses[courseNum].length === 0) return true; 
           return courses[courseNum].every(p => p.stato === 'servito');
       };
 
-      // LOGICA A CATENA (ANTIPASTI -> PRIMI -> PIZZE -> DESSERT)
       const courseStatus = {
           1: { locked: false, completed: isCourseComplete(1) },
           2: { locked: !isCourseComplete(1), completed: isCourseComplete(2) },
-          3: { locked: !isCourseComplete(1) || !isCourseComplete(2), completed: isCourseComplete(3) },
-          4: { locked: !isCourseComplete(1) || !isCourseComplete(2) || !isCourseComplete(3), completed: isCourseComplete(4) }
+          3: { locked: !isCourseComplete(1) || !isCourseComplete(2), completed: isCourseComplete(3) }
       };
 
       const finalStructure = [];
-      [1, 2, 3, 4].forEach(cNum => {
+      [1, 2, 3].forEach(cNum => {
           if (courses[cNum].length === 0) return;
 
           const groups = [];
           courses[cNum].forEach(p => {
-              // Chiave unica per raggruppare (es. 2x Margherita)
               const key = `${p.nome}-${p.stato}-${p.is_pizzeria ? 'piz' : 'cuc'}`;
               const existing = groups.find(g => g.key === key);
               if (existing) {
@@ -166,7 +174,7 @@ function Pizzeria() {
                       key,
                       count: 1,
                       sourceItems: [p],
-                      isMyStation: p.is_pizzeria, 
+                      isMyStation: p.is_pizzeria, // PIZZERIA: mio se È pizzeria
                       stationName: p.is_pizzeria ? "PIZZERIA" : "CUCINA"
                   });
               }
@@ -174,13 +182,14 @@ function Pizzeria() {
           
           finalStructure.push({
               courseNum: cNum,
-              locked: courseStatus[cNum].locked, // RIPRISTINATO IL BLOCCO
+              locked: courseStatus[cNum].locked,
               items: groups
           });
       });
       return finalStructure;
   };
 
+  // --- RENDERING ROSSO ---
   if (!infoRistorante) return <div style={{textAlign:'center', padding:50}}><h1>⏳ Caricamento Pizzeria...</h1></div>;
 
   if (!isAuthorized) return (
@@ -227,12 +236,9 @@ function Pizzeria() {
                             
                             if (!section.locked) {
                                 if(section.courseNum === 1) { headerColor = "#27ae60"; headerBg = "#e8f8f5"; title += " (INIZIARE)"; }
-                                if(section.courseNum === 2) { headerColor = "#f39c12"; headerBg = "#fef9e7"; title += " (A SEGUIRE)"; }
-                                if(section.courseNum === 3) { headerColor = "#d35400"; headerBg = "#fdebd0"; title += " (TERZO STEP)"; }
-                                if(section.courseNum === 4) { headerColor = "#8e44ad"; headerBg = "#f4ecf7"; title += " (CHIUSURA)"; } 
-                            } else { 
-                                title += " (IN ATTESA)"; 
-                            }
+                                if(section.courseNum === 2) { headerColor = "#d35400"; headerBg = "#fdebd0"; title += " (A SEGUIRE)"; }
+                                if(section.courseNum === 3) { headerColor = "#c0392b"; headerBg = "#f9ebea"; title += " (DESSERT)"; }
+                            } else { title += " (IN ATTESA)"; }
 
                             return (
                                 <div key={section.courseNum} style={{marginBottom:'15px'}}>
@@ -249,22 +255,20 @@ function Pizzeria() {
                                     {section.items.map(item => {
                                         const isServito = item.stato === 'servito';
                                         
-                                        // LOGICA VISIVA: Se bloccato è GRIGIO CHIARO (#f9f9f9) e Opaco
                                         let bg = 'white'; let opacity = 1; let cursor = 'pointer';
 
                                         if (section.locked && !isServito) {
-                                            opacity = 0.5; cursor = 'not-allowed'; bg = '#f9f9f9'; // Grigio chiaro per bloccato
+                                            opacity = 0.5; cursor = 'not-allowed'; bg = '#f9f9f9';
                                         } else if (!item.isMyStation) {
-                                            bg = '#f0f0f0'; cursor = 'default'; // Grigio per roba altrui
+                                            bg = '#f0f0f0'; cursor = 'default';
                                         } else if (isServito) {
-                                            bg = '#e8f5e9'; cursor = 'default'; // Verde per servito
+                                            bg = '#e8f5e9'; cursor = 'default';
                                         }
 
                                         return (
                                             <div 
                                                 key={item.key}
                                                 onClick={() => {
-                                                    // SI PUO' CLICCARE SOLO SE E' IL MIO TURNO (SBLOCCATO)
                                                     if (item.isMyStation && !isServito && !section.locked) {
                                                         segnaPizzaPronta(item.sourceItems);
                                                     }
@@ -291,18 +295,6 @@ function Pizzeria() {
                                                         }}>
                                                             {item.nome}
                                                         </span>
-                                                        
-                                                        {(() => {
-                                                          try {
-                                                            if(item.varianti_scelte) {
-                                                              let note = [];
-                                                              if(item.varianti_scelte.rimozioni?.length) note.push("No: "+item.varianti_scelte.rimozioni.join(', '));
-                                                              if(item.varianti_scelte.aggiunte?.length) note.push("+: "+item.varianti_scelte.aggiunte.map(a=>a.nome).join(', '));
-                                                              if(note.length>0) return <div style={{fontSize:'0.85rem', color:'#d35400', fontStyle:'italic'}}>{note.join(' | ')}</div>
-                                                            }
-                                                          } catch(e){}
-                                                        })()}
-
                                                         {!item.isMyStation && (
                                                             <span style={{fontSize:'0.7rem', marginLeft:'8px', background:'#bdc3c7', color:'white', padding:'2px 4px', borderRadius:'3px'}}>
                                                                 {item.stationName}
