@@ -171,21 +171,25 @@ app.delete('/api/prodotti/:id', async (req, res) => {
 });
 
 // ==========================================
-//        API EXCEL & GRAFICA
+//        API EXCEL & GRAFICA (AGGIORNATE V8)
 // ==========================================
 
 app.post('/api/import-excel', uploadFile.single('file'), async (req, res) => {
     const { ristorante_id } = req.body;
     if (!req.file || !ristorante_id) return res.status(400).json({ error: "Dati mancanti." });
+    
+    const client = await pool.connect(); // Usiamo una transazione per sicurezza
     try {
+        await client.query('BEGIN');
+
         const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
         const sheetName = workbook.SheetNames[0];
         const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
         
-        let maxCat = await pool.query('SELECT MAX(posizione) as max FROM categorie WHERE ristorante_id = $1', [ristorante_id]);
+        let maxCat = await client.query('SELECT MAX(posizione) as max FROM categorie WHERE ristorante_id = $1', [ristorante_id]);
         let nextCatPos = (maxCat.rows[0].max || 0) + 1;
 
-        let maxProd = await pool.query('SELECT MAX(posizione) as max FROM prodotti WHERE ristorante_id = $1', [ristorante_id]);
+        let maxProd = await client.query('SELECT MAX(posizione) as max FROM prodotti WHERE ristorante_id = $1', [ristorante_id]);
         let nextProdPos = (maxProd.rows[0].max || 0) + 1;
 
         for (const row of data) {
@@ -194,53 +198,121 @@ app.post('/api/import-excel', uploadFile.single('file'), async (req, res) => {
             const categoria = row['Categoria'] ? String(row['Categoria']).trim() : "Generale";
             const sottocategoria = row['Sottocategoria'] ? String(row['Sottocategoria']).trim() : "";
             const descrizione = row['Descrizione'] ? String(row['Descrizione']).trim() : "";
-
-            let catCheck = await pool.query('SELECT * FROM categorie WHERE nome = $1 AND ristorante_id = $2', [categoria, ristorante_id]);
-            if (catCheck.rows.length === 0) {
-                await pool.query('INSERT INTO categorie (nome, posizione, ristorante_id, descrizione) VALUES ($1, $2, $3, $4)', 
-                    [categoria, nextCatPos++, ristorante_id, ""]);
+            
+            // --- NUOVO: Parsing Varianti Categoria dall'Excel ---
+            const variantiCatStr = row['Varianti Categoria (Default)'] || ""; // Es: "Bufala:2, Crudo:3"
+            let variantiCatJson = [];
+            if (variantiCatStr && variantiCatStr.includes(':')) {
+                variantiCatJson = variantiCatStr.split(',').map(v => {
+                    const parts = v.split(':');
+                    if(parts.length >= 2) return { nome: parts[0].trim(), prezzo: parseFloat(parts[1]) };
+                    return null;
+                }).filter(Boolean);
             }
 
-            await pool.query(
-                `INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, posizione) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-                [nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, nextProdPos++]
+            // GESTIONE CATEGORIA (Crea o Aggiorna)
+            let catCheck = await client.query('SELECT * FROM categorie WHERE nome = $1 AND ristorante_id = $2', [categoria, ristorante_id]);
+            
+            if (catCheck.rows.length === 0) {
+                // CREA NUOVA con varianti
+                await client.query(
+                    'INSERT INTO categorie (nome, posizione, ristorante_id, descrizione, varianti_default) VALUES ($1, $2, $3, $4, $5)', 
+                    [categoria, nextCatPos++, ristorante_id, "", JSON.stringify(variantiCatJson)]
+                );
+            } else {
+                // AGGIORNA ESISTENTE (Se nell'excel c'è scritto qualcosa, aggiorniamo le varianti della categoria)
+                if (variantiCatStr.length > 0) {
+                    await client.query(
+                        'UPDATE categorie SET varianti_default = $1 WHERE id = $2',
+                        [JSON.stringify(variantiCatJson), catCheck.rows[0].id]
+                    );
+                }
+            }
+
+            // --- Parsing Varianti Prodotto (Base + Aggiunte) ---
+            const baseStr = row['Ingredienti Base (Rimovibili)'] || "";
+            const aggiunteStr = row['Aggiunte Prodotto (Formato Nome:Prezzo)'] || ""; // Rinominata per chiarezza
+            
+            const baseArr = baseStr.split(',').map(s=>s.trim()).filter(Boolean);
+            let aggiunteArr = [];
+            if(aggiunteStr) {
+                aggiunteArr = aggiunteStr.split(',').map(v => {
+                    const parts = v.split(':');
+                    if(parts.length >= 2) return { nome: parts[0].trim(), prezzo: parseFloat(parts[1]) };
+                    return null;
+                }).filter(Boolean);
+            }
+
+            const variantiProdotto = { base: baseArr, aggiunte: aggiunteArr };
+
+            await client.query(
+                `INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, posizione, varianti) 
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                [nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, nextProdPos++, JSON.stringify(variantiProdotto)]
             );
         }
-        res.json({ success: true, message: `Importati ${data.length} piatti!` });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+        
+        await client.query('COMMIT');
+        res.json({ success: true, message: `Importati ${data.length} piatti e aggiornate categorie!` });
+    } catch (err) { 
+        await client.query('ROLLBACK');
+        console.error(err);
+        res.status(500).json({ error: err.message }); 
+    } finally {
+        client.release();
+    }
 });
 
 app.get('/api/export-excel/:ristorante_id', async (req, res) => {
     try {
-        const result = await pool.query(`SELECT * FROM prodotti WHERE ristorante_id = $1 ORDER BY categoria, nome`, [req.params.ristorante_id]);
+        // JOIN con categorie per prendere anche le varianti default
+        const result = await pool.query(`
+            SELECT p.*, c.varianti_default as cat_varianti
+            FROM prodotti p 
+            LEFT JOIN categorie c ON p.categoria = c.nome AND p.ristorante_id = c.ristorante_id
+            WHERE p.ristorante_id = $1 
+            ORDER BY c.posizione, p.posizione
+        `, [req.params.ristorante_id]);
         
         const dataForExcel = result.rows.map(row => {
             let baseStr = "";
             let aggiunteStr = "";
+            let catVarStr = "";
+
+            // Parsing Varianti Prodotto
             try {
-                const variantiObj = typeof row.varianti === 'string' ? JSON.parse(row.varianti) : (row.varianti || {});
-                if(variantiObj.base && Array.isArray(variantiObj.base)) {
-                    baseStr = variantiObj.base.join(', ');
-                }
-                if(variantiObj.aggiunte && Array.isArray(variantiObj.aggiunte)) {
-                    aggiunteStr = variantiObj.aggiunte.map(a => `${a.nome}:${Number(a.prezzo).toFixed(2)}`).join(', ');
-                }
-            } catch(e) { console.error("Errore parsing varianti per excel", row.id); }
+                const v = typeof row.varianti === 'string' ? JSON.parse(row.varianti) : (row.varianti || {});
+                if(v.base && Array.isArray(v.base)) baseStr = v.base.join(', ');
+                if(v.aggiunte && Array.isArray(v.aggiunte)) aggiunteStr = v.aggiunte.map(a => `${a.nome}:${Number(a.prezzo).toFixed(2)}`).join(', ');
+            } catch(e) {}
+
+            // Parsing Varianti Categoria (per Export)
+            try {
+                const cv = typeof row.cat_varianti === 'string' ? JSON.parse(row.cat_varianti) : (row.cat_varianti || []);
+                if(Array.isArray(cv)) catVarStr = cv.map(a => `${a.nome}:${Number(a.prezzo).toFixed(2)}`).join(', ');
+            } catch(e) {}
 
             return {
                 "Categoria": row.categoria,
+                "Varianti Categoria (Default)": catVarStr, // NUOVA COLONNA
                 "Sottocategoria": row.sottocategoria,
                 "Nome": row.nome,
                 "Prezzo": row.prezzo,
                 "Descrizione": row.descrizione,
                 "Ingredienti Base (Rimovibili)": baseStr,
-                "Aggiunte (Formato Nome:Prezzo)": aggiunteStr
+                "Aggiunte Prodotto (Formato Nome:Prezzo)": aggiunteStr
             };
         });
 
         const workbook = xlsx.utils.book_new();
         const worksheet = xlsx.utils.json_to_sheet(dataForExcel);
+        
+        // Auto-width colonne per bellezza
+        const wscols = [
+            {wch:20}, {wch:30}, {wch:15}, {wch:25}, {wch:10}, {wch:30}, {wch:30}, {wch:30}
+        ];
+        worksheet['!cols'] = wscols;
+
         xlsx.utils.book_append_sheet(workbook, worksheet, "Menu Completo");
         const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
         res.setHeader('Content-Disposition', 'attachment; filename="menu_export_full.xlsx"');
