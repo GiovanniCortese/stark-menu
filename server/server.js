@@ -333,23 +333,23 @@ app.get('/api/polling/:ristorante_id', async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Err" }); }
 });
 
-// NUOVA VERSIONE: Crea ordine + Log testuale dettagliato per la Cassa
+// server/server.js - Sostituisci la vecchia rotta app.post('/api/ordine'...) con questa:
+
 app.post('/api/ordine', async (req, res) => {
     try {
         const { ristorante_id, tavolo, prodotti, totale, cliente } = req.body;
         
-        // 1. CREIAMO IL LOG INIZIALE DETTAGLIATO
-        const ora = new Date().toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit', second:'2-digit'});
-        let logIniziale = `[${ora}] 🆕 NUOVO ORDINE (Cliente: ${cliente || 'Ospite'})\n`;
+        // 1. CREIAMO IL LOG COMPLETO CON DATA E ORA (Style identico a update-items)
+        const dataOra = new Date().toLocaleString('it-IT'); 
+        let logIniziale = `[${dataOra}] 🆕 NUOVO ORDINE (Cliente: ${cliente || 'Ospite'})\n`;
         
         // Elenchiamo i prodotti nel log testuale
         if (Array.isArray(prodotti)) {
             prodotti.forEach(p => {
                 let note = "";
-                // Cerchiamo di capire se ci sono varianti per scriverle nel log
+                // Gestione Varianti nel Log
                 try {
-                    // Se varianti è oggetto o stringa, proviamo a estrarre info
-                    if(p.varianti_scelte) { // Se arriva dal frontend già formattato
+                    if(p.varianti_scelte) { 
                          if(p.varianti_scelte.rimozioni && p.varianti_scelte.rimozioni.length > 0) note += ` (No: ${p.varianti_scelte.rimozioni.join(', ')})`;
                          if(p.varianti_scelte.aggiunte && p.varianti_scelte.aggiunte.length > 0) note += ` (+: ${p.varianti_scelte.aggiunte.map(a=>a.nome).join(', ')})`;
                     }
@@ -360,7 +360,7 @@ app.post('/api/ordine', async (req, res) => {
         }
         logIniziale += `TOTALE PARZIALE: ${Number(totale).toFixed(2)}€\n----------------------------------\n`;
 
-        // 2. INSERIAMO NEL DATABASE ANCHE IL CAMPO 'dettagli'
+        // 2. SALVIAMO NEL DB
         await pool.query(
             "INSERT INTO ordini (ristorante_id, tavolo, prodotti, totale, stato, dettagli) VALUES ($1, $2, $3, $4, 'in_attesa', $5)", 
             [ristorante_id, String(tavolo), JSON.stringify(prodotti), totale, logIniziale]
