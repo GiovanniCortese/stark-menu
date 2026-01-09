@@ -5,6 +5,8 @@ import { useNavigate } from 'react-router-dom';
 function SuperAdmin() {
   const [ristoranti, setRistoranti] = useState([]);
   const [authorized, setAuthorized] = useState(false);
+  const [loginData, setLoginData] = useState({ email: '', password: '', code2fa: '' });
+  const [error, setError] = useState("");
   
   // STATI PER IL MODALE
   const [showModal, setShowModal] = useState(false);
@@ -15,22 +17,33 @@ function SuperAdmin() {
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
   useEffect(() => {
-    const isLogged = localStorage.getItem("super_admin_logged");
-    if (isLogged === "true") {
+    // Verifica se esiste già un token valido nel browser
+    const token = localStorage.getItem("super_admin_token");
+    if (token === "SUPER_GOD_TOKEN_2026") {
         setAuthorized(true);
         caricaDati();
-    } else {
-        const password = prompt("🔒 Accesso Riservato Stark Enterprise.\nInserisci la Master Key:");
-        if (password === "tonystark") {
+    }
+}, []);
+
+const handleSuperLogin = async (e) => {
+    e.preventDefault();
+    setError("");
+    try {
+        const res = await fetch(`${API_URL}/api/super/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(loginData)
+        });
+        const data = await res.json();
+        if (data.success) {
+            localStorage.setItem("super_admin_token", data.token);
             setAuthorized(true);
-            localStorage.setItem("super_admin_logged", "true");
             caricaDati();
         } else {
-            alert("⛔ Accesso Negato!");
-            navigate('/'); 
+            setError(data.error);
         }
-    }
-  }, []);
+    } catch (err) { setError("Errore di connessione"); }
+};
 
   const caricaDati = () => {
     fetch(`${API_URL}/api/super/ristoranti`)
@@ -109,7 +122,37 @@ function SuperAdmin() {
   const entraNelPannello = (slug) => { localStorage.setItem(`stark_session_${slug}`, "true"); window.open(`/admin/${slug}`, '_blank'); };
   const logout = () => { localStorage.removeItem("super_admin_logged"); navigate('/'); };
 
-  if (!authorized) return null;
+  if (!authorized) {
+    return (
+        <div style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', background:'#000'}}>
+            <div style={{background:'#1a1a1a', padding:'40px', borderRadius:'10px', width:'100%', maxWidth:'400px', border:'1px solid #333'}}>
+                <h1 style={{color:'white', textAlign:'center', marginBottom:30}}>🛡️ Super Admin Access</h1>
+                <form onSubmit={handleSuperLogin} style={{display:'flex', flexDirection:'column', gap:15}}>
+                    <input type="email" placeholder="Email" required 
+                           onChange={e => setLoginData({...loginData, email: e.target.value})} 
+                           style={{padding:12, borderRadius:5, border:'1px solid #333', background:'#000', color:'white'}} />
+                    
+                    <input type="password" placeholder="Password" required 
+                           onChange={e => setLoginData({...loginData, password: e.target.value})} 
+                           style={{padding:12, borderRadius:5, border:'1px solid #333', background:'#000', color:'white'}} />
+                    
+                    <div style={{borderTop:'1px solid #333', marginTop:10, paddingTop:10}}>
+                        <label style={{color:'#888', fontSize:12}}>AUTENTICAZIONE 2 FATTORI (2FA)</label>
+                        <input type="text" placeholder="Codice Sicurezza" required 
+                               onChange={e => setLoginData({...loginData, code2fa: e.target.value})} 
+                               style={{padding:12, borderRadius:5, border:'1px solid #333', background:'#000', color:'white', width:'100%', marginTop:5}} />
+                    </div>
+
+                    {error && <p style={{color:'#ff4d4d', textAlign:'center', margin:0}}>{error}</p>}
+                    
+                    <button style={{background:'#e74c3c', color:'white', padding:15, border:'none', borderRadius:5, fontWeight:'bold', cursor:'pointer', marginTop:10}}>
+                        VERIFICA IDENTITÀ
+                    </button>
+                </form>
+            </div>
+        </div>
+    );
+}
 
   const inputStyle = {
       width: '100%', padding: '10px', marginTop: '5px', 

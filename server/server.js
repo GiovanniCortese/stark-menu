@@ -546,6 +546,24 @@ app.post('/api/super/ristoranti', async (req, res) => { try { await pool.query(`
 app.put('/api/super/ristoranti/:id', async (req, res) => { try { const { id } = req.params; if (req.body.account_attivo !== undefined) { await pool.query('UPDATE ristoranti SET account_attivo = $1 WHERE id = $2', [req.body.account_attivo, id]); return res.json({ success: true }); } if (req.body.cucina_super_active !== undefined) { await pool.query('UPDATE ristoranti SET cucina_super_active = $1 WHERE id = $2', [req.body.cucina_super_active, id]); return res.json({ success: true }); } let sql = "UPDATE ristoranti SET nome=$1, slug=$2, email=$3, telefono=$4"; let params = [req.body.nome, req.body.slug, req.body.email, req.body.telefono]; if (req.body.password) { sql += ", password=$5 WHERE id=$6"; params.push(req.body.password, id); } else { sql += " WHERE id=$5"; params.push(id); } await pool.query(sql, params); res.json({ success: true }); } catch (e) { res.status(500).json({error: "Err"}); } });
 app.delete('/api/super/ristoranti/:id', async (req, res) => { try { const id = req.params.id; await pool.query('DELETE FROM prodotti WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM categorie WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM ordini WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM ristoranti WHERE id = $1', [id]); res.json({ success: true }); } catch (e) { res.status(500).json({error: "Err"}); } });
 
+// Rotta Login Super Admin
+app.post('/api/super/login', (req, res) => {
+    const { email, password, code2fa } = req.body;
+
+    const masterEmail = process.env.SUPER_ADMIN_EMAIL || "admin@stark.it";
+    const masterPass = process.env.SUPER_ADMIN_PASSWORD || "tonystark";
+    const master2fa = process.env.SUPER_ADMIN_2FA_CODE || "0000"; // Codice emergenza
+
+    if (email === masterEmail && password === masterPass) {
+        if (code2fa === master2fa) {
+            return res.json({ success: true, token: "SUPER_GOD_TOKEN_2026" });
+        } else {
+            return res.json({ success: false, error: "Codice 2FA errato" });
+        }
+    }
+    res.status(401).json({ success: false, error: "Credenziali non valide" });
+});
+
 // ==========================================
 //          API SICUREZZA REPARTI
 // ==========================================
