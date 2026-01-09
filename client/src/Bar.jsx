@@ -1,4 +1,4 @@
-// client/src/Bar.jsx - VERSIONE V31 (RAGGRUPPAMENTO + ORDINAMENTO) 🍹
+// client/src/Bar.jsx - VERSIONE V5 (FIX VARIANTI & RAGGRUPPAMENTO SICURO) 🍹
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -21,9 +21,7 @@ function Bar() {
       if(passwordInput==="tonystark") { 
           setIsAuthorized(true); 
           localStorage.setItem(`bar_session_${slug}`,"true"); 
-      } else {
-          alert("Password Errata");
-      }
+      } else { alert("Password Errata"); }
   };
 
   const handleLogout = () => {
@@ -39,20 +37,13 @@ function Bar() {
         .then(r=>r.json())
         .then(data => {
             const tuttiOrdini = data.nuovi_ordini || [];
-
             const ordiniDaMostrare = tuttiOrdini.filter(o => {
                 const prodotti = Array.isArray(o.prodotti) ? o.prodotti : [];
-                // 1. Filtra solo cose del Bar
                 const bibite = prodotti.filter(p => p.is_bar);
-                
-                // 2. Se vuoto, nascondi
                 if (bibite.length === 0) return false;
-
-                // 3. Se TUTTE le bibite sono 'servite', nascondi il ticket
                 const tutteFiniti = bibite.every(p => p.stato === 'servito');
                 return !tutteFiniti;
             });
-
             setOrdini(ordiniDaMostrare);
         })
         .catch(e => console.error("Polling error:", e));
@@ -66,26 +57,18 @@ function Bar() {
       } 
   }, [isAuthorized, infoRistorante]);
 
-// Versione "One-Way": Una volta servito, non si torna indietro
   const segnaBibitaServita = async (ordineId, prodottiAttuali, indices) => {
       const nuoviProdotti = [...prodottiAttuali];
-      
-      // Controlliamo il primo
       const primoItem = nuoviProdotti[indices[0]];
-
-      // 🛑 BLOCCO: Se è già servito, esci subito.
       if (primoItem.stato === 'servito') return; 
 
       const nuovoStato = 'servito';
-
-      // Aggiorniamo TUTTI gli item del gruppo
       indices.forEach(idx => {
           const item = nuoviProdotti[idx];
           item.stato = nuovoStato;
           item.ora_servizio = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
       });
 
-      // Log
       const qty = indices.length;
       const logMsg = `[BAR 🍹] HA SERVITO: ${qty > 1 ? qty + 'x ' : ''}${primoItem.nome}`;
 
@@ -97,22 +80,30 @@ function Bar() {
       aggiorna();
   };
 
-  // HELPER PER RAGGRUPPARE (3x Coca Cola) E ORDINARE
+  // --- HELPER CHIAVE VARIANTI ---
+  const getVariantKey = (v) => {
+      if(!v) return "";
+      const r = (v.rimozioni || []).sort().join('_');
+      const a = (v.aggiunte || []).map(x => x.nome).sort().join('_');
+      return `${r}|${a}`;
+  };
+
+  // --- RAGGRUPPAMENTO BAR (FIXATO) ---
   const getProdottiRaggruppati = (prodotti) => {
       const gruppi = [];
       
       prodotti.forEach((p, indexOriginale) => {
-          if (!p.is_bar) return; // Ignora cucina
+          if (!p.is_bar) return; 
 
-          // Chiave unica per raggruppare: Nome + Stato
-          // (Es. Coca Cola in_attesa è diversa da Coca Cola servito)
-          const key = `${p.nome}-${p.stato}`;
+          // *** CHIAVE UNICA ***
+          const variantKey = getVariantKey(p.varianti_scelte);
+          const key = `${p.nome}-${p.stato}-${variantKey}`;
           
           const gruppoEsistente = gruppi.find(g => g.key === key);
 
           if (gruppoEsistente) {
               gruppoEsistente.count += 1;
-              gruppoEsistente.indices.push(indexOriginale); // Salviamo l'indice reale per gestirlo al click
+              gruppoEsistente.indices.push(indexOriginale); 
           } else {
               gruppi.push({
                   ...p,
@@ -122,14 +113,12 @@ function Bar() {
               });
           }
       });
-          // Ordina: Prima "in_attesa", poi "servito"
       return gruppi.sort((a, b) => {
           if (a.stato === b.stato) return 0;
           return a.stato === 'in_attesa' ? -1 : 1;
       });
   };
       
-// Raggruppa gli ordini per tavolo (V32)
   const ordiniPerTavolo = Object.values(ordini.reduce((acc, ordine) => {
       if (!acc[ordine.tavolo]) {
           acc[ordine.tavolo] = { tavolo: ordine.tavolo, listaOrdini: [] };
@@ -138,7 +127,6 @@ function Bar() {
       return acc;
   }, {}));
 
-  
   if (!infoRistorante) return <div style={{textAlign:'center', padding:50}}><h1>⏳ Caricamento Bar...</h1></div>;
 
   if (!isAuthorized) return (
@@ -172,63 +160,56 @@ function Bar() {
                 
                 <div className="ticket-body" style={{textAlign:'left', paddingBottom:'5px'}}>
                     {gruppo.listaOrdini.map(ord => {
-                        // Creiamo i gruppi (es. 3x Coca Cola)
                         const prodottiRaggruppati = getProdottiRaggruppati(ord.prodotti);
                         if(prodottiRaggruppati.length === 0) return null;
 
                         return (
                             <div key={ord.id} style={{marginBottom: '10px', borderBottom:'2px solid #bdc3c7'}}>
-                                {/* Intestazione con Ora e Cameriere */}
-                                <div style={{
-                                    fontSize:'0.85rem', 
-                                    background:'#d6eaf8', 
-                                    padding:'4px 10px', 
-                                    color:'#2980b9', 
-                                    fontWeight:'bold',
-                                    display:'flex', justifyContent:'space-between'
-                                }}>
+                                <div style={{fontSize:'0.85rem', background:'#d6eaf8', padding:'4px 10px', color:'#2980b9', fontWeight:'bold', display:'flex', justifyContent:'space-between'}}>
                                     <span>Ore {new Date(ord.data_ora).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                                     <span>{ord.cameriere}</span>
                                 </div>
 
-                                {/* Ciclo sui Prodotti Raggruppati */}
                                 {prodottiRaggruppati.map((gruppoProd) => {
                                     const isServito = gruppoProd.stato === 'servito';
-                                    
-                                    // QUI STA LA MAGIA: Prendiamo TUTTI gli indici del gruppo (es. 3 indici per 3 Coca Cole)
                                     const indiciDaModificare = gruppoProd.indices; 
 
                                     return (
-                                        <div 
-                                            key={gruppoProd.key} 
-                                            // MODIFICA 1: Il click funziona solo se NON è servito
+                                        <div key={gruppoProd.key} 
                                             onClick={() => !isServito && segnaBibitaServita(ord.id, ord.prodotti, indiciDaModificare)}
                                             style={{
-                                                padding:'12px 10px', 
-                                                borderBottom:'1px dashed #ecf0f1',
-                                                // MODIFICA 2: Se servito, il cursore non è più una manina
+                                                padding:'12px 10px', borderBottom:'1px dashed #ecf0f1',
                                                 cursor: isServito ? 'default' : 'pointer',
                                                 background: isServito ? '#d4efdf' : 'white',
                                                 opacity: isServito ? 0.6 : 1,
                                                 display: 'flex', justifyContent:'space-between', alignItems:'center'
                                             }}
                                         >
-                                            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-                                                <span style={{
-                                                    background: isServito ? '#95a5a6' : '#e67e22',
-                                                    color:'white', padding:'4px 8px', borderRadius:'50%',
-                                                    fontWeight:'bold', fontSize:'0.9rem', minWidth:'30px', textAlign:'center'
-                                                }}>
+                                            <div style={{display:'flex', alignItems:'center', gap:'10px', flex:1}}>
+                                                <span style={{background: isServito ? '#95a5a6' : '#e67e22', color:'white', padding:'4px 8px', borderRadius:'50%', fontWeight:'bold', fontSize:'0.9rem', minWidth:'30px', textAlign:'center'}}>
                                                     {gruppoProd.count}x
                                                 </span>
-                                                <span style={{
-                                                    fontSize:'1.1rem', 
-                                                    fontWeight: isServito ? 'normal' : 'bold',
-                                                    textDecoration: isServito ? 'line-through' : 'none',
-                                                    color: isServito ? '#7f8c8d' : '#2c3e50'
-                                                }}>
-                                                    {gruppoProd.nome}
-                                                </span>
+                                                <div style={{flex:1}}>
+                                                    <span style={{fontSize:'1.1rem', fontWeight: isServito ? 'normal' : 'bold', textDecoration: isServito ? 'line-through' : 'none', color: isServito ? '#7f8c8d' : '#2c3e50'}}>
+                                                        {gruppoProd.nome}
+                                                    </span>
+
+                                                    {/* --- VISUALIZZAZIONE VARIANTI BAR --- */}
+                                                    {gruppoProd.varianti_scelte && (
+                                                            <div style={{marginTop:'2px'}}>
+                                                                {gruppoProd.varianti_scelte.rimozioni?.map((ing, i) => (
+                                                                    <span key={i} style={{background:'#c0392b', color:'white', fontSize:'0.75rem', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold', marginRight:'5px', display:'inline-block'}}>
+                                                                        NO {ing}
+                                                                    </span>
+                                                                ))}
+                                                                {gruppoProd.varianti_scelte.aggiunte?.map((ing, i) => (
+                                                                    <span key={i} style={{background:'#27ae60', color:'white', fontSize:'0.75rem', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold', marginRight:'5px', display:'inline-block'}}>
+                                                                        + {ing.nome}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                    )}
+                                                </div>
                                             </div>
                                             {isServito && <span>✅</span>}
                                         </div>

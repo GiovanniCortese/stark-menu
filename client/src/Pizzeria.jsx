@@ -1,4 +1,4 @@
-// client/src/Pizzeria.jsx - VERSIONE V36 (TAVOLO UNIFICATO + NO BAR) 🍕
+// client/src/Pizzeria.jsx - VERSIONE V5 (FIX VARIANTI & RAGGRUPPAMENTO SICURO) 🍕
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -40,21 +40,10 @@ function Pizzeria() {
             const gruppiTavolo = {};
 
             nuoviOrdini.forEach(ord => {
-                // --- MODIFICA FONDAMENTALE: FILTRO "PACCHETTO CONCLUSO" ---
-                // 1. Prendiamo solo i cibi (escludiamo il Bar che non ci interessa)
-                const itemsDiCompetenza = Array.isArray(ord.prodotti) 
-                    ? ord.prodotti.filter(p => !p.is_bar) 
-                    : [];
-
-                // 2. Controlliamo se questo specifico invio è TUTTO servito
-                // (Se itemsDiCompetenza è vuoto, è probabilmente solo bar, quindi lo ignoriamo o meno a seconda della tua logica. Qui assumiamo che se è > 0 controlliamo lo stato)
+                const itemsDiCompetenza = Array.isArray(ord.prodotti) ? ord.prodotti.filter(p => !p.is_bar) : [];
                 const isTuttoServito = itemsDiCompetenza.length > 0 && itemsDiCompetenza.every(p => p.stato === 'servito');
-
-                // 3. SE È TUTTO SERVITO, SALTIAMO QUESTO ORDINE (RETURN)
-                // Così non verrà aggiunto alla lista del tavolo e sparirà dallo schermo.
                 if (isTuttoServito) return; 
 
-                // --- DA QUI IN POI È LA LOGICA STANDARD ---
                 const t = ord.tavolo;
                 if(!gruppiTavolo[t]) gruppiTavolo[t] = { tavolo: t, items: [], orarioMin: ord.data_ora };
                 
@@ -64,14 +53,15 @@ function Pizzeria() {
 
                 if(Array.isArray(ord.prodotti)) {
                     ord.prodotti.forEach((prod, idx) => {
-                        // --- FILTRO BAR: SE È BAR, LO SALTIAMO COMPLETAMENTE ---
                         if (prod.is_bar) return;
 
                         gruppiTavolo[t].items.push({
                             ...prod,
                             parentOrderId: ord.id,
                             originalIndex: idx,
-                            fullOrderProducts: ord.prodotti 
+                            fullOrderProducts: ord.prodotti,
+                            stato: prod.stato,      // Importante per la chiave
+                            riaperto: prod.riaperto // Importante per la chiave
                         });
                     });
                 }
@@ -79,7 +69,6 @@ function Pizzeria() {
 
             const listaTavoli = Object.values(gruppiTavolo).filter(gruppo => {
                 if (gruppo.items.length === 0) return false;
-                // Nascondi se tutto servito
                 const tuttiFiniti = gruppo.items.every(p => p.stato === 'servito');
                 return !tuttiFiniti;
             });
@@ -98,7 +87,6 @@ function Pizzeria() {
       } 
   }, [isAuthorized, infoRistorante]);
 
-  // --- AZIONE: SEGNA PIZZA PRONTA ---
   const segnaPizzaPronta = async (targetItems) => {
       const updatesPorOrdine = {};
 
@@ -137,28 +125,31 @@ function Pizzeria() {
       aggiorna();
   };
 
-  // --- LOGICA CORE: RAGGRUPPAMENTO PER 4 USCITE ---
+  // --- HELPER: GENERA CHIAVE UNICA PER VARIANTI ---
+  const getVariantKey = (v) => {
+      if(!v) return "";
+      const r = (v.rimozioni || []).sort().join('_');
+      const a = (v.aggiunte || []).map(x => x.nome).sort().join('_');
+      return `${r}|${a}`;
+  };
+
+  // --- LOGICA CORE: RAGGRUPPAMENTO ---
   const processaTavolo = (items) => {
-      // ORA GESTIAMO 4 USCITE (1, 2, 3, 4)
       const courses = { 1: [], 2: [], 3: [], 4: [] };
       
       items.forEach(p => {
           let c = p.course || 2; 
-          // Sicurezza: se per errore arriva 0 o >4, lo mettiamo in 2 o 4
           if(c < 1) c = 1; 
           if(c > 4) c = 4;
-          
           if(!courses[c]) courses[c] = [];
           courses[c].push(p);
       });
 
-      // Funzione helper: una portata è completa se è vuota o tutti i piatti sono serviti
       const isCourseComplete = (courseNum) => {
           if (!courses[courseNum] || courses[courseNum].length === 0) return true; 
           return courses[courseNum].every(p => p.stato === 'servito');
       };
 
-      // NUOVA LOGICA DI BLOCCO A CATENA
       const courseStatus = {
           1: { locked: false, completed: isCourseComplete(1) },
           2: { locked: !isCourseComplete(1), completed: isCourseComplete(2) },
@@ -167,13 +158,15 @@ function Pizzeria() {
       };
 
       const finalStructure = [];
-      // CICLIAMO SU 1, 2, 3, 4
       [1, 2, 3, 4].forEach(cNum => {
           if (courses[cNum].length === 0) return;
 
           const groups = [];
           courses[cNum].forEach(p => {
-              const key = `${p.nome}-${p.stato}-${p.is_pizzeria ? 'piz' : 'cuc'}`;
+              // *** FIX CHIAVE UNICA VARIANTI ***
+              const variantKey = getVariantKey(p.varianti_scelte);
+              const key = `${p.nome}-${p.stato}-${p.riaperto}-${variantKey}-${p.is_pizzeria ? 'piz' : 'cuc'}`;
+              
               const existing = groups.find(g => g.key === key);
               if (existing) {
                   existing.count++;
@@ -184,7 +177,7 @@ function Pizzeria() {
                       key,
                       count: 1,
                       sourceItems: [p],
-                      isMyStation: p.is_pizzeria, // PIZZERIA: mio se È pizzeria
+                      isMyStation: p.is_pizzeria, 
                       stationName: p.is_pizzeria ? "PIZZERIA" : "CUCINA"
                   });
               }
@@ -199,7 +192,6 @@ function Pizzeria() {
       return finalStructure;
   };
 
-  // --- RENDERING ROSSO ---
   if (!infoRistorante) return <div style={{textAlign:'center', padding:50}}><h1>⏳ Caricamento Pizzeria...</h1></div>;
 
   if (!isAuthorized) return (
@@ -223,11 +215,7 @@ function Pizzeria() {
       </header>
       
       <div className="ordini-grid">
-        {tavoli.length === 0 && (
-            <div style={{textAlign: 'center', width: '100%', marginTop: '50px', color: '#fff'}}>
-                <h2>Il forno è vuoto! 🔥</h2>
-            </div>
-        )}
+        {tavoli.length === 0 && <div style={{textAlign: 'center', width: '100%', marginTop: '50px', color: '#fff'}}><h2>Il forno è vuoto! 🔥</h2></div>}
 
         {tavoli.map(tavoloData => {
             const strutturaOrdine = processaTavolo(tavoloData.items);
@@ -242,108 +230,65 @@ function Pizzeria() {
                     <div className="ticket-body" style={{textAlign:'left', paddingBottom:'5px'}}>
                         
                         {strutturaOrdine.map(section => {
-// --- MODIFICA TITOLI DINAMICI ---
-let headerColor = "#7f8c8d"; let headerBg = "#ecf0f1"; 
-// Usa solo il numero dello step corrente (1, 2, 3...) senza nomi fissi come "Antipasti"
-let title = `${section.courseNum}° STEP`; 
-
-if (!section.locked) {
-    // Assegna colori in base all'ordine di uscita
-    if(section.courseNum === 1) { headerColor = "#27ae60"; headerBg = "#e8f8f5"; } // Verde
-    else if(section.courseNum === 2) { headerColor = "#f39c12"; headerBg = "#fef9e7"; } // Giallo
-    else if(section.courseNum === 3) { headerColor = "#d35400"; headerBg = "#fdebd0"; } // Arancio
-    else { headerColor = "#8e44ad"; headerBg = "#f4ecf7"; } // Viola
-} else { 
-    title += " (IN ATTESA)"; 
-}
+                            let headerColor = "#7f8c8d"; let headerBg = "#ecf0f1"; 
+                            let title = `${section.courseNum}° STEP`; 
+                            if (!section.locked) {
+                                if(section.courseNum === 1) { headerColor = "#27ae60"; headerBg = "#e8f8f5"; }
+                                else if(section.courseNum === 2) { headerColor = "#f39c12"; headerBg = "#fef9e7"; }
+                                else if(section.courseNum === 3) { headerColor = "#d35400"; headerBg = "#fdebd0"; }
+                                else { headerColor = "#8e44ad"; headerBg = "#f4ecf7"; }
+                            } else { title += " (IN ATTESA)"; }
 
                             return (
                                 <div key={section.courseNum} style={{marginBottom:'15px'}}>
-                                    <div style={{
-                                        background: headerBg, color: headerColor, 
-                                        padding:'5px 10px', fontSize:'0.85rem', fontWeight:'bold', 
-                                        borderBottom:`2px solid ${headerColor}`, marginBottom:'5px',
-                                        display:'flex', justifyContent:'space-between'
-                                    }}>
+                                    <div style={{background: headerBg, color: headerColor, padding:'5px 10px', fontSize:'0.85rem', fontWeight:'bold', borderBottom:`2px solid ${headerColor}`, marginBottom:'5px', display:'flex', justifyContent:'space-between'}}>
                                         <span>{title}</span>
                                         {section.locked && <span>🔒 BLOCCATO</span>}
                                     </div>
 
                                     {section.items.map(item => {
                                         const isServito = item.stato === 'servito';
-                                        
                                         let bg = 'white'; let opacity = 1; let cursor = 'pointer';
 
-                                        if (section.locked && !isServito) {
-                                            opacity = 0.5; cursor = 'not-allowed'; bg = '#f9f9f9';
-                                        } else if (!item.isMyStation) {
-                                            bg = '#f0f0f0'; cursor = 'default';
-                                        } else if (isServito) {
-                                            bg = '#e8f5e9'; cursor = 'default';
-                                        }
+                                        if (section.locked && !isServito) { opacity = 0.5; cursor = 'not-allowed'; bg = '#f9f9f9'; }
+                                        else if (!item.isMyStation) { bg = '#f0f0f0'; cursor = 'default'; }
+                                        else if (isServito) { bg = '#e8f5e9'; cursor = 'default'; }
 
                                         return (
-                                            <div 
-                                                key={item.key}
-                                                onClick={() => {
-                                                    if (item.isMyStation && !isServito && !section.locked) {
-                                                        segnaPizzaPronta(item.sourceItems);
-                                                    }
-                                                }}
-                                                style={{
-                                                    padding:'10px', borderBottom:'1px dashed #ddd',
-                                                    background: bg, opacity: opacity, cursor: cursor,
-                                                    display: 'flex', justifyContent:'space-between', alignItems:'center'
-                                                }}
-                                            >
-                                                <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-                                                    <span style={{
-                                                        background: isServito ? '#95a5a6' : (item.isMyStation ? '#e74c3c' : '#7f8c8d'),
-                                                        color:'white', padding:'2px 8px', borderRadius:'12px',
-                                                        fontWeight:'bold', fontSize:'0.9rem', minWidth:'25px', textAlign:'center'
-                                                    }}>
+                                            <div key={item.key} onClick={() => { if (item.isMyStation && !isServito && !section.locked) segnaPizzaPronta(item.sourceItems); }}
+                                                style={{padding:'10px', borderBottom:'1px dashed #ddd', background: bg, opacity: opacity, cursor: cursor, display: 'flex', justifyContent:'space-between', alignItems:'center'}}>
+                                                
+                                                <div style={{display:'flex', alignItems:'center', gap:'10px', flex:1}}>
+                                                    <span style={{background: isServito ? '#95a5a6' : (item.isMyStation ? '#e74c3c' : '#7f8c8d'), color:'white', padding:'2px 8px', borderRadius:'12px', fontWeight:'bold', fontSize:'0.9rem', minWidth:'25px', textAlign:'center'}}>
                                                         {item.count}x
                                                     </span>
-                                                    <div>
-                                                        <span style={{
-                                                            fontSize:'1.1rem', fontWeight: isServito ? 'normal' : 'bold',
-                                                            textDecoration: isServito ? 'line-through' : 'none',
-                                                            color: isServito ? '#aaa' : '#000'
-                                                        }}>
+                                                    <div style={{flex:1}}>
+                                                        <div style={{fontSize:'1.1rem', fontWeight: isServito ? 'normal' : 'bold', textDecoration: isServito ? 'line-through' : 'none', color: isServito ? '#aaa' : '#000'}}>
                                                             {item.nome}
-                                                            <span style={{
-                                                            fontSize:'1.1rem', fontWeight: isServito ? 'normal' : 'bold',
-                                                            textDecoration: isServito ? 'line-through' : 'none',
-                                                            color: isServito ? '#aaa' : '#000'
-                                                        }}>
-                                                            {item.nome}
-                                                        </span>
+                                                        </div>
                                                         
-                                                        {/* BADGE VISIVO RIAPERTO - POSIZIONATO CORRETTAMENTE */}
-                                                        {item.riaperto && item.stato === 'in_attesa' && (
-                                                            <div style={{
-                                                                display:'inline-block', marginLeft:'10px', 
-                                                                background:'#c0392b', color:'white', 
-                                                                padding:'2px 6px', borderRadius:'4px', 
-                                                                fontSize:'0.7rem', fontWeight:'bold', textTransform:'uppercase',
-                                                                boxShadow:'0 2px 4px rgba(0,0,0,0.2)'
-                                                            }}>
-                                                                ⚠️ RIAPERTO
+                                                        {/* --- VISUALIZZAZIONE VARIANTI FIXATA --- */}
+                                                        {item.varianti_scelte && (
+                                                            <div style={{marginTop:'2px'}}>
+                                                                {item.varianti_scelte.rimozioni?.map((ing, i) => (
+                                                                    <span key={i} style={{background:'#c0392b', color:'white', fontSize:'0.75rem', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold', marginRight:'5px', display:'inline-block'}}>
+                                                                        NO {ing}
+                                                                    </span>
+                                                                ))}
+                                                                {item.varianti_scelte.aggiunte?.map((ing, i) => (
+                                                                    <span key={i} style={{background:'#27ae60', color:'white', fontSize:'0.75rem', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold', marginRight:'5px', display:'inline-block'}}>
+                                                                        + {ing.nome}
+                                                                    </span>
+                                                                ))}
                                                             </div>
                                                         )}
-                                                        </span>
-                                                        {!item.isMyStation && (
-                                                            <span style={{fontSize:'0.7rem', marginLeft:'8px', background:'#bdc3c7', color:'white', padding:'2px 4px', borderRadius:'3px'}}>
-                                                                {item.stationName}
-                                                            </span>
-                                                        )}
+
+                                                        {item.riaperto && item.stato === 'in_attesa' && <div style={{display:'inline-block', marginTop:'2px', background:'#f39c12', color:'white', padding:'2px 5px', borderRadius:'3px', fontSize:'0.7rem', fontWeight:'bold'}}>⚠️ RIAPERTO</div>}
                                                     </div>
                                                 </div>
 
                                                 <div style={{textAlign:'right'}}>
-                                                    {isServito ? (
-                                                        <div style={{color:'green', fontSize:'0.8rem'}}>✅ {item.ora_servizio}</div>
-                                                    ) : ( section.locked ? <span style={{fontSize:'1.2rem'}}>⏳</span> : null )}
+                                                    {isServito ? <div style={{color:'green', fontSize:'0.8rem'}}>✅ {item.ora_servizio}</div> : ( section.locked ? <span style={{fontSize:'1.2rem'}}>⏳</span> : null )}
                                                 </div>
                                             </div>
                                         );
