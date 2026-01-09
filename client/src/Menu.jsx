@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - VERSIONE V59 (WISH LIST / LISTA DESIDERI) ✨
+// client/src/Menu.jsx - VERSIONE V60 (WISH LIST PURA: NO TOTALE, NO AVVISI) ✨
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 
@@ -50,7 +50,6 @@ function Menu() {
           if(data.subscription_active === false) setIsSuspended(true);
           
           // IMPOSTAZIONE STATO CUCINA
-          // Se chiusa, l'app entra in modalità "Wish List"
           setCanOrder(data.ordini_abilitati && data.kitchen_active);
 
           if(data.menu && data.menu.length > 0) {
@@ -86,8 +85,6 @@ function Menu() {
 
   // --- 3. GESTIONE CARRELLO (WISH LIST) ---
   const aggiungiAlCarrello = (piatto) => {
-      // NOTA: Abbiamo rimosso il blocco if(!canOrder) per permettere la Wish List
-      
       const tempId = Date.now() + Math.random();
       const defaultCourse = getDefaultCourse(piatto);
 
@@ -120,7 +117,7 @@ function Menu() {
 
   const inviaOrdine = async () => {
       if(carrello.length === 0) return;
-      if(!canOrder) return alert("Cucina Chiusa. Mostra la lista al cameriere."); // Sicurezza extra
+      if(!canOrder) return; // Se cucina chiusa, non invia nulla (è solo wishlist)
       
       if(!confirm(`Confermi l'ordine per il tavolo ${numeroTavolo}?`)) return;
 
@@ -190,32 +187,12 @@ function Menu() {
               )}
               
               <div style={{padding:'10px', textAlign:'center', borderBottom:`1px solid ${priceColor}`}}>
-                  {canOrder ? (
-                      <span style={{color: text, fontSize:'1.1rem'}}>
-                          Tavolo: <strong style={{color:'white', background: priceColor, padding:'2px 8px', borderRadius:'5px'}}>{numeroTavolo}</strong>
-                      </span>
-                  ) : (
-                    // Messaggio differenziato per Wish List
-                    <span style={{background:'#f39c12', color:'black', padding:'5px 10px', borderRadius:'5px', fontWeight:'bold'}}>
-                        📝 LISTA DESIDERI ATTIVA (Cucina Chiusa)
-                    </span>
-                  )}
+                  {/* MOSTRA SEMPRE IL TAVOLO, ANCHE SE CUCINA CHIUSA */}
+                  <span style={{color: text, fontSize:'1.1rem'}}>
+                      Tavolo: <strong style={{color:'white', background: priceColor, padding:'2px 8px', borderRadius:'5px'}}>{numeroTavolo}</strong>
+                  </span>
               </div>
           </div>
-      </div>
-
-      {/* CATEGORIE */}
-      <div style={{display:'flex', overflowX:'auto', gap:10, padding:'10px 20px', paddingBottom:5, scrollbarWidth:'none'}}>
-          {categorieUniche.map(cat => (
-              <button key={cat} onClick={() => setActiveCategory(cat)}
-                  style={{
-                      background: activeCategory === cat ? priceColor : '#444', color: 'white',
-                      border:'none', padding:'10px 20px', borderRadius:20, whiteSpace:'nowrap', flexShrink:0,
-                      fontWeight: activeCategory === cat ? 'bold' : 'normal',
-                      boxShadow: activeCategory === cat ? '0 4px 10px rgba(0,0,0,0.3)' : 'none'
-                  }}
-              >{cat}</button>
-          ))}
       </div>
 
       {/* LISTA MENU A FISARMONICA */}
@@ -258,7 +235,7 @@ function Menu() {
 
                                                 return (
                                                 <div key={prodotto.id} className="card"
-                                                    // MODALE SEMPRE APRIBILE (anche per Wish List)
+                                                    // MODALE SEMPRE APRIBILE
                                                     onClick={() => prodotto.immagine_url ? apriModale(prodotto) : null}
                                                     style={{ 
                                                         display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', 
@@ -353,7 +330,7 @@ function Menu() {
                         <p style={{color:'#666', fontSize:'1rem', lineHeight:'1.4'}}>{selectedPiatto.descrizione}</p>
 
                         <div style={{marginTop:'20px', borderTop:'1px solid #eee', paddingTop:'15px'}}>
-                            {/* RIMOZIONI (SEMPRE ATTIVE PER WISH LIST) */}
+                            {/* RIMOZIONI */}
                             {baseList.length > 0 && (
                                 <div style={{marginBottom:'20px'}}>
                                     <h4 style={{margin:'0 0 10px 0', color:'#333'}}>Ingredienti (Togli se non vuoi)</h4>
@@ -384,7 +361,7 @@ function Menu() {
                                 </div>
                             )}
 
-                            {/* AGGIUNTE (SEMPRE ATTIVE PER WISH LIST) */}
+                            {/* AGGIUNTE */}
                             {addList.length > 0 && (
                                 <div>
                                     <h4 style={{margin:'0 0 10px 0', color:'#333'}}>Aggiungi Extra 😋</h4>
@@ -460,10 +437,11 @@ function Menu() {
         <div className="carrello-bar">
           <div className="totale">
               <span>{carrello.length} prodotti</span>
-              <strong>{carrello.reduce((a,b)=>a+Number(b.prezzo),0).toFixed(2)} €</strong>
+              {/* MOSTRA TOTALE SOLO SE CUCINA APERTA */}
+              {canOrder && <strong>{carrello.reduce((a,b)=>a+Number(b.prezzo),0).toFixed(2)} €</strong>}
           </div>
-          <button onClick={() => setShowCheckout(true)} className="btn-invia" style={{background: canOrder ? '#f1c40f' : '#f39c12', color:'black'}}>
-              {canOrder ? "VEDI ORDINE 📝" : "VEDI LISTA 👀"}
+          <button onClick={() => setShowCheckout(true)} className="btn-invia" style={{background: canOrder ? '#f1c40f' : '#3498db', color: canOrder ? 'black' : 'white'}}>
+              {canOrder ? "VEDI ORDINE 📝" : "VEDI LA TUA LISTA 👀"}
           </button>
         </div>
       )}
@@ -477,14 +455,14 @@ function Menu() {
           }}>
               
               <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px', borderBottom:`1px solid ${style?.text||'#ccc'}`, paddingBottom:'10px'}}>
-                  <h2 style={{color: titleColor, margin:0}}>{canOrder ? "Riepilogo Ordine 📝" : "La tua Lista 📝"}</h2>
+                  <h2 style={{color: titleColor, margin:0}}>{canOrder ? "Riepilogo Ordine 📝" : "Lista per Cameriere 📝"}</h2>
                   <button onClick={() => setShowCheckout(false)} style={{background:'transparent', border:'none', color: titleColor, fontSize:'24px', cursor:'pointer'}}>✕</button>
               </div>
 
               <div style={{flex:1, overflowY:'auto', maxWidth:'600px', margin:'0 auto', width:'100%'}}>
                   {carrello.length === 0 && <p style={{color: style?.text || '#fff', textAlign:'center'}}>Il carrello è vuoto.</p>}
 
-                  {/* CUCINA */}
+                  {/* LISTA PIATTI (CUCINA) */}
                   {(() => {
                       const itemsCucina = carrello.filter(i => !i.categoria_is_bar);
                       const coursePresenti = [...new Set(itemsCucina.map(i => i.course))].sort();
@@ -507,9 +485,12 @@ function Menu() {
                                   <div key={item.tempId} style={{background:'rgba(255,255,255,0.1)', borderRadius:10, padding:15, marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                                       <div>
                                           <div style={{fontWeight:'bold', fontSize:'1.1rem', color: titleColor}}>{item.nome}</div>
-                                          <div style={{color:'#aaa', fontSize:'0.9rem'}}>
-                                              {Number(item.prezzo).toFixed(2)} € • {item.categoria_is_pizzeria ? '🍕 Pizza' : '🍳 Cucina'}
-                                          </div>
+                                          {/* SE CUCINA CHIUSA: PREZZO NASCOSTO */}
+                                          {canOrder && (
+                                            <div style={{color:'#aaa', fontSize:'0.9rem'}}>
+                                                {Number(item.prezzo).toFixed(2)} € • {item.categoria_is_pizzeria ? '🍕 Pizza' : '🍳 Cucina'}
+                                            </div>
+                                          )}
                                       </div>
                                       <div style={{display:'flex', flexDirection:'column', gap:5}}>
                                           <div style={{display:'flex', gap:5}}>
@@ -524,7 +505,7 @@ function Menu() {
                       ));
                   })()}
                   
-                  {/* BEVANDE */}
+                  {/* LISTA BEVANDE */}
                   {carrello.some(i => i.categoria_is_bar) && (
                       <div style={{marginBottom:'20px', padding:'10px', border:'1px dashed #555', borderRadius:'10px'}}>
                            <h3 style={{color: '#3498db', margin:'0 0 10px 0', fontSize:'16px', textTransform:'uppercase'}}>
@@ -534,7 +515,8 @@ function Menu() {
                                <div key={item.tempId} style={{display:'flex', justifyContent:'space-between', alignItems:'center', background:'rgba(255,255,255,0.05)', padding:'10px', marginBottom:'5px', borderRadius:'8px'}}>
                                    <div style={{flex:1}}>
                                        <div style={{color: titleColor, fontWeight:'bold', fontSize:'16px'}}>{item.nome}</div>
-                                       <div style={{color: '#888', fontSize:'12px'}}>{Number(item.prezzo).toFixed(2)} €</div>
+                                       {/* SE CUCINA CHIUSA: PREZZO NASCOSTO */}
+                                       {canOrder && <div style={{color: '#888', fontSize:'12px'}}>{Number(item.prezzo).toFixed(2)} €</div>}
                                    </div>
                                    <button onClick={() => rimuoviDalCarrello(item.tempId)} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'5px', cursor:'pointer'}}>✕</button>
                                </div>
@@ -543,25 +525,18 @@ function Menu() {
                   )}
 
                   <div style={{marginTop:'20px', borderTop:`1px solid ${style?.text||'#ccc'}`, paddingTop:'20px'}}>
-                      <div style={{display:'flex', justifyContent:'space-between', fontSize:'20px', color: titleColor, marginBottom:'20px'}}>
-                          <span>TOTALE:</span>
-                          <strong style={{color: priceColor}}>{carrello.reduce((a,b)=>a+Number(b.prezzo),0).toFixed(2)} €</strong>
-                      </div>
+                      
+                      {/* --- TOTALE: VISIBILE SOLO SE CUCINA APERTA --- */}
+                      {canOrder && (
+                        <div style={{display:'flex', justifyContent:'space-between', fontSize:'20px', color: titleColor, marginBottom:'20px'}}>
+                            <span>TOTALE:</span>
+                            <strong style={{color: priceColor}}>{carrello.reduce((a,b)=>a+Number(b.prezzo),0).toFixed(2)} €</strong>
+                        </div>
+                      )}
                       
                       {/* --- PULSANTE CONFERMA: VISIBILE SOLO SE CUCINA APERTA --- */}
-                      {carrello.length > 0 && (
-                          canOrder ? (
+                      {carrello.length > 0 && canOrder && (
                             <button onClick={inviaOrdine} style={{width:'100%', padding:'15px', fontSize:'18px', background: '#159709ff', color:'white', border:`1px solid ${style?.text||'#ccc'}`, borderRadius:'30px', fontWeight:'bold', cursor:'pointer'}}>CONFERMA E INVIA 🚀</button>
-                          ) : (
-                            <div style={{
-                                width:'100%', padding:'15px', textAlign:'center', 
-                                background: '#fcf3cf', color:'#d35400', 
-                                border:'2px dashed #f39c12', borderRadius:'10px', fontWeight:'bold', fontSize:'1.1rem'
-                            }}>
-                                🚫 CUCINA CHIUSA<br/>
-                                <span style={{fontSize:'0.9rem', fontWeight:'normal', color:'#333'}}>Mostra questa lista al cameriere per ordinare.</span>
-                            </div>
-                          )
                       )}
                       
                       <button onClick={() => setShowCheckout(false)} style={{width:'100%', padding:'15px', marginTop:'10px', background:'transparent', border:`1px solid ${style?.text||'#ccc'}`, color: style?.text||'#ccc', borderRadius:'30px', cursor:'pointer'}}>Torna al Menu</button>
