@@ -70,14 +70,14 @@ const handleLogin = async (e) => {
                         if (prod.is_bar) return; // Salta Bar
 
                         gruppiTavolo[t].items.push({
-                            ...prod,
-                            parentOrderId: ord.id,
-                            originalIndex: idx,
-                            fullOrderProducts: ord.prodotti,
-                            // Passiamo stato e flag riaperto per la gestione visiva
-                            stato: prod.stato,
-                            riaperto: prod.riaperto
-                        });
+    ...prod,
+    parentOrderId: ord.id,
+    originalIndex: idx,
+    fullOrderProducts: ord.prodotti,
+    stato: prod.stato,
+    riaperto: prod.riaperto,
+    cameriere: ord.cameriere // <--- AGGIUNGI QUESTA RIGA QUI
+});
                     });
                 }
             });
@@ -229,15 +229,28 @@ const handleLogin = async (e) => {
             </div>
         )}
 
-        {tavoli.map(tavoloData => {
-            const strutturaOrdine = processaTavolo(tavoloData.items);
-            
-            return (
-                <div key={tavoloData.tavolo} className="ticket" style={{borderTop: '5px solid #d35400'}}>
-                    <div className="ticket-header" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                        <span style={{fontSize:'1.8rem'}}>Tavolo <strong>{tavoloData.tavolo}</strong></span>
-                        <span style={{fontSize:'0.9rem', color:'#ffffffff'}}>{new Date(tavoloData.orarioMin).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
-                    </div>
+{tavoli.map(tavoloData => {
+    const strutturaOrdine = processaTavolo(tavoloData.items);
+    
+    // 1. Estraiamo il nome del cameriere dal primo piatto della lista
+    const nomeCameriere = tavoloData.items[0]?.cameriere;
+
+    return (
+        <div key={tavoloData.tavolo} className="ticket" style={{borderTop: '5px solid #d35400'}}>
+            <div className="ticket-header" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                
+                {/* 2. Header modificato per mostrare il nome sotto il tavolo */}
+                <div style={{display:'flex', flexDirection:'column'}}>
+                    <span style={{fontSize:'1.8rem'}}>Tavolo <strong>{tavoloData.tavolo}</strong></span>
+                    {nomeCameriere && (
+                        <span style={{fontSize:'0.9rem', background:'rgba(255,255,255,0.2)', padding:'2px 8px', borderRadius:'4px', marginTop:'2px', display:'inline-block', width:'fit-content'}}>
+                            👤 {nomeCameriere}
+                        </span>
+                    )}
+                </div>
+
+                <span style={{fontSize:'0.9rem', color:'#ffffffff'}}>{new Date(tavoloData.orarioMin).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+            </div>
                     
                     <div className="ticket-body" style={{textAlign:'left', paddingBottom:'5px'}}>
                         
