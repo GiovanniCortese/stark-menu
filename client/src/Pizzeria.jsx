@@ -137,28 +137,38 @@ function Pizzeria() {
       aggiorna();
   };
 
-  // --- LOGICA CORE ---
+  // --- LOGICA CORE: RAGGRUPPAMENTO PER 4 USCITE ---
   const processaTavolo = (items) => {
-      const courses = { 1: [], 2: [], 3: [] };
+      // ORA GESTIAMO 4 USCITE (1, 2, 3, 4)
+      const courses = { 1: [], 2: [], 3: [], 4: [] };
+      
       items.forEach(p => {
-          const c = p.course || 2; 
+          let c = p.course || 2; 
+          // Sicurezza: se per errore arriva 0 o >4, lo mettiamo in 2 o 4
+          if(c < 1) c = 1; 
+          if(c > 4) c = 4;
+          
           if(!courses[c]) courses[c] = [];
           courses[c].push(p);
       });
 
+      // Funzione helper: una portata è completa se è vuota o tutti i piatti sono serviti
       const isCourseComplete = (courseNum) => {
           if (!courses[courseNum] || courses[courseNum].length === 0) return true; 
           return courses[courseNum].every(p => p.stato === 'servito');
       };
 
+      // NUOVA LOGICA DI BLOCCO A CATENA
       const courseStatus = {
           1: { locked: false, completed: isCourseComplete(1) },
           2: { locked: !isCourseComplete(1), completed: isCourseComplete(2) },
-          3: { locked: !isCourseComplete(1) || !isCourseComplete(2), completed: isCourseComplete(3) }
+          3: { locked: !isCourseComplete(1) || !isCourseComplete(2), completed: isCourseComplete(3) },
+          4: { locked: !isCourseComplete(1) || !isCourseComplete(2) || !isCourseComplete(3), completed: isCourseComplete(4) }
       };
 
       const finalStructure = [];
-      [1, 2, 3].forEach(cNum => {
+      // CICLIAMO SU 1, 2, 3, 4
+      [1, 2, 3, 4].forEach(cNum => {
           if (courses[cNum].length === 0) return;
 
           const groups = [];
