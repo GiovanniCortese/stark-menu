@@ -129,7 +129,7 @@ const handleAdminLogin = async (e) => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
-                identifier: identifierInput, // Inviamo l'input unico al server
+                email: identifierInput, // identifierInput ora conterrà l'email
                 password: passwordInput 
             })
         });
@@ -138,9 +138,8 @@ const handleAdminLogin = async (e) => {
 
         if (data.success) {
             setIsAuthorized(true);
-            // IMPORTANTE: usiamo lo slug che ci torna dal DB, non quello dell'URL
+            // Salviamo la sessione usando lo slug che ci ha confermato il server
             localStorage.setItem(`stark_admin_session_${data.user.slug}`, "true");
-            ricaricaDati(); 
         } else {
             setLoginError(true);
         }
@@ -171,10 +170,11 @@ const handleAdminLogin = async (e) => {
 
                 <form onSubmit={handleAdminLogin} style={{marginTop:20}}>
     <input 
-        type="text" // 'text' così accetta sia mail che slug
-        placeholder="Email o Nome Ristorante (slug)" 
+        type="email" // Usiamo type email per validazione automatica
+        placeholder="Email Amministratore" 
         value={identifierInput}
         onChange={e => setIdentifierInput(e.target.value)}
+        required
         style={{
             width:'100%', padding:'15px', borderRadius:'8px', 
             border: loginError ? '2px solid #e74c3c' : '1px solid #ddd',
@@ -186,13 +186,14 @@ const handleAdminLogin = async (e) => {
         placeholder="Password" 
         value={passwordInput}
         onChange={e => setPasswordInput(e.target.value)}
+        required
         style={{
             width:'100%', padding:'15px', borderRadius:'8px', 
             border: loginError ? '2px solid #e74c3c' : '1px solid #ddd',
             fontSize:'16px', boxSizing:'border-box', marginBottom:'10px', textAlign:'center'
         }}
     />
-    {loginError && <p style={{color:'#e74c3c', fontWeight:'bold', fontSize:'0.9rem'}}>Credenziali Errate ⛔</p>}
+    {loginError && <p style={{color:'#e74c3c', fontWeight:'bold', fontSize:'0.9rem'}}>Email o Password errati ⛔</p>}
     
     <button type="submit" disabled={loadingLogin} style={{
         width:'100%', padding:'15px', background:'#2c3e50', color:'white', border:'none', 

@@ -407,14 +407,13 @@ app.get('/api/menu/:slug', async (req, res) => {
 });
 
 app.post('/api/login', async (req, res) => {
-    // Riceviamo 'identifier' che può essere o la mail o lo slug
-    const { identifier, password } = req.body;
+    const { email, password } = req.body; // Riceviamo solo email e password
     
     try {
-        // Cerchiamo il ristorante che abbia quella EMAIL oppure quel SLUG
+        // Cerchiamo il ristorante SOLO tramite email
         const result = await pool.query(
-            "SELECT * FROM ristoranti WHERE (email = $1 OR slug = $1)", 
-            [identifier]
+            "SELECT * FROM ristoranti WHERE email = $1", 
+            [email]
         );
         
         if (result.rows.length > 0) {
@@ -427,16 +426,17 @@ app.post('/api/login', async (req, res) => {
                     user: { 
                         id: ristorante.id, 
                         nome: ristorante.nome, 
-                        slug: ristorante.slug 
+                        slug: ristorante.slug // Lo slug serve al frontend per la sessione
                     } 
                 });
             }
         }
         
-        res.status(401).json({ success: false, error: "Credenziali errate" });
+        // Se non trova corrispondenza o password errata
+        res.status(401).json({ success: false, error: "Email o password errati" });
     } catch (e) {
         console.error(e);
-        res.status(500).json({ success: false, error: "Errore server" });
+        res.status(500).json({ success: false, error: "Errore interno del server" });
     }
 });
 
