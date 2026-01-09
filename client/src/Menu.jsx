@@ -9,7 +9,7 @@ function Menu() {
   const [ristoranteId, setRistoranteId] = useState(null);
   const [style, setStyle] = useState({});
   const [tavoloStaff, setTavoloStaff] = useState("");
-  const isStaff = user && (user.ruolo === 'cameriere' || user.ruolo === 'admin');
+ 
   
   // --- STATI LOGICI ---
   const [isSuspended, setIsSuspended] = useState(false);
@@ -38,6 +38,7 @@ function Menu() {
 
   // --- STATI UTENTE (AUTH) ---
   const [user, setUser] = useState(null);
+  const isStaff = user && (user.ruolo === 'cameriere' || user.ruolo === 'admin');
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [authData, setAuthData] = useState({ nome:'', email:'', password:'', telefono:'', indirizzo:'' });
