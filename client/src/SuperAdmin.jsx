@@ -120,8 +120,19 @@ const handleSuperLogin = async (e) => {
   };
 
   const entraNelPannello = (slug) => { localStorage.setItem(`stark_session_${slug}`, "true"); window.open(`/admin/${slug}`, '_blank'); };
-  const logout = () => { localStorage.removeItem("super_admin_logged"); navigate('/'); };
-
+const logout = () => {
+    if (confirm("Vuoi uscire dal pannello Super Admin?")) {
+        // CANCELLIAMO ENTRAMBE LE CHIAVI (Vecchia e Nuova) per sicurezza
+        localStorage.removeItem("super_admin_token"); 
+        localStorage.removeItem("super_admin_logged");
+        
+        // RESETTIAMO LO STATO
+        setAuthorized(false);
+        
+        // TORNIAMO ALLA HOME
+        navigate('/'); 
+    }
+};
   if (!authorized) {
     return (
         <div style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', background:'#000'}}>
@@ -167,8 +178,19 @@ const handleSuperLogin = async (e) => {
         <div><h1 style={{margin:0}}>🦸‍♂️ J.A.R.V.I.S. Control</h1><p style={{margin:0, opacity:0.7}}>Super Admin: Gestione Globale</p></div>
         <div style={{display:'flex', gap:'10px'}}>
             <button onClick={apriModaleNuovo} style={{background:'#27ae60', color:'white', border:'none', padding:'10px 20px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold'}}>➕ NUOVO</button>
-            <button onClick={logout} style={{background:'#e74c3c', color:'white', border:'none', padding:'10px 20px', borderRadius:'5px', cursor:'pointer'}}>ESCI</button>
-        </div>
+<button 
+    onClick={logout} 
+    style={{
+        background:'#e74c3c', 
+        color:'white', 
+        border:'none', 
+        padding:'10px 20px', 
+        borderRadius:'5px', 
+        cursor:'pointer'
+    }}
+>
+    ESCI
+</button>        </div>
       </header>
       
       <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '25px'}}>

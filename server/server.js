@@ -547,18 +547,22 @@ app.put('/api/super/ristoranti/:id', async (req, res) => { try { const { id } = 
 app.delete('/api/super/ristoranti/:id', async (req, res) => { try { const id = req.params.id; await pool.query('DELETE FROM prodotti WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM categorie WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM ordini WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM ristoranti WHERE id = $1', [id]); res.json({ success: true }); } catch (e) { res.status(500).json({error: "Err"}); } });
 
 // Rotta Login Super Admin
+const { authenticator } = require('otplib');
+
 app.post('/api/super/login', (req, res) => {
     const { email, password, code2fa } = req.body;
+    
+    // 1. Verifica Email e Password (come prima)
+    if (email === process.env.SUPER_ADMIN_EMAIL && password === process.env.SUPER_ADMIN_PASSWORD) {
+        
+        // 2. Verifica il codice dinamico con Google Authenticator
+        // 'SUPER_ADMIN_SECRET' è una stringa segreta che conosci solo tu nel .env
+        const isValid = authenticator.check(code2fa, process.env.SUPER_ADMIN_SECRET);
 
-    const masterEmail = process.env.SUPER_ADMIN_EMAIL || "admin@stark.it";
-    const masterPass = process.env.SUPER_ADMIN_PASSWORD || "tonystark";
-    const master2fa = process.env.SUPER_ADMIN_2FA_CODE || "0000"; // Codice emergenza
-
-    if (email === masterEmail && password === masterPass) {
-        if (code2fa === master2fa) {
+        if (isValid) {
             return res.json({ success: true, token: "SUPER_GOD_TOKEN_2026" });
         } else {
-            return res.json({ success: false, error: "Codice 2FA errato" });
+            return res.json({ success: false, error: "Codice 2FA non valido o scaduto" });
         }
     }
     res.status(401).json({ success: false, error: "Credenziali non valide" });
