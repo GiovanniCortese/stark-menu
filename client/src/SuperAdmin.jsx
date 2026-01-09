@@ -119,8 +119,11 @@ const handleSuperLogin = async (e) => {
     });
   };
 
-  const entraNelPannello = (slug) => { localStorage.setItem(`stark_session_${slug}`, "true"); window.open(`/admin/${slug}`, '_blank'); };
-const logout = () => {
+const entraNelPannello = (slug) => { 
+      // FIX: Usiamo la chiave esatta che Admin.jsx si aspetta per autorizzare l'accesso
+      localStorage.setItem(`stark_admin_session_${slug}`, "true"); 
+      window.open(`/admin/${slug}`, '_blank'); 
+  };const logout = () => {
     if (confirm("Vuoi uscire dal pannello Super Admin?")) {
         // CANCELLIAMO ENTRAMBE LE CHIAVI (Vecchia e Nuova) per sicurezza
         localStorage.removeItem("super_admin_token"); 
