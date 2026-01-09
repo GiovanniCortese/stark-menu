@@ -180,18 +180,54 @@ app.post('/api/import-excel', uploadFile.single('file'), async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// 2. EXPORT EXCEL
+// 2. EXPORT EXCEL (VERSIONE POTENZIATA CON VARIANTI)
 app.get('/api/export-excel/:ristorante_id', async (req, res) => {
     try {
-        const result = await pool.query(`SELECT nome as "Nome", prezzo as "Prezzo", categoria as "Categoria", sottocategoria as "Sottocategoria", descrizione as "Descrizione" FROM prodotti WHERE ristorante_id = $1 ORDER BY categoria, nome`, [req.params.ristorante_id]);
+        // 1. Prendiamo tutto (*) per poter processare le varianti
+        const result = await pool.query(`SELECT * FROM prodotti WHERE ristorante_id = $1 ORDER BY categoria, nome`, [req.params.ristorante_id]);
+        
+        // 2. Processiamo i dati per renderli leggibili in Excel
+        const dataForExcel = result.rows.map(row => {
+            let baseStr = "";
+            let aggiunteStr = "";
+            
+            try {
+                // Parsing sicuro del JSONB
+                const variantiObj = typeof row.varianti === 'string' ? JSON.parse(row.varianti) : (row.varianti || {});
+                
+                // Formattiamo Ingredienti Base (es: "Pomodoro, Mozzarella")
+                if(variantiObj.base && Array.isArray(variantiObj.base)) {
+                    baseStr = variantiObj.base.join(', ');
+                }
+
+                // Formattiamo Aggiunte (es: "Bufala:2.00, Cotto:1.50")
+                if(variantiObj.aggiunte && Array.isArray(variantiObj.aggiunte)) {
+                    aggiunteStr = variantiObj.aggiunte.map(a => `${a.nome}:${Number(a.prezzo).toFixed(2)}`).join(', ');
+                }
+
+            } catch(e) { console.error("Errore parsing varianti per excel", row.id); }
+
+            // Ritorniamo l'oggetto con le colonne nell'ordine desiderato
+            return {
+                "Categoria": row.categoria,
+                "Sottocategoria": row.sottocategoria,
+                "Nome": row.nome,
+                "Prezzo": row.prezzo,
+                "Descrizione": row.descrizione,
+                "Ingredienti Base (Rimovibili)": baseStr,   // NUOVA COLONNA
+                "Aggiunte (Formato Nome:Prezzo)": aggiunteStr // NUOVA COLONNA
+            };
+        });
+
+        // 3. Creazione file Excel
         const workbook = xlsx.utils.book_new();
-        const worksheet = xlsx.utils.json_to_sheet(result.rows);
-        xlsx.utils.book_append_sheet(workbook, worksheet, "Menu");
+        const worksheet = xlsx.utils.json_to_sheet(dataForExcel);
+        xlsx.utils.book_append_sheet(workbook, worksheet, "Menu Completo");
         const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-        res.setHeader('Content-Disposition', 'attachment; filename="menu_export.xlsx"');
+        res.setHeader('Content-Disposition', 'attachment; filename="menu_export_full.xlsx"');
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.send(buffer);
-    } catch (err) { res.status(500).json({ error: "Errore Export" }); }
+    } catch (err) { console.error(err); res.status(500).json({ error: "Errore Export" }); }
 });
 
 // 3. SALVA STILE GRAFICO

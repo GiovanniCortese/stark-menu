@@ -296,7 +296,23 @@ const onDragEnd = async (result) => {
                                                         {p.immagine_url && <img src={p.immagine_url} style={{width:'40px', height:'40px', objectFit:'cover', borderRadius:'4px'}}/>}
                                                         <div style={{flex:1}}>
                                                             <div><strong>{p.nome}</strong>{p.sottocategoria && <span style={{fontSize:'11px', background:'#eee', padding:'2px 5px', borderRadius:'4px', marginLeft:'5px'}}>{p.sottocategoria}</span>}</div>
+                                                            {/* DESCRIZIONE */}
                                                             {p.descrizione && (<div style={{fontSize:'12px', color:'#777', fontStyle:'italic', marginTop:'2px', lineHeight:'1.2'}}>{p.descrizione.length > 60 ? p.descrizione.substring(0,60) + "..." : p.descrizione}</div>)}
+                                                            
+                                                            {/* VISUALIZZAZIONE INGREDIENTI BASE (NUOVO) */}
+                                                            {(() => {
+                                                                try {
+                                                                    const v = typeof p.varianti === 'string' ? JSON.parse(p.varianti || '{}') : (p.varianti || {});
+                                                                    if (v.base && v.base.length > 0) {
+                                                                        return (
+                                                                            <div style={{fontSize:'11px', color:'#e67e22', marginTop:'3px', fontWeight:'500'}}>
+                                                                                🧂 {v.base.join(', ')}
+                                                                            </div>
+                                                                        );
+                                                                    }
+                                                                } catch(e) {}
+                                                                return null;
+                                                            })()}
                                                             <div style={{fontSize:'12px', fontWeight:'bold', marginTop:'3px'}}>{p.prezzo}€</div>
                                                         </div>
                                                     </div>
