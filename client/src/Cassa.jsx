@@ -170,10 +170,12 @@ const eliminaProdotto = async (ord, indexDaEliminare) => {
                                               {p.nome}
                                           </div>
                                           <div style={{fontSize:11, color:'#666'}}>
-                                              {p.is_bar ? '🍹 Bar' : '🍽️ Cucina'} - {p.prezzo}€
-                                              {/* DATA MODIFICA (ORARIO SERVIZIO) */}
-                                              {p.ora_servizio && <span style={{color:'#27ae60', marginLeft:5, fontWeight:'bold'}}>✅ {p.ora_servizio}</span>}
-                                          </div>
+    {/* FIX ICONE: Controllo a 3 vie (Bar -> Pizzeria -> Cucina) */}
+    {p.is_bar ? '🍹 Bar' : (p.is_pizzeria ? '🍕 Pizzeria' : '🍽️ Cucina')} - {p.prezzo}€
+    
+    {/* DATA MODIFICA (ORARIO SERVIZIO) */}
+    {p.ora_servizio && <span style={{color:'#27ae60', marginLeft:5, fontWeight:'bold'}}>✅ {p.ora_servizio}</span>}
+</div>
                                       </div>
                                       <div style={{display:'flex', gap:5}}>
                                           <button onClick={() => modificaStatoProdotto(ord, idx)} style={{background: p.stato==='servito'?'#27ae60':'#f39c12', color:'white', border:'none', padding:'4px 8px', borderRadius:5, cursor:'pointer', fontSize:12}}>
