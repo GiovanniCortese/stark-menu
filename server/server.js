@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE ALL-IN-ONE (FIX DEFINITIVO + EXCEL + GRAFICA + VARIANTI)
+// server/server.js - VERSIONE FIX ORARIO E FORMATO ITALIA 🇮🇹
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -34,11 +34,19 @@ const storage = new CloudinaryStorage({ cloudinary: cloudinary, params: { folder
 const upload = multer({ storage: storage });
 const uploadFile = multer({ storage: multer.memoryStorage() }); // Per Excel
 
+// --- FUNZIONE HELPER PER DATA E ORA ITALIANA ---
+const getNowItaly = () => {
+    return new Date().toLocaleString('it-IT', { 
+        timeZone: 'Europe/Rome',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+};
+
 // ==========================================
-//              API CATEGORIE (FIXATE)
+//              API CATEGORIE
 // ==========================================
 
-// 1. CREA CATEGORIA (Calcola posizione corretta invece di 999)
 app.post('/api/categorie', async (req, res) => {
     try {
         const { nome, ristorante_id, is_bar, is_pizzeria, descrizione } = req.body;
@@ -52,7 +60,6 @@ app.post('/api/categorie', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 2. RIORDINA CATEGORIE
 app.put('/api/categorie/riordina', async (req, res) => {
     const { categorie } = req.body;
     try {
@@ -63,7 +70,6 @@ app.put('/api/categorie/riordina', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// 3. LEGGI/MODIFICA/ELIMINA
 app.get('/api/categorie/:ristorante_id', async (req, res) => {
     try {
         const r = await pool.query('SELECT * FROM categorie WHERE ristorante_id = $1 ORDER BY posizione ASC', [req.params.ristorante_id]);
@@ -85,17 +91,15 @@ app.delete('/api/categorie/:id', async (req, res) => {
 });
 
 // ==========================================
-//              API PRODOTTI (FIXATE)
+//              API PRODOTTI
 // ==========================================
 
-// 1. CREA PRODOTTO (Calcola posizione corretta invece di 999 + VARIANTI)
 app.post('/api/prodotti', async (req, res) => {
     try {
         const { nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, immagine_url, varianti } = req.body;
         const max = await pool.query('SELECT MAX(posizione) as max FROM prodotti WHERE ristorante_id = $1', [ristorante_id]);
         const nextPos = (max.rows[0].max || 0) + 1;
         
-        // MODIFICATO QUI: AGGIUNTO IL CAMPO varianti ($9)
         await pool.query(
             'INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, immagine_url, posizione, varianti) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
             [nome, prezzo, categoria, sottocategoria || "", descrizione || "", ristorante_id, immagine_url || "", nextPos, varianti || '{}']
@@ -104,7 +108,6 @@ app.post('/api/prodotti', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 2. RIORDINA PRODOTTI
 app.put('/api/prodotti/riordina', async (req, res) => {
     const { prodotti } = req.body;
     try {
@@ -119,10 +122,8 @@ app.put('/api/prodotti/riordina', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// 3. CRUD PRODOTTI (MODIFICATO PER AGGIORNARE VARIANTI)
 app.put('/api/prodotti/:id', async (req, res) => {
     try {
-        // MODIFICATO QUI: AGGIUNTO IL CAMPO varianti ($8)
         await pool.query('UPDATE prodotti SET nome=$1, prezzo=$2, categoria=$3, sottocategoria=$4, descrizione=$5, immagine_url=$6, varianti=$8 WHERE id=$7', 
             [req.body.nome, req.body.prezzo, req.body.categoria, req.body.sottocategoria, req.body.descrizione, req.body.immagine_url, req.params.id, req.body.varianti]);
         res.json({ success: true });
@@ -136,10 +137,9 @@ app.delete('/api/prodotti/:id', async (req, res) => {
 });
 
 // ==========================================
-//        API EXCEL & GRAFICA (REINSERITE!)
+//        API EXCEL & GRAFICA
 // ==========================================
 
-// 1. IMPORT EXCEL
 app.post('/api/import-excel', uploadFile.single('file'), async (req, res) => {
     const { ristorante_id } = req.body;
     if (!req.file || !ristorante_id) return res.status(400).json({ error: "Dati mancanti." });
@@ -148,7 +148,6 @@ app.post('/api/import-excel', uploadFile.single('file'), async (req, res) => {
         const sheetName = workbook.SheetNames[0];
         const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
         
-        // Per evitare conflitti, cerchiamo il MAX attuale
         let maxCat = await pool.query('SELECT MAX(posizione) as max FROM categorie WHERE ristorante_id = $1', [ristorante_id]);
         let nextCatPos = (maxCat.rows[0].max || 0) + 1;
 
@@ -162,14 +161,12 @@ app.post('/api/import-excel', uploadFile.single('file'), async (req, res) => {
             const sottocategoria = row['Sottocategoria'] ? String(row['Sottocategoria']).trim() : "";
             const descrizione = row['Descrizione'] ? String(row['Descrizione']).trim() : "";
 
-            // Controlla e crea Categoria
             let catCheck = await pool.query('SELECT * FROM categorie WHERE nome = $1 AND ristorante_id = $2', [categoria, ristorante_id]);
             if (catCheck.rows.length === 0) {
                 await pool.query('INSERT INTO categorie (nome, posizione, ristorante_id, descrizione) VALUES ($1, $2, $3, $4)', 
                     [categoria, nextCatPos++, ristorante_id, ""]);
             }
 
-            // Crea Prodotto
             await pool.query(
                 `INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, posizione) 
                  VALUES ($1, $2, $3, $4, $5, $6, $7)`,
@@ -180,46 +177,34 @@ app.post('/api/import-excel', uploadFile.single('file'), async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// 2. EXPORT EXCEL (VERSIONE POTENZIATA CON VARIANTI)
 app.get('/api/export-excel/:ristorante_id', async (req, res) => {
     try {
-        // 1. Prendiamo tutto (*) per poter processare le varianti
         const result = await pool.query(`SELECT * FROM prodotti WHERE ristorante_id = $1 ORDER BY categoria, nome`, [req.params.ristorante_id]);
         
-        // 2. Processiamo i dati per renderli leggibili in Excel
         const dataForExcel = result.rows.map(row => {
             let baseStr = "";
             let aggiunteStr = "";
-            
             try {
-                // Parsing sicuro del JSONB
                 const variantiObj = typeof row.varianti === 'string' ? JSON.parse(row.varianti) : (row.varianti || {});
-                
-                // Formattiamo Ingredienti Base (es: "Pomodoro, Mozzarella")
                 if(variantiObj.base && Array.isArray(variantiObj.base)) {
                     baseStr = variantiObj.base.join(', ');
                 }
-
-                // Formattiamo Aggiunte (es: "Bufala:2.00, Cotto:1.50")
                 if(variantiObj.aggiunte && Array.isArray(variantiObj.aggiunte)) {
                     aggiunteStr = variantiObj.aggiunte.map(a => `${a.nome}:${Number(a.prezzo).toFixed(2)}`).join(', ');
                 }
-
             } catch(e) { console.error("Errore parsing varianti per excel", row.id); }
 
-            // Ritorniamo l'oggetto con le colonne nell'ordine desiderato
             return {
                 "Categoria": row.categoria,
                 "Sottocategoria": row.sottocategoria,
                 "Nome": row.nome,
                 "Prezzo": row.prezzo,
                 "Descrizione": row.descrizione,
-                "Ingredienti Base (Rimovibili)": baseStr,   // NUOVA COLONNA
-                "Aggiunte (Formato Nome:Prezzo)": aggiunteStr // NUOVA COLONNA
+                "Ingredienti Base (Rimovibili)": baseStr,
+                "Aggiunte (Formato Nome:Prezzo)": aggiunteStr
             };
         });
 
-        // 3. Creazione file Excel
         const workbook = xlsx.utils.book_new();
         const worksheet = xlsx.utils.json_to_sheet(dataForExcel);
         xlsx.utils.book_append_sheet(workbook, worksheet, "Menu Completo");
@@ -230,7 +215,6 @@ app.get('/api/export-excel/:ristorante_id', async (req, res) => {
     } catch (err) { console.error(err); res.status(500).json({ error: "Errore Export" }); }
 });
 
-// 3. SALVA STILE GRAFICO
 app.put('/api/ristorante/style/:id', async (req, res) => {
     try {
         const { logo_url, cover_url, colore_sfondo, colore_titolo, colore_testo, colore_prezzo, font_style } = req.body;
@@ -246,17 +230,13 @@ app.put('/api/ristorante/style/:id', async (req, res) => {
 //           API GENERICHE E ADMIN
 // ==========================================
 
-// --- API STORICO CASSA (MANCAVA QUESTA!) ---
 app.get('/api/cassa/storico/:ristorante_id', async (req, res) => {
     try {
-        // Prende gli ultimi 50 ordini pagati
         const r = await pool.query("SELECT * FROM ordini WHERE ristorante_id = $1 AND stato = 'pagato' ORDER BY data_ora DESC LIMIT 50", [req.params.ristorante_id]);
-        
         const ordini = r.rows.map(o => {
             try { return { ...o, prodotti: JSON.parse(o.prodotti) }; } 
             catch { return { ...o, prodotti: [] }; }
         });
-        
         res.json(ordini);
     } catch (e) { res.status(500).json({ error: "Err" }); }
 });
@@ -272,14 +252,12 @@ app.get('/api/ristorante/config/:id', async (req, res) => {
 app.put('/api/ristorante/servizio/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        // Gestione semplice toggle
         if (req.body.ordini_abilitati !== undefined) await pool.query('UPDATE ristoranti SET ordini_abilitati = $1 WHERE id = $2', [req.body.ordini_abilitati, id]);
         if (req.body.servizio_attivo !== undefined) await pool.query('UPDATE ristoranti SET servizio_attivo = $1 WHERE id = $2', [req.body.servizio_attivo, id]);
         res.json({ success: true });
     } catch (e) { res.status(500).json({error:"Err"}); }
 });
 
-// --- FIX PROPRIETÀ MENU (Ripristina is_bar/is_pizzeria per il frontend) ---
 app.get('/api/menu/:slug', async (req, res) => {
     try {
         const { slug } = req.params;
@@ -288,12 +266,12 @@ app.get('/api/menu/:slug', async (req, res) => {
         
         const data = rist.rows[0];
         
-        // QUESTA QUERY ORA USA GLI ALIAS CORRETTI PER MENU.JSX (categoria_is_bar, ecc.)
         const menu = await pool.query(`
             SELECT p.*, 
                    c.is_bar as categoria_is_bar, 
                    c.is_pizzeria as categoria_is_pizzeria,
-                   c.posizione as categoria_posizione
+                   c.posizione as categoria_posizione,
+                   c.nome as categoria_nome
             FROM prodotti p 
             LEFT JOIN categorie c ON p.categoria = c.nome AND p.ristorante_id = c.ristorante_id 
             WHERE p.ristorante_id = $1 
@@ -312,7 +290,6 @@ app.get('/api/menu/:slug', async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Err" }); }
 });
 
-// Login
 app.post('/api/login', async (req, res) => {
     try {
         const r = await pool.query('SELECT * FROM ristoranti WHERE email=$1 AND password=$2', [req.body.email, req.body.password]);
@@ -321,7 +298,6 @@ app.post('/api/login', async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Err" }); }
 });
 
-// Polling e Ordini
 app.get('/api/polling/:ristorante_id', async (req, res) => {
     try {
         const r = await pool.query("SELECT * FROM ordini WHERE ristorante_id = $1 AND stato != 'pagato' ORDER BY data_ora ASC", [req.params.ristorante_id]);
@@ -333,39 +309,36 @@ app.get('/api/polling/:ristorante_id', async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Err" }); }
 });
 
-// server/server.js - Sostituisci la vecchia rotta app.post('/api/ordine'...) con questa:
+// ==========================================
+//          API ORDINI (FIX ORARIO)
+// ==========================================
 
 app.post('/api/ordine', async (req, res) => {
     try {
         const { ristorante_id, tavolo, prodotti, totale, cliente } = req.body;
         
-        // 1. CREIAMO IL LOG COMPLETO CON DATA E ORA (Style identico a update-items)
-        const dataOra = new Date().toLocaleString('it-IT'); 
+        // --- FIX ORARIO: USA getNowItaly() ---
+        const dataOra = getNowItaly(); 
         let logIniziale = `[${dataOra}] 🆕 NUOVO ORDINE (Cliente: ${cliente || 'Ospite'})\n`;
         
-        // Elenchiamo i prodotti nel log testuale
         if (Array.isArray(prodotti)) {
             prodotti.forEach(p => {
                 let note = "";
-                // Gestione Varianti nel Log
                 try {
                     if(p.varianti_scelte) { 
                          if(p.varianti_scelte.rimozioni && p.varianti_scelte.rimozioni.length > 0) note += ` (No: ${p.varianti_scelte.rimozioni.join(', ')})`;
                          if(p.varianti_scelte.aggiunte && p.varianti_scelte.aggiunte.length > 0) note += ` (+: ${p.varianti_scelte.aggiunte.map(a=>a.nome).join(', ')})`;
                     }
                 } catch(e) {}
-                
                 logIniziale += ` • ${p.nome}${note} - ${Number(p.prezzo).toFixed(2)}€\n`;
             });
         }
         logIniziale += `TOTALE PARZIALE: ${Number(totale).toFixed(2)}€\n----------------------------------\n`;
 
-        // 2. SALVIAMO NEL DB
         await pool.query(
             "INSERT INTO ordini (ristorante_id, tavolo, prodotti, totale, stato, dettagli) VALUES ($1, $2, $3, $4, 'in_attesa', $5)", 
             [ristorante_id, String(tavolo), JSON.stringify(prodotti), totale, logIniziale]
         );
-        
         res.json({ success: true });
     } catch (e) { 
         console.error("Errore ordine:", e);
@@ -373,13 +346,59 @@ app.post('/api/ordine', async (req, res) => {
     }
 });
 
-app.put('/api/ordine/:id/update-items', async (req, res) => { try { const { id } = req.params; const { prodotti, totale, logMsg } = req.body; let q = "UPDATE ordini SET prodotti = $1"; const p = [JSON.stringify(prodotti)]; let i = 2; if(totale!==undefined){q+=`, totale=$${i}`;p.push(totale);i++} if(logMsg){q+=`, dettagli=COALESCE(dettagli,'')||$${i}`;p.push(`\n[${new Date().toLocaleString()}] ${logMsg}`);i++} q+=` WHERE id=$${i}`; p.push(id); await pool.query(q, p); res.json({success:true}); } catch(e){ res.status(500).json({error:"Err"}); } });
+// --- FIX ORARIO NELL'AGGIORNAMENTO ---
+app.put('/api/ordine/:id/update-items', async (req, res) => { 
+    try { 
+        const { id } = req.params; 
+        const { prodotti, totale, logMsg } = req.body; 
+        let q = "UPDATE ordini SET prodotti = $1"; 
+        const p = [JSON.stringify(prodotti)]; 
+        let i = 2; 
+        
+        if(totale!==undefined){ q+=`, totale=$${i}`; p.push(totale); i++ } 
+        
+        if(logMsg){ 
+            q+=`, dettagli=COALESCE(dettagli,'')||$${i}`; 
+            // USA getNowItaly()
+            p.push(`\n[${getNowItaly()}] ${logMsg}`); 
+            i++ 
+        } 
+        
+        q+=` WHERE id=$${i}`; p.push(id); 
+        await pool.query(q, p); 
+        res.json({success:true}); 
+    } catch(e){ res.status(500).json({error:"Err"}); } 
+});
 
-app.post('/api/cassa/paga-tavolo', async (req, res) => { const c = await pool.connect(); try { await c.query('BEGIN'); const r = await c.query("SELECT * FROM ordini WHERE ristorante_id=$1 AND tavolo=$2 AND stato!='pagato'", [req.body.ristorante_id, String(req.body.tavolo)]); if(r.rows.length===0){await c.query('ROLLBACK');return res.json({success:true});} let tot=0, prod=[], log=""; r.rows.forEach(o=>{ tot+=Number(o.totale||0); let p=[]; try{p=JSON.parse(o.prodotti)}catch(e){} prod=[...prod, ...p]; if(o.dettagli) log+=`\nORDINE #${o.id}\n${o.dettagli}`; }); log+=`\nCHIUSO: ${tot}€`; await c.query("UPDATE ordini SET stato='pagato', prodotti=$1, totale=$2, dettagli=$3 WHERE id=$4", [JSON.stringify(prod), tot, log, r.rows[0].id]); if(r.rows.length>1) await c.query("DELETE FROM ordini WHERE id = ANY($1::int[])", [r.rows.slice(1).map(o=>o.id)]); await c.query('COMMIT'); res.json({success:true}); } catch(e){await c.query('ROLLBACK'); res.status(500).json({error:"Err"});} finally{c.release();} });
+// --- FIX ORARIO NEL PAGAMENTO ---
+app.post('/api/cassa/paga-tavolo', async (req, res) => { 
+    const c = await pool.connect(); 
+    try { 
+        await c.query('BEGIN'); 
+        const r = await c.query("SELECT * FROM ordini WHERE ristorante_id=$1 AND tavolo=$2 AND stato!='pagato'", [req.body.ristorante_id, String(req.body.tavolo)]); 
+        if(r.rows.length===0){await c.query('ROLLBACK');return res.json({success:true});} 
+        
+        let tot=0, prod=[], log=""; 
+        r.rows.forEach(o=>{ 
+            tot+=Number(o.totale||0); 
+            let p=[]; try{p=JSON.parse(o.prodotti)}catch(e){} 
+            prod=[...prod, ...p]; 
+            if(o.dettagli) log+=`\nORDINE #${o.id}\n${o.dettagli}`; 
+        }); 
+        
+        // USA getNowItaly()
+        log+=`\n[${getNowItaly()}] 💰 CHIUSO E PAGATO: ${tot.toFixed(2)}€`; 
+        
+        await c.query("UPDATE ordini SET stato='pagato', prodotti=$1, totale=$2, dettagli=$3 WHERE id=$4", [JSON.stringify(prod), tot, log, r.rows[0].id]); 
+        if(r.rows.length>1) await c.query("DELETE FROM ordini WHERE id = ANY($1::int[])", [r.rows.slice(1).map(o=>o.id)]); 
+        await c.query('COMMIT'); 
+        res.json({success:true}); 
+    } catch(e){await c.query('ROLLBACK'); res.status(500).json({error:"Err"});} finally{c.release();} 
+});
 
 app.post('/api/upload', upload.single('photo'), (req, res) => res.json({ url: req.file.path }));
 
-// API SUPER ADMIN (REINSERITE)
+// API SUPER ADMIN
 app.get('/api/super/ristoranti', async (req, res) => { try { const r = await pool.query('SELECT * FROM ristoranti ORDER BY id ASC'); res.json(r.rows); } catch (e) { res.status(500).json({error:"Err"}); } });
 app.post('/api/super/ristoranti', async (req, res) => { try { await pool.query(`INSERT INTO ristoranti (nome, slug, email, telefono, password, account_attivo, servizio_attivo, ordini_abilitati, cucina_super_active) VALUES ($1, $2, $3, $4, $5, TRUE, TRUE, TRUE, TRUE)`, [req.body.nome, req.body.slug, req.body.email, req.body.telefono, req.body.password || 'tonystark']); res.json({ success: true }); } catch (e) { res.status(500).json({error: "Err"}); } });
 app.put('/api/super/ristoranti/:id', async (req, res) => { try { const { id } = req.params; if (req.body.account_attivo !== undefined) { await pool.query('UPDATE ristoranti SET account_attivo = $1 WHERE id = $2', [req.body.account_attivo, id]); return res.json({ success: true }); } if (req.body.cucina_super_active !== undefined) { await pool.query('UPDATE ristoranti SET cucina_super_active = $1 WHERE id = $2', [req.body.cucina_super_active, id]); return res.json({ success: true }); } let sql = "UPDATE ristoranti SET nome=$1, slug=$2, email=$3, telefono=$4"; let params = [req.body.nome, req.body.slug, req.body.email, req.body.telefono]; if (req.body.password) { sql += ", password=$5 WHERE id=$6"; params.push(req.body.password, id); } else { sql += " WHERE id=$5"; params.push(id); } await pool.query(sql, params); res.json({ success: true }); } catch (e) { res.status(500).json({error: "Err"}); } });
@@ -389,15 +408,12 @@ app.delete('/api/super/ristoranti/:id', async (req, res) => { try { const id = r
 //              API UTENTI (CRM)
 // ==========================================
 
-// 1. REGISTRAZIONE UTENTE
 app.post('/api/register', async (req, res) => {
     try {
         const { nome, email, password, telefono, indirizzo } = req.body;
-        // Controllo se esiste già
         const check = await pool.query('SELECT * FROM utenti WHERE email = $1', [email]);
         if (check.rows.length > 0) return res.json({ success: false, error: "Email già registrata" });
 
-        // Inserimento (Password in chiaro per ora, come richiesto dalla semplicità del progetto)
         const r = await pool.query(
             'INSERT INTO utenti (nome, email, password, telefono, indirizzo) VALUES ($1, $2, $3, $4, $5) RETURNING *',
             [nome, email, password, telefono, indirizzo]
@@ -406,7 +422,6 @@ app.post('/api/register', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 2. LOGIN UTENTE
 app.post('/api/auth/login', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -419,7 +434,6 @@ app.post('/api/auth/login', async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Errore login" }); }
 });
 
-// 3. LISTA UTENTI (PER ADMIN)
 app.get('/api/utenti', async (req, res) => {
     try {
         const r = await pool.query('SELECT * FROM utenti ORDER BY data_registrazione DESC');
@@ -427,12 +441,10 @@ app.get('/api/utenti', async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Err" }); }
 });
 
-// 4. MODIFICA UTENTE (PUT)
 app.put('/api/utenti/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const { nome, email, password, telefono, indirizzo, ruolo } = req.body;
-        
         await pool.query(
             `UPDATE utenti SET nome=$1, email=$2, password=$3, telefono=$4, indirizzo=$5, ruolo=$6 WHERE id=$7`,
             [nome, email, password, telefono, indirizzo, ruolo, id]
@@ -441,7 +453,6 @@ app.put('/api/utenti/:id', async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Errore modifica utente" }); }
 });
 
-// 5. EXPORT UTENTI EXCEL
 app.get('/api/utenti/export/excel', async (req, res) => {
     try {
         const r = await pool.query("SELECT nome, email, password, telefono, indirizzo, ruolo, data_registrazione FROM utenti ORDER BY id");
@@ -454,7 +465,6 @@ app.get('/api/utenti/export/excel', async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Errore Export" }); }
 });
 
-// 6. IMPORT UTENTI EXCEL
 app.post('/api/utenti/import/excel', upload.single('file'), async (req, res) => {
     try {
         const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
@@ -462,19 +472,14 @@ app.post('/api/utenti/import/excel', upload.single('file'), async (req, res) => 
         const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
 
         for (const row of data) {
-            // Se manca il ruolo, mettiamo 'cliente' di default
             const ruolo = row.ruolo || 'cliente'; 
-            // Cerchiamo se esiste già l'email
             const check = await pool.query("SELECT id FROM utenti WHERE email = $1", [row.email]);
-            
             if (check.rows.length > 0) {
-                // UPDATE se esiste
                 await pool.query(
                     "UPDATE utenti SET nome=$1, password=$2, telefono=$3, indirizzo=$4, ruolo=$5 WHERE email=$6",
                     [row.nome, row.password, row.telefono, row.indirizzo, ruolo, row.email]
                 );
             } else {
-                // INSERT se nuovo
                 await pool.query(
                     "INSERT INTO utenti (nome, email, password, telefono, indirizzo, ruolo) VALUES ($1, $2, $3, $4, $5, $6)",
                     [row.nome, row.email, row.password, row.telefono, row.indirizzo, ruolo]
