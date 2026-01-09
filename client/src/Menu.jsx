@@ -97,86 +97,85 @@ function Menu() {
       return 2;
   };
 
-  // --- 2. AGGIUNGI AL CARRELLO ---
-  const aggiungiAlCarrello = (prodotto) => {
-    if (!canOrder) return alert("⚠️ LA CUCINA È MOMENTANEAMENTE CHIUSA.\nPuoi consultare il menu, ma non ordinare.");
-    
-    const isBar = !!prodotto.categoria_is_bar;
+  // --- 2. LOGICA "SMART COURSE" (NUOVA) ---
+  const getDefaultCourse = (piatto) => {
+      if (piatto.categoria_is_bar) return 0; // Bar separato
+      
+      const nome = (piatto.nome + " " + (piatto.categoria_nome || piatto.categoria)).toLowerCase();
+      
+      // Riconoscimento automatico:
+      if (nome.includes('antipast') || nome.includes('fritt') || nome.includes('stuzzich') || nome.includes('bruschet') || nome.includes('tapas') || nome.includes('taglier')) return 1; 
+      if (nome.includes('prim') || nome.includes('pasta') || nome.includes('risott') || nome.includes('zupp') || nome.includes('tortell') || nome.includes('spaghett')) return 2; 
+      if (nome.includes('second') || nome.includes('carn') || nome.includes('pesc') || nome.includes('grigli') || nome.includes('burger') || nome.includes('pizz')) return 3; 
+      if (nome.includes('dolc') || nome.includes('dessert') || nome.includes('tiramis') || nome.includes('caff') || nome.includes('amar')) return 4; 
 
-    const item = { 
-        ...prodotto, 
-        tempId: Date.now() + Math.random(), 
-        categoria: prodotto.categoria || "Varie",
-        categoria_posizione: prodotto.categoria_posizione || 999,
-        is_bar: isBar,
-        is_pizzeria: !!prodotto.categoria_is_pizzeria,
-        course: getDefaultCourse(prodotto.categoria || "", isBar) 
-    };
-    
-    setCarrello([...carrello, item]); 
-    setSelectedPiatto(null); 
+      return 3; // Default (es. contorni vanno col secondo)
   };
 
-  // --- 3. RIMUOVI ---
+  // --- 3. GESTIONE CARRELLO AGGIORNATA ---
+  const aggiungiAlCarrello = (piatto) => {
+      if(!canOrder) return alert("Gli ordini sono momentaneamente chiusi.");
+      
+      const tempId = Date.now() + Math.random();
+      const defaultCourse = getDefaultCourse(piatto);
+
+      const item = { ...piatto, tempId, course: defaultCourse };
+      
+      setCarrello([...carrello, item]);
+      setSelectedPiatto(null);
+      if(navigator.vibrate) navigator.vibrate(50);
+  };
+
   const rimuoviDalCarrello = (tempId) => {
-      const nuovoCarrello = carrello.filter(item => item.tempId !== tempId);
-      setCarrello(nuovoCarrello);
-      if(nuovoCarrello.length === 0) setShowCheckout(false);
+      setCarrello(carrello.filter(i => i.tempId !== tempId));
   };
 
-  // --- CAMBIA PRIORITÀ ---
   const cambiaUscita = (tempId, delta) => {
-      setCarrello(prevCarrello => prevCarrello.map(item => {
-          if (item.tempId === tempId && item.course > 0) {
-              const newCourse = item.course + delta;
-              if (newCourse < 1 || newCourse > 3) return item;
+      setCarrello(carrello.map(item => {
+          if (item.tempId === tempId) {
+              let newCourse = item.course + delta;
+              if (newCourse < 1) newCourse = 1; // Minimo Antipasto
+              if (newCourse > 4) newCourse = 4; // Massimo Dolce
               return { ...item, course: newCourse };
           }
           return item;
       }));
   };
 
-  // --- 4. INVIA ORDINE ---
-  const inviaOrdine = async () => { 
-     if (!ristoranteId) return alert("Errore: Impossibile identificare il ristorante.");
-     
-     const totale = carrello.reduce((acc, i) => acc + parseFloat(i.prezzo || 0), 0);
-     
-     const prodottiPerBackend = carrello.map(p => ({
-         nome: p.nome,
-         prezzo: p.prezzo,
-         categoria: p.categoria,
-         categoria_posizione: p.categoria_posizione,
-         is_bar: p.is_bar,
-         is_pizzeria: p.is_pizzeria,
-         course: p.course 
-     }));
+  const inviaOrdine = async () => {
+      if(carrello.length === 0) return;
+      if(!confirm(`Confermi l'ordine per il tavolo ${numeroTavolo}?`)) return;
 
-     const payload = {
-        ristorante_id: ristoranteId, 
-        tavolo: numeroTavolo, 
-        prodotti: prodottiPerBackend, 
-        totale
-     };
+      const payload = {
+          ristorante_id: ristoranteId,
+          tavolo: numeroTavolo,
+          prodotti: carrello.map(p => ({
+              id: p.id,
+              nome: p.nome,
+              prezzo: p.prezzo,
+              course: p.course, // Manda 1, 2, 3 o 4
+              is_bar: p.categoria_is_bar,
+              is_pizzeria: p.categoria_is_pizzeria,
+              stato: 'in_attesa'
+          })),
+          totale: carrello.reduce((a,b)=>a+Number(b.prezzo),0)
+      };
 
-     try {
-        const res = await fetch(`${API_URL}/api/ordine`, { 
-            method: 'POST', 
-            headers: {'Content-Type': 'application/json'}, 
-            body: JSON.stringify(payload)
-        });
-        const d = await res.json();
-        
-        if(d.success) { 
-            alert("✅ Ordine inviato con successo!"); 
-            setCarrello([]); 
-            setShowCheckout(false);
-        } else {
-            alert("❌ Errore dal server: " + (d.error || "Sconosciuto"));
-        }
-     } catch (e) { 
-         alert("Errore di connessione. Controlla internet e riprova."); 
-     }
+      try {
+          const res = await fetch(`${API_URL}/api/ordine`, {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify(payload)
+          });
+          const data = await res.json();
+          if(data.success) {
+              alert("✅ Ordine Inviato! Arriva subito.");
+              setCarrello([]);
+              setShowCheckout(false);
+          } else {
+              alert("Errore invio ordine.");
+          }
+      } catch(e) { alert("Errore connessione server."); }
   };
 
   if (error) return <div className="container" style={{padding:'50px', textAlign:'center', color:'white'}}><h1>🚫 Ristorante non trovato (404)</h1></div>;
@@ -385,85 +384,82 @@ function Menu() {
         ))}
       </div>
 
-      {/* --- CHECKOUT --- */}
+      {/* --- CHECKOUT (LOGICA DINAMICA INTELLIGENTE) --- */}
       {showCheckout && (
           <div style={{
               position:'fixed', top:0, left:0, right:0, bottom:0, 
-              background: appStyle.backgroundColor, zIndex:2000, 
+              background: style.bg || '#222', zIndex:2000, 
               display:'flex', flexDirection:'column', padding:'20px', overflowY:'auto'
           }}>
               
               <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px', borderBottom:`1px solid ${style?.text||'#ccc'}`, paddingBottom:'10px'}}>
-                  <h2 style={{color: titleColor, margin:0}}>Riepilogo Ordine</h2>
+                  <h2 style={{color: titleColor, margin:0}}>Riepilogo Ordine 📝</h2>
                   <button onClick={() => setShowCheckout(false)} style={{background:'transparent', border:'none', color: titleColor, fontSize:'24px', cursor:'pointer'}}>✕</button>
               </div>
 
               <div style={{flex:1, overflowY:'auto'}}>
-                  {carrello.length === 0 && <p style={{color: style?.text, textAlign:'center'}}>Il carrello è vuoto.</p>}
+                  {carrello.length === 0 && <p style={{color: style?.text || '#fff', textAlign:'center'}}>Il carrello è vuoto.</p>}
                   
-                  {/* --- BLOCCO 1: PIATTI CON PRIORITÀ --- */}
-                  {[1, 2, 3].map(courseNum => {
-                      const itemsInCourse = carrello.filter(i => !i.is_bar && i.course === courseNum);
-                      if (itemsInCourse.length === 0) return null;
-
-                      let courseTitle = "";
-                      let courseColor = "";
-                      if(courseNum === 1) { courseTitle = "🟢 1ª USCITA (Subito)"; courseColor = "#27ae60"; }
-                      if(courseNum === 2) { courseTitle = "🟡 2ª USCITA (A Seguire)"; courseColor = "#f1c40f"; }
-                      if(courseNum === 3) { courseTitle = "🔴 3ª USCITA (Dessert)"; courseColor = "#e74c3c"; }
-
-                      return (
-                          <div key={courseNum} style={{marginBottom:'20px'}}>
-                              <h3 style={{color: courseColor, borderBottom:`1px solid ${courseColor}`, paddingBottom:'5px', fontSize:'14px', textTransform:'uppercase'}}>
-                                  {courseTitle}
-                              </h3>
-                              
-                              {itemsInCourse.map((item) => (
-                                  <div key={item.tempId} style={{display:'flex', justifyContent:'space-between', alignItems:'center', background:'rgba(255,255,255,0.1)', padding:'10px', marginBottom:'10px', borderRadius:'8px'}}>
-                                      <div style={{flex:1}}>
-                                          <div style={{color: titleColor, fontWeight:'bold', fontSize:'16px'}}>{item.nome}</div>
-                                          <div style={{color: '#888', fontSize:'12px'}}>
-                                            {item.prezzo} € • {item.is_pizzeria ? '🍕 Pizzeria' : '🍳 Cucina'}
-                                          </div>
-                                      </div>
-
-                                      <div style={{display:'flex', flexDirection:'column', gap:'5px', marginRight:'10px'}}>
-                                          {item.course > 1 && (
-                                              <button onClick={() => cambiaUscita(item.tempId, -1)} style={{fontSize:'12px', padding:'2px 8px', background:'rgba(255,255,255,0.2)', color:titleColor, border:'none', borderRadius:'4px', cursor:'pointer'}}>
-                                                  ⬆️ Prima
-                                              </button>
-                                          )}
-                                          {item.course < 3 && (
-                                              <button onClick={() => cambiaUscita(item.tempId, 1)} style={{fontSize:'12px', padding:'2px 8px', background:'rgba(255,255,255,0.2)', color:titleColor, border:'none', borderRadius:'4px', cursor:'pointer'}}>
-                                                  ⬇️ Dopo
-                                              </button>
-                                          )}
-                                      </div>
-
-                                      <button onClick={() => rimuoviDalCarrello(item.tempId)} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'5px', cursor:'pointer'}}>🗑️</button>
-                                  </div>
-                              ))}
-                          </div>
-                      );
-                  })}
-
-                  {/* --- BLOCCO 2: BAR --- */}
+                  {/* --- BLOCCO 1: BEVANDE (BAR) --- */}
                   {carrello.some(i => i.is_bar) && (
-                      <div style={{marginBottom:'20px', marginTop:'30px', borderTop:'1px dashed #555', paddingTop:'10px'}}>
-                           <h3 style={{color: '#3498db', paddingBottom:'5px', fontSize:'14px', textTransform:'uppercase'}}>
-                               🍹 BEVANDE & BAR
+                      <div style={{marginBottom:'20px', padding:'10px', border:'1px dashed #555', borderRadius:'10px'}}>
+                           <h3 style={{color: '#3498db', margin:'0 0 10px 0', fontSize:'16px', textTransform:'uppercase'}}>
+                               🍹 BEVANDE & BAR (Subito)
                            </h3>
                            {carrello.filter(i => i.is_bar).map(item => (
-                               <div key={item.tempId} style={{display:'flex', justifyContent:'space-between', alignItems:'center', background:'rgba(255,255,255,0.05)', padding:'10px', marginBottom:'10px', borderRadius:'8px'}}>
+                               <div key={item.tempId} style={{display:'flex', justifyContent:'space-between', alignItems:'center', background:'rgba(255,255,255,0.05)', padding:'10px', marginBottom:'5px', borderRadius:'8px'}}>
                                    <div style={{flex:1}}>
                                        <div style={{color: titleColor, fontWeight:'bold', fontSize:'16px'}}>{item.nome}</div>
                                        <div style={{color: '#888', fontSize:'12px'}}>{item.prezzo} €</div>
                                    </div>
-                                   <button onClick={() => rimuoviDalCarrello(item.tempId)} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'5px', cursor:'pointer'}}>🗑️</button>
+                                   <button onClick={() => rimuoviDalCarrello(item.tempId)} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'5px', cursor:'pointer'}}>✕</button>
                                </div>
                            ))}
                       </div>
                   )}
+
+                  {/* --- BLOCCO 2: CUCINA INTELLIGENTE (SMART SORTING) --- */}
+                  {(() => {
+                      // Trova quali portate ci sono e le ordina
+                      const itemsCucina = carrello.filter(i => !i.is_bar);
+                      const coursePresenti = [...new Set(itemsCucina.map(i => i.course))].sort();
+                      const coloriPortata = ['#27ae60', '#f1c40f', '#e67e22', '#c0392b']; // Verde, Giallo, Arancio, Rosso
+                      
+                      return coursePresenti.map((courseNum, index) => (
+                          <div key={courseNum} style={{marginBottom:'25px'}}>
+                              {/* LABEL DINAMICA: Usa l'indice (index+1) per scrivere "1ª PORTATA" */}
+                              <h3 style={{
+                                  margin:'0 0 10px 0', 
+                                  color: coloriPortata[index] || '#ccc', 
+                                  borderBottom:`2px solid ${coloriPortata[index] || '#ccc'}`,
+                                  display:'inline-block', paddingRight:20
+                              }}>
+                                  {index + 1}ª PORTATA 
+                                  <span style={{fontSize:'0.8rem', marginLeft:10, color:'#888', fontWeight:'normal'}}>
+                                      ({courseNum === 1 ? 'Antipasti' : courseNum === 2 ? 'Primi' : courseNum === 3 ? 'Secondi/Pizze' : 'Dessert'})
+                                  </span>
+                              </h3>
+
+                              {itemsCucina.filter(i => i.course === courseNum).map(item => (
+                                  <div key={item.tempId} style={{background:'rgba(255,255,255,0.1)', borderRadius:10, padding:15, marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                                      <div>
+                                          <div style={{fontWeight:'bold', fontSize:'1.1rem', color: titleColor}}>{item.nome}</div>
+                                          <div style={{color:'#aaa', fontSize:'0.9rem'}}>
+                                              {item.prezzo.toFixed(2)} € • {item.is_pizzeria ? '🍕 Pizza' : '🍳 Cucina'}
+                                          </div>
+                                      </div>
+                                      <div style={{display:'flex', flexDirection:'column', gap:5}}>
+                                          <div style={{display:'flex', gap:5}}>
+                                              <button onClick={() => cambiaUscita(item.tempId, -1)} style={{background:'#ecf0f1', color:'#333', fontSize:'0.8rem', padding:'5px 8px', borderRadius:'4px', cursor:'pointer'}}>⬆️</button>
+                                              <button onClick={() => cambiaUscita(item.tempId, 1)} style={{background:'#ecf0f1', color:'#333', fontSize:'0.8rem', padding:'5px 8px', borderRadius:'4px', cursor:'pointer'}}>⬇️</button>
+                                          </div>
+                                          <button onClick={() => rimuoviDalCarrello(item.tempId)} style={{background:'#e74c3c', color:'white', fontSize:'0.8rem', padding:'5px 10px', borderRadius:'4px', cursor:'pointer', border:'none'}}>ELIMINA</button>
+                                      </div>
+                                  </div>
+                              ))}
+                          </div>
+                      ));
+                  })()}
 
               </div>
 
@@ -472,7 +468,7 @@ function Menu() {
                       <span>TOTALE:</span>
                       <strong style={{color: priceColor}}>{carrello.reduce((a,b)=>a+Number(b.prezzo),0).toFixed(2)} €</strong>
                   </div>
-                  {carrello.length > 0 && <button onClick={inviaOrdine} className="btn-invia" style={{width:'100%', padding:'15px', fontSize:'18px', background:'#27ae60'}}>CONFERMA E INVIA 🚀</button>}
+                  {carrello.length > 0 && <button onClick={inviaOrdine} style={{width:'100%', padding:'15px', fontSize:'18px', background: priceColor, color:'white', border:'none', borderRadius:'10px', fontWeight:'bold', cursor:'pointer'}}>CONFERMA E INVIA 🚀</button>}
                   <button onClick={() => setShowCheckout(false)} style={{width:'100%', padding:'15px', marginTop:'10px', background:'transparent', border:`1px solid ${style?.text||'#ccc'}`, color: style?.text||'#ccc', borderRadius:'30px', cursor:'pointer'}}>Torna al Menu</button>
               </div>
           </div>
