@@ -1,379 +1,347 @@
-// client/src/Cucina.jsx - VERSIONE V6 (FIX SINTASSI + TITOLI DINAMICI + BADGE RIAPERTO) 👨‍🍳
+// client/src/Cassa.jsx - VERSIONE V35 (SECURE AUTH + GESTIONE CASSA) 💶
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
-function Cucina() {
-  const [tavoli, setTavoli] = useState([]); 
-  const [infoRistorante, setInfoRistorante] = useState(null); 
-  const [isAuthorized, setIsAuthorized] = useState(false); 
+function Cassa() {
+  const { slug } = useParams();
+  
+  // STATI DATI
+  const [tab, setTab] = useState('attivi'); 
+  const [tavoliAttivi, setTavoliAttivi] = useState({}); 
+  const [storico, setStorico] = useState([]);
+  const [infoRistorante, setInfoRistorante] = useState(null);
+  const [selectedLog, setSelectedLog] = useState(null); 
+
+  // STATI AUTH
+  const [isAuthorized, setIsAuthorized] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
-  const { slug } = useParams(); 
+  const [loginError, setLoginError] = useState(false);
+  const [loadingLogin, setLoadingLogin] = useState(false);
+
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
   useEffect(() => {
-    fetch(`${API_URL}/api/menu/${slug}`).then(r=>r.json()).then(setInfoRistorante);
-    const sessionKey = `cucina_session_${slug}`;
+    fetch(`${API_URL}/api/menu/${slug}`).then(res=>res.json()).then(setInfoRistorante);
+    const sessionKey = `cassa_session_${slug}`;
     if (localStorage.getItem(sessionKey) === "true") setIsAuthorized(true);
   }, [slug]);
 
-const handleLogin = async (e) => {
+  // --- NUOVA FUNZIONE LOGIN SICURO (API) ---
+  const handleLogin = async (e) => {
     e.preventDefault();
     if(!infoRistorante?.id) return;
+    
+    setLoadingLogin(true);
+    setLoginError(false);
+
     try {
         const res = await fetch(`${API_URL}/api/auth/station`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ 
                 ristorante_id: infoRistorante.id, 
-                role: 'cassa', 
+                role: 'cassa', // Ruolo specifico per la Cassa
                 password: passwordInput 
             })
         });
         const data = await res.json();
+
         if(data.success) {
             setIsAuthorized(true);
             localStorage.setItem(`cassa_session_${slug}`, "true");
-        } else { alert("Password Errata"); }
-    } catch(err) { alert("Errore connessione"); }
-};
+        } else {
+            setLoginError(true);
+        }
+    } catch(err) { 
+        alert("Errore connessione al server"); 
+    } finally { 
+        setLoadingLogin(false); 
+    }
+  };
 
   const handleLogout = () => {
-      if(confirm("Uscire dalla cucina?")) {
-        localStorage.removeItem(`cucina_session_${slug}`);
-        setIsAuthorized(false);
+      if(confirm("Vuoi uscire dalla Cassa?")) {
+          localStorage.removeItem(`cassa_session_${slug}`);
+          setIsAuthorized(false);
+          setPasswordInput("");
       }
   };
 
-  const aggiorna = () => {
+  const aggiornaDati = () => {
+    if (!infoRistorante?.id) return;
+    fetch(`${API_URL}/api/polling/${infoRistorante.id}`)
+      .then(res => res.json())
+      .then(data => {
+        const ordini = Array.isArray(data.nuovi_ordini) ? data.nuovi_ordini : [];
+        const raggruppati = {};
+        
+        ordini.forEach(ord => {
+            const t = ord.tavolo;
+            if(!raggruppati[t]) raggruppati[t] = { 
+                ordini: [], 
+                totale: 0,
+                fullLog: "" 
+            };
+            raggruppati[t].ordini.push(ord);
+            raggruppati[t].totale += Number(ord.totale || 0);
+            
+            // LOG LIVE: Concatena i dettagli
+            if(ord.dettagli && ord.dettagli.trim() !== "") {
+                raggruppati[t].fullLog += ord.dettagli + "\n";
+            }
+        });
+        setTavoliAttivi(raggruppati);
+      })
+      .catch(e => console.error("Errore polling:", e));
+  };
+
+  const caricaStorico = () => {
       if(!infoRistorante?.id) return;
-      fetch(`${API_URL}/api/polling/${infoRistorante.id}`)
+      fetch(`${API_URL}/api/cassa/storico/${infoRistorante.id}`)
         .then(r=>r.json())
-        .then(data => {
-            const nuoviOrdini = data.nuovi_ordini || [];
-            const gruppiTavolo = {}; 
-
-            nuoviOrdini.forEach(ord => {
-                // FILTRO: Se tutto servito, ignora
-                const itemsDiCompetenza = Array.isArray(ord.prodotti) ? ord.prodotti.filter(p => !p.is_bar) : [];
-                const isTuttoServito = itemsDiCompetenza.length > 0 && itemsDiCompetenza.every(p => p.stato === 'servito');
-                if (isTuttoServito) return; 
-
-                const t = ord.tavolo;
-                if(!gruppiTavolo[t]) gruppiTavolo[t] = { tavolo: t, items: [], orarioMin: ord.data_ora };
-                
-                if(new Date(ord.data_ora) < new Date(gruppiTavolo[t].orarioMin)) {
-                    gruppiTavolo[t].orarioMin = ord.data_ora;
-                }
-
-                if(Array.isArray(ord.prodotti)) {
-                    ord.prodotti.forEach((prod, idx) => {
-                        if (prod.is_bar) return; // Salta Bar
-
-                        gruppiTavolo[t].items.push({
-    ...prod,
-    parentOrderId: ord.id,
-    originalIndex: idx,
-    fullOrderProducts: ord.prodotti,
-    stato: prod.stato,
-    riaperto: prod.riaperto,
-    cameriere: ord.cameriere // <--- AGGIUNGI QUESTA RIGA QUI
-});
-                    });
-                }
-            });
-
-            const listaTavoli = Object.values(gruppiTavolo).filter(gruppo => {
-                if (gruppo.items.length === 0) return false;
-                const tuttiFiniti = gruppo.items.every(p => p.stato === 'servito');
-                return !tuttiFiniti;
-            });
-
-            listaTavoli.sort((a,b) => new Date(a.orarioMin) - new Date(b.orarioMin));
-            setTavoli(listaTavoli);
-        })
-        .catch(e => console.error("Polling error:", e));
+        .then(data => setStorico(Array.isArray(data) ? data : []))
+        .catch(e => console.error("Errore storico:", e));
   };
 
-  useEffect(() => { 
-      if(isAuthorized && infoRistorante) { 
-          aggiorna(); 
-          const i = setInterval(aggiorna, 2000); 
-          return () => clearInterval(i); 
-      } 
-  }, [isAuthorized, infoRistorante]);
+  useEffect(() => {
+    if (isAuthorized && infoRistorante) {
+      if(tab === 'attivi') {
+          aggiornaDati();
+          const i = setInterval(aggiornaDati, 2000);
+          return () => clearInterval(i);
+      } else {
+          caricaStorico();
+      }
+    }
+  }, [isAuthorized, infoRistorante, tab]);
 
-  const segnaPiattoServito = async (targetItems) => {
-      const updatesPorOrdine = {};
+  // --- AZIONI ---
 
-      targetItems.forEach(item => {
-          if(!updatesPorOrdine[item.parentOrderId]) {
-              updatesPorOrdine[item.parentOrderId] = {
-                  originalProducts: item.fullOrderProducts,
-                  indicesToUpdate: []
-              };
-          }
-          updatesPorOrdine[item.parentOrderId].indicesToUpdate.push(item.originalIndex);
-      });
-
-      const promises = Object.keys(updatesPorOrdine).map(async (orderId) => {
-          const data = updatesPorOrdine[orderId];
-          const nuoviProdotti = [...data.originalProducts];
-          const oraAttuale = new Date().toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'});
-          
-          let nomePiattoLog = "";
-          data.indicesToUpdate.forEach(idx => {
-              nuoviProdotti[idx].stato = 'servito';
-              nuoviProdotti[idx].ora_servizio = oraAttuale;
-              nomePiattoLog = nuoviProdotti[idx].nome;
-          });
-          const logMsg = `[CUCINA 👨‍🍳] HA SERVITO: ${nomePiattoLog} (x${data.indicesToUpdate.length})`;
-
-          return fetch(`${API_URL}/api/ordine/${orderId}/update-items`, {
-              method: 'PUT',
-              headers: {'Content-Type': 'application/json'},
-              body: JSON.stringify({ prodotti: nuoviProdotti, logMsg: logMsg })
-          });
-      });
-
-      await Promise.all(promises);
-      aggiorna();
-  };
-
-  // --- LOGICA CORE: RAGGRUPPAMENTO PER 4 USCITE ---
-  const processaTavolo = (items) => {
-      const courses = { 1: [], 2: [], 3: [], 4: [] };
+  const modificaStatoProdotto = async (ord, indexDaModificare) => {
+      const nuoviProdotti = [...ord.prodotti];
+      const item = nuoviProdotti[indexDaModificare];
+      const nuovoStato = item.stato === 'servito' ? 'in_attesa' : 'servito';
       
-      items.forEach(p => {
-          let c = p.course || 2; 
-          if(c < 1) c = 1; 
-          if(c > 4) c = 4;
-          
-          if(!courses[c]) courses[c] = [];
-          courses[c].push(p);
+      item.stato = nuovoStato;
+      if (nuovoStato === 'servito') {
+          item.ora_servizio = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+      } else {
+          delete item.ora_servizio;
+      }
+      
+      const logMsg = `[CASSA 💶] HA SEGNATO ${nuovoStato === 'servito' ? 'SERVITO' : 'IN ATTESA'}: ${item.nome}`;
+
+      await fetch(`${API_URL}/api/ordine/${ord.id}/update-items`, {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ prodotti: nuoviProdotti, logMsg })
       });
-
-      const isCourseComplete = (courseNum) => {
-          if (!courses[courseNum] || courses[courseNum].length === 0) return true; 
-          return courses[courseNum].every(p => p.stato === 'servito');
-      };
-
-      const courseStatus = {
-          1: { locked: false, completed: isCourseComplete(1) },
-          2: { locked: !isCourseComplete(1), completed: isCourseComplete(2) },
-          3: { locked: !isCourseComplete(1) || !isCourseComplete(2), completed: isCourseComplete(3) },
-          4: { locked: !isCourseComplete(1) || !isCourseComplete(2) || !isCourseComplete(3), completed: isCourseComplete(4) }
-      };
-
-      const finalStructure = [];
-      [1, 2, 3, 4].forEach(cNum => {
-          if (courses[cNum].length === 0) return;
-
-          const groups = [];
-          courses[cNum].forEach(p => {
-              // Raggruppa anche in base al flag "riaperto" per evitare bug visivi
-              const key = `${p.nome}-${p.stato}-${p.riaperto}-${p.is_pizzeria ? 'piz' : 'cuc'}`;
-              const existing = groups.find(g => g.key === key);
-              
-              if (existing) {
-                  existing.count++;
-                  existing.sourceItems.push(p);
-              } else {
-                  groups.push({
-                      ...p,
-                      key,
-                      count: 1,
-                      sourceItems: [p],
-                      isMyStation: !p.is_pizzeria, 
-                      stationName: p.is_pizzeria ? "PIZZERIA" : "CUCINA"
-                  });
-              }
-          });
-          
-          finalStructure.push({
-              courseNum: cNum,
-              locked: courseStatus[cNum].locked,
-              items: groups
-          });
-      });
-
-      return finalStructure;
+      aggiornaDati();
   };
 
-  if (!infoRistorante) return <div style={{textAlign:'center', padding:50}}><h1>⏳ Caricamento...</h1></div>;
+  const eliminaProdotto = async (ord, indexDaEliminare) => {
+      if(!confirm("Eliminare questo piatto?")) return;
+      
+      const itemEliminato = ord.prodotti[indexDaEliminare];
+      const nuoviProdotti = ord.prodotti.filter((_, idx) => idx !== indexDaEliminare);
+      const nuovoTotale = Number(ord.totale) - Number(itemEliminato.prezzo || 0);
+      
+      const logMsg = `[CASSA 💶] HA ELIMINATO: ${itemEliminato.nome} (${itemEliminato.prezzo}€). Nuovo Totale: ${nuovoTotale.toFixed(2)}€`;
+
+      await fetch(`${API_URL}/api/ordine/${ord.id}/update-items`, {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ prodotti: nuoviProdotti, totale: nuovoTotale, logMsg })
+      });
+      aggiornaDati();
+  };
+
+  const chiudiTavolo = async (t) => {
+      if(!confirm(`Incassare Tavolo ${t}?`)) return;
+      await fetch(`${API_URL}/api/cassa/paga-tavolo`, {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ ristorante_id: infoRistorante.id, tavolo: t })
+      });
+      aggiornaDati();
+  };
+
+  if (!infoRistorante) return <div style={{padding:50, textAlign:'center', color:'#fff'}}><h1>⏳ Caricamento...</h1></div>;
 
   if (!isAuthorized) return (
-      <div className="cucina-container" style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', flexDirection:'column'}}>
-          <div style={{background:'white', padding:'40px', borderRadius:'10px', width:'90%', maxWidth:'400px', textAlign:'center', boxShadow:'0 4px 10px rgba(0,0,0,0.1)'}}>
-              <h1>👨‍🍳 Cucina</h1>
-              <h3 style={{color:'#666'}}>{infoRistorante.ristorante}</h3>
+      <div style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', background:'#2c3e50', flexDirection:'column'}}>
+          <div style={{background:'white', color:'black', padding:40, borderRadius:10, textAlign:'center', maxWidth:'400px', width:'90%', boxShadow:'0 10px 25px rgba(0,0,0,0.5)'}}>
+              <h1 style={{margin:0, fontSize:'3rem'}}>💶</h1>
+              <h2 style={{margin:'10px 0', color:'#2c3e50'}}>Accesso Cassa</h2>
+              <h3 style={{margin:'0 0 20px 0', color:'#7f8c8d', fontWeight:'normal'}}>{infoRistorante.ristorante}</h3>
+              
               <form onSubmit={handleLogin}>
-                  <input type="password" placeholder="Password" value={passwordInput} onChange={e=>setPasswordInput(e.target.value)} style={{width:'100%', padding:'10px', marginBottom:'15px', fontSize:'16px'}}/>
-                  <button className="btn-invia" style={{width:'100%', padding:'10px', background:'#27ae60', border:'none', color:'white', fontSize:'16px', borderRadius:'5px'}}>ENTRA</button>
+                  <input 
+                    type="password" 
+                    placeholder="Password Cassa" 
+                    value={passwordInput} 
+                    onChange={e=>setPasswordInput(e.target.value)} 
+                    style={{
+                        width:'100%', padding:15, marginBottom:15, fontSize:'18px',
+                        boxSizing:'border-box', border: loginError ? '2px solid red' : '1px solid #ccc', borderRadius:5, textAlign:'center'
+                    }}
+                  />
+                  {loginError && <div style={{color:'red', marginBottom:'10px', fontWeight:'bold'}}>Password Errata! ⛔</div>}
+                  
+                  <button className="btn-invia" style={{width:'100%', padding:15, background:'#27ae60', color:'white', border:'none', borderRadius:5, fontWeight:'bold', cursor:'pointer', fontSize:'18px'}}>
+                      {loadingLogin ? "Verifica..." : "ENTRA"}
+                  </button>
               </form>
           </div>
       </div>
   );
 
   return (
-    <div className="cucina-container">
-      <header style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 20px', background:'#fff', marginBottom:'20px', borderRadius:'8px'}}>
-          <h1 style={{margin:0, color:'#333'}}>👨‍🍳 Cucina: {infoRistorante.ristorante}</h1>
-          <button onClick={handleLogout} style={{background:'#e74c3c', color:'white', border:'none', padding:'8px 15px', borderRadius:'5px', cursor:'pointer'}}>Esci</button>
+    <div style={{background:'#eee', minHeight:'100vh', padding:20}}>
+      <header style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20}}>
+          <h1 style={{margin:0, color:'#333'}}>💶 Cassa: {infoRistorante.ristorante}</h1>
+          <div style={{display:'flex', gap:10}}>
+            <button onClick={() => setTab('attivi')} style={{padding:'10px 20px', background: tab==='attivi'?'#2980b9':'#ccc', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Tavoli Attivi</button>
+            <button onClick={() => setTab('storico')} style={{padding:'10px 20px', background: tab==='storico'?'#2980b9':'#ccc', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Storico</button>
+            <button onClick={handleLogout} style={{padding:'10px 20px', background:'#333', color:'white', border:'none', borderRadius:5, cursor:'pointer', marginLeft:10, fontWeight:'bold'}}>ESCI</button>
+          </div>
       </header>
-      
-      <div className="ordini-grid">
-        {tavoli.length === 0 && (
-            <div style={{textAlign: 'center', width: '100%', marginTop: '50px', color: '#888'}}>
-                <h2>Nessuna comanda in attesa 👨‍🍳</h2>
-                <p>Tutto pulito!</p>
-            </div>
-        )}
 
-{tavoli.map(tavoloData => {
-    const strutturaOrdine = processaTavolo(tavoloData.items);
-    
-    // 1. Estraiamo il nome del cameriere dal primo piatto della lista
-    const nomeCameriere = tavoloData.items[0]?.cameriere;
-
-    return (
-        <div key={tavoloData.tavolo} className="ticket" style={{borderTop: '5px solid #d35400'}}>
-            <div className="ticket-header" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                
-                {/* 2. Header modificato per mostrare il nome sotto il tavolo */}
-                <div style={{display:'flex', flexDirection:'column'}}>
-                    <span style={{fontSize:'1.8rem'}}>Tavolo <strong>{tavoloData.tavolo}</strong></span>
-                    {nomeCameriere && (
-                        <span style={{fontSize:'0.9rem', background:'rgba(255,255,255,0.2)', padding:'2px 8px', borderRadius:'4px', marginTop:'2px', display:'inline-block', width:'fit-content'}}>
-                            👤 {nomeCameriere}
-                        </span>
-                    )}
-                </div>
-
-                <span style={{fontSize:'0.9rem', color:'#ffffffff'}}>{new Date(tavoloData.orarioMin).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
-            </div>
-                    
-                    <div className="ticket-body" style={{textAlign:'left', paddingBottom:'5px'}}>
-                        
-                        {strutturaOrdine.map(section => {
-                            // --- TITOLI DINAMICI ---
-                            let headerColor = "#7f8c8d"; let headerBg = "#ecf0f1"; 
-                            let title = `${section.courseNum}° STEP`; 
-
-                            if (!section.locked) {
-                                if(section.courseNum === 1) { headerColor = "#27ae60"; headerBg = "#e8f8f5"; } // Verde
-                                else if(section.courseNum === 2) { headerColor = "#f39c12"; headerBg = "#fef9e7"; } // Giallo
-                                else if(section.courseNum === 3) { headerColor = "#d35400"; headerBg = "#fdebd0"; } // Arancio
-                                else { headerColor = "#8e44ad"; headerBg = "#f4ecf7"; } // Viola
-                            } else { 
-                                title += " (IN ATTESA)"; 
-                            }
-
-                            return (
-                                <div key={section.courseNum} style={{marginBottom:'15px'}}>
-                                    <div style={{
-                                        background: headerBg, color: headerColor, 
-                                        padding:'5px 10px', fontSize:'0.85rem', fontWeight:'bold', 
-                                        borderBottom:`2px solid ${headerColor}`, marginBottom:'5px',
-                                        display:'flex', justifyContent:'space-between'
-                                    }}>
-                                        <span>{title}</span>
-                                        {section.locked && <span>🔒 BLOCCATO</span>}
-                                    </div>
-
-                                    {section.items.map(item => {
-                                        const isServito = item.stato === 'servito';
-                                        
-                                        let bg = 'white'; let opacity = 1; let cursor = 'pointer';
-
-                                        if (section.locked && !isServito) {
-                                            opacity = 0.5; cursor = 'not-allowed'; bg = '#f9f9f9';
-                                        } else if (!item.isMyStation) {
-                                            bg = '#f0f0f0'; cursor = 'default';
-                                        } else if (isServito) {
-                                            bg = '#e8f5e9'; cursor = 'default';
-                                        }
-
-                                        return (
-                                            <div 
-                                                key={item.key}
-                                                onClick={() => {
-                                                    if (item.isMyStation && !isServito && !section.locked) {
-                                                        segnaPiattoServito(item.sourceItems);
-                                                    }
-                                                }}
-                                                style={{
-                                                    padding:'10px', borderBottom:'1px dashed #ddd',
-                                                    background: bg, opacity: opacity, cursor: cursor,
-                                                    display: 'flex', justifyContent:'space-between', alignItems:'center'
-                                                }}
-                                            >
-                                                <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-                                                    <span style={{
-                                                        background: isServito ? '#95a5a6' : (item.isMyStation ? '#d35400' : '#7f8c8d'),
-                                                        color:'white', padding:'2px 8px', borderRadius:'12px',
-                                                        fontWeight:'bold', fontSize:'0.9rem', minWidth:'25px', textAlign:'center'
-                                                    }}>
-                                                        {item.count}x
-                                                    </span>
-                                                    <div>
-                                                        <span style={{
-                                                            fontSize:'1.1rem', fontWeight: isServito ? 'normal' : 'bold',
-                                                            textDecoration: isServito ? 'line-through' : 'none',
-                                                            color: isServito ? '#aaa' : '#000'
-                                                        }}>
-                                                            {item.nome}
-                                                        </span>
-                                                        
-                                                        {/* BADGE VISIVO RIAPERTO - POSIZIONATO CORRETTAMENTE */}
-                                                        {item.riaperto && item.stato === 'in_attesa' && (
-                                                            <div style={{
-                                                                display:'inline-block', marginLeft:'10px', 
-                                                                background:'#c0392b', color:'white', 
-                                                                padding:'2px 6px', borderRadius:'4px', 
-                                                                fontSize:'0.7rem', fontWeight:'bold', textTransform:'uppercase',
-                                                                boxShadow:'0 2px 4px rgba(0,0,0,0.2)'
-                                                            }}>
-                                                                ⚠️ RIAPERTO
-                                                            </div>
-                                                        )}
-                                                        {/* VARIANTI NEL TICKET CUCINA */}
-                                                        {(() => {
-                                                          try {
-                                                            if(item.varianti_scelte) {
-                                                              let note = [];
-                                                              if(item.varianti_scelte.rimozioni?.length) note.push("No: "+item.varianti_scelte.rimozioni.join(', '));
-                                                              if(item.varianti_scelte.aggiunte?.length) note.push("+: "+item.varianti_scelte.aggiunte.map(a=>a.nome).join(', '));
-                                                              if(note.length>0) return <div style={{fontSize:'0.85rem', color:'#d35400', fontStyle:'italic'}}>{note.join(' | ')}</div>
-                                                            }
-                                                          } catch(e){}
-                                                        })()}
-
-                                                        {!item.isMyStation && (
-                                                            <span style={{fontSize:'0.7rem', marginLeft:'8px', background:'#bdc3c7', color:'white', padding:'2px 4px', borderRadius:'3px'}}>
-                                                                {item.stationName}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </div>
-
-                                                <div style={{textAlign:'right'}}>
-                                                    {isServito ? (
-                                                        <div style={{color:'green', fontSize:'0.8rem'}}>✅ {item.ora_servizio}</div>
-                                                    ) : ( section.locked ? <span style={{fontSize:'1.2rem'}}>⏳</span> : null )}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            );
-                        })}
+      {/* --- VISTA TAVOLI ATTIVI --- */}
+      {tab === 'attivi' && (
+          <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(350px, 1fr))', gap:20}}>
+              {Object.keys(tavoliAttivi).length === 0 && <p style={{gridColumn:'1/-1', textAlign:'center', fontSize:20, color:'#888'}}>Nessun tavolo attivo.</p>}
+              
+              {Object.keys(tavoliAttivi).map(tavolo => (
+                  <div key={tavolo} style={{background:'white', padding:20, borderRadius:10, boxShadow:'0 4px 10px rgba(0,0,0,0.1)'}}>
+                      <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', borderBottom:'2px solid #ddd', paddingBottom:10, marginBottom:10}}>
+                        <h2 style={{margin:0, color:'#000'}}>Tavolo {tavolo}</h2>
+                        <div style={{textAlign:'right'}}>
+                            <h2 style={{margin:0, color:'#27ae60', marginBottom:'5px'}}>{tavoliAttivi[tavolo].totale.toFixed(2)}€</h2>
+                            <button 
+                            onClick={() => setSelectedLog({ id: `Tavolo ${tavolo} (LIVE)`, dettagli: tavoliAttivi[tavolo].fullLog })}
+                            style={{background:'#27ae60', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:11, fontWeight:'bold'}}
+                            >
+                                🟢 LOG LIVE
+                            </button>
+                        </div>
                     </div>
-                </div>
-            );
-        })}
-      </div>
+
+                      {tavoliAttivi[tavolo].ordini.map(ord => (
+                          <div key={ord.id} style={{marginBottom:20, borderLeft:'4px solid #eee', paddingLeft:10}}>
+                              <div style={{fontSize:12, color:'#888', marginBottom:10}}>Ord #{ord.id} - {new Date(ord.data_ora).toLocaleTimeString()}</div>
+                              
+                              {(() => {
+                                  const prods = ord.prodotti.map((p, i) => ({...p, originalIdx: i}));
+                                  
+                                  const getCourse = (p) => {
+                                      if (p.course !== undefined) return p.course === 0 ? 5 : p.course; 
+                                      if (p.is_bar) return 5; 
+                                      if (p.is_pizzeria) return 3; 
+                                      return 2; 
+                                  };
+
+                                  const courses = [...new Set(prods.map(p => getCourse(p)))].sort((a,b)=>a-b);
+
+                                  const styles = {
+                                      1: { label: '🟢 1ª PORTATA (Antipasti)', bg: '#eafaf1', border: '#27ae60', color: '#27ae60' },
+                                      2: { label: '🟡 2ª PORTATA (Primi)', bg: '#fef5e7', border: '#f1c40f', color: '#d35400' },
+                                      3: { label: '🔴 3ª PORTATA (Secondi/Pizze)', bg: '#fdf2e9', border: '#e67e22', color: '#c0392b' },
+                                      4: { label: '🍰 DESSERT', bg: '#fceceb', border: '#c0392b', color: '#c0392b' },
+                                      5: { label: '🍹 BAR', bg: '#eef6fb', border: '#3498db', color: '#2980b9' }
+                                  };
+
+                                  return courses.map(course => {
+                                      const st = styles[course] || { label: 'ALTRO', bg: '#f9f9f9', border: '#ccc', color:'#666' };
+                                      const items = prods.filter(p => getCourse(p) === course);
+
+                                      return (
+                                          <div key={course} style={{marginBottom: 8, background: st.bg, borderRadius: 6, border: `1px solid ${st.border}`, overflow:'hidden'}}>
+                                              <div style={{padding:'4px 8px', background: st.border, color:'white', fontSize:11, fontWeight:'bold'}}>
+                                                  {st.label}
+                                              </div>
+                                              <div style={{padding:'0 8px'}}>
+                                                  {items.map(p => (
+                                                      <div key={p.originalIdx} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px dashed #ddd'}}>
+                                                          <div style={{flex:1}}>
+                                                              <div style={{
+                                                                  fontWeight: p.stato === 'servito'?'normal':'bold', 
+                                                                  textDecoration: p.stato==='servito'?'line-through':'none', 
+                                                                  color: p.stato==='servito'?'#aaa':'#000', fontSize:14
+                                                              }}>
+                                                                  {p.nome}
+                                                              </div>
+                                                              <div style={{fontSize:11, color:'#666'}}>
+                                                                  {p.is_bar ? '🍹' : (p.is_pizzeria ? '🍕' : '🍽️')} {Number(p.prezzo).toFixed(2)}€
+                                                                  {p.ora_servizio && <span style={{color:'#27ae60', marginLeft:5, fontWeight:'bold'}}>✅ {p.ora_servizio}</span>}
+                                                              </div>
+                                                          </div>
+                                                          <div style={{display:'flex', gap:5}}>
+                                                              <button onClick={() => modificaStatoProdotto(ord, p.originalIdx)} style={{background: p.stato==='servito'?'#27ae60':'#f39c12', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:11, fontWeight:'bold'}}>
+                                                                  {p.stato === 'servito' ? 'FATTO' : 'ATTESA'}
+                                                              </button>
+                                                              <button onClick={() => eliminaProdotto(ord, p.originalIdx)} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:12}}>🗑️</button>
+                                                          </div>
+                                                      </div>
+                                                  ))}
+                                              </div>
+                                          </div>
+                                      );
+                                  });
+                              })()}
+
+                          </div>
+                      ))}
+                      <button onClick={() => chiudiTavolo(tavolo)} style={{width:'100%', padding:15, background:'#2c3e50', color:'white', border:'none', fontSize:18, marginTop:20, cursor:'pointer', borderRadius:5, fontWeight:'bold'}}>💰 CHIUDI CONTO</button>
+                  </div>
+              ))}
+          </div>
+      )}
+
+      {/* --- VISTA STORICO --- */}
+      {tab === 'storico' && (
+          <div style={{background:'white', color:'#0b0b0bff', padding:20, borderRadius:10}}>
+              <h2 style={{color:'#191e22ff', marginTop:0}}>📜 Storico Ordini Conclusi</h2>
+              <table style={{width:'100%', borderCollapse:'collapse'}}>
+                  <thead>
+                      <tr style={{background:'#f9f9f9', textAlign:'left'}}>
+                          <th style={{padding:10}}>Data</th>
+                          <th style={{padding:10}}>Tavolo</th>
+                          <th style={{padding:10}}>Prodotti</th>
+                          <th style={{padding:10}}>Totale</th>
+                          <th style={{padding:10}}>Log</th>
+                      </tr>
+                  </thead>
+                  <tbody>
+                      {storico.map(ord => (
+                          <tr key={ord.id} style={{borderBottom:'1px solid #eee'}}>
+                              <td style={{padding:10}}>{new Date(ord.data_ora).toLocaleString()}</td>
+                              <td style={{padding:10}}>Tavolo {ord.tavolo}</td>
+                              <td style={{padding:10, fontSize:13}}>{ord.prodotti.map(p=>p.nome).join(', ')}</td>
+                              <td style={{padding:10, fontWeight:'bold'}}>{ord.totale}€</td>
+                              <td style={{padding:10}}>
+                                  <button onClick={() => setSelectedLog(ord)} style={{padding:'5px 10px', background:'#3498db', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>📝 LOG</button>
+                              </td>
+                          </tr>
+                      ))}
+                  </tbody>
+              </table>
+          </div>
+      )}
+
+      {/* --- MODAL LOG --- */}
+      {selectedLog && (
+          <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999}}>
+              <div style={{background:'white', padding:30, borderRadius:10, maxWidth:600, width:'90%', maxHeight:'80vh', overflowY:'auto'}}>
+                  <h2 style={{color:'#000'}}>Dettagli Ordine #{selectedLog.id}</h2>
+                  <div style={{background:'#f0f0f0', color:'#0f0e0eff', padding:15, borderRadius:5, fontFamily:'monospace', whiteSpace:'pre-wrap', fontSize:13}}>
+                      {selectedLog.dettagli || "Nessun dettaglio registrato."}
+                  </div>
+                  <button onClick={() => setSelectedLog(null)} style={{marginTop:20, padding:'10px 20px', background:'#2c3e50', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Chiudi</button>
+              </div>
+          </div>
+      )}
     </div>
   );
 }
 
-export default Cucina;
+export default Cassa;
