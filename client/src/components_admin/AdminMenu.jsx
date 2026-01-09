@@ -305,7 +305,7 @@ const onDragEnd = async (result) => {
                                                                     const v = typeof p.varianti === 'string' ? JSON.parse(p.varianti || '{}') : (p.varianti || {});
                                                                     if (v.base && v.base.length > 0) {
                                                                         return (
-                                                                            <div style={{fontSize:'11px', color:'#e67e22', marginTop:'3px', fontWeight:'500'}}>
+                                                                            <div style={{fontSize:'11px', color:'#000000ff', marginTop:'3px', fontWeight:'500'}}>
                                                                                 🧂 {v.base.join(', ')}
                                                                             </div>
                                                                         );
