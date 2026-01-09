@@ -395,4 +395,62 @@ app.get('/api/utenti', async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Err" }); }
 });
 
+// 4. MODIFICA UTENTE (PUT)
+app.put('/api/utenti/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { nome, email, password, telefono, indirizzo, ruolo } = req.body;
+        
+        await pool.query(
+            `UPDATE utenti SET nome=$1, email=$2, password=$3, telefono=$4, indirizzo=$5, ruolo=$6 WHERE id=$7`,
+            [nome, email, password, telefono, indirizzo, ruolo, id]
+        );
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: "Errore modifica utente" }); }
+});
+
+// 5. EXPORT UTENTI EXCEL
+app.get('/api/utenti/export/excel', async (req, res) => {
+    try {
+        const r = await pool.query("SELECT nome, email, password, telefono, indirizzo, ruolo, data_registrazione FROM utenti ORDER BY id");
+        const workbook = xlsx.utils.book_new();
+        const worksheet = xlsx.utils.json_to_sheet(r.rows);
+        xlsx.utils.book_append_sheet(workbook, worksheet, "Utenti");
+        const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+        res.setHeader('Content-Disposition', 'attachment; filename="lista_utenti.xlsx"');
+        res.send(buffer);
+    } catch (e) { res.status(500).json({ error: "Errore Export" }); }
+});
+
+// 6. IMPORT UTENTI EXCEL
+app.post('/api/utenti/import/excel', upload.single('file'), async (req, res) => {
+    try {
+        const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
+        const sheetName = workbook.SheetNames[0];
+        const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
+
+        for (const row of data) {
+            // Se manca il ruolo, mettiamo 'cliente' di default
+            const ruolo = row.ruolo || 'cliente'; 
+            // Cerchiamo se esiste già l'email
+            const check = await pool.query("SELECT id FROM utenti WHERE email = $1", [row.email]);
+            
+            if (check.rows.length > 0) {
+                // UPDATE se esiste
+                await pool.query(
+                    "UPDATE utenti SET nome=$1, password=$2, telefono=$3, indirizzo=$4, ruolo=$5 WHERE email=$6",
+                    [row.nome, row.password, row.telefono, row.indirizzo, ruolo, row.email]
+                );
+            } else {
+                // INSERT se nuovo
+                await pool.query(
+                    "INSERT INTO utenti (nome, email, password, telefono, indirizzo, ruolo) VALUES ($1, $2, $3, $4, $5, $6)",
+                    [row.nome, row.email, row.password, row.telefono, row.indirizzo, ruolo]
+                );
+            }
+        }
+        res.json({ success: true, message: "Importazione completata" });
+    } catch (e) { console.error(e); res.status(500).json({ error: "Errore Import" }); }
+});
+
 app.listen(port, () => console.log(`🚀 SERVER DEFINITIVO COMPLETE (Porta ${port})`));
