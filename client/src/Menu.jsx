@@ -356,8 +356,7 @@ function Menu() {
         ))}
       </div>
 
-      {/* --- CHECKOUT --- */}
-      {/* --- CHECKOUT (FIX CRASH PREZZI) --- */}
+{/* --- CHECKOUT (LOGICA DINAMICA INTELLIGENTE) --- */}
       {showCheckout && (
           <div style={{
               position:'fixed', top:0, left:0, right:0, bottom:0, 
@@ -372,34 +371,17 @@ function Menu() {
 
               <div style={{flex:1, overflowY:'auto'}}>
                   {carrello.length === 0 && <p style={{color: style?.text || '#fff', textAlign:'center'}}>Il carrello è vuoto.</p>}
-                  
-                  {/* --- BLOCCO 1: BEVANDE (BAR) --- */}
-                  {carrello.some(i => i.categoria_is_bar) && (
-                      <div style={{marginBottom:'20px', padding:'10px', border:'1px dashed #555', borderRadius:'10px'}}>
-                           <h3 style={{color: '#3498db', margin:'0 0 10px 0', fontSize:'16px', textTransform:'uppercase'}}>
-                               🍹 BEVANDE & BAR (Subito)
-                           </h3>
-                           {carrello.filter(i => i.categoria_is_bar).map(item => (
-                               <div key={item.tempId} style={{display:'flex', justifyContent:'space-between', alignItems:'center', background:'rgba(255,255,255,0.05)', padding:'10px', marginBottom:'5px', borderRadius:'8px'}}>
-                                   <div style={{flex:1}}>
-                                       <div style={{color: titleColor, fontWeight:'bold', fontSize:'16px'}}>{item.nome}</div>
-                                       {/* FIX QUI SOTTO: Number() */}
-                                       <div style={{color: '#888', fontSize:'12px'}}>{Number(item.prezzo).toFixed(2)} €</div>
-                                   </div>
-                                   <button onClick={() => rimuoviDalCarrello(item.tempId)} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'5px', cursor:'pointer'}}>✕</button>
-                               </div>
-                           ))}
-                      </div>
-                  )}
 
-                  {/* --- BLOCCO 2: CUCINA INTELLIGENTE --- */}
+                  {/* --- BLOCCO 1: CUCINA INTELLIGENTE (SMART SORTING) --- */}
                   {(() => {
+                      // Trova quali portate ci sono e le ordina
                       const itemsCucina = carrello.filter(i => !i.categoria_is_bar);
                       const coursePresenti = [...new Set(itemsCucina.map(i => i.course))].sort();
-                      const coloriPortata = ['#27ae60', '#f1c40f', '#e67e22', '#c0392b']; 
+                      const coloriPortata = ['#27ae60', '#f1c40f', '#e67e22', '#c0392b']; // Verde, Giallo, Arancio, Rosso
                       
                       return coursePresenti.map((courseNum, index) => (
                           <div key={courseNum} style={{marginBottom:'25px'}}>
+                              {/* LABEL DINAMICA: Usa l'indice (index+1) per scrivere "1ª PORTATA" */}
                               <h3 style={{
                                   margin:'0 0 10px 0', 
                                   color: coloriPortata[index] || '#ccc', 
@@ -433,12 +415,32 @@ function Menu() {
                           </div>
                       ));
                   })()}
+                  
+                  {/* --- BLOCCO 2: BEVANDE (BAR) - IN FONDO --- */}
+                  {carrello.some(i => i.categoria_is_bar) && (
+                      <div style={{marginBottom:'20px', padding:'10px', border:'1px dashed #555', borderRadius:'10px'}}>
+                           <h3 style={{color: '#3498db', margin:'0 0 10px 0', fontSize:'16px', textTransform:'uppercase'}}>
+                               🍹 BEVANDE & BAR (Subito)
+                           </h3>
+                           {carrello.filter(i => i.categoria_is_bar).map(item => (
+                               <div key={item.tempId} style={{display:'flex', justifyContent:'space-between', alignItems:'center', background:'rgba(255,255,255,0.05)', padding:'10px', marginBottom:'5px', borderRadius:'8px'}}>
+                                   <div style={{flex:1}}>
+                                       <div style={{color: titleColor, fontWeight:'bold', fontSize:'16px'}}>{item.nome}</div>
+                                       {/* FIX QUI SOTTO: Number() */}
+                                       <div style={{color: '#888', fontSize:'12px'}}>{Number(item.prezzo).toFixed(2)} €</div>
+                                   </div>
+                                   <button onClick={() => rimuoviDalCarrello(item.tempId)} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'5px', cursor:'pointer'}}>✕</button>
+                               </div>
+                           ))}
+                      </div>
+                  )}
 
               </div>
 
               <div style={{marginTop:'20px', borderTop:`1px solid ${style?.text||'#ccc'}`, paddingTop:'20px'}}>
                   <div style={{display:'flex', justifyContent:'space-between', fontSize:'20px', color: titleColor, marginBottom:'20px'}}>
                       <span>TOTALE:</span>
+                      {/* FIX QUI SOTTO: Number() */}
                       <strong style={{color: priceColor}}>{carrello.reduce((a,b)=>a+Number(b.prezzo),0).toFixed(2)} €</strong>
                   </div>
                   {carrello.length > 0 && <button onClick={inviaOrdine} style={{width:'100%', padding:'15px', fontSize:'18px', background: priceColor, color:'white', border:'none', borderRadius:'10px', fontWeight:'bold', cursor:'pointer'}}>CONFERMA E INVIA 🚀</button>}
