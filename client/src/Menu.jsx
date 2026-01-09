@@ -443,7 +443,7 @@ function Menu() {
                       {/* FIX QUI SOTTO: Number() */}
                       <strong style={{color: priceColor}}>{carrello.reduce((a,b)=>a+Number(b.prezzo),0).toFixed(2)} €</strong>
                   </div>
-                  {carrello.length > 0 && <button onClick={inviaOrdine} style={{width:'100%', padding:'15px', fontSize:'18px', background: '#18e405', color:'white', border:'1px solid', borderRadius:'10px', fontWeight:'bold', cursor:'pointer'}}>CONFERMA E INVIA 🚀</button>}
+                  {carrello.length > 0 && <button onClick={inviaOrdine} style={{width:'100%', padding:'15px', fontSize:'18px', background: '#159709ff', color:'white', border:`1px solid ${style?.text||'#ccc'}`, borderRadius:'30px', fontWeight:'bold', cursor:'pointer'}}>CONFERMA E INVIA 🚀</button>}
                   <button onClick={() => setShowCheckout(false)} style={{width:'100%', padding:'15px', marginTop:'10px', background:'transparent', border:`1px solid ${style?.text||'#ccc'}`, color: style?.text||'#ccc', borderRadius:'30px', cursor:'pointer'}}>Torna al Menu</button>
               </div>
           </div>
