@@ -407,17 +407,37 @@ app.get('/api/menu/:slug', async (req, res) => {
 });
 
 app.post('/api/login', async (req, res) => {
-    const { slug, password } = req.body;
+    // Riceviamo 'identifier' che può essere o la mail o lo slug
+    const { identifier, password } = req.body;
+    
     try {
-        const result = await pool.query("SELECT * FROM ristoranti WHERE slug = $1", [slug]);
+        // Cerchiamo il ristorante che abbia quella EMAIL oppure quel SLUG
+        const result = await pool.query(
+            "SELECT * FROM ristoranti WHERE (email = $1 OR slug = $1)", 
+            [identifier]
+        );
+        
         if (result.rows.length > 0) {
             const ristorante = result.rows[0];
+            
+            // Verifica la password
             if (ristorante.password === password) {
-                return res.json({ success: true, user: ristorante });
+                return res.json({ 
+                    success: true, 
+                    user: { 
+                        id: ristorante.id, 
+                        nome: ristorante.nome, 
+                        slug: ristorante.slug 
+                    } 
+                });
             }
         }
-        res.json({ success: false, error: "Credenziali errate" });
-    } catch (e) { res.status(500).json({ error: "Errore server" }); }
+        
+        res.status(401).json({ success: false, error: "Credenziali errate" });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ success: false, error: "Errore server" });
+    }
 });
 
 app.get('/api/polling/:ristorante_id', async (req, res) => {

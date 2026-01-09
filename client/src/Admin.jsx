@@ -16,6 +16,7 @@ function Admin() {
 
   // --- NUOVI STATI LOGIN ADMIN ---
 const [isAuthorized, setIsAuthorized] = useState(false);
+const [identifierInput, setIdentifierInput] = useState(""); // Email o Nome Utente
 const [passwordInput, setPasswordInput] = useState("");
 const [loginError, setLoginError] = useState(false);
 const [loadingLogin, setLoadingLogin] = useState(false);
@@ -118,26 +119,28 @@ const handleLogout = () => {
       } 
   };
   
-  const handleAdminLogin = async (e) => {
+const handleAdminLogin = async (e) => {
     e.preventDefault();
     setLoadingLogin(true);
     setLoginError(false);
 
     try {
-        // Usiamo la rotta di login che verifica la password dell'admin del ristorante
         const res = await fetch(`${API_URL}/api/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
-                slug: slug, 
+                identifier: identifierInput, // Inviamo l'input unico al server
                 password: passwordInput 
             })
         });
+        
         const data = await res.json();
 
         if (data.success) {
             setIsAuthorized(true);
-            localStorage.setItem(`stark_admin_session_${slug}`, "true");
+            // IMPORTANTE: usiamo lo slug che ci torna dal DB, non quello dell'URL
+            localStorage.setItem(`stark_admin_session_${data.user.slug}`, "true");
+            ricaricaDati(); 
         } else {
             setLoginError(true);
         }
@@ -167,25 +170,37 @@ const handleLogout = () => {
                 <p style={{color:'#666'}}>{user?.nome || "Accesso Riservato"}</p>
 
                 <form onSubmit={handleAdminLogin} style={{marginTop:20}}>
-                    <input 
-                        type="password" 
-                        placeholder="Password Amministratore" 
-                        value={passwordInput}
-                        onChange={e => setPasswordInput(e.target.value)}
-                        style={{
-                            width:'100%', padding:'15px', borderRadius:'8px', border: loginError ? '2px solid #e74c3c' : '1px solid #ddd',
-                            fontSize:'16px', boxSizing:'border-box', marginBottom:'10px', textAlign:'center'
-                        }}
-                    />
-                    {loginError && <p style={{color:'#e74c3c', fontWeight:'bold', fontSize:'0.9rem'}}>Password Errata ⛔</p>}
-                    
-                    <button type="submit" disabled={loadingLogin} style={{
-                        width:'100%', padding:'15px', background:'#2c3e50', color:'white', border:'none', 
-                        borderRadius:'8px', fontSize:'16px', fontWeight:'bold', cursor:'pointer'
-                    }}>
-                        {loadingLogin ? "Verifica in corso..." : "ACCEDI AL PANNELLO"}
-                    </button>
-                </form>
+    <input 
+        type="text" // 'text' così accetta sia mail che slug
+        placeholder="Email o Nome Ristorante (slug)" 
+        value={identifierInput}
+        onChange={e => setIdentifierInput(e.target.value)}
+        style={{
+            width:'100%', padding:'15px', borderRadius:'8px', 
+            border: loginError ? '2px solid #e74c3c' : '1px solid #ddd',
+            fontSize:'16px', boxSizing:'border-box', marginBottom:'10px', textAlign:'center'
+        }}
+    />
+    <input 
+        type="password" 
+        placeholder="Password" 
+        value={passwordInput}
+        onChange={e => setPasswordInput(e.target.value)}
+        style={{
+            width:'100%', padding:'15px', borderRadius:'8px', 
+            border: loginError ? '2px solid #e74c3c' : '1px solid #ddd',
+            fontSize:'16px', boxSizing:'border-box', marginBottom:'10px', textAlign:'center'
+        }}
+    />
+    {loginError && <p style={{color:'#e74c3c', fontWeight:'bold', fontSize:'0.9rem'}}>Credenziali Errate ⛔</p>}
+    
+    <button type="submit" disabled={loadingLogin} style={{
+        width:'100%', padding:'15px', background:'#2c3e50', color:'white', border:'none', 
+        borderRadius:'8px', fontSize:'16px', fontWeight:'bold', cursor:'pointer'
+    }}>
+        {loadingLogin ? "Verifica..." : "ACCEDI AL PANNELLO"}
+    </button>
+</form>
                 
                 <button onClick={() => navigate('/')} style={{marginTop:20, background:'none', border:'none', color:'#999', cursor:'pointer'}}>
                     ← Torna al sito
