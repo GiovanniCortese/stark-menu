@@ -1,4 +1,4 @@
-// client/src/Cassa.jsx - VERSIONE V31 (STORICO LOG + FIX TOTALE) 💶
+// client/src/Cassa.jsx - VERSIONE V32 (CASSA A PORTATE + COLORI) 💶
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -38,12 +38,11 @@ function Cassa() {
             if(!raggruppati[t]) raggruppati[t] = { 
                 ordini: [], 
                 totale: 0,
-                fullLog: "" // Aggiungiamo il campo per il log completo
+                fullLog: "" 
             };
             raggruppati[t].ordini.push(ord);
             raggruppati[t].totale += Number(ord.totale || 0);
             
-            // Concateniamo i dettagli (log) se presenti
             if(ord.dettagli && ord.dettagli.trim() !== "") {
                 raggruppati[t].fullLog += ord.dettagli + "\n";
             }
@@ -74,7 +73,7 @@ function Cassa() {
 
   // --- AZIONI ---
 
-const modificaStatoProdotto = async (ord, indexDaModificare) => {
+  const modificaStatoProdotto = async (ord, indexDaModificare) => {
       const nuoviProdotti = [...ord.prodotti];
       const item = nuoviProdotti[indexDaModificare];
       const nuovoStato = item.stato === 'servito' ? 'in_attesa' : 'servito';
@@ -86,7 +85,6 @@ const modificaStatoProdotto = async (ord, indexDaModificare) => {
           delete item.ora_servizio;
       }
       
-      // LOG MODIFICATO CON PREFISSO CASSA
       const logMsg = `[CASSA 💶] HA SEGNATO ${nuovoStato === 'servito' ? 'SERVITO' : 'IN ATTESA'}: ${item.nome}`;
 
       await fetch(`${API_URL}/api/ordine/${ord.id}/update-items`, {
@@ -97,15 +95,13 @@ const modificaStatoProdotto = async (ord, indexDaModificare) => {
       aggiornaDati();
   };
 
-const eliminaProdotto = async (ord, indexDaEliminare) => {
+  const eliminaProdotto = async (ord, indexDaEliminare) => {
       if(!confirm("Eliminare questo piatto?")) return;
       
       const itemEliminato = ord.prodotti[indexDaEliminare];
       const nuoviProdotti = ord.prodotti.filter((_, idx) => idx !== indexDaEliminare);
-      
       const nuovoTotale = Number(ord.totale) - Number(itemEliminato.prezzo || 0);
       
-      // LOG MODIFICATO CON PREFISSO CASSA
       const logMsg = `[CASSA 💶] HA ELIMINATO: ${itemEliminato.nome} (${itemEliminato.prezzo}€). Nuovo Totale: ${nuovoTotale.toFixed(2)}€`;
 
       await fetch(`${API_URL}/api/ordine/${ord.id}/update-items`, {
@@ -138,7 +134,7 @@ const eliminaProdotto = async (ord, indexDaEliminare) => {
           </div>
       </header>
 
-      {/* --- VISTA TAVOLI ATTIVI (GRID MIGLIORATA) --- */}
+      {/* --- VISTA TAVOLI ATTIVI (GRID PORTATE) --- */}
       {tab === 'attivi' && (
           <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(350px, 1fr))', gap:20}}>
               {Object.keys(tavoliAttivi).length === 0 && <p style={{gridColumn:'1/-1', textAlign:'center', fontSize:20, color:'#888'}}>Nessun tavolo attivo.</p>}
@@ -146,61 +142,102 @@ const eliminaProdotto = async (ord, indexDaEliminare) => {
               {Object.keys(tavoliAttivi).map(tavolo => (
                   <div key={tavolo} style={{background:'white', padding:20, borderRadius:10, boxShadow:'0 4px 10px rgba(0,0,0,0.1)'}}>
                       <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', borderBottom:'2px solid #ddd', paddingBottom:10, marginBottom:10}}>
-    <h2 style={{margin:0, color:'#000000ff'}}>Tavolo {tavolo}</h2>
-    <div style={{textAlign:'right'}}>
-        <h2 style={{margin:0, color:'#27ae60', marginBottom:'5px'}}>{tavoliAttivi[tavolo].totale.toFixed(2)}€</h2>
-        {/* BOTTONE VERDE LIVE */}
-        <button 
-          onClick={() => setSelectedLog({ id: `Tavolo ${tavolo} (LIVE)`, dettagli: tavoliAttivi[tavolo].fullLog })}
-          style={{background:'#27ae60', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:11, fontWeight:'bold'}}
-        >
-            🟢 LOG LIVE
-        </button>
-    </div>
-</div>
+                        <h2 style={{margin:0, color:'#000'}}>Tavolo {tavolo}</h2>
+                        <div style={{textAlign:'right'}}>
+                            <h2 style={{margin:0, color:'#27ae60', marginBottom:'5px'}}>{tavoliAttivi[tavolo].totale.toFixed(2)}€</h2>
+                            <button 
+                            onClick={() => setSelectedLog({ id: `Tavolo ${tavolo} (LIVE)`, dettagli: tavoliAttivi[tavolo].fullLog })}
+                            style={{background:'#27ae60', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:11, fontWeight:'bold'}}
+                            >
+                                🟢 LOG LIVE
+                            </button>
+                        </div>
+                    </div>
 
                       {tavoliAttivi[tavolo].ordini.map(ord => (
-                          <div key={ord.id} style={{marginBottom:15, borderLeft:'4px solid #eee', paddingLeft:10}}>
-                              <div style={{fontSize:12, color:'#888', marginBottom:5}}>Ord #{ord.id} - {new Date(ord.data_ora).toLocaleTimeString()}</div>
+                          <div key={ord.id} style={{marginBottom:20, borderLeft:'4px solid #eee', paddingLeft:10}}>
+                              <div style={{fontSize:12, color:'#888', marginBottom:10}}>Ord #{ord.id} - {new Date(ord.data_ora).toLocaleTimeString()}</div>
                               
-                              {ord.prodotti.map((p, idx) => (
-                                  <div key={idx} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'6px 0', borderBottom:'1px dashed #f0f0f0'}}>
-                                      <div style={{flex:1}}>
-                                          <div style={{fontWeight: p.stato === 'servito'?'normal':'bold', textDecoration: p.stato==='servito'?'line-through':'none', color:p.stato==='servito'?'#aaa':'#000'}}>
-                                              {p.nome}
+                              {/* --- RAGGRUPPAMENTO PER PORTATE --- */}
+                              {(() => {
+                                  // 1. Mappiamo prodotti con indice originale per non rompere i bottoni
+                                  const prods = ord.prodotti.map((p, i) => ({...p, originalIdx: i}));
+                                  
+                                  // 2. Definiamo le priorità se mancano (Fallback)
+                                  const getCourse = (p) => {
+                                      if (p.course !== undefined) return p.course; 
+                                      if (p.is_bar) return 0; // Bar
+                                      if (p.is_pizzeria) return 3; // Pizza -> 3
+                                      return 2; // Cucina default -> 2
+                                  };
+
+                                  const courses = [...new Set(prods.map(p => getCourse(p)))].sort((a,b)=>a-b);
+
+                                  // 3. Stili Visuali
+                                  const styles = {
+                                      0: { label: '🍹 BAR', bg: '#eef6fb', border: '#3498db', color: '#2980b9' },
+                                      1: { label: '🟢 1ª PORTATA (Antipasti)', bg: '#eafaf1', border: '#27ae60', color: '#27ae60' },
+                                      2: { label: '🟡 2ª PORTATA (Primi)', bg: '#fef5e7', border: '#f1c40f', color: '#d35400' },
+                                      3: { label: '🔴 3ª PORTATA (Secondi/Pizze)', bg: '#fdf2e9', border: '#e67e22', color: '#c0392b' },
+                                      4: { label: '🍰 DESSERT', bg: '#fceceb', border: '#c0392b', color: '#c0392b' }
+                                  };
+
+                                  return courses.map(course => {
+                                      const st = styles[course] || { label: 'ALTRO', bg: '#f9f9f9', border: '#ccc', color:'#666' };
+                                      const items = prods.filter(p => getCourse(p) === course);
+
+                                      return (
+                                          <div key={course} style={{marginBottom: 8, background: st.bg, borderRadius: 6, border: `1px solid ${st.border}`, overflow:'hidden'}}>
+                                              <div style={{padding:'4px 8px', background: st.border, color:'white', fontSize:11, fontWeight:'bold'}}>
+                                                  {st.label}
+                                              </div>
+                                              <div style={{padding:'0 8px'}}>
+                                                  {items.map(p => (
+                                                      <div key={p.originalIdx} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px dashed #ddd'}}>
+                                                          <div style={{flex:1}}>
+                                                              <div style={{
+                                                                  fontWeight: p.stato === 'servito'?'normal':'bold', 
+                                                                  textDecoration: p.stato==='servito'?'line-through':'none', 
+                                                                  color: p.stato==='servito'?'#aaa':'#000', fontSize:14
+                                                              }}>
+                                                                  {p.nome}
+                                                              </div>
+                                                              <div style={{fontSize:11, color:'#666'}}>
+                                                                  {/* FIX ICONA 3 VIE */}
+                                                                  {p.is_bar ? '🍹' : (p.is_pizzeria ? '🍕' : '🍽️')} {Number(p.prezzo).toFixed(2)}€
+                                                                  {p.ora_servizio && <span style={{color:'#27ae60', marginLeft:5, fontWeight:'bold'}}>✅ {p.ora_servizio}</span>}
+                                                              </div>
+                                                          </div>
+                                                          <div style={{display:'flex', gap:5}}>
+                                                              <button onClick={() => modificaStatoProdotto(ord, p.originalIdx)} style={{background: p.stato==='servito'?'#27ae60':'#f39c12', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:11, fontWeight:'bold'}}>
+                                                                  {p.stato === 'servito' ? 'FATTO' : 'ATTESA'}
+                                                              </button>
+                                                              <button onClick={() => eliminaProdotto(ord, p.originalIdx)} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:12}}>🗑️</button>
+                                                          </div>
+                                                      </div>
+                                                  ))}
+                                              </div>
                                           </div>
-                                          <div style={{fontSize:11, color:'#666'}}>
-    {/* FIX ICONE: Controllo a 3 vie (Bar -> Pizzeria -> Cucina) */}
-    {p.is_bar ? '🍹 Bar' : (p.is_pizzeria ? '🍕 Pizzeria' : '🍽️ Cucina')} - {p.prezzo}€
-    
-    {/* DATA MODIFICA (ORARIO SERVIZIO) */}
-    {p.ora_servizio && <span style={{color:'#27ae60', marginLeft:5, fontWeight:'bold'}}>✅ {p.ora_servizio}</span>}
-</div>
-                                      </div>
-                                      <div style={{display:'flex', gap:5}}>
-                                          <button onClick={() => modificaStatoProdotto(ord, idx)} style={{background: p.stato==='servito'?'#27ae60':'#f39c12', color:'white', border:'none', padding:'4px 8px', borderRadius:5, cursor:'pointer', fontSize:12}}>
-                                              {p.stato === 'servito' ? 'FATTO' : 'ATTESA'}
-                                          </button>
-                                          <button onClick={() => eliminaProdotto(ord, idx)} style={{background:'#e74c3c', color:'white', border:'none', padding:'4px 8px', borderRadius:5, cursor:'pointer', fontSize:12}}>🗑️</button>
-                                      </div>
-                                  </div>
-                              ))}
+                                      );
+                                  });
+                              })()}
+
                           </div>
                       ))}
-                      <button onClick={() => chiudiTavolo(tavolo)} style={{width:'100%', padding:15, background:'#2c3e50', color:'white', border:'none', fontSize:18, marginTop:20, cursor:'pointer', borderRadius:5, fontWeight:'bold'}}>💰 CHIUDI</button>
+                      <button onClick={() => chiudiTavolo(tavolo)} style={{width:'100%', padding:15, background:'#2c3e50', color:'white', border:'none', fontSize:18, marginTop:20, cursor:'pointer', borderRadius:5, fontWeight:'bold'}}>💰 CHIUDI CONTO</button>
                   </div>
               ))}
           </div>
       )}
 
-      {/* --- VISTA STORICO DETTAGLIATO --- */}
+      {/* --- VISTA STORICO --- */}
       {tab === 'storico' && (
           <div style={{background:'white', color:'#0b0b0bff', padding:20, borderRadius:10}}>
               <h2 style={{color:'#191e22ff', marginTop:0}}>📜 Storico Ordini Conclusi</h2>
               <table style={{width:'100%', borderCollapse:'collapse'}}>
                   <thead>
                       <tr style={{background:'#f9f9f9', textAlign:'left'}}>
-                          <th style={{padding:10}}>Data Apertura</th>
+                          <th style={{padding:10}}>Data</th>
                           <th style={{padding:10}}>Tavolo</th>
                           <th style={{padding:10}}>Prodotti</th>
                           <th style={{padding:10}}>Totale</th>
