@@ -123,7 +123,12 @@ function Admin() {
       } 
   };
   
-  const apriMenuFrontend = () => { window.open(`/${slug}`, '_blank'); };
+  // --- FUNZIONI DI NAVIGAZIONE RAPIDA ---
+  const apriMenuFrontend = () => window.open(`/${slug}`, '_blank');
+  const apriCassa = () => window.open(`/cassa/${slug}`, '_blank');
+  const apriCucina = () => window.open(`/cucina/${slug}`, '_blank');
+  const apriPizzeria = () => window.open(`/pizzeria/${slug}`, '_blank');
+  const apriBar = () => window.open(`/bar/${slug}`, '_blank');
 
   if (loading) return <div style={{padding:'50px', textAlign:'center', fontSize:'20px'}}>🔄 Caricamento Admin...</div>;
   if (!user) return null;
@@ -151,11 +156,32 @@ function Admin() {
   return (
     <div className="container">
       {/* HEADER GLOBALE */}
-      <header style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+     <header style={{display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'10px'}}>
         <h1>⚙️ Admin: {user.nome}</h1>
-        <div style={{display:'flex', gap:'10px'}}>
-            <button onClick={apriMenuFrontend} style={{background:'#3498db', color:'white', border:'none', padding:'8px 15px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold'}}>👁️ VEDI MENU</button>
-            <button onClick={handleLogout} style={{background:'#e74c3c', color:'white', border:'none', padding:'8px 15px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold'}}>🚪 ESCI</button>
+        <div style={{display:'flex', gap:'5px', flexWrap:'wrap'}}>
+            {/* MENU PUBBLICO */}
+            <button onClick={apriMenuFrontend} style={{background:'#3498db', color:'white', border:'none', padding:'8px 12px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold'}}>
+                👁️ MENU
+            </button>
+
+            {/* GESTIONALI INTERNI */}
+            <button onClick={apriCassa} style={{background:'#9b59b6', color:'white', border:'none', padding:'8px 12px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold'}}>
+                💰 CASSA
+            </button>
+            <button onClick={apriCucina} style={{background:'#e67e22', color:'white', border:'none', padding:'8px 12px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold'}}>
+                👨‍🍳 CUCINA
+            </button>
+            <button onClick={apriPizzeria} style={{background:'#c0392b', color:'white', border:'none', padding:'8px 12px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold'}}>
+                🍕 PIZZERIA
+            </button>
+            <button onClick={apriBar} style={{background:'#1abc9c', color:'white', border:'none', padding:'8px 12px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold'}}>
+                🍹 BAR
+            </button>
+            
+            {/* LOGOUT */}
+            <button onClick={handleLogout} style={{background:'#333', color:'white', border:'none', padding:'8px 12px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold', marginLeft:'10px'}}>
+                🚪 ESCI
+            </button>
         </div>
       </header>
       
