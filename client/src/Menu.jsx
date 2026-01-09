@@ -357,6 +357,7 @@ function Menu() {
       </div>
 
       {/* --- CHECKOUT --- */}
+      {/* --- CHECKOUT (FIX CRASH PREZZI) --- */}
       {showCheckout && (
           <div style={{
               position:'fixed', top:0, left:0, right:0, bottom:0, 
@@ -373,16 +374,17 @@ function Menu() {
                   {carrello.length === 0 && <p style={{color: style?.text || '#fff', textAlign:'center'}}>Il carrello è vuoto.</p>}
                   
                   {/* --- BLOCCO 1: BEVANDE (BAR) --- */}
-                  {carrello.some(i => i.is_bar) && (
+                  {carrello.some(i => i.categoria_is_bar) && (
                       <div style={{marginBottom:'20px', padding:'10px', border:'1px dashed #555', borderRadius:'10px'}}>
                            <h3 style={{color: '#3498db', margin:'0 0 10px 0', fontSize:'16px', textTransform:'uppercase'}}>
                                🍹 BEVANDE & BAR (Subito)
                            </h3>
-                           {carrello.filter(i => i.is_bar).map(item => (
+                           {carrello.filter(i => i.categoria_is_bar).map(item => (
                                <div key={item.tempId} style={{display:'flex', justifyContent:'space-between', alignItems:'center', background:'rgba(255,255,255,0.05)', padding:'10px', marginBottom:'5px', borderRadius:'8px'}}>
                                    <div style={{flex:1}}>
                                        <div style={{color: titleColor, fontWeight:'bold', fontSize:'16px'}}>{item.nome}</div>
-                                       <div style={{color: '#888', fontSize:'12px'}}>{item.prezzo} €</div>
+                                       {/* FIX QUI SOTTO: Number() */}
+                                       <div style={{color: '#888', fontSize:'12px'}}>{Number(item.prezzo).toFixed(2)} €</div>
                                    </div>
                                    <button onClick={() => rimuoviDalCarrello(item.tempId)} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'5px', cursor:'pointer'}}>✕</button>
                                </div>
@@ -390,9 +392,9 @@ function Menu() {
                       </div>
                   )}
 
-                  {/* --- BLOCCO 2: CUCINA INTELLIGENTE (SMART SORTING) --- */}
+                  {/* --- BLOCCO 2: CUCINA INTELLIGENTE --- */}
                   {(() => {
-                      const itemsCucina = carrello.filter(i => !i.is_bar);
+                      const itemsCucina = carrello.filter(i => !i.categoria_is_bar);
                       const coursePresenti = [...new Set(itemsCucina.map(i => i.course))].sort();
                       const coloriPortata = ['#27ae60', '#f1c40f', '#e67e22', '#c0392b']; 
                       
@@ -415,7 +417,8 @@ function Menu() {
                                       <div>
                                           <div style={{fontWeight:'bold', fontSize:'1.1rem', color: titleColor}}>{item.nome}</div>
                                           <div style={{color:'#aaa', fontSize:'0.9rem'}}>
-                                              {item.prezzo.toFixed(2)} € • {item.is_pizzeria ? '🍕 Pizza' : '🍳 Cucina'}
+                                              {/* FIX QUI SOTTO: Number() */}
+                                              {Number(item.prezzo).toFixed(2)} € • {item.categoria_is_pizzeria ? '🍕 Pizza' : '🍳 Cucina'}
                                           </div>
                                       </div>
                                       <div style={{display:'flex', flexDirection:'column', gap:5}}>
