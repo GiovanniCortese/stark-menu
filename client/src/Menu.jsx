@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - VERSIONE V62 (NO TOTALE ASSOLUTO) 🙈
+// client/src/Menu.jsx - VERSIONE V63 (NO TOTALE + DESCRIZIONI NEL RIEPILOGO) 📝
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 
@@ -435,9 +435,8 @@ function Menu() {
       {carrello.length > 0 && !showCheckout && (
         <div className="carrello-bar">
           <div className="totale">
+              {/* QUI MOSTRA SOLO IL NUMERO DI PRODOTTI, NIENTE PREZZO */}
               <span>{carrello.length} prodotti</span>
-              {/* TOTALE SOLO SE CUCINA APERTA */}
-              {canOrder && <strong>{carrello.reduce((a,b)=>a+Number(b.prezzo),0).toFixed(2)} €</strong>}
           </div>
           <button onClick={() => setShowCheckout(true)} className="btn-invia" style={{background: canOrder ? '#f1c40f' : '#3498db', color: canOrder ? 'black' : 'white'}}>
               {canOrder ? "VEDI ORDINE 📝" : "VEDI LA TUA LISTA 👀"}
@@ -480,12 +479,21 @@ function Menu() {
                                   </span>
                               </h3>
 
-                              {itemsCucina.filter(i => i.course === courseNum).map(item => (
+                              {itemsCucina.filter(i => i.course === courseNum).map(item => {
+                                  // PARSING INGREDIENTI BASE (PER IL RIEPILOGO)
+                                  const variantiObj = typeof item.varianti === 'string' ? JSON.parse(item.varianti || '{}') : (item.varianti || {});
+                                  const ingredientiStr = (variantiObj.base || []).join(', ');
+
+                                  return (
                                   <div key={item.tempId} style={{background:'rgba(255,255,255,0.1)', borderRadius:10, padding:15, marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                                       <div>
                                           <div style={{fontWeight:'bold', fontSize:'1.1rem', color: titleColor}}>{item.nome}</div>
                                           
-                                          {/* DETTAGLI PIATTO SEMPRE VISIBILI (Prezzo e Categoria) */}
+                                          {/* NUOVO: DESCRIZIONE E INGREDIENTI NEL RIEPILOGO */}
+                                          {item.descrizione && (<div style={{fontSize:'11px', color:'#ccc', fontStyle:'italic', lineHeight:'1.2', marginBottom:'2px'}}>{item.descrizione}</div>)}
+                                          {ingredientiStr && (<div style={{fontSize:'11px', color:'#999', marginBottom:'2px'}}>🧂 {ingredientiStr}</div>)}
+
+                                          {/* DETTAGLI PIATTO */}
                                           <div style={{color:'#aaa', fontSize:'0.9rem'}}>
                                               {Number(item.prezzo).toFixed(2)} € • {item.categoria_is_pizzeria ? '🍕 Pizza' : '🍳 Cucina'}
                                           </div>
@@ -498,7 +506,8 @@ function Menu() {
                                           <button onClick={() => rimuoviDalCarrello(item.tempId)} style={{background:'#e74c3c', color:'white', fontSize:'0.8rem', padding:'5px 10px', borderRadius:'4px', cursor:'pointer', border:'none'}}>ELIMINA</button>
                                       </div>
                                   </div>
-                              ))}
+                                  )
+                              })}
                           </div>
                       ));
                   })()}
@@ -525,13 +534,7 @@ function Menu() {
 
                   <div style={{marginTop:'20px', borderTop:`1px solid ${style?.text||'#ccc'}`, paddingTop:'20px'}}>
                       
-                      {/* --- TOTALE ASSOLUTO (VISIBILE SOLO SE CUCINA APERTA) --- */}
-                      {canOrder && (
-                        <div style={{display:'flex', justifyContent:'space-between', fontSize:'20px', color: titleColor, marginBottom:'20px'}}>
-                            <span>TOTALE:</span>
-                            <strong style={{color: priceColor}}>{carrello.reduce((a,b)=>a+Number(b.prezzo),0).toFixed(2)} €</strong>
-                        </div>
-                      )}
+                      {/* --- TOTALE RIMOSSO DEFINITIVAMENTE --- */}
                       
                       {/* --- PULSANTE CONFERMA: VISIBILE SOLO SE CUCINA APERTA --- */}
                       {carrello.length > 0 && canOrder && (
