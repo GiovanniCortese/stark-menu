@@ -35,7 +35,12 @@ const fixDatabase = async () => {
         await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS pw_cucina TEXT DEFAULT '1234'");
         await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS pw_bar TEXT DEFAULT '1234'");
         await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS pw_pizzeria TEXT DEFAULT '1234'");
-        
+       
+        // Aggiunge campi per Cameriere nell'ordine e verifica cellulare utenti
+await pool.query("ALTER TABLE ordini ADD COLUMN IF NOT EXISTS cameriere TEXT");
+await pool.query("ALTER TABLE utenti ADD COLUMN IF NOT EXISTS telefono_verificato BOOLEAN DEFAULT FALSE");
+await pool.query("ALTER TABLE utenti ADD COLUMN IF NOT EXISTS codice_otp TEXT");
+
         console.log("✅ DB Check: Colonne Password Reparti presenti.");
     } catch (e) { console.log("DB Check OK"); }
 };
