@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - VERSIONE V60 (WISH LIST PURA: NO TOTALE, NO AVVISI) ✨
+// client/src/Menu.jsx - VERSIONE V62 (NO TOTALE ASSOLUTO) 🙈
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 
@@ -117,7 +117,7 @@ function Menu() {
 
   const inviaOrdine = async () => {
       if(carrello.length === 0) return;
-      if(!canOrder) return; // Se cucina chiusa, non invia nulla (è solo wishlist)
+      if(!canOrder) return; 
       
       if(!confirm(`Confermi l'ordine per il tavolo ${numeroTavolo}?`)) return;
 
@@ -187,7 +187,6 @@ function Menu() {
               )}
               
               <div style={{padding:'10px', textAlign:'center', borderBottom:`1px solid ${priceColor}`}}>
-                  {/* MOSTRA SEMPRE IL TAVOLO, ANCHE SE CUCINA CHIUSA */}
                   <span style={{color: text, fontSize:'1.1rem'}}>
                       Tavolo: <strong style={{color:'white', background: priceColor, padding:'2px 8px', borderRadius:'5px'}}>{numeroTavolo}</strong>
                   </span>
@@ -437,7 +436,7 @@ function Menu() {
         <div className="carrello-bar">
           <div className="totale">
               <span>{carrello.length} prodotti</span>
-              {/* MOSTRA TOTALE SOLO SE CUCINA APERTA */}
+              {/* TOTALE SOLO SE CUCINA APERTA */}
               {canOrder && <strong>{carrello.reduce((a,b)=>a+Number(b.prezzo),0).toFixed(2)} €</strong>}
           </div>
           <button onClick={() => setShowCheckout(true)} className="btn-invia" style={{background: canOrder ? '#f1c40f' : '#3498db', color: canOrder ? 'black' : 'white'}}>
@@ -485,12 +484,11 @@ function Menu() {
                                   <div key={item.tempId} style={{background:'rgba(255,255,255,0.1)', borderRadius:10, padding:15, marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                                       <div>
                                           <div style={{fontWeight:'bold', fontSize:'1.1rem', color: titleColor}}>{item.nome}</div>
-                                          {/* SE CUCINA CHIUSA: PREZZO NASCOSTO */}
-                                          {canOrder && (
-                                            <div style={{color:'#aaa', fontSize:'0.9rem'}}>
-                                                {Number(item.prezzo).toFixed(2)} € • {item.categoria_is_pizzeria ? '🍕 Pizza' : '🍳 Cucina'}
-                                            </div>
-                                          )}
+                                          
+                                          {/* DETTAGLI PIATTO SEMPRE VISIBILI (Prezzo e Categoria) */}
+                                          <div style={{color:'#aaa', fontSize:'0.9rem'}}>
+                                              {Number(item.prezzo).toFixed(2)} € • {item.categoria_is_pizzeria ? '🍕 Pizza' : '🍳 Cucina'}
+                                          </div>
                                       </div>
                                       <div style={{display:'flex', flexDirection:'column', gap:5}}>
                                           <div style={{display:'flex', gap:5}}>
@@ -515,8 +513,9 @@ function Menu() {
                                <div key={item.tempId} style={{display:'flex', justifyContent:'space-between', alignItems:'center', background:'rgba(255,255,255,0.05)', padding:'10px', marginBottom:'5px', borderRadius:'8px'}}>
                                    <div style={{flex:1}}>
                                        <div style={{color: titleColor, fontWeight:'bold', fontSize:'16px'}}>{item.nome}</div>
-                                       {/* SE CUCINA CHIUSA: PREZZO NASCOSTO */}
-                                       {canOrder && <div style={{color: '#888', fontSize:'12px'}}>{Number(item.prezzo).toFixed(2)} €</div>}
+                                       
+                                       {/* PREZZO BEVANDA SEMPRE VISIBILE */}
+                                       <div style={{color: '#888', fontSize:'12px'}}>{Number(item.prezzo).toFixed(2)} €</div>
                                    </div>
                                    <button onClick={() => rimuoviDalCarrello(item.tempId)} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'5px', cursor:'pointer'}}>✕</button>
                                </div>
@@ -526,7 +525,7 @@ function Menu() {
 
                   <div style={{marginTop:'20px', borderTop:`1px solid ${style?.text||'#ccc'}`, paddingTop:'20px'}}>
                       
-                      {/* --- TOTALE: VISIBILE SOLO SE CUCINA APERTA --- */}
+                      {/* --- TOTALE ASSOLUTO (VISIBILE SOLO SE CUCINA APERTA) --- */}
                       {canOrder && (
                         <div style={{display:'flex', justifyContent:'space-between', fontSize:'20px', color: titleColor, marginBottom:'20px'}}>
                             <span>TOTALE:</span>
