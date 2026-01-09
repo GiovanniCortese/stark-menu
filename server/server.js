@@ -225,19 +225,27 @@ app.put('/api/ristorante/servizio/:id', async (req, res) => {
     } catch (e) { res.status(500).json({error:"Err"}); }
 });
 
+// --- FIX PROPRIETÀ MENU (Ripristina is_bar/is_pizzeria per il frontend) ---
 app.get('/api/menu/:slug', async (req, res) => {
     try {
         const { slug } = req.params;
         const rist = await pool.query('SELECT * FROM ristoranti WHERE slug = $1', [slug]);
         if (rist.rows.length === 0) return res.status(404).json({ error: "Non trovato" });
+        
         const data = rist.rows[0];
+        
+        // QUESTA QUERY ORA USA GLI ALIAS CORRETTI PER MENU.JSX (categoria_is_bar, ecc.)
         const menu = await pool.query(`
-            SELECT p.*, c.is_bar, c.is_pizzeria 
+            SELECT p.*, 
+                   c.is_bar as categoria_is_bar, 
+                   c.is_pizzeria as categoria_is_pizzeria,
+                   c.posizione as categoria_posizione
             FROM prodotti p 
             LEFT JOIN categorie c ON p.categoria = c.nome AND p.ristorante_id = c.ristorante_id 
             WHERE p.ristorante_id = $1 
             ORDER BY c.posizione ASC, p.posizione ASC
         `, [data.id]);
+        
         res.json({
             id: data.id,
             ristorante: data.nome,
