@@ -7,6 +7,8 @@ function Cucina() {
   const [infoRistorante, setInfoRistorante] = useState(null); 
   const [isAuthorized, setIsAuthorized] = useState(false); 
   const [passwordInput, setPasswordInput] = useState("");
+  const [loginError, setLoginError] = useState(false); 
+const [loadingLogin, setLoadingLogin] = useState(false); 
   const { slug } = useParams(); 
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
@@ -16,9 +18,13 @@ function Cucina() {
     if (localStorage.getItem(sessionKey) === "true") setIsAuthorized(true);
   }, [slug]);
 
- const handleLogin = async (e) => {
+const handleLogin = async (e) => {
     e.preventDefault();
     if(!infoRistorante?.id) return;
+    
+    setLoadingLogin(true);
+    setLoginError(false);
+
     try {
         const res = await fetch(`${API_URL}/api/auth/station`, {
             method: 'POST',
@@ -30,11 +36,18 @@ function Cucina() {
             })
         });
         const data = await res.json();
+
         if(data.success) {
             setIsAuthorized(true);
             localStorage.setItem(`cucina_session_${slug}`, "true");
-        } else { alert("Password Errata"); }
-    } catch(err) { alert("Errore connessione"); }
+        } else {
+            setLoginError(true);
+        }
+    } catch(err) { 
+        alert("Errore connessione al server"); 
+    } finally { 
+        setLoadingLogin(false); 
+    }
 };
 
   const handleLogout = () => {
@@ -209,8 +222,32 @@ function Cucina() {
   };
 
   if (!infoRistorante) return <div style={{textAlign:'center', padding:50}}><h1>⏳ Caricamento...</h1></div>;
-  if (!isAuthorized) return <div style={{padding:50, textAlign:'center'}}>Login Required (Vedi codice originale per form)</div>; // (Ho abbreviato qui per leggibilità, usa il tuo form login)
-
+  if (!isAuthorized) return (
+    <div className="cucina-container" style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', flexDirection:'column', background:'#d35400'}}>
+        <div style={{background:'white', padding:'40px', borderRadius:'10px', width:'90%', maxWidth:'400px', textAlign:'center', boxShadow:'0 10px 30px rgba(0,0,0,0.3)'}}>
+            <h1 style={{margin:0, fontSize:'3rem'}}>👨‍🍳</h1>
+            <h2 style={{margin:'10px 0', color:'#2c3e50'}}>Login Cucina</h2>
+            <h3 style={{margin:'0 0 20px 0', color:'#7f8c8d', fontWeight:'normal'}}>{infoRistorante ? infoRistorante.ristorante : "Caricamento..."}</h3>
+            
+            <form onSubmit={handleLogin}>
+                <input 
+                  type="password" 
+                  placeholder="Password Cucina" 
+                  value={passwordInput} 
+                  onChange={e=>setPasswordInput(e.target.value)} 
+                  style={{
+                      width:'100%', padding:'15px', marginBottom:'15px', fontSize:'18px', 
+                      borderRadius:'5px', border: loginError ? '2px solid red' : '1px solid #ccc', boxSizing:'border-box', textAlign:'center'
+                  }}
+                />
+                {loginError && <div style={{color:'red', marginBottom:'10px', fontWeight:'bold'}}>Password Errata! ⛔</div>}
+                <button className="btn-invia" style={{width:'100%', padding:'15px', background:'#27ae60', border:'none', color:'white', borderRadius:'5px', fontSize:'18px', fontWeight:'bold', cursor:'pointer'}}>
+                    {loadingLogin ? "Verifica..." : "ENTRA IN CUCINA"}
+                </button>
+            </form>
+        </div>
+    </div>
+);
   return (
     <div className="cucina-container">
       <header style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 20px', background:'#fff', marginBottom:'20px', borderRadius:'8px'}}>
