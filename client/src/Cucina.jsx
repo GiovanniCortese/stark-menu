@@ -299,28 +299,23 @@ if (!section.locked) {
                                                             color: isServito ? '#aaa' : '#000'
                                                         }}>
                                                             {item.nome}
-                                                            // --- INSERISCI QUESTO ACCANTO O SOTTO {item.nome} ---
-<span style={{
-    fontSize:'1.1rem', fontWeight: isServito ? 'normal' : 'bold',
-    textDecoration: isServito ? 'line-through' : 'none',
-    color: isServito ? '#aaa' : '#000'
-}}>
-    {item.nome}
-</span>
-
-{/* BADGE VISIVO RIAPERTO */}
-{item.riaperto && item.stato === 'in_attesa' && (
-    <div style={{
-        display:'inline-block', marginLeft:'10px', 
-        background:'#c0392b', color:'white', 
-        padding:'2px 6px', borderRadius:'4px', 
-        fontSize:'0.7rem', fontWeight:'bold', textTransform:'uppercase',
-        boxShadow:'0 2px 4px rgba(0,0,0,0.2)'
+                                                        </span>
+                                                        {item.riaperto && item.stato === 'in_attesa' && (
+    <span style={{
+        display: 'inline-block',
+        marginLeft: '10px',
+        background: '#c0392b', // Rosso allarme
+        color: 'white',
+        padding: '2px 6px',
+        borderRadius: '4px',
+        fontSize: '0.7rem',
+        fontWeight: 'bold',
+        textTransform: 'uppercase',
+        verticalAlign: 'middle'
     }}>
         ⚠️ RIAPERTO DALLA CASSA
-    </div>
+    </span>
 )}
-                                                        </span>
                                                         {/* VARIANTI NEL TICKET CUCINA */}
                                                         {(() => {
                                                           try {
