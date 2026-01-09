@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - VERSIONE V55 (LOGO FULL WIDTH + MODIFICA SMART) 💎
+// client/src/Menu.jsx - VERSIONE V59 (WISH LIST / LISTA DESIDERI) ✨
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 
@@ -11,7 +11,7 @@ function Menu() {
   
   // --- STATI LOGICI ---
   const [isSuspended, setIsSuspended] = useState(false);
-  const [canOrder, setCanOrder] = useState(true);
+  const [canOrder, setCanOrder] = useState(true); // Se false -> Modalità Wish List
   
   // --- STATI CARRELLO E ORDINE ---
   const [carrello, setCarrello] = useState([]); 
@@ -47,11 +47,10 @@ function Menu() {
           setMenu(data.menu || []);
           setStyle(data.style || {});
           
-          // Blocco Abbonamento (Schermata Rossa)
           if(data.subscription_active === false) setIsSuspended(true);
           
-          // FIX QUI: COMBINIAMO I DUE BLOCCHI (Ristoratore + Super Admin)
-          // Se kitchen_active è false (blocco super admin), canOrder diventa false anche se ordini_abilitati è true.
+          // IMPOSTAZIONE STATO CUCINA
+          // Se chiusa, l'app entra in modalità "Wish List"
           setCanOrder(data.ordini_abilitati && data.kitchen_active);
 
           if(data.menu && data.menu.length > 0) {
@@ -85,9 +84,9 @@ function Menu() {
       return 3; 
   };
 
-  // --- 3. GESTIONE CARRELLO ---
+  // --- 3. GESTIONE CARRELLO (WISH LIST) ---
   const aggiungiAlCarrello = (piatto) => {
-      if(!canOrder) return alert("Gli ordini sono momentaneamente chiusi.");
+      // NOTA: Abbiamo rimosso il blocco if(!canOrder) per permettere la Wish List
       
       const tempId = Date.now() + Math.random();
       const defaultCourse = getDefaultCourse(piatto);
@@ -121,6 +120,8 @@ function Menu() {
 
   const inviaOrdine = async () => {
       if(carrello.length === 0) return;
+      if(!canOrder) return alert("Cucina Chiusa. Mostra la lista al cameriere."); // Sicurezza extra
+      
       if(!confirm(`Confermi l'ordine per il tavolo ${numeroTavolo}?`)) return;
 
       const payload = {
@@ -174,12 +175,11 @@ function Menu() {
   if(isSuspended) return <div style={{padding:50, textAlign:'center', color:'red', background: bg, minHeight:'100vh'}}><h1>⛔ SERVIZIO SOSPESO</h1><p>Contattare l'amministrazione.</p></div>;
   if(error) return <div style={{padding:50, textAlign:'center', color: text, background: bg, minHeight:'100vh'}}><h1>⚠️ Errore Caricamento</h1></div>;
 
-return (
+  return (
     <div style={{minHeight:'100vh', background: bg, color: text, fontFamily: font, paddingBottom:80}}>
       
-      {/* HEADER LOGO (FIX GRAFICA PC: MAX-WIDTH) */}
+      {/* HEADER LOGO FULL WIDTH */}
       <div style={{width:'100%', background: bg, marginBottom: 10}}>
-          {/* Questo contenitore limita la larghezza su PC ma resta full-width su Mobile */}
           <div style={{maxWidth: '600px', margin: '0 auto', width: '100%'}}>
               {style.logo ? (
                  <img src={style.logo} alt="Logo" style={{width:'100%', display:'block', objectFit:'cover'}} />
@@ -195,13 +195,28 @@ return (
                           Tavolo: <strong style={{color:'white', background: priceColor, padding:'2px 8px', borderRadius:'5px'}}>{numeroTavolo}</strong>
                       </span>
                   ) : (
-                    <span style={{background:'red', color:'white', padding:'5px 10px', borderRadius:'5px', fontWeight:'bold'}}>⛔ CHIUSO</span>
+                    // Messaggio differenziato per Wish List
+                    <span style={{background:'#f39c12', color:'black', padding:'5px 10px', borderRadius:'5px', fontWeight:'bold'}}>
+                        📝 LISTA DESIDERI ATTIVA (Cucina Chiusa)
+                    </span>
                   )}
               </div>
           </div>
       </div>
 
-      {/* NOTA: HO RIMOSSO IL MENU ORIZZONTALE DELLE CATEGORIE QUI */}
+      {/* CATEGORIE */}
+      <div style={{display:'flex', overflowX:'auto', gap:10, padding:'10px 20px', paddingBottom:5, scrollbarWidth:'none'}}>
+          {categorieUniche.map(cat => (
+              <button key={cat} onClick={() => setActiveCategory(cat)}
+                  style={{
+                      background: activeCategory === cat ? priceColor : '#444', color: 'white',
+                      border:'none', padding:'10px 20px', borderRadius:20, whiteSpace:'nowrap', flexShrink:0,
+                      fontWeight: activeCategory === cat ? 'bold' : 'normal',
+                      boxShadow: activeCategory === cat ? '0 4px 10px rgba(0,0,0,0.3)' : 'none'
+                  }}
+              >{cat}</button>
+          ))}
+      </div>
 
       {/* LISTA MENU A FISARMONICA */}
       <div style={{paddingBottom: '80px', marginTop: '10px', width: '100%', maxWidth: '600px', margin: '0 auto'}}> 
@@ -237,14 +252,13 @@ return (
                                     {(isSingleGroup || activeSubCategory === scKey) && (
                                         <div className="menu-list" style={{padding: '0', width: '100%'}}>
                                             {sottoCats[scKey].map((prodotto) => {
-                                                // 1. ANALISI VARIANTI
                                                 const variantiObj = typeof prodotto.varianti === 'string' ? JSON.parse(prodotto.varianti || '{}') : (prodotto.varianti || {});
                                                 const ingredientiStr = (variantiObj.base || []).join(', ');
                                                 const hasVarianti = (variantiObj.base && variantiObj.base.length > 0) || (variantiObj.aggiunte && variantiObj.aggiunte.length > 0);
 
                                                 return (
                                                 <div key={prodotto.id} className="card"
-                                                    // Click su card funziona SOLO se c'è foto
+                                                    // MODALE SEMPRE APRIBILE (anche per Wish List)
                                                     onClick={() => prodotto.immagine_url ? apriModale(prodotto) : null}
                                                     style={{ 
                                                         display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', 
@@ -257,46 +271,38 @@ return (
                                                     
                                                     <div className="info" style={{flex: 1}}>
                                                         <h3 style={{margin:'0 0 4px 0', fontSize:'16px', color: '#222'}}>{prodotto.nome}</h3>
-                                                        
                                                         {prodotto.descrizione && (<p style={{fontSize:'12px', color:'#666', margin:'0 0 4px 0', lineHeight:'1.2'}}>{prodotto.descrizione}</p>)}
-                                                        
-                                                        {/* INGREDIENTI BASE VISIBILI */}
                                                         {ingredientiStr && (
                                                             <p style={{fontSize:'11px', color:'#555', fontStyle:'italic', margin:'0 0 5px 0'}}>
                                                                 <span style={{fontWeight:'bold'}}>Ingredienti:</span> {ingredientiStr}
                                                             </p>
                                                         )}
-
                                                         <div style={{fontSize:'14px', fontWeight:'bold', color: priceColor}}>{Number(prodotto.prezzo).toFixed(2)} €</div>
                                                     </div>
                                                     
-                                                    {canOrder && (
-                                                        <div style={{display:'flex', gap:'5px', alignItems:'center'}}>
-                                                            
-                                                            {/* TASTO MODIFICA (SOLO SE CI SONO VARIANTI) */}
-                                                            {hasVarianti && (
-                                                                <button 
-                                                                    onClick={(e) => { e.stopPropagation(); apriModale(prodotto); }}
-                                                                    style={{
-                                                                        background:'transparent', border:'1px solid #ccc', color:'#555',
-                                                                        borderRadius:'5px', padding:'5px 8px', fontSize:'12px', cursor:'pointer', fontWeight:'bold'
-                                                                    }}
-                                                                >
-                                                                    Modifica ✏️
-                                                                </button>
-                                                            )}
-
+                                                    {/* PULSANTI SEMPRE VISIBILI (Anche in Wish List) */}
+                                                    <div style={{display:'flex', gap:'5px', alignItems:'center'}}>
+                                                        {hasVarianti && (
                                                             <button 
-                                                                onClick={(e) => { e.stopPropagation(); aggiungiAlCarrello(prodotto); }} 
-                                                                style={{ 
-                                                                    background:'#f0f0f0', color:'#333', borderRadius:'50%', width:'35px', height:'35px', 
-                                                                    border:'none', fontSize:'22px', display:'flex', alignItems:'center', justifyContent:'center', cursor: 'pointer' 
+                                                                onClick={(e) => { e.stopPropagation(); apriModale(prodotto); }}
+                                                                style={{
+                                                                    background:'transparent', border:'1px solid #ccc', color:'#555',
+                                                                    borderRadius:'5px', padding:'5px 8px', fontSize:'12px', cursor:'pointer', fontWeight:'bold'
                                                                 }}
                                                             >
-                                                                +
+                                                                Modifica ✏️
                                                             </button>
-                                                        </div>
-                                                    )}
+                                                        )}
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); aggiungiAlCarrello(prodotto); }} 
+                                                            style={{ 
+                                                                background:'#f0f0f0', color:'#333', borderRadius:'50%', width:'35px', height:'35px', 
+                                                                border:'none', fontSize:'22px', display:'flex', alignItems:'center', justifyContent:'center', cursor: 'pointer' 
+                                                            }}
+                                                        >
+                                                            +
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             )})}
                                         </div>
@@ -347,7 +353,7 @@ return (
                         <p style={{color:'#666', fontSize:'1rem', lineHeight:'1.4'}}>{selectedPiatto.descrizione}</p>
 
                         <div style={{marginTop:'20px', borderTop:'1px solid #eee', paddingTop:'15px'}}>
-                            {/* RIMOZIONI */}
+                            {/* RIMOZIONI (SEMPRE ATTIVE PER WISH LIST) */}
                             {baseList.length > 0 && (
                                 <div style={{marginBottom:'20px'}}>
                                     <h4 style={{margin:'0 0 10px 0', color:'#333'}}>Ingredienti (Togli se non vuoi)</h4>
@@ -378,7 +384,7 @@ return (
                                 </div>
                             )}
 
-                            {/* AGGIUNTE */}
+                            {/* AGGIUNTE (SEMPRE ATTIVE PER WISH LIST) */}
                             {addList.length > 0 && (
                                 <div>
                                     <h4 style={{margin:'0 0 10px 0', color:'#333'}}>Aggiungi Extra 😋</h4>
@@ -409,6 +415,7 @@ return (
                         </div>
                     </div>
 
+                    {/* FOOTER AZIONE */}
                     <div style={{padding:'20px', background:'#f9f9f9', borderTop:'1px solid #ddd', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                         <div style={{fontSize:'1.5rem', fontWeight:'bold', color: '#000'}}>
                             {prezzoFinale.toFixed(2)} €
@@ -436,7 +443,8 @@ return (
                                 fontWeight:'bold', cursor:'pointer', display:'flex', alignItems:'center', gap:'10px'
                             }}
                         >
-                            AGGIUNGI AL CARRELLO
+                            {/* TASTO CON TESTO DINAMICO */}
+                            {canOrder ? "AGGIUNGI AL CARRELLO" : "AGGIUNGI ALLA LISTA"}
                         </button>
                     </div>
 
@@ -448,14 +456,14 @@ return (
       )}
 
       {/* BARRA CARRELLO */}
-      {canOrder && carrello.length > 0 && !showCheckout && (
+      {carrello.length > 0 && !showCheckout && (
         <div className="carrello-bar">
           <div className="totale">
               <span>{carrello.length} prodotti</span>
               <strong>{carrello.reduce((a,b)=>a+Number(b.prezzo),0).toFixed(2)} €</strong>
           </div>
-          <button onClick={() => setShowCheckout(true)} className="btn-invia" style={{background:'#f1c40f', color:'black'}}>
-              VEDI ORDINE 📝
+          <button onClick={() => setShowCheckout(true)} className="btn-invia" style={{background: canOrder ? '#f1c40f' : '#f39c12', color:'black'}}>
+              {canOrder ? "VEDI ORDINE 📝" : "VEDI LISTA 👀"}
           </button>
         </div>
       )}
@@ -469,7 +477,7 @@ return (
           }}>
               
               <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px', borderBottom:`1px solid ${style?.text||'#ccc'}`, paddingBottom:'10px'}}>
-                  <h2 style={{color: titleColor, margin:0}}>Riepilogo Ordine 📝</h2>
+                  <h2 style={{color: titleColor, margin:0}}>{canOrder ? "Riepilogo Ordine 📝" : "La tua Lista 📝"}</h2>
                   <button onClick={() => setShowCheckout(false)} style={{background:'transparent', border:'none', color: titleColor, fontSize:'24px', cursor:'pointer'}}>✕</button>
               </div>
 
@@ -539,7 +547,23 @@ return (
                           <span>TOTALE:</span>
                           <strong style={{color: priceColor}}>{carrello.reduce((a,b)=>a+Number(b.prezzo),0).toFixed(2)} €</strong>
                       </div>
-                      {carrello.length > 0 && <button onClick={inviaOrdine} style={{width:'100%', padding:'15px', fontSize:'18px', background: '#159709ff', color:'white', border:`1px solid ${style?.text||'#ccc'}`, borderRadius:'30px', fontWeight:'bold', cursor:'pointer'}}>CONFERMA E INVIA 🚀</button>}
+                      
+                      {/* --- PULSANTE CONFERMA: VISIBILE SOLO SE CUCINA APERTA --- */}
+                      {carrello.length > 0 && (
+                          canOrder ? (
+                            <button onClick={inviaOrdine} style={{width:'100%', padding:'15px', fontSize:'18px', background: '#159709ff', color:'white', border:`1px solid ${style?.text||'#ccc'}`, borderRadius:'30px', fontWeight:'bold', cursor:'pointer'}}>CONFERMA E INVIA 🚀</button>
+                          ) : (
+                            <div style={{
+                                width:'100%', padding:'15px', textAlign:'center', 
+                                background: '#fcf3cf', color:'#d35400', 
+                                border:'2px dashed #f39c12', borderRadius:'10px', fontWeight:'bold', fontSize:'1.1rem'
+                            }}>
+                                🚫 CUCINA CHIUSA<br/>
+                                <span style={{fontSize:'0.9rem', fontWeight:'normal', color:'#333'}}>Mostra questa lista al cameriere per ordinare.</span>
+                            </div>
+                          )
+                      )}
+                      
                       <button onClick={() => setShowCheckout(false)} style={{width:'100%', padding:'15px', marginTop:'10px', background:'transparent', border:`1px solid ${style?.text||'#ccc'}`, color: style?.text||'#ccc', borderRadius:'30px', cursor:'pointer'}}>Torna al Menu</button>
                   </div>
               </div>
