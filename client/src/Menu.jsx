@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - VERSIONE V41 (BLOCCO CLIENTE ABBONAMENTO) 🔒
+// client/src/Menu.jsx - VERSIONE V51 (FIX DEFINITIVO) ✨
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 
@@ -23,7 +23,6 @@ function Menu() {
   const [selectedPiatto, setSelectedPiatto] = useState(null);
   const [showCheckout, setShowCheckout] = useState(false);
   
-
   // --- PARAMETRI URL ---
   const { slug } = useParams();
   const currentSlug = slug || 'pizzeria-stark';
@@ -43,16 +42,15 @@ function Menu() {
             return; 
         }
 
-        // 1. CONTROLLO ABBONAMENTO (subscription_active viene dal server V40)
-        // Se false, l'abbonamento è scaduto -> BLOCCO TOTALE
+        // 1. CONTROLLO ABBONAMENTO
         if (data.subscription_active === false) {
             setIsSuspended(true);
-            setRistorante(data.ristorante); // Impostiamo il nome per mostrarlo nella schermata di blocco
+            setRistorante(data.ristorante);
             if (data.style) setStyle(data.style);
-            return; // Fermiamo qui, non carichiamo il resto
+            return;
         }
 
-        // 2. CONTROLLO CUCINA (ordini_abilitati viene dal server V40 combinando Admin e Owner)
+        // 2. CONTROLLO CUCINA
         setCanOrder(data.ordini_abilitati);
 
         // 3. CARICAMENTO DATI NORMALE
@@ -88,16 +86,7 @@ function Menu() {
       );
   }
 
-  // --- Logica Uscita (BAR = 0) ---
-  const getDefaultCourse = (categoria, isBar) => {
-      if (isBar) return 0; // Bar non ha priorità
-      const cat = categoria.toLowerCase();
-      if (cat.includes('antipast') || cat.includes('fritti') || cat.includes('stuzzicheri')) return 1;
-      if (cat.includes('dessert') || cat.includes('dolci')) return 3;
-      return 2;
-  };
-
-  // --- 2. LOGICA "SMART COURSE" (NUOVA) ---
+  // --- 2. LOGICA "SMART COURSE" ---
   const getDefaultCourse = (piatto) => {
       if (piatto.categoria_is_bar) return 0; // Bar separato
       
@@ -112,7 +101,7 @@ function Menu() {
       return 3; // Default (es. contorni vanno col secondo)
   };
 
-  // --- 3. GESTIONE CARRELLO AGGIORNATA ---
+  // --- 3. GESTIONE CARRELLO ---
   const aggiungiAlCarrello = (piatto) => {
       if(!canOrder) return alert("Gli ordini sono momentaneamente chiusi.");
       
@@ -178,7 +167,7 @@ function Menu() {
       } catch(e) { alert("Errore connessione server."); }
   };
 
-  if (error) return <div className="container" style={{padding:'50px', textAlign:'center', color:'white'}}><h1>🚫 Ristorante non trovato (404)</h1></div>;
+  if (error) return <div style={{padding:'50px', textAlign:'center', color:'white', background:'#222'}}><h1>🚫 Ristorante non trovato (404)</h1></div>;
 
   const categorieOrdinate = [...new Set(menu.map(p => p.categoria))];
 
@@ -213,7 +202,6 @@ function Menu() {
             <h1 style={{color: titleColor, fontSize:'2.5rem', margin:'0 0 10px 0'}}>{ristorante}</h1>
         )}
         
-        {/* LOGICA VISUALIZZAZIONE STATO CUCINA */}
         {canOrder ? (
             <p style={{color: style?.text || '#ccc'}}>
                 Tavolo: <strong style={{fontSize:'1.2rem', color:'white'}}>{numeroTavolo}</strong>
@@ -225,7 +213,7 @@ function Menu() {
         )}
       </header>
 
-      {/* --- MODALE SCHEDA PIATTO DETTAGLIATA (MODIFICATA) --- */}
+      {/* --- MODALE SCHEDA PIATTO DETTAGLIATA --- */}
       {selectedPiatto && (
         <div style={{
             position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -233,31 +221,21 @@ function Menu() {
             display: 'flex', alignItems: 'center', justifyContent: 'center', padding:'10px'
         }} onClick={() => setSelectedPiatto(null)}>
             <div style={{
-                background: 'white', // Sfondo sempre bianco
-                color: '#000',       // Testo sempre nero
-                borderRadius: '10px', overflow: 'hidden',
-                maxWidth: '600px',   // Contenitore più largo
-                width: '100%', maxHeight:'95vh', overflowY:'auto',
+                background: 'white', color: '#000', borderRadius: '10px', overflow: 'hidden',
+                maxWidth: '600px', width: '100%', maxHeight:'95vh', overflowY:'auto',
                 boxShadow: '0 10px 30px rgba(0,0,0,0.5)', position:'relative'
             }} onClick={e => e.stopPropagation()}>
                 
-                {/* Immagine */}
                 {selectedPiatto.immagine_url && (
                     <div style={{width:'100%', background:'#000', textAlign:'center'}}>
                         <img 
                             src={selectedPiatto.immagine_url} 
                             alt={selectedPiatto.nome} 
-                            style={{
-                                maxWidth:'100%', 
-                                maxHeight:'50vh', // Altezza massima dinamica (non taglia)
-                                objectFit:'contain', // Mostra tutta la foto
-                                display:'block', margin:'0 auto'
-                            }} 
+                            style={{maxWidth:'100%', maxHeight:'50vh', objectFit:'contain', display:'block', margin:'0 auto'}} 
                         />
                     </div>
                 )}
 
-                {/* Contenuto */}
                 <div style={{padding:'25px'}}>
                     <h2 style={{margin:'0 0 10px 0', fontSize:'1.8rem', color: '#000', fontWeight:'800'}}>
                         {selectedPiatto.nome}
@@ -274,11 +252,9 @@ function Menu() {
                             <button 
                                 onClick={() => aggiungiAlCarrello(selectedPiatto)}
                                 style={{
-                                    background: priceColor, // Il bottone mantiene il colore del tema per risaltare
-                                    color:'white', border:'none', 
-                                    padding:'15px 30px', borderRadius:'30px', 
-                                    fontSize:'1.1rem', fontWeight:'bold', 
-                                    display:'flex', alignItems:'center', gap:'10px', cursor:'pointer'
+                                    background: priceColor, color:'white', border:'none', 
+                                    padding:'15px 30px', borderRadius:'30px', fontSize:'1.1rem', 
+                                    fontWeight:'bold', display:'flex', alignItems:'center', gap:'10px', cursor:'pointer'
                                 }}
                             >
                                 AGGIUNGI
@@ -287,7 +263,6 @@ function Menu() {
                     </div>
                 </div>
 
-                {/* Tasto Chiudi */}
                 <button 
                     onClick={() => setSelectedPiatto(null)}
                     style={{
@@ -302,7 +277,7 @@ function Menu() {
         </div>
       )}
 
-      {/* BARRA CARRELLO - Visibile solo se si può ordinare */}
+      {/* BARRA CARRELLO */}
       {canOrder && carrello.length > 0 && !showCheckout && (
         <div className="carrello-bar">
           <div className="totale">
@@ -350,24 +325,21 @@ function Menu() {
                                         <div className="menu-list" style={{padding: '0', width: '100%'}}>
                                             {sottoCats[scKey].map((prodotto) => (
                                                 <div key={prodotto.id} 
-    className="card" 
-    // MODIFICA QUI: Se ha la foto apre la scheda, altrimenti NULL (non fa nulla)
-    onClick={() => prodotto.immagine_url ? setSelectedPiatto(prodotto) : null} 
-    style={{ 
-        display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', 
-        // Il cursore diventa una manina SOLO se c'è la foto
-        cursor: prodotto.immagine_url ? 'pointer' : 'default', 
-        backgroundColor: 'white', marginBottom: '1px', borderRadius: '0' 
-    }}
->
+                                                    className="card" 
+                                                    onClick={() => prodotto.immagine_url ? setSelectedPiatto(prodotto) : null} 
+                                                    style={{ 
+                                                        display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', 
+                                                        cursor: prodotto.immagine_url ? 'pointer' : 'default', 
+                                                        backgroundColor: 'white', marginBottom: '1px', borderRadius: '0' 
+                                                    }}
+                                                >
                                                     {prodotto.immagine_url && <img src={prodotto.immagine_url} style={{width:'70px', height:'70px', objectFit:'cover', borderRadius:'5px', flexShrink: 0}} />}
                                                     <div className="info" style={{flex: 1}}>
-                                                        <h3 style={{margin:'0 0 4px 0', fontSize:'16px', color: 'titleColor'}}>{prodotto.nome}</h3>
+                                                        <h3 style={{margin:'0 0 4px 0', fontSize:'16px', color: titleColor, color: '#222'}}>{prodotto.nome}</h3>
                                                         {prodotto.descrizione && (<p style={{fontSize:'12px', color:'#666', margin:'0 0 4px 0', lineHeight:'1.2'}}>{prodotto.descrizione}</p>)}
                                                         <div style={{fontSize:'14px', fontWeight:'bold', color: priceColor}}>{prodotto.prezzo} €</div>
                                                     </div>
                                                     
-                                                    {/* BOTTONE AGGIUNGI: SOLO SE canOrder È TRUE */}
                                                     {canOrder && (
                                                         <button onClick={(e) => { e.stopPropagation(); aggiungiAlCarrello(prodotto); }} style={{ background:'#f0f0f0', color:'#333', borderRadius:'50%', width:'32px', height:'32px', border:'none', fontSize:'20px', display:'flex', alignItems:'center', justifyContent:'center', cursor: 'pointer' }}>+</button>
                                                     )}
@@ -384,7 +356,7 @@ function Menu() {
         ))}
       </div>
 
-      {/* --- CHECKOUT (LOGICA DINAMICA INTELLIGENTE) --- */}
+      {/* --- CHECKOUT --- */}
       {showCheckout && (
           <div style={{
               position:'fixed', top:0, left:0, right:0, bottom:0, 
@@ -420,14 +392,12 @@ function Menu() {
 
                   {/* --- BLOCCO 2: CUCINA INTELLIGENTE (SMART SORTING) --- */}
                   {(() => {
-                      // Trova quali portate ci sono e le ordina
                       const itemsCucina = carrello.filter(i => !i.is_bar);
                       const coursePresenti = [...new Set(itemsCucina.map(i => i.course))].sort();
-                      const coloriPortata = ['#27ae60', '#f1c40f', '#e67e22', '#c0392b']; // Verde, Giallo, Arancio, Rosso
+                      const coloriPortata = ['#27ae60', '#f1c40f', '#e67e22', '#c0392b']; 
                       
                       return coursePresenti.map((courseNum, index) => (
                           <div key={courseNum} style={{marginBottom:'25px'}}>
-                              {/* LABEL DINAMICA: Usa l'indice (index+1) per scrivere "1ª PORTATA" */}
                               <h3 style={{
                                   margin:'0 0 10px 0', 
                                   color: coloriPortata[index] || '#ccc', 
