@@ -1,4 +1,4 @@
-// client/src/Cucina.jsx - VERSIONE V39 (FILTRO PACCHETTI COMPLETATI) 👨‍🍳
+// client/src/Cucina.jsx - VERSIONE V4 (4 USCITE + DESSERT) 👨‍🍳
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -37,35 +37,24 @@ function Cucina() {
         .then(r=>r.json())
         .then(data => {
             const nuoviOrdini = data.nuovi_ordini || [];
-            const gruppiTavolo = {}; // Contenitore per raggruppare i tavoli
+            const gruppiTavolo = {}; 
 
             nuoviOrdini.forEach(ord => {
-                // --- 1. FILTRO PACCHETTO "GIÀ MANGIATO" ---
-                // Se questo specifico invio è stato completato, lo ignoriamo.
-                
-                // Prendiamo solo i cibi (escludiamo il Bar)
-                const itemsDiCompetenza = Array.isArray(ord.prodotti) 
-                    ? ord.prodotti.filter(p => !p.is_bar) 
-                    : [];
-
-                // Se ci sono cibi e sono TUTTI serviti, saltiamo il giro (return)
+                // FILTRO: Se tutto servito, ignora
+                const itemsDiCompetenza = Array.isArray(ord.prodotti) ? ord.prodotti.filter(p => !p.is_bar) : [];
                 const isTuttoServito = itemsDiCompetenza.length > 0 && itemsDiCompetenza.every(p => p.stato === 'servito');
-                
                 if (isTuttoServito) return; 
 
-                // --- 2. LOGICA DI RAGGRUPPAMENTO TAVOLO ---
                 const t = ord.tavolo;
                 if(!gruppiTavolo[t]) gruppiTavolo[t] = { tavolo: t, items: [], orarioMin: ord.data_ora };
                 
-                // Manteniamo l'orario del primo ordine attivo
                 if(new Date(ord.data_ora) < new Date(gruppiTavolo[t].orarioMin)) {
                     gruppiTavolo[t].orarioMin = ord.data_ora;
                 }
 
                 if(Array.isArray(ord.prodotti)) {
                     ord.prodotti.forEach((prod, idx) => {
-                        // Escludiamo il Bar dalla vista Cucina
-                        if (prod.is_bar) return;
+                        if (prod.is_bar) return; // Salta Bar
 
                         gruppiTavolo[t].items.push({
                             ...prod,
@@ -77,17 +66,13 @@ function Cucina() {
                 }
             });
 
-            // Convertiamo in array e filtriamo tavoli vuoti
             const listaTavoli = Object.values(gruppiTavolo).filter(gruppo => {
                 if (gruppo.items.length === 0) return false;
-                // Controllo di sicurezza finale (anche se il filtro sopra fa già il grosso del lavoro)
                 const tuttiFiniti = gruppo.items.every(p => p.stato === 'servito');
                 return !tuttiFiniti;
             });
 
-            // Ordiniamo per orario
             listaTavoli.sort((a,b) => new Date(a.orarioMin) - new Date(b.orarioMin));
-
             setTavoli(listaTavoli);
         })
         .catch(e => console.error("Polling error:", e));
@@ -101,7 +86,6 @@ function Cucina() {
       } 
   }, [isAuthorized, infoRistorante]);
 
-  // --- AZIONE: SEGNA COME SERVITO ---
   const segnaPiattoServito = async (targetItems) => {
       const updatesPorOrdine = {};
 
@@ -121,13 +105,11 @@ function Cucina() {
           const oraAttuale = new Date().toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'});
           
           let nomePiattoLog = "";
-
           data.indicesToUpdate.forEach(idx => {
               nuoviProdotti[idx].stato = 'servito';
               nuoviProdotti[idx].ora_servizio = oraAttuale;
               nomePiattoLog = nuoviProdotti[idx].nome;
           });
-
           const logMsg = `[CUCINA 👨‍🍳] HA SERVITO: ${nomePiattoLog} (x${data.indicesToUpdate.length})`;
 
           return fetch(`${API_URL}/api/ordine/${orderId}/update-items`, {
@@ -141,29 +123,38 @@ function Cucina() {
       aggiorna();
   };
 
-  // --- LOGICA CORE: RAGGRUPPAMENTO PER USCITA ---
+  // --- LOGICA CORE: RAGGRUPPAMENTO PER 4 USCITE ---
   const processaTavolo = (items) => {
-      const courses = { 1: [], 2: [], 3: [] };
+      // ORA GESTIAMO 4 USCITE (1, 2, 3, 4)
+      const courses = { 1: [], 2: [], 3: [], 4: [] };
       
       items.forEach(p => {
-          const c = p.course || 2; 
+          let c = p.course || 2; 
+          // Sicurezza: se per errore arriva 0 o >4, lo mettiamo in 2 o 4
+          if(c < 1) c = 1; 
+          if(c > 4) c = 4;
+          
           if(!courses[c]) courses[c] = [];
           courses[c].push(p);
       });
 
+      // Funzione helper: una portata è completa se è vuota o tutti i piatti sono serviti
       const isCourseComplete = (courseNum) => {
           if (!courses[courseNum] || courses[courseNum].length === 0) return true; 
           return courses[courseNum].every(p => p.stato === 'servito');
       };
 
+      // NUOVA LOGICA DI BLOCCO A CATENA
       const courseStatus = {
           1: { locked: false, completed: isCourseComplete(1) },
           2: { locked: !isCourseComplete(1), completed: isCourseComplete(2) },
-          3: { locked: !isCourseComplete(1) || !isCourseComplete(2), completed: isCourseComplete(3) }
+          3: { locked: !isCourseComplete(1) || !isCourseComplete(2), completed: isCourseComplete(3) },
+          4: { locked: !isCourseComplete(1) || !isCourseComplete(2) || !isCourseComplete(3), completed: isCourseComplete(4) }
       };
 
       const finalStructure = [];
-      [1, 2, 3].forEach(cNum => {
+      // CICLIAMO SU 1, 2, 3, 4
+      [1, 2, 3, 4].forEach(cNum => {
           if (courses[cNum].length === 0) return;
 
           const groups = [];
@@ -196,8 +187,6 @@ function Cucina() {
       return finalStructure;
   };
 
-  // --- RENDERING ---
-  
   if (!infoRistorante) return <div style={{textAlign:'center', padding:50}}><h1>⏳ Caricamento...</h1></div>;
 
   if (!isAuthorized) return (
@@ -241,12 +230,14 @@ function Cucina() {
                     <div className="ticket-body" style={{textAlign:'left', paddingBottom:'5px'}}>
                         
                         {strutturaOrdine.map(section => {
+                            // GESTIONE COLORI E TITOLI PER 4 CORSE
                             let headerColor = "#7f8c8d"; let headerBg = "#ecf0f1"; let title = `${section.courseNum}ª USCITA`;
                             
                             if (!section.locked) {
-                                if(section.courseNum === 1) { headerColor = "#27ae60"; headerBg = "#e8f8f5"; title += " (INIZIARE)"; }
-                                if(section.courseNum === 2) { headerColor = "#f39c12"; headerBg = "#fef9e7"; title += " (A SEGUIRE)"; }
-                                if(section.courseNum === 3) { headerColor = "#c0392b"; headerBg = "#f9ebea"; title += " (DESSERT)"; }
+                                if(section.courseNum === 1) { headerColor = "#27ae60"; headerBg = "#e8f8f5"; title += " (ANTIPASTI)"; }
+                                if(section.courseNum === 2) { headerColor = "#f39c12"; headerBg = "#fef9e7"; title += " (PRIMI)"; }
+                                if(section.courseNum === 3) { headerColor = "#d35400"; headerBg = "#fdebd0"; title += " (SECONDI/PIZZE)"; }
+                                if(section.courseNum === 4) { headerColor = "#8e44ad"; headerBg = "#f4ecf7"; title += " (DESSERT)"; } // NUOVO COLORE DESSERT
                             } else { title += " (IN ATTESA)"; }
 
                             return (
@@ -304,6 +295,18 @@ function Cucina() {
                                                         }}>
                                                             {item.nome}
                                                         </span>
+                                                        {/* VARIANTI NEL TICKET CUCINA */}
+                                                        {(() => {
+                                                          try {
+                                                            if(item.varianti_scelte) {
+                                                              let note = [];
+                                                              if(item.varianti_scelte.rimozioni?.length) note.push("No: "+item.varianti_scelte.rimozioni.join(', '));
+                                                              if(item.varianti_scelte.aggiunte?.length) note.push("+: "+item.varianti_scelte.aggiunte.map(a=>a.nome).join(', '));
+                                                              if(note.length>0) return <div style={{fontSize:'0.85rem', color:'#d35400', fontStyle:'italic'}}>{note.join(' | ')}</div>
+                                                            }
+                                                          } catch(e){}
+                                                        })()}
+
                                                         {!item.isMyStation && (
                                                             <span style={{fontSize:'0.7rem', marginLeft:'8px', background:'#bdc3c7', color:'white', padding:'2px 4px', borderRadius:'3px'}}>
                                                                 {item.stationName}

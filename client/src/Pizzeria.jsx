@@ -1,4 +1,4 @@
-// client/src/Pizzeria.jsx - VERSIONE V36 (TAVOLO UNIFICATO + NO BAR) 🍕
+// client/src/Pizzeria.jsx - VERSIONE V4 (4 USCITE + DESSERT) 🍕
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -40,21 +40,13 @@ function Pizzeria() {
             const gruppiTavolo = {};
 
             nuoviOrdini.forEach(ord => {
-                // --- MODIFICA FONDAMENTALE: FILTRO "PACCHETTO CONCLUSO" ---
-                // 1. Prendiamo solo i cibi (escludiamo il Bar che non ci interessa)
                 const itemsDiCompetenza = Array.isArray(ord.prodotti) 
                     ? ord.prodotti.filter(p => !p.is_bar) 
                     : [];
 
-                // 2. Controlliamo se questo specifico invio è TUTTO servito
-                // (Se itemsDiCompetenza è vuoto, è probabilmente solo bar, quindi lo ignoriamo o meno a seconda della tua logica. Qui assumiamo che se è > 0 controlliamo lo stato)
                 const isTuttoServito = itemsDiCompetenza.length > 0 && itemsDiCompetenza.every(p => p.stato === 'servito');
-
-                // 3. SE È TUTTO SERVITO, SALTIAMO QUESTO ORDINE (RETURN)
-                // Così non verrà aggiunto alla lista del tavolo e sparirà dallo schermo.
                 if (isTuttoServito) return; 
 
-                // --- DA QUI IN POI È LA LOGICA STANDARD ---
                 const t = ord.tavolo;
                 if(!gruppiTavolo[t]) gruppiTavolo[t] = { tavolo: t, items: [], orarioMin: ord.data_ora };
                 
@@ -64,7 +56,6 @@ function Pizzeria() {
 
                 if(Array.isArray(ord.prodotti)) {
                     ord.prodotti.forEach((prod, idx) => {
-                        // --- FILTRO BAR: SE È BAR, LO SALTIAMO COMPLETAMENTE ---
                         if (prod.is_bar) return;
 
                         gruppiTavolo[t].items.push({
@@ -79,7 +70,6 @@ function Pizzeria() {
 
             const listaTavoli = Object.values(gruppiTavolo).filter(gruppo => {
                 if (gruppo.items.length === 0) return false;
-                // Nascondi se tutto servito
                 const tuttiFiniti = gruppo.items.every(p => p.stato === 'servito');
                 return !tuttiFiniti;
             });
@@ -90,15 +80,6 @@ function Pizzeria() {
         .catch(e => console.error("Polling error:", e));
   };
 
-  useEffect(() => { 
-      if(isAuthorized && infoRistorante) { 
-          aggiorna(); 
-          const i = setInterval(aggiorna, 2000); 
-          return () => clearInterval(i); 
-      } 
-  }, [isAuthorized, infoRistorante]);
-
-  // --- AZIONE: SEGNA PIZZA PRONTA ---
   const segnaPizzaPronta = async (targetItems) => {
       const updatesPorOrdine = {};
 
@@ -137,11 +118,13 @@ function Pizzeria() {
       aggiorna();
   };
 
-  // --- LOGICA CORE ---
+  // --- LOGICA CORE: 4 USCITE PER PIZZERIA ---
   const processaTavolo = (items) => {
-      const courses = { 1: [], 2: [], 3: [] };
+      const courses = { 1: [], 2: [], 3: [], 4: [] };
       items.forEach(p => {
-          const c = p.course || 2; 
+          let c = p.course || 2; 
+          if(c < 1) c = 1; if(c > 4) c = 4;
+          
           if(!courses[c]) courses[c] = [];
           courses[c].push(p);
       });
@@ -151,14 +134,16 @@ function Pizzeria() {
           return courses[courseNum].every(p => p.stato === 'servito');
       };
 
+      // BLOCCO A CATENA
       const courseStatus = {
           1: { locked: false, completed: isCourseComplete(1) },
           2: { locked: !isCourseComplete(1), completed: isCourseComplete(2) },
-          3: { locked: !isCourseComplete(1) || !isCourseComplete(2), completed: isCourseComplete(3) }
+          3: { locked: !isCourseComplete(1) || !isCourseComplete(2), completed: isCourseComplete(3) },
+          4: { locked: !isCourseComplete(1) || !isCourseComplete(2) || !isCourseComplete(3), completed: isCourseComplete(4) }
       };
 
       const finalStructure = [];
-      [1, 2, 3].forEach(cNum => {
+      [1, 2, 3, 4].forEach(cNum => {
           if (courses[cNum].length === 0) return;
 
           const groups = [];
@@ -174,7 +159,7 @@ function Pizzeria() {
                       key,
                       count: 1,
                       sourceItems: [p],
-                      isMyStation: p.is_pizzeria, // PIZZERIA: mio se È pizzeria
+                      isMyStation: p.is_pizzeria, 
                       stationName: p.is_pizzeria ? "PIZZERIA" : "CUCINA"
                   });
               }
@@ -189,7 +174,6 @@ function Pizzeria() {
       return finalStructure;
   };
 
-  // --- RENDERING ROSSO ---
   if (!infoRistorante) return <div style={{textAlign:'center', padding:50}}><h1>⏳ Caricamento Pizzeria...</h1></div>;
 
   if (!isAuthorized) return (
@@ -235,9 +219,10 @@ function Pizzeria() {
                             let headerColor = "#7f8c8d"; let headerBg = "#ecf0f1"; let title = `${section.courseNum}ª USCITA`;
                             
                             if (!section.locked) {
-                                if(section.courseNum === 1) { headerColor = "#27ae60"; headerBg = "#e8f8f5"; title += " (INIZIARE)"; }
-                                if(section.courseNum === 2) { headerColor = "#d35400"; headerBg = "#fdebd0"; title += " (A SEGUIRE)"; }
-                                if(section.courseNum === 3) { headerColor = "#c0392b"; headerBg = "#f9ebea"; title += " (DESSERT)"; }
+                                if(section.courseNum === 1) { headerColor = "#27ae60"; headerBg = "#e8f8f5"; title += " (ANTIPASTI)"; }
+                                if(section.courseNum === 2) { headerColor = "#d35400"; headerBg = "#fdebd0"; title += " (PRIMI)"; }
+                                if(section.courseNum === 3) { headerColor = "#c0392b"; headerBg = "#f9ebea"; title += " (PIZZE/SECONDI)"; }
+                                if(section.courseNum === 4) { headerColor = "#8e44ad"; headerBg = "#f4ecf7"; title += " (DESSERT)"; }
                             } else { title += " (IN ATTESA)"; }
 
                             return (
@@ -295,6 +280,19 @@ function Pizzeria() {
                                                         }}>
                                                             {item.nome}
                                                         </span>
+                                                        
+                                                        {/* VARIANTI NEL TICKET PIZZERIA */}
+                                                        {(() => {
+                                                          try {
+                                                            if(item.varianti_scelte) {
+                                                              let note = [];
+                                                              if(item.varianti_scelte.rimozioni?.length) note.push("No: "+item.varianti_scelte.rimozioni.join(', '));
+                                                              if(item.varianti_scelte.aggiunte?.length) note.push("+: "+item.varianti_scelte.aggiunte.map(a=>a.nome).join(', '));
+                                                              if(note.length>0) return <div style={{fontSize:'0.85rem', color:'#d35400', fontStyle:'italic'}}>{note.join(' | ')}</div>
+                                                            }
+                                                          } catch(e){}
+                                                        })()}
+
                                                         {!item.isMyStation && (
                                                             <span style={{fontSize:'0.7rem', marginLeft:'8px', background:'#bdc3c7', color:'white', padding:'2px 4px', borderRadius:'3px'}}>
                                                                 {item.stationName}
