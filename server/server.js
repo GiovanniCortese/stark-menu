@@ -210,6 +210,21 @@ app.put('/api/ristorante/style/:id', async (req, res) => {
 //           API GENERICHE E ADMIN
 // ==========================================
 
+// --- API STORICO CASSA (MANCAVA QUESTA!) ---
+app.get('/api/cassa/storico/:ristorante_id', async (req, res) => {
+    try {
+        // Prende gli ultimi 50 ordini pagati
+        const r = await pool.query("SELECT * FROM ordini WHERE ristorante_id = $1 AND stato = 'pagato' ORDER BY data_ora DESC LIMIT 50", [req.params.ristorante_id]);
+        
+        const ordini = r.rows.map(o => {
+            try { return { ...o, prodotti: JSON.parse(o.prodotti) }; } 
+            catch { return { ...o, prodotti: [] }; }
+        });
+        
+        res.json(ordini);
+    } catch (e) { res.status(500).json({ error: "Err" }); }
+});
+
 app.get('/api/ristorante/config/:id', async (req, res) => {
     try {
         const r = await pool.query('SELECT * FROM ristoranti WHERE id = $1', [req.params.id]);

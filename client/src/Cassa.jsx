@@ -1,4 +1,4 @@
-// client/src/Cassa.jsx - VERSIONE V33 (BAR ULTIMO + TASTO ESCI) 💶
+// client/src/Cassa.jsx - VERSIONE V34 (LOGIN FIX + LOG + BAR ULTIMO) 💶
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -25,7 +25,6 @@ function Cassa() {
     else alert("Password Errata");
   };
 
-  // NUOVA FUNZIONE LOGOUT
   const handleLogout = () => {
       if(confirm("Vuoi uscire dalla Cassa?")) {
           localStorage.removeItem(`cassa_session_${slug}`);
@@ -51,6 +50,7 @@ function Cassa() {
             raggruppati[t].ordini.push(ord);
             raggruppati[t].totale += Number(ord.totale || 0);
             
+            // LOG LIVE: Concatena i dettagli
             if(ord.dettagli && ord.dettagli.trim() !== "") {
                 raggruppati[t].fullLog += ord.dettagli + "\n";
             }
@@ -64,7 +64,8 @@ function Cassa() {
       if(!infoRistorante?.id) return;
       fetch(`${API_URL}/api/cassa/storico/${infoRistorante.id}`)
         .then(r=>r.json())
-        .then(data => setStorico(Array.isArray(data) ? data : []));
+        .then(data => setStorico(Array.isArray(data) ? data : []))
+        .catch(e => console.error("Errore storico:", e));
   };
 
   useEffect(() => {
@@ -129,8 +130,22 @@ function Cassa() {
       aggiornaDati();
   };
 
-  if (!infoRistorante) return <div style={{padding:50, textAlign:'center'}}><h1>⏳ Caricamento...</h1></div>;
-  if (!isAuthorized) return <div style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', background:'#2c3e50'}}><div style={{background:'white', padding:40, borderRadius:10, textAlign:'center'}}><h1>💶 Accesso Cassa</h1><p>{infoRistorante.ristorante}</p><form onSubmit={handleLogin}><input type="password" placeholder="Password" value={passwordInput} onChange={e=>setPasswordInput(e.target.value)} style={{width:'100%', padding:10, marginBottom:10}}/><button className="btn-invia" style={{width:'100%'}}>ENTRA</button></form></div></div>;
+  if (!infoRistorante) return <div style={{padding:50, textAlign:'center', color:'#fff'}}><h1>⏳ Caricamento...</h1></div>;
+
+  // FIX LOGIN STYLE: TEXT COLOR BLACK
+  if (!isAuthorized) return (
+      <div style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', background:'#2c3e50'}}>
+          <div style={{background:'white', color:'black', padding:40, borderRadius:10, textAlign:'center', maxWidth:'400px', width:'90%'}}>
+              <h1>💶 Accesso Cassa</h1>
+              <h2 style={{margin:'10px 0', color:'#555'}}>{infoRistorante.ristorante}</h2>
+              <form onSubmit={handleLogin} style={{marginTop:20}}>
+                  <input type="password" placeholder="Password" value={passwordInput} onChange={e=>setPasswordInput(e.target.value)} 
+                         style={{width:'100%', padding:10, marginBottom:10, boxSizing:'border-box', border:'1px solid #ccc', borderRadius:5}}/>
+                  <button className="btn-invia" style={{width:'100%', padding:10, background:'#27ae60', color:'white', border:'none', borderRadius:5, fontWeight:'bold', cursor:'pointer'}}>ENTRA</button>
+              </form>
+          </div>
+      </div>
+  );
 
   return (
     <div style={{background:'#eee', minHeight:'100vh', padding:20}}>
@@ -139,12 +154,11 @@ function Cassa() {
           <div style={{display:'flex', gap:10}}>
             <button onClick={() => setTab('attivi')} style={{padding:'10px 20px', background: tab==='attivi'?'#2980b9':'#ccc', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Tavoli Attivi</button>
             <button onClick={() => setTab('storico')} style={{padding:'10px 20px', background: tab==='storico'?'#2980b9':'#ccc', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Storico</button>
-            {/* TASTO ESCI */}
             <button onClick={handleLogout} style={{padding:'10px 20px', background:'#333', color:'white', border:'none', borderRadius:5, cursor:'pointer', marginLeft:10, fontWeight:'bold'}}>ESCI</button>
           </div>
       </header>
 
-      {/* --- VISTA TAVOLI ATTIVI (GRID PORTATE) --- */}
+      {/* --- VISTA TAVOLI ATTIVI --- */}
       {tab === 'attivi' && (
           <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(350px, 1fr))', gap:20}}>
               {Object.keys(tavoliAttivi).length === 0 && <p style={{gridColumn:'1/-1', textAlign:'center', fontSize:20, color:'#888'}}>Nessun tavolo attivo.</p>}
@@ -168,31 +182,24 @@ function Cassa() {
                           <div key={ord.id} style={{marginBottom:20, borderLeft:'4px solid #eee', paddingLeft:10}}>
                               <div style={{fontSize:12, color:'#888', marginBottom:10}}>Ord #{ord.id} - {new Date(ord.data_ora).toLocaleTimeString()}</div>
                               
-                              {/* --- RAGGRUPPAMENTO PER PORTATE --- */}
                               {(() => {
-                                  // 1. Mappiamo prodotti con indice originale per non rompere i bottoni
                                   const prods = ord.prodotti.map((p, i) => ({...p, originalIdx: i}));
                                   
-                                  // 2. Definiamo le priorità
                                   const getCourse = (p) => {
-                                      // Se course esiste: 0 diventa 5 (Bar in fondo), altrimenti usa il numero
                                       if (p.course !== undefined) return p.course === 0 ? 5 : p.course; 
-                                      
-                                      // Fallback se course non esiste
-                                      if (p.is_bar) return 5; // Bar -> 5 (Ultimo)
-                                      if (p.is_pizzeria) return 3; // Pizza -> 3
-                                      return 2; // Cucina default -> 2
+                                      if (p.is_bar) return 5; 
+                                      if (p.is_pizzeria) return 3; 
+                                      return 2; 
                                   };
 
                                   const courses = [...new Set(prods.map(p => getCourse(p)))].sort((a,b)=>a-b);
 
-                                  // 3. Stili Visuali (Bar ora è il 5)
                                   const styles = {
                                       1: { label: '🟢 1ª PORTATA (Antipasti)', bg: '#eafaf1', border: '#27ae60', color: '#27ae60' },
                                       2: { label: '🟡 2ª PORTATA (Primi)', bg: '#fef5e7', border: '#f1c40f', color: '#d35400' },
                                       3: { label: '🔴 3ª PORTATA (Secondi/Pizze)', bg: '#fdf2e9', border: '#e67e22', color: '#c0392b' },
                                       4: { label: '🍰 DESSERT', bg: '#fceceb', border: '#c0392b', color: '#c0392b' },
-                                      5: { label: '🍹 BAR', bg: '#eef6fb', border: '#3498db', color: '#2980b9' } // BAR SPOSTATO QUI
+                                      5: { label: '🍹 BAR', bg: '#eef6fb', border: '#3498db', color: '#2980b9' }
                                   };
 
                                   return courses.map(course => {
@@ -216,7 +223,6 @@ function Cassa() {
                                                                   {p.nome}
                                                               </div>
                                                               <div style={{fontSize:11, color:'#666'}}>
-                                                                  {/* FIX ICONA 3 VIE */}
                                                                   {p.is_bar ? '🍹' : (p.is_pizzeria ? '🍕' : '🍽️')} {Number(p.prezzo).toFixed(2)}€
                                                                   {p.ora_servizio && <span style={{color:'#27ae60', marginLeft:5, fontWeight:'bold'}}>✅ {p.ora_servizio}</span>}
                                                               </div>
