@@ -242,15 +242,20 @@ function Pizzeria() {
                     <div className="ticket-body" style={{textAlign:'left', paddingBottom:'5px'}}>
                         
                         {strutturaOrdine.map(section => {
-                         // GESTIONE TITOLI DINAMICI
-let headerColor = "#7f8c8d"; let headerBg = "#ecf0f1"; let title = `${section.courseNum}ª USCITA`;
+// --- MODIFICA TITOLI DINAMICI ---
+let headerColor = "#7f8c8d"; let headerBg = "#ecf0f1"; 
+// Usa solo il numero dello step corrente (1, 2, 3...) senza nomi fissi come "Antipasti"
+let title = `${section.courseNum}° STEP`; 
 
 if (!section.locked) {
-    if(section.courseNum === 1) { headerColor = "#27ae60"; headerBg = "#e8f8f5"; title += " (INIZIARE)"; }
-    if(section.courseNum === 2) { headerColor = "#f39c12"; headerBg = "#fef9e7"; title += " (A SEGUIRE)"; }
-    if(section.courseNum === 3) { headerColor = "#d35400"; headerBg = "#fdebd0"; title += " (TERZO STEP)"; }
-    if(section.courseNum === 4) { headerColor = "#8e44ad"; headerBg = "#f4ecf7"; title += " (CHIUSURA)"; } 
-} else { title += " (IN ATTESA)"; }
+    // Assegna colori in base all'ordine di uscita
+    if(section.courseNum === 1) { headerColor = "#27ae60"; headerBg = "#e8f8f5"; } // Verde
+    else if(section.courseNum === 2) { headerColor = "#f39c12"; headerBg = "#fef9e7"; } // Giallo
+    else if(section.courseNum === 3) { headerColor = "#d35400"; headerBg = "#fdebd0"; } // Arancio
+    else { headerColor = "#8e44ad"; headerBg = "#f4ecf7"; } // Viola
+} else { 
+    title += " (IN ATTESA)"; 
+}
 
                             return (
                                 <div key={section.courseNum} style={{marginBottom:'15px'}}>
@@ -306,6 +311,27 @@ if (!section.locked) {
                                                             color: isServito ? '#aaa' : '#000'
                                                         }}>
                                                             {item.nome}
+                                                            // --- INSERISCI QUESTO ACCANTO O SOTTO {item.nome} ---
+<span style={{
+    fontSize:'1.1rem', fontWeight: isServito ? 'normal' : 'bold',
+    textDecoration: isServito ? 'line-through' : 'none',
+    color: isServito ? '#aaa' : '#000'
+}}>
+    {item.nome}
+</span>
+
+{/* BADGE VISIVO RIAPERTO */}
+{item.riaperto && item.stato === 'in_attesa' && (
+    <div style={{
+        display:'inline-block', marginLeft:'10px', 
+        background:'#c0392b', color:'white', 
+        padding:'2px 6px', borderRadius:'4px', 
+        fontSize:'0.7rem', fontWeight:'bold', textTransform:'uppercase',
+        boxShadow:'0 2px 4px rgba(0,0,0,0.2)'
+    }}>
+        ⚠️ RIAPERTO DALLA CASSA
+    </div>
+)}
                                                         </span>
                                                         {!item.isMyStation && (
                                                             <span style={{fontSize:'0.7rem', marginLeft:'8px', background:'#bdc3c7', color:'white', padding:'2px 4px', borderRadius:'3px'}}>

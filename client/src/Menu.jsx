@@ -159,46 +159,49 @@ function Menu() {
       }));
   };
 
-// --- FUNZIONE SOSTITUTIVA PER MENU.JSX ---
-  
+// --- INCOLLA QUESTO IN MENU.JSX AL POSTO DI inviaOrdine ---
   const inviaOrdine = async () => {
       if(carrello.length === 0) return;
       if(!canOrder) return; 
-      
       if(!confirm(`Confermi l'ordine per il tavolo ${numeroTavolo}?`)) return;
 
-      // 1. Identifichiamo quali "step" sono presenti nel carrello (es. [3, 4] se hai solo pizza e dolce)
-      //    Escludiamo il Bar (course 0 o categoria_is_bar) dal calcolo delle uscite cucina
+      // 1. Calcoliamo quali step sono presenti (es. solo Pizza = [3], Pizza+Dolce = [3,4])
       const stepPresenti = [...new Set(carrello.filter(c => !c.categoria_is_bar).map(c => c.course))].sort((a,b)=>a-b);
       
-      // 2. Creiamo una mappa per normalizzarli a 1, 2, 3...
-      //    Es: Se stepPresenti è [3, 4] -> Il 3 diventa Uscita 1, Il 4 diventa Uscita 2
+      // 2. Li trasformiamo in sequenza 1, 2, 3...
+      // Es: Se ho solo [3], il 3 diventa 1. Se ho [1, 3], l'1 resta 1 e il 3 diventa 2.
       const mapNuoviCorsi = {};
       stepPresenti.forEach((vecchioCorso, index) => {
           mapNuoviCorsi[vecchioCorso] = index + 1;
       });
 
-      // 3. Creiamo il payload con i corsi ricalcolati
       const prodottiNormalizzati = carrello.map(p => {
           let courseFinale = p.course;
-          
-          // Se NON è bar, applichiamo la normalizzazione
           if (!p.categoria_is_bar) {
-              courseFinale = mapNuoviCorsi[p.course] || 1; // Fallback a 1 per sicurezza
+              // Qui applichiamo la trasformazione: prende il numero sequenziale dell'ordine attuale
+              courseFinale = mapNuoviCorsi[p.course] || 1; 
           }
 
           return {
-              id: p.id,
-              nome: p.nome,
-              prezzo: p.prezzo,
-              course: courseFinale, // Qui inviamo 1, 2, 3 sequenziali
+              id: p.id, nome: p.nome, prezzo: p.prezzo,
+              course: courseFinale, // Ora sarà 1, 2, 3... basato sull'ordine reale
               is_bar: p.categoria_is_bar,
               is_pizzeria: p.categoria_is_pizzeria,
               stato: 'in_attesa',
-              varianti_scelte: p.varianti_scelte // Passiamo le varianti al server
+              varianti_scelte: p.varianti_scelte
           };
       });
 
+      const payload = {
+          ristorante_id: ristoranteId, tavolo: numeroTavolo, cliente: user ? user.nome : "Ospite", 
+          prodotti: prodottiNormalizzati, totale: carrello.reduce((a,b)=>a+Number(b.prezzo),0)
+      };
+
+      try {
+          await fetch(`${API_URL}/api/ordine`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+          alert("✅ Ordine Inviato!"); setCarrello([]); setShowCheckout(false);
+      } catch(e) { alert("Errore connessione server."); }
+  };
       const payload = {
           ristorante_id: ristoranteId,
           tavolo: numeroTavolo,

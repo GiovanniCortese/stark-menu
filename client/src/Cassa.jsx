@@ -82,19 +82,22 @@ function Cassa() {
 
   // --- AZIONI ---
 
-  const modificaStatoProdotto = async (ord, indexDaModificare) => {
+const modificaStatoProdotto = async (ord, indexDaModificare) => {
       const nuoviProdotti = [...ord.prodotti];
       const item = nuoviProdotti[indexDaModificare];
-      const nuovoStato = item.stato === 'servito' ? 'in_attesa' : 'servito';
       
-      item.stato = nuovoStato;
-      if (nuovoStato === 'servito') {
-          item.ora_servizio = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-      } else {
+      // LOGICA TOGGLE + FLAG "RIAPERTO"
+      if (item.stato === 'servito') {
+          item.stato = 'in_attesa';
+          item.riaperto = true; // <--- NUOVO FLAG CHE VEDRANNO CUCINA/PIZZERIA
           delete item.ora_servizio;
+      } else {
+          item.stato = 'servito';
+          item.riaperto = false; // Reset se lo chiudo di nuovo
+          item.ora_servizio = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
       }
       
-      const logMsg = `[CASSA 💶] HA SEGNATO ${nuovoStato === 'servito' ? 'SERVITO' : 'IN ATTESA'}: ${item.nome}`;
+      const logMsg = `[CASSA 💶] HA ${item.stato === 'servito' ? 'SERVITO' : 'RIAPERTO'}: ${item.nome}`;
 
       await fetch(`${API_URL}/api/ordine/${ord.id}/update-items`, {
           method: 'PUT',
