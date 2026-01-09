@@ -110,9 +110,10 @@ useEffect(() => {
       });
   };
 
-  const handleLogout = () => { 
+const handleLogout = () => { 
       if(confirm("Uscire dal pannello?")) { 
-          localStorage.removeItem(`stark_session_${slug}`); 
+          // CANCELLA LA NUOVA CHIAVE
+          localStorage.removeItem(`stark_admin_session_${slug}`); 
           navigate('/'); 
       } 
   };
@@ -155,6 +156,46 @@ useEffect(() => {
   const apriBar = () => window.open(`/bar/${slug}`, '_blank');
 
   if (loading) return <div style={{padding:'50px', textAlign:'center', fontSize:'20px'}}>🔄 Caricamento Admin...</div>;
+
+  // --- SE NON AUTORIZZATO, MOSTRA IL FORM DI LOGIN ---
+  if (!isAuthorized) {
+    return (
+        <div style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', background:'#1a1a1a', flexDirection:'column'}}>
+            <div style={{background:'white', padding:'40px', borderRadius:'15px', width:'90%', maxWidth:'400px', textAlign:'center', boxShadow:'0 10px 25px rgba(0,0,0,0.5)'}}>
+                <h1 style={{fontSize:'3rem', margin:0}}>🕶️</h1>
+                <h2 style={{color:'#333', marginTop:10}}>Admin Panel</h2>
+                <p style={{color:'#666'}}>{user?.nome || "Accesso Riservato"}</p>
+
+                <form onSubmit={handleAdminLogin} style={{marginTop:20}}>
+                    <input 
+                        type="password" 
+                        placeholder="Password Amministratore" 
+                        value={passwordInput}
+                        onChange={e => setPasswordInput(e.target.value)}
+                        style={{
+                            width:'100%', padding:'15px', borderRadius:'8px', border: loginError ? '2px solid #e74c3c' : '1px solid #ddd',
+                            fontSize:'16px', boxSizing:'border-box', marginBottom:'10px', textAlign:'center'
+                        }}
+                    />
+                    {loginError && <p style={{color:'#e74c3c', fontWeight:'bold', fontSize:'0.9rem'}}>Password Errata ⛔</p>}
+                    
+                    <button type="submit" disabled={loadingLogin} style={{
+                        width:'100%', padding:'15px', background:'#2c3e50', color:'white', border:'none', 
+                        borderRadius:'8px', fontSize:'16px', fontWeight:'bold', cursor:'pointer'
+                    }}>
+                        {loadingLogin ? "Verifica in corso..." : "ACCEDI AL PANNELLO"}
+                    </button>
+                </form>
+                
+                <button onClick={() => navigate('/')} style={{marginTop:20, background:'none', border:'none', color:'#999', cursor:'pointer'}}>
+                    ← Torna al sito
+                </button>
+            </div>
+        </div>
+    );
+  }
+
+  // Se l'utente non è caricato ma siamo autorizzati, aspettiamo
   if (!user) return null;
 
   // --- BLOCCO TOTALE: SE ABBONAMENTO SCADUTO ---
