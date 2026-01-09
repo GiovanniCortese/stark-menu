@@ -170,46 +170,37 @@ function Menu() {
   if(isSuspended) return <div style={{padding:50, textAlign:'center', color:'red', background: bg, minHeight:'100vh'}}><h1>⛔ SERVIZIO SOSPESO</h1><p>Contattare l'amministrazione.</p></div>;
   if(error) return <div style={{padding:50, textAlign:'center', color: text, background: bg, minHeight:'100vh'}}><h1>⚠️ Errore Caricamento</h1></div>;
 
-  return (
+return (
     <div style={{minHeight:'100vh', background: bg, color: text, fontFamily: font, paddingBottom:80}}>
       
-      {/* HEADER LOGO FULL WIDTH (NUOVO STILE) */}
-      <div style={{width:'100%', marginBottom:10, background: bg}}>
-          {style.logo ? (
-             <img src={style.logo} alt="Logo" style={{width:'100%', display:'block', objectFit:'cover'}} />
-          ) : (
-             <div style={{padding:20, textAlign:'center'}}>
-                 <h1 style={{margin:0, color: titleColor}}>{ristorante}</h1>
-             </div>
-          )}
-          
-          <div style={{padding:'10px', textAlign:'center', borderBottom:`1px solid ${priceColor}`}}>
-              {canOrder ? (
-                  <span style={{color: text, fontSize:'1.1rem'}}>
-                      Tavolo: <strong style={{color:'white', background: priceColor, padding:'2px 8px', borderRadius:'5px'}}>{numeroTavolo}</strong>
-                  </span>
+      {/* HEADER LOGO (FIX GRAFICA PC: MAX-WIDTH) */}
+      <div style={{width:'100%', background: bg, marginBottom: 10}}>
+          {/* Questo contenitore limita la larghezza su PC ma resta full-width su Mobile */}
+          <div style={{maxWidth: '600px', margin: '0 auto', width: '100%'}}>
+              {style.logo ? (
+                 <img src={style.logo} alt="Logo" style={{width:'100%', display:'block', objectFit:'cover'}} />
               ) : (
-                <span style={{background:'red', color:'white', padding:'5px 10px', borderRadius:'5px', fontWeight:'bold'}}>⛔ CHIUSO</span>
+                 <div style={{padding:20, textAlign:'center'}}>
+                     <h1 style={{margin:0, color: titleColor}}>{ristorante}</h1>
+                 </div>
               )}
+              
+              <div style={{padding:'10px', textAlign:'center', borderBottom:`1px solid ${priceColor}`}}>
+                  {canOrder ? (
+                      <span style={{color: text, fontSize:'1.1rem'}}>
+                          Tavolo: <strong style={{color:'white', background: priceColor, padding:'2px 8px', borderRadius:'5px'}}>{numeroTavolo}</strong>
+                      </span>
+                  ) : (
+                    <span style={{background:'red', color:'white', padding:'5px 10px', borderRadius:'5px', fontWeight:'bold'}}>⛔ CHIUSO</span>
+                  )}
+              </div>
           </div>
       </div>
 
-      {/* CATEGORIE */}
-      <div style={{display:'flex', overflowX:'auto', gap:10, padding:'10px 20px', paddingBottom:5, scrollbarWidth:'none'}}>
-          {categorieUniche.map(cat => (
-              <button key={cat} onClick={() => setActiveCategory(cat)}
-                  style={{
-                      background: activeCategory === cat ? priceColor : '#444', color: 'white',
-                      border:'none', padding:'10px 20px', borderRadius:20, whiteSpace:'nowrap', flexShrink:0,
-                      fontWeight: activeCategory === cat ? 'bold' : 'normal',
-                      boxShadow: activeCategory === cat ? '0 4px 10px rgba(0,0,0,0.3)' : 'none'
-                  }}
-              >{cat}</button>
-          ))}
-      </div>
+      {/* NOTA: HO RIMOSSO IL MENU ORIZZONTALE DELLE CATEGORIE QUI */}
 
       {/* LISTA MENU A FISARMONICA */}
-      <div style={{paddingBottom: '80px', marginTop: '10px', width: '100%'}}> 
+      <div style={{paddingBottom: '80px', marginTop: '10px', width: '100%', maxWidth: '600px', margin: '0 auto'}}> 
         {categorieUniche.map(catNome => (
             <div key={catNome} className="accordion-item" style={{marginBottom: '2px', borderRadius: '5px', overflow: 'hidden', width: '100%'}}>
                 <div onClick={() => toggleAccordion(catNome)} style={{ background: activeCategory === catNome ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.1)', color: titleColor, padding: '15px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: activeCategory === catNome ? `1px solid ${priceColor}` : 'none' }}>
@@ -478,7 +469,7 @@ function Menu() {
                   <button onClick={() => setShowCheckout(false)} style={{background:'transparent', border:'none', color: titleColor, fontSize:'24px', cursor:'pointer'}}>✕</button>
               </div>
 
-              <div style={{flex:1, overflowY:'auto'}}>
+              <div style={{flex:1, overflowY:'auto', maxWidth:'600px', margin:'0 auto', width:'100%'}}>
                   {carrello.length === 0 && <p style={{color: style?.text || '#fff', textAlign:'center'}}>Il carrello è vuoto.</p>}
 
                   {/* CUCINA */}
@@ -539,15 +530,14 @@ function Menu() {
                       </div>
                   )}
 
-              </div>
-
-              <div style={{marginTop:'20px', borderTop:`1px solid ${style?.text||'#ccc'}`, paddingTop:'20px'}}>
-                  <div style={{display:'flex', justifyContent:'space-between', fontSize:'20px', color: titleColor, marginBottom:'20px'}}>
-                      <span>TOTALE:</span>
-                      <strong style={{color: priceColor}}>{carrello.reduce((a,b)=>a+Number(b.prezzo),0).toFixed(2)} €</strong>
+                  <div style={{marginTop:'20px', borderTop:`1px solid ${style?.text||'#ccc'}`, paddingTop:'20px'}}>
+                      <div style={{display:'flex', justifyContent:'space-between', fontSize:'20px', color: titleColor, marginBottom:'20px'}}>
+                          <span>TOTALE:</span>
+                          <strong style={{color: priceColor}}>{carrello.reduce((a,b)=>a+Number(b.prezzo),0).toFixed(2)} €</strong>
+                      </div>
+                      {carrello.length > 0 && <button onClick={inviaOrdine} style={{width:'100%', padding:'15px', fontSize:'18px', background: '#159709ff', color:'white', border:`1px solid ${style?.text||'#ccc'}`, borderRadius:'30px', fontWeight:'bold', cursor:'pointer'}}>CONFERMA E INVIA 🚀</button>}
+                      <button onClick={() => setShowCheckout(false)} style={{width:'100%', padding:'15px', marginTop:'10px', background:'transparent', border:`1px solid ${style?.text||'#ccc'}`, color: style?.text||'#ccc', borderRadius:'30px', cursor:'pointer'}}>Torna al Menu</button>
                   </div>
-                  {carrello.length > 0 && <button onClick={inviaOrdine} style={{width:'100%', padding:'15px', fontSize:'18px', background: '#159709ff', color:'white', border:`1px solid ${style?.text||'#ccc'}`, borderRadius:'30px', fontWeight:'bold', cursor:'pointer'}}>CONFERMA E INVIA 🚀</button>}
-                  <button onClick={() => setShowCheckout(false)} style={{width:'100%', padding:'15px', marginTop:'10px', background:'transparent', border:`1px solid ${style?.text||'#ccc'}`, color: style?.text||'#ccc', borderRadius:'30px', cursor:'pointer'}}>Torna al Menu</button>
               </div>
           </div>
       )}
