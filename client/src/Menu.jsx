@@ -209,20 +209,6 @@ function Menu() {
           </div>
       </div>
 
-      {/* CATEGORIE */}
-      <div style={{display:'flex', overflowX:'auto', gap:10, padding:'10px 20px', paddingBottom:5, scrollbarWidth:'none'}}>
-          {categorieUniche.map(cat => (
-              <button key={cat} onClick={() => setActiveCategory(cat)}
-                  style={{
-                      background: activeCategory === cat ? priceColor : '#444', color: 'white',
-                      border:'none', padding:'10px 20px', borderRadius:20, whiteSpace:'nowrap', flexShrink:0,
-                      fontWeight: activeCategory === cat ? 'bold' : 'normal',
-                      boxShadow: activeCategory === cat ? '0 4px 10px rgba(0,0,0,0.3)' : 'none'
-                  }}
-              >{cat}</button>
-          ))}
-      </div>
-
       {/* LISTA MENU */}
       <div style={{paddingBottom: '80px', marginTop: '10px', width: '100%', maxWidth: '600px', margin: '0 auto'}}> 
         {categorieUniche.map(catNome => (
