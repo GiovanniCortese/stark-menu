@@ -14,6 +14,12 @@ function Admin() {
   const { slug } = useParams(); 
   const navigate = useNavigate();
 
+  // --- NUOVI STATI LOGIN ADMIN ---
+const [isAuthorized, setIsAuthorized] = useState(false);
+const [passwordInput, setPasswordInput] = useState("");
+const [loginError, setLoginError] = useState(false);
+const [loadingLogin, setLoadingLogin] = useState(false);
+
   // --- STATI GLOBALI ---
   const [user, setUser] = useState(null); 
   const [loading, setLoading] = useState(true); 
@@ -38,52 +44,39 @@ function Admin() {
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
   // --- INIZIALIZZAZIONE E AUTH ---
-  useEffect(() => {
+useEffect(() => {
     if (!slug) return;
 
     const init = async () => {
         setLoading(true);
-        const sessionKey = `stark_session_${slug}`;
-        const isGodMode = localStorage.getItem(sessionKey); 
+        const sessionKey = `stark_admin_session_${slug}`;
+        const hasSession = localStorage.getItem(sessionKey); 
         
-        if (!isGodMode) {
-            const pass = prompt(`🔒 Admin Panel: ${slug}\nInserisci Password:`);
-            if (pass !== "tonystark") {
-                alert("Password Errata"); window.location.href = "/"; return;
-            }
-            localStorage.setItem(sessionKey, "true");
+        if (hasSession === "true") {
+            setIsAuthorized(true);
         }
 
         try {
-            // 1. Carica Info Ristorante Base
             const res = await fetch(`${API_URL}/api/menu/${slug}`);
             const data = await res.json();
 
             if (data && data.id) {
-                const userData = { 
-                    id: data.id, 
-                    nome: data.ristorante, 
-                    slug: slug 
-                };
-                setUser(userData);
+                setUser({ id: data.id, nome: data.ristorante, slug: slug });
                 setMenu(data.menu || []);
-                
-                // 2. Carica Configurazione Completa (Permessi, Colori, ecc.)
-                caricaConfigurazioniExtra(userData.id);
+                caricaConfigurazioniExtra(data.id);
             } else { 
                 alert("Ristorante non trovato."); 
                 navigate('/'); 
             }
         } catch (error) { 
             console.error(error); 
-            alert("Errore connessione."); 
         } finally { 
             setLoading(false); 
         }
     };
 
     init();
-  }, [slug]);
+}, [slug]);
 
   const caricaConfigurazioniExtra = (id) => {
     // Fetch Config
@@ -123,6 +116,36 @@ function Admin() {
           navigate('/'); 
       } 
   };
+  
+  const handleAdminLogin = async (e) => {
+    e.preventDefault();
+    setLoadingLogin(true);
+    setLoginError(false);
+
+    try {
+        // Usiamo la rotta di login che verifica la password dell'admin del ristorante
+        const res = await fetch(`${API_URL}/api/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                slug: slug, 
+                password: passwordInput 
+            })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            setIsAuthorized(true);
+            localStorage.setItem(`stark_admin_session_${slug}`, "true");
+        } else {
+            setLoginError(true);
+        }
+    } catch (err) {
+        alert("Errore di connessione");
+    } finally {
+        setLoadingLogin(false);
+    }
+};
   
   // --- FUNZIONI DI NAVIGAZIONE RAPIDA ---
   const apriMenuFrontend = () => window.open(`/${slug}`, '_blank');
