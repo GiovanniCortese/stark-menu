@@ -24,6 +24,14 @@ const pool = new Pool({
     ssl: { rejectUnauthorized: false }
 });
 
+const fixDatabase = async () => {
+    try {
+        await pool.query("ALTER TABLE categorie ADD COLUMN IF NOT EXISTS varianti_default JSONB DEFAULT '[]'");
+        console.log("✅ DB Aggiornato: varianti_default presente");
+    } catch (e) { console.log("DB Check: OK"); }
+};
+fixDatabase();
+
 // CONFIGURAZIONE CLOUDINARY
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -49,12 +57,23 @@ const getNowItaly = () => {
 
 app.post('/api/categorie', async (req, res) => {
     try {
-        const { nome, ristorante_id, is_bar, is_pizzeria, descrizione } = req.body;
+        const { nome, ristorante_id, is_bar, is_pizzeria, descrizione, varianti_default } = req.body;
         const max = await pool.query('SELECT MAX(posizione) as max FROM categorie WHERE ristorante_id = $1', [ristorante_id]);
         const nextPos = (max.rows[0].max || 0) + 1;
+        
+        // Trasforma il testo "Bufala:2, Crudo:3" in JSON per il database
+        let variantiJson = [];
+        if (typeof varianti_default === 'string' && varianti_default.includes(':')) {
+             variantiJson = varianti_default.split(',').map(v => {
+                const [n, p] = v.split(':');
+                if(n && p) return { nome: n.trim(), prezzo: parseFloat(p) };
+                return null;
+            }).filter(Boolean);
+        }
+
         const r = await pool.query(
-            'INSERT INTO categorie (nome, posizione, ristorante_id, is_bar, is_pizzeria, descrizione) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-            [nome, nextPos, ristorante_id, is_bar || false, is_pizzeria || false, descrizione || ""]
+            'INSERT INTO categorie (nome, posizione, ristorante_id, is_bar, is_pizzeria, descrizione, varianti_default) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+            [nome, nextPos, ristorante_id, is_bar || false, is_pizzeria || false, descrizione || "", JSON.stringify(variantiJson)]
         );
         res.json(r.rows[0]);
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -78,8 +97,23 @@ app.get('/api/categorie/:ristorante_id', async (req, res) => {
 });
 app.put('/api/categorie/:id', async (req, res) => {
     try {
-        await pool.query('UPDATE categorie SET nome=$1, is_bar=$2, is_pizzeria=$3, descrizione=$4 WHERE id=$5', 
-            [req.body.nome, req.body.is_bar, req.body.is_pizzeria, req.body.descrizione, req.params.id]);
+        const { nome, is_bar, is_pizzeria, descrizione, varianti_default } = req.body;
+        
+        // Logica Parsing (identica alla POST)
+        let variantiJson = [];
+        if (typeof varianti_default === 'string' && varianti_default.includes(':')) {
+             variantiJson = varianti_default.split(',').map(v => {
+                const [n, p] = v.split(':');
+                if(n && p) return { nome: n.trim(), prezzo: parseFloat(p) };
+                return null;
+            }).filter(Boolean);
+        } else if (Array.isArray(varianti_default)) {
+            // Se arriva già come array (raro ma possibile)
+            variantiJson = varianti_default;
+        }
+
+        await pool.query('UPDATE categorie SET nome=$1, is_bar=$2, is_pizzeria=$3, descrizione=$4, varianti_default=$5 WHERE id=$6', 
+            [nome, is_bar, is_pizzeria, descrizione, JSON.stringify(variantiJson), req.params.id]);
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: "Err" }); }
 });
@@ -266,17 +300,18 @@ app.get('/api/menu/:slug', async (req, res) => {
         
         const data = rist.rows[0];
         
-        const menu = await pool.query(`
-            SELECT p.*, 
-                   c.is_bar as categoria_is_bar, 
-                   c.is_pizzeria as categoria_is_pizzeria,
-                   c.posizione as categoria_posizione,
-                   c.nome as categoria_nome
-            FROM prodotti p 
-            LEFT JOIN categorie c ON p.categoria = c.nome AND p.ristorante_id = c.ristorante_id 
-            WHERE p.ristorante_id = $1 
-            ORDER BY c.posizione ASC, p.posizione ASC
-        `, [data.id]);
+       const menu = await pool.query(`
+    SELECT p.*, 
+           c.is_bar as categoria_is_bar, 
+           c.is_pizzeria as categoria_is_pizzeria,
+           c.posizione as categoria_posizione,
+           c.nome as categoria_nome,
+           c.varianti_default as categoria_varianti  -- <--- QUESTA È LA RIGA NUOVA DA AGGIUNGERE
+    FROM prodotti p 
+    LEFT JOIN categorie c ON p.categoria = c.nome AND p.ristorante_id = c.ristorante_id 
+    WHERE p.ristorante_id = $1 
+    ORDER BY c.posizione ASC, p.posizione ASC
+`, [data.id]);
         
         res.json({
             id: data.id,

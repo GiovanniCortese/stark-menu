@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 function AdminCategorie({ user, categorie, setCategorie, API_URL, ricaricaDati }) {
-  const [nuovaCat, setNuovaCat] = useState({ nome: '', descrizione: '', is_bar: false, is_pizzeria: false });
+  const [nuovaCat, setNuovaCat] = useState({ nome: '', descrizione: '', is_bar: false, is_pizzeria: false, varianti_default: '' });
   const [editCatId, setEditCatId] = useState(null); 
 
   const handleSalvaCategoria = async () => { 
@@ -24,8 +24,23 @@ function AdminCategorie({ user, categorie, setCategorie, API_URL, ricaricaDati }
   };
 
   const cancellaCategoria = async (id) => { if(confirm("Eliminare?")) { await fetch(`${API_URL}/api/categorie/${id}`, {method:'DELETE'}); ricaricaDati(); }};
-  const avviaModificaCat = (cat) => { setEditCatId(cat.id); setNuovaCat({ nome: cat.nome, descrizione: cat.descrizione||'', is_bar: cat.is_bar, is_pizzeria: cat.is_pizzeria }); };
+  const avviaModificaCat = (cat) => { 
+    setEditCatId(cat.id); 
+    
+    // Converte l'array JSON in stringa leggibile (es. "Bufala:2, Crudo:3")
+    let strVarianti = "";
+    if (cat.varianti_default && Array.isArray(cat.varianti_default)) {
+        strVarianti = cat.varianti_default.map(v => `${v.nome}:${v.prezzo}`).join(', ');
+    }
 
+    setNuovaCat({ 
+        nome: cat.nome, 
+        descrizione: cat.descrizione||'', 
+        is_bar: cat.is_bar, 
+        is_pizzeria: cat.is_pizzeria,
+        varianti_default: strVarianti // <--- Carica qui la stringa
+    }); 
+};
   // --- LOGICA DRAG & DROP CATEGORIE (FIX DEFINITIVO) ---
     const onDragEnd = async (result) => {
     if (!result.destination) return;
@@ -63,6 +78,20 @@ function AdminCategorie({ user, categorie, setCategorie, API_URL, ricaricaDati }
                 <input placeholder="Nome (es. Antipasti)" value={nuovaCat.nome} onChange={e => setNuovaCat({...nuovaCat, nome: e.target.value})} style={{flex:2}} />
                 <input placeholder="Descrizione (opzionale)" value={nuovaCat.descrizione} onChange={e => setNuovaCat({...nuovaCat, descrizione: e.target.value})} style={{flex:3}} />
             </div>
+            <div style={{width:'100%', marginBottom:'10px', marginTop:'5px'}}>
+    <label style={{fontSize:'12px', fontWeight:'bold', color:'#2c3e50', display:'block', marginBottom:'3px'}}>
+        ➕ AGGIUNTE COMUNI (es. Bufala:2.00, Crudo:3.00)
+    </label>
+    <textarea 
+        value={nuovaCat.varianti_default || ''} 
+        onChange={e => setNuovaCat({...nuovaCat, varianti_default: e.target.value})}
+        placeholder="Scrivi qui le aggiunte valide per TUTTI i piatti di questa categoria..."
+        style={{width:'100%', padding:'10px', borderRadius:'5px', border:'1px solid #bdc3c7', minHeight:'50px', fontFamily:'monospace', fontSize:'13px'}} 
+    />
+    <div style={{fontSize:'10px', color:'#7f8c8d', marginTop:'2px'}}>
+        Nota: Se un piatto ha delle varianti specifiche inserite nel Menu, queste varianti comuni verranno ignorate per quel piatto.
+    </div>
+</div>
             <div style={{display:'flex', gap:'15px', marginBottom:'10px'}}>
                 <label style={{display:'flex', alignItems:'center', gap:'5px', cursor:'pointer'}}>
                     <input type="checkbox" checked={nuovaCat.is_bar} onChange={e => setNuovaCat({...nuovaCat, is_bar: e.target.checked})} />

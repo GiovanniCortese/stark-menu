@@ -315,10 +315,12 @@ function Menu() {
                                     {(isSingleGroup || activeSubCategory === scKey) && (
                                         <div className="menu-list" style={{padding: '0', width: '100%'}}>
                                             {sottoCats[scKey].map((prodotto) => {
-                                                const variantiObj = typeof prodotto.varianti === 'string' ? JSON.parse(prodotto.varianti || '{}') : (prodotto.varianti || {});
-                                                const ingredientiStr = (variantiObj.base || []).join(', ');
-                                                const hasVarianti = (variantiObj.base && variantiObj.base.length > 0) || (variantiObj.aggiunte && variantiObj.aggiunte.length > 0);
-
+                                            const variantiObj = typeof prodotto.varianti === 'string' ? JSON.parse(prodotto.varianti || '{}') : (prodotto.varianti || {});
+                                            const varPiatto = variantiObj.aggiunte || [];
+                                            const varCategoria = prodotto.categoria_varianti || [];
+                                            const activeVarianti = varPiatto.length > 0 ? varPiatto : varCategoria;
+                                            const ingredientiStr = (variantiObj.base || []).join(', ');
+                                            const hasVarianti = (variantiObj.base && variantiObj.base.length > 0) || (activeVarianti.length > 0);
                                                 return (
                                                 <div key={prodotto.id} className="card"
                                                     // MODALE SEMPRE APRIBILE
@@ -425,12 +427,17 @@ function Menu() {
         }} onClick={() => setSelectedPiatto(null)}>
             
             {(() => {
-                const variantiData = typeof selectedPiatto.varianti === 'string' 
-                    ? JSON.parse(selectedPiatto.varianti || '{}') 
-                    : (selectedPiatto.varianti || {});
-                
-                const baseList = variantiData.base || [];
-                const addList = variantiData.aggiunte || [];
+// --- DENTRO IL MODALE ---
+const variantiData = typeof selectedPiatto.varianti === 'string' ? JSON.parse(selectedPiatto.varianti || '{}') : (selectedPiatto.varianti || {});
+const baseList = variantiData.base || [];
+
+// Recupera le due liste
+const addListPiatto = variantiData.aggiunte || [];
+const addListCategoria = selectedPiatto.categoria_varianti || [];
+
+// APPLICA LA PRECEDENZA ANCHE QUI
+// Se il piatto ha varianti specifiche, mostra SOLO quelle.
+const addList = addListPiatto.length > 0 ? addListPiatto : addListCategoria;
                 
                 const extraPrezzo = (tempVarianti?.aggiunte || []).reduce((acc, item) => acc + item.prezzo, 0);
                 const prezzoFinale = Number(selectedPiatto.prezzo) + extraPrezzo;
