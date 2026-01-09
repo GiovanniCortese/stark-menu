@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - VERSIONE V54 (MODIFICA, INGREDIENTI VISIBILI, CLICK FOTO) 🍕
+// client/src/Menu.jsx - VERSIONE V55 (LOGO FULL WIDTH + MODIFICA SMART) 💎
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 
@@ -173,15 +173,26 @@ function Menu() {
   return (
     <div style={{minHeight:'100vh', background: bg, color: text, fontFamily: font, paddingBottom:80}}>
       
-      {/* HEADER */}
-      {style.cover && <div style={{height:'180px', background:`url(${style.cover}) center/cover`}}></div>}
-      <header style={{padding:20, textAlign:'center', background: bg}}>
-        {style.logo && <img src={style.logo} alt="Logo" style={{width:80, height:80, borderRadius:'50%', objectFit:'cover', border:'2px solid white'}} />}
-        <h1 style={{margin:'10px 0', color: titleColor}}>{ristorante}</h1>
-        <div style={{background:'#333', color:'white', display:'inline-block', padding:'5px 15px', borderRadius:20, fontSize:'0.9rem'}}>
-           Tavolo: <strong>{numeroTavolo}</strong>
-        </div>
-      </header>
+      {/* HEADER LOGO FULL WIDTH (NUOVO STILE) */}
+      <div style={{width:'100%', marginBottom:10, background: bg}}>
+          {style.logo ? (
+             <img src={style.logo} alt="Logo" style={{width:'100%', display:'block', objectFit:'cover'}} />
+          ) : (
+             <div style={{padding:20, textAlign:'center'}}>
+                 <h1 style={{margin:0, color: titleColor}}>{ristorante}</h1>
+             </div>
+          )}
+          
+          <div style={{padding:'10px', textAlign:'center', borderBottom:`1px solid ${priceColor}`}}>
+              {canOrder ? (
+                  <span style={{color: text, fontSize:'1.1rem'}}>
+                      Tavolo: <strong style={{color:'white', background: priceColor, padding:'2px 8px', borderRadius:'5px'}}>{numeroTavolo}</strong>
+                  </span>
+              ) : (
+                <span style={{background:'red', color:'white', padding:'5px 10px', borderRadius:'5px', fontWeight:'bold'}}>⛔ CHIUSO</span>
+              )}
+          </div>
+      </div>
 
       {/* CATEGORIE */}
       <div style={{display:'flex', overflowX:'auto', gap:10, padding:'10px 20px', paddingBottom:5, scrollbarWidth:'none'}}>
@@ -231,17 +242,18 @@ function Menu() {
                                     {(isSingleGroup || activeSubCategory === scKey) && (
                                         <div className="menu-list" style={{padding: '0', width: '100%'}}>
                                             {sottoCats[scKey].map((prodotto) => {
-                                                // PARSING INGREDIENTI BASE DA VISUALIZZARE
+                                                // 1. ANALISI VARIANTI
                                                 const variantiObj = typeof prodotto.varianti === 'string' ? JSON.parse(prodotto.varianti || '{}') : (prodotto.varianti || {});
                                                 const ingredientiStr = (variantiObj.base || []).join(', ');
+                                                const hasVarianti = (variantiObj.base && variantiObj.base.length > 0) || (variantiObj.aggiunte && variantiObj.aggiunte.length > 0);
 
                                                 return (
                                                 <div key={prodotto.id} className="card"
-                                                    // MODIFICA RICHIESTA 2: Click su card funziona SOLO se c'è foto
+                                                    // Click su card funziona SOLO se c'è foto
                                                     onClick={() => prodotto.immagine_url ? apriModale(prodotto) : null}
                                                     style={{ 
                                                         display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', 
-                                                        cursor: prodotto.immagine_url ? 'pointer' : 'default', // Cursore mano solo se c'è foto
+                                                        cursor: prodotto.immagine_url ? 'pointer' : 'default', 
                                                         backgroundColor: 'white', marginBottom: '1px', borderRadius: '0',
                                                         borderBottom: '1px solid #eee'
                                                     }}
@@ -253,7 +265,7 @@ function Menu() {
                                                         
                                                         {prodotto.descrizione && (<p style={{fontSize:'12px', color:'#666', margin:'0 0 4px 0', lineHeight:'1.2'}}>{prodotto.descrizione}</p>)}
                                                         
-                                                        {/* MODIFICA RICHIESTA 3: Ingredienti Base Visibili */}
+                                                        {/* INGREDIENTI BASE VISIBILI */}
                                                         {ingredientiStr && (
                                                             <p style={{fontSize:'11px', color:'#555', fontStyle:'italic', margin:'0 0 5px 0'}}>
                                                                 <span style={{fontWeight:'bold'}}>Ingredienti:</span> {ingredientiStr}
@@ -265,16 +277,19 @@ function Menu() {
                                                     
                                                     {canOrder && (
                                                         <div style={{display:'flex', gap:'5px', alignItems:'center'}}>
-                                                            {/* MODIFICA RICHIESTA 1: Tasto Modifica Prima del + */}
-                                                            <button 
-                                                                onClick={(e) => { e.stopPropagation(); apriModale(prodotto); }}
-                                                                style={{
-                                                                    background:'transparent', border:'1px solid #ccc', color:'#555',
-                                                                    borderRadius:'5px', padding:'5px 8px', fontSize:'12px', cursor:'pointer', fontWeight:'bold'
-                                                                }}
-                                                            >
-                                                                Modifica ✏️
-                                                            </button>
+                                                            
+                                                            {/* TASTO MODIFICA (SOLO SE CI SONO VARIANTI) */}
+                                                            {hasVarianti && (
+                                                                <button 
+                                                                    onClick={(e) => { e.stopPropagation(); apriModale(prodotto); }}
+                                                                    style={{
+                                                                        background:'transparent', border:'1px solid #ccc', color:'#555',
+                                                                        borderRadius:'5px', padding:'5px 8px', fontSize:'12px', cursor:'pointer', fontWeight:'bold'
+                                                                    }}
+                                                                >
+                                                                    Modifica ✏️
+                                                                </button>
+                                                            )}
 
                                                             <button 
                                                                 onClick={(e) => { e.stopPropagation(); aggiungiAlCarrello(prodotto); }} 
