@@ -159,29 +159,51 @@ function Menu() {
       }));
   };
 
+// --- FUNZIONE SOSTITUTIVA PER MENU.JSX ---
+  
   const inviaOrdine = async () => {
       if(carrello.length === 0) return;
       if(!canOrder) return; 
       
       if(!confirm(`Confermi l'ordine per il tavolo ${numeroTavolo}?`)) return;
 
-      const payload = {
-          ristorante_id: ristoranteId,
-          tavolo: numeroTavolo,
-          
-          // --- INSERISCI QUI SOTTO LA RIGA ---
-          cliente: user ? user.nome : "Ospite", 
-          // -----------------------------------
+      // 1. Identifichiamo quali "step" sono presenti nel carrello (es. [3, 4] se hai solo pizza e dolce)
+      //    Escludiamo il Bar (course 0 o categoria_is_bar) dal calcolo delle uscite cucina
+      const stepPresenti = [...new Set(carrello.filter(c => !c.categoria_is_bar).map(c => c.course))].sort((a,b)=>a-b);
+      
+      // 2. Creiamo una mappa per normalizzarli a 1, 2, 3...
+      //    Es: Se stepPresenti è [3, 4] -> Il 3 diventa Uscita 1, Il 4 diventa Uscita 2
+      const mapNuoviCorsi = {};
+      stepPresenti.forEach((vecchioCorso, index) => {
+          mapNuoviCorsi[vecchioCorso] = index + 1;
+      });
 
-          prodotti: carrello.map(p => ({
+      // 3. Creiamo il payload con i corsi ricalcolati
+      const prodottiNormalizzati = carrello.map(p => {
+          let courseFinale = p.course;
+          
+          // Se NON è bar, applichiamo la normalizzazione
+          if (!p.categoria_is_bar) {
+              courseFinale = mapNuoviCorsi[p.course] || 1; // Fallback a 1 per sicurezza
+          }
+
+          return {
               id: p.id,
               nome: p.nome,
               prezzo: p.prezzo,
-              course: p.course, 
+              course: courseFinale, // Qui inviamo 1, 2, 3 sequenziali
               is_bar: p.categoria_is_bar,
               is_pizzeria: p.categoria_is_pizzeria,
-              stato: 'in_attesa'
-          })),
+              stato: 'in_attesa',
+              varianti_scelte: p.varianti_scelte // Passiamo le varianti al server
+          };
+      });
+
+      const payload = {
+          ristorante_id: ristoranteId,
+          tavolo: numeroTavolo,
+          cliente: user ? user.nome : "Ospite", 
+          prodotti: prodottiNormalizzati,
           totale: carrello.reduce((a,b)=>a+Number(b.prezzo),0)
       };
 
