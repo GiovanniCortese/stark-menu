@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE ALL-IN-ONE (FIX DEFINITIVO + EXCEL + GRAFICA)
+// server/server.js - VERSIONE ALL-IN-ONE (FIX DEFINITIVO + EXCEL + GRAFICA + VARIANTI)
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -88,15 +88,17 @@ app.delete('/api/categorie/:id', async (req, res) => {
 //              API PRODOTTI (FIXATE)
 // ==========================================
 
-// 1. CREA PRODOTTO (Calcola posizione corretta invece di 999)
+// 1. CREA PRODOTTO (Calcola posizione corretta invece di 999 + VARIANTI)
 app.post('/api/prodotti', async (req, res) => {
     try {
-        const { nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, immagine_url } = req.body;
+        const { nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, immagine_url, varianti } = req.body;
         const max = await pool.query('SELECT MAX(posizione) as max FROM prodotti WHERE ristorante_id = $1', [ristorante_id]);
         const nextPos = (max.rows[0].max || 0) + 1;
+        
+        // MODIFICATO QUI: AGGIUNTO IL CAMPO varianti ($9)
         await pool.query(
-            'INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, immagine_url, posizione) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-            [nome, prezzo, categoria, sottocategoria || "", descrizione || "", ristorante_id, immagine_url || "", nextPos]
+            'INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, immagine_url, posizione, varianti) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+            [nome, prezzo, categoria, sottocategoria || "", descrizione || "", ristorante_id, immagine_url || "", nextPos, varianti || '{}']
         );
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -117,11 +119,12 @@ app.put('/api/prodotti/riordina', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// 3. CRUD PRODOTTI
+// 3. CRUD PRODOTTI (MODIFICATO PER AGGIORNARE VARIANTI)
 app.put('/api/prodotti/:id', async (req, res) => {
     try {
-        await pool.query('UPDATE prodotti SET nome=$1, prezzo=$2, categoria=$3, sottocategoria=$4, descrizione=$5, immagine_url=$6 WHERE id=$7', 
-            [req.body.nome, req.body.prezzo, req.body.categoria, req.body.sottocategoria, req.body.descrizione, req.body.immagine_url, req.params.id]);
+        // MODIFICATO QUI: AGGIUNTO IL CAMPO varianti ($8)
+        await pool.query('UPDATE prodotti SET nome=$1, prezzo=$2, categoria=$3, sottocategoria=$4, descrizione=$5, immagine_url=$6, varianti=$8 WHERE id=$7', 
+            [req.body.nome, req.body.prezzo, req.body.categoria, req.body.sottocategoria, req.body.descrizione, req.body.immagine_url, req.params.id, req.body.varianti]);
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: "Err" }); }
 });

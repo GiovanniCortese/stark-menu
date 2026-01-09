@@ -43,9 +43,42 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const handleSalvaPiatto = async (e) => { 
       e.preventDefault(); 
       if(!nuovoPiatto.nome) return alert("Nome mancante"); 
-      const cat = nuovoPiatto.categoria || (categorie.length > 0 ? categorie[0].nome : "");
-      const payload = {...nuovoPiatto, categoria:cat, ristorante_id:user.id};
       
+      // 1. Parsing Varianti (Da Testo a JSONB)
+      let variantiJson = [];
+      if (nuovoPiatto.varianti_str) {
+          variantiJson = nuovoPiatto.varianti_str.split(',').map(v => {
+              const [nome, prezzo] = v.split(':');
+              if(nome && prezzo) return { nome: nome.trim(), prezzo: parseFloat(prezzo) };
+              return null;
+          }).filter(Boolean);
+      }
+
+      // 2. Parsing Ingredienti Base (Da Testo a Array Semplice)
+      let ingredientiBaseArr = [];
+      if (nuovoPiatto.ingredienti_base) {
+          ingredientiBaseArr = nuovoPiatto.ingredienti_base.split(',').map(i => i.trim()).filter(Boolean);
+      }
+
+      // Struttura finale JSONB
+      const variantiFinali = {
+          base: ingredientiBaseArr,
+          aggiunte: variantiJson
+      };
+
+      const cat = nuovoPiatto.categoria || (categorie.length > 0 ? categorie[0].nome : "");
+      
+      const payload = {
+          ...nuovoPiatto, 
+          categoria: cat, 
+          ristorante_id: user.id,
+          varianti: JSON.stringify(variantiFinali) // Salviamo il JSON nel DB
+      };
+      
+      // Rimuoviamo i campi temporanei usati per l'input text
+      delete payload.varianti_str;
+      delete payload.ingredienti_base;
+
       try {
           if(editId) {
               await fetch(`${API_URL}/api/prodotti/${editId}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }); 
@@ -55,7 +88,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
               await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }); 
               alert("✅ Piatto aggiunto!");
           }
-          setNuovoPiatto({nome:'', prezzo:'', categoria:cat, sottocategoria: '', descrizione:'', immagine_url:''}); 
+          setNuovoPiatto({nome:'', prezzo:'', categoria:cat, sottocategoria: '', descrizione:'', immagine_url:'', varianti_str: '', ingredienti_base: ''}); 
           setEditId(null);
           ricaricaDati(); 
       } catch(err) { alert("❌ Errore salvataggio: " + err.message); }
@@ -71,7 +104,29 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   };
 
   const cancellaPiatto = async (id) => { if(confirm("Eliminare?")) { await fetch(`${API_URL}/api/prodotti/${id}`, {method:'DELETE'}); ricaricaDati(); }};
-  const avviaModifica = (piatto) => { setEditId(piatto.id); setNuovoPiatto(piatto); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const avviaModifica = (piatto) => { 
+      setEditId(piatto.id);
+      
+      // Recuperiamo il JSON dal DB
+      let variantiObj = { base: [], aggiunte: [] };
+      try {
+          if(piatto.varianti) {
+              // Se arriva come stringa dal server (molto probabile con pg), parse
+              variantiObj = typeof piatto.varianti === 'string' ? JSON.parse(piatto.varianti) : piatto.varianti;
+          }
+      } catch(e) { console.error("Err parse varianti", e); }
+
+      // Convertiamo JSON in Testo per gli input
+      const strBase = (variantiObj.base || []).join(', ');
+      const strAggiunte = (variantiObj.aggiunte || []).map(v => `${v.nome}:${v.prezzo}`).join(', ');
+
+      setNuovoPiatto({
+          ...piatto, 
+          ingredienti_base: strBase,
+          varianti_str: strAggiunte
+      }); 
+      window.scrollTo({ top: 0, behavior: 'smooth' }); 
+  };
   const annullaModifica = () => { setEditId(null); setNuovoPiatto({nome:'', prezzo:'', categoria:categorie[0]?.nome || '', sottocategoria: '', descrizione:'', immagine_url:''}); };
   const duplicaPiatto = async (piattoOriginale) => { if(!confirm(`Duplicare?`)) return; const copia = { ...piattoOriginale, nome: `${piattoOriginale.nome} (Copia)`, ristorante_id: user.id }; await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(copia) }); ricaricaDati(); };
 
@@ -183,17 +238,39 @@ const onDragEnd = async (result) => {
                       <h3>{editId ? "✏️ Modifica Piatto" : "➕ Aggiungi Piatto"}</h3>
                       {editId && <button onClick={annullaModifica} style={{background:'#777', padding:'5px', fontSize:'12px', color:'white', border:'none', borderRadius:'3px'}}>Annulla</button>}
                   </div>
-                  <form onSubmit={handleSalvaPiatto} style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
-                      <input placeholder="Nome Piatto" value={nuovoPiatto.nome} onChange={e => setNuovoPiatto({...nuovoPiatto, nome: e.target.value})} />
+                 <form onSubmit={handleSalvaPiatto} style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+                      <input placeholder="Nome Piatto" value={nuovoPiatto.nome} onChange={e => setNuovoPiatto({...nuovoPiatto, nome: e.target.value})} required />
+                      
                       <div style={{display:'flex', gap:'10px'}}>
                         <select value={nuovoPiatto.categoria} onChange={e => setNuovoPiatto({...nuovoPiatto, categoria: e.target.value})} style={{flex:1, padding:'10px'}}>
                             {categorie.map(cat => <option key={cat.id} value={cat.nome}>{cat.nome}</option>)}
                         </select>
                         <input placeholder="Sottocategoria (es. Bianchi)" value={nuovoPiatto.sottocategoria} onChange={e => setNuovoPiatto({...nuovoPiatto, sottocategoria: e.target.value})} style={{flex:1}} />
                       </div>
+                      
                       <textarea placeholder="Descrizione" value={nuovoPiatto.descrizione} onChange={e => setNuovoPiatto({...nuovoPiatto, descrizione: e.target.value})} style={{padding:'10px', minHeight:'60px'}}/>
+                      
+                      {/* --- NUOVA SEZIONE VARIANTI JSON --- */}
+                      <div style={{background:'#fff3cd', padding:'10px', borderRadius:'5px', border:'1px dashed #f39c12'}}>
+                          <label style={{fontWeight:'bold', fontSize:'12px', display:'block', marginBottom:'5px'}}>🧂 INGREDIENTI BASE (Separati da virgola)</label>
+                          <input 
+                              placeholder="Es: Pomodoro, Mozzarella, Basilico (Il cliente potrà toglierli)" 
+                              value={nuovoPiatto.ingredienti_base || ""} 
+                              onChange={e => setNuovoPiatto({...nuovoPiatto, ingredienti_base: e.target.value})} 
+                              style={{width:'100%', marginBottom:'10px'}}
+                          />
+                          
+                          <label style={{fontWeight:'bold', fontSize:'12px', display:'block', marginBottom:'5px'}}>➕ AGGIUNTE A PAGAMENTO (Formato: Nome:Prezzo)</label>
+                          <textarea 
+                              placeholder="Es: Bufala:2.00, Salame Piccante:1.50, Patatine:1.00" 
+                              value={nuovoPiatto.varianti_str || ""} 
+                              onChange={e => setNuovoPiatto({...nuovoPiatto, varianti_str: e.target.value})} 
+                              style={{width:'100%', minHeight:'50px'}}
+                          />
+                      </div>
+
                       <div style={{display:'flex', gap:'10px'}}>
-                          <input type="number" placeholder="Prezzo" value={nuovoPiatto.prezzo} onChange={e => setNuovoPiatto({...nuovoPiatto, prezzo: e.target.value})} style={{flex:1}}/>
+                          <input type="number" placeholder="Prezzo Base" value={nuovoPiatto.prezzo} onChange={e => setNuovoPiatto({...nuovoPiatto, prezzo: e.target.value})} style={{flex:1}} step="0.10" required />
                            <div style={{background:'white', padding:'5px', flex:1}}><input type="file" onChange={handleFileChange} />{uploading && "..."}{nuovoPiatto.immagine_url && "✅"}</div>
                       </div>
                       <button type="submit" className="btn-invia" style={{background: editId ? '#2196f3' : '#333'}}>{editId ? "AGGIORNA" : "SALVA"}</button>

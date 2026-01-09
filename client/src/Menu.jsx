@@ -22,6 +22,9 @@ function Menu() {
   const [activeSubCategory, setActiveSubCategory] = useState(null); 
   const [selectedPiatto, setSelectedPiatto] = useState(null);
   const [showCheckout, setShowCheckout] = useState(false);
+
+  // Stato temporaneo per le varianti mentre il modale è aperto
+const [tempVarianti, setTempVarianti] = useState({ rimozioni: [], aggiunte: [] });
   
   // --- PARAMETRI URL ---
   const { slug } = useParams();
@@ -213,67 +216,164 @@ function Menu() {
         )}
       </header>
 
-      {/* --- MODALE SCHEDA PIATTO DETTAGLIATA --- */}
+      {/* --- MODALE CONFIGURATORE PRODOTTO (V53 - VARIANTI) --- */}
       {selectedPiatto && (
         <div style={{
             position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
             backgroundColor: 'rgba(0,0,0,0.9)', zIndex: 3000,
             display: 'flex', alignItems: 'center', justifyContent: 'center', padding:'10px'
         }} onClick={() => setSelectedPiatto(null)}>
-            <div style={{
-                background: 'white', color: '#000', borderRadius: '10px', overflow: 'hidden',
-                maxWidth: '600px', width: '100%', maxHeight:'95vh', overflowY:'auto',
-                boxShadow: '0 10px 30px rgba(0,0,0,0.5)', position:'relative'
-            }} onClick={e => e.stopPropagation()}>
+            
+            {(() => {
+                // LOGICA INTERNA AL MODALE (Mini-Componente)
+                // Usiamo uno stato temporaneo locale dentro una IIFE o estraiamo un componente.
+                // Per semplicità qui usiamo variabili calcolate ma per l'interattività 
+                // serve un componente separato o gestire stati nel padre.
+                // SOLUZIONE RAPIDA: Aggiungiamo stati al componente Menu principale per gestire la selezione temporanea.
+                // MA per non incasinarti gli stati, facciamo che il Modale gestisce tutto se separiamo il componente.
+                // PER ORA: Semplifico la visualizzazione. Il cliente clicca le opzioni.
                 
-                {selectedPiatto.immagine_url && (
-                    <div style={{width:'100%', background:'#000', textAlign:'center'}}>
-                        <img 
-                            src={selectedPiatto.immagine_url} 
-                            alt={selectedPiatto.nome} 
-                            style={{maxWidth:'100%', maxHeight:'50vh', objectFit:'contain', display:'block', margin:'0 auto'}} 
-                        />
-                    </div>
-                )}
+                // --- ATTENZIONE ---
+                // Per far funzionare i checkbox nel modale, dobbiamo avere degli stati in Menu()
+                // Aggiungi questi stati all'inizio di Menu.jsx insieme agli altri:
+                // const [tempVarianti, setTempVarianti] = useState({ rimozioni: [], aggiunte: [] });
+                
+                // Qui sotto assumo che tu abbia aggiunto quello stato.
+                
+                const variantiData = typeof selectedPiatto.varianti === 'string' 
+                    ? JSON.parse(selectedPiatto.varianti || '{}') 
+                    : (selectedPiatto.varianti || {});
+                
+                const baseList = variantiData.base || [];
+                const addList = variantiData.aggiunte || [];
+                
+                // Calcolo Prezzo Dinamico
+                const extraPrezzo = (tempVarianti?.aggiunte || []).reduce((acc, item) => acc + item.prezzo, 0);
+                const prezzoFinale = Number(selectedPiatto.prezzo) + extraPrezzo;
 
-                <div style={{padding:'25px'}}>
-                    <h2 style={{margin:'0 0 10px 0', fontSize:'1.8rem', color: '#000', fontWeight:'800'}}>
-                        {selectedPiatto.nome}
-                    </h2>
-                    <p style={{color:'#000', fontSize:'1.1rem', lineHeight:'1.6', marginBottom:'25px'}}>
-                        {selectedPiatto.descrizione || "Nessuna descrizione disponibile."}
-                    </p>
+                return (
+                <div style={{
+                    background: 'white', color: '#000', borderRadius: '10px', overflow: 'hidden',
+                    maxWidth: '600px', width: '100%', maxHeight:'95vh', overflowY:'auto',
+                    boxShadow: '0 10px 30px rgba(0,0,0,0.5)', position:'relative', display:'flex', flexDirection:'column'
+                }} onClick={e => e.stopPropagation()}>
                     
-                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', borderTop:'1px solid #ddd', paddingTop:'20px'}}>
-                        <div style={{fontSize:'1.8rem', fontWeight:'bold', color: '#000'}}>
-                            {selectedPiatto.prezzo} €
+                    {/* Header Immagine */}
+                    {selectedPiatto.immagine_url && (
+                        <div style={{width:'100%', maxHeight:'250px', overflow:'hidden'}}>
+                            <img src={selectedPiatto.immagine_url} style={{width:'100%', objectFit:'cover'}} />
                         </div>
-                        {canOrder && (
-                            <button 
-                                onClick={() => aggiungiAlCarrello(selectedPiatto)}
-                                style={{
-                                    background: priceColor, color:'white', border:'none', 
-                                    padding:'15px 30px', borderRadius:'30px', fontSize:'1.1rem', 
-                                    fontWeight:'bold', display:'flex', alignItems:'center', gap:'10px', cursor:'pointer'
-                                }}
-                            >
-                                AGGIUNGI
-                            </button>
-                        )}
-                    </div>
-                </div>
+                    )}
 
-                <button 
-                    onClick={() => setSelectedPiatto(null)}
-                    style={{
-                        position:'absolute', top:'15px', right:'15px', 
-                        background:'white', color:'black', border:'none', 
-                        borderRadius:'50%', width:'40px', height:'40px', 
-                        cursor:'pointer', fontSize:'20px', boxShadow:'0 2px 10px rgba(0,0,0,0.3)',
-                        display:'flex', alignItems:'center', justifyContent:'center'
-                    }}
-                >✕</button>
-            </div>
+                    <div style={{padding:'20px'}}>
+                        <h2 style={{margin:'0 0 5px 0', fontSize:'1.8rem', color: '#000', fontWeight:'800'}}>{selectedPiatto.nome}</h2>
+                        <p style={{color:'#666', fontSize:'1rem', lineHeight:'1.4'}}>{selectedPiatto.descrizione}</p>
+
+                        {/* --- SEZIONE VARIANTI --- */}
+                        <div style={{marginTop:'20px', borderTop:'1px solid #eee', paddingTop:'15px'}}>
+                            
+                            {/* 1. INGREDIENTI BASE (RIMOZIONI) */}
+                            {baseList.length > 0 && (
+                                <div style={{marginBottom:'20px'}}>
+                                    <h4 style={{margin:'0 0 10px 0', color:'#333'}}>Ingredienti (Togli se non vuoi)</h4>
+                                    <div style={{display:'flex', flexWrap:'wrap', gap:'10px'}}>
+                                        {baseList.map(ing => {
+                                            const isRemoved = tempVarianti.rimozioni.includes(ing);
+                                            return (
+                                                <div key={ing} 
+                                                    onClick={() => {
+                                                        // Toggle Rimozione
+                                                        const newRimozioni = isRemoved 
+                                                            ? tempVarianti.rimozioni.filter(i => i !== ing) // Rimetti
+                                                            : [...tempVarianti.rimozioni, ing]; // Togli
+                                                        setTempVarianti({...tempVarianti, rimozioni: newRimozioni});
+                                                    }}
+                                                    style={{
+                                                        padding:'8px 12px', borderRadius:'20px', fontSize:'0.9rem', cursor:'pointer',
+                                                        background: isRemoved ? '#ffebee' : '#e8f5e9',
+                                                        color: isRemoved ? '#c62828' : '#2e7d32',
+                                                        border: isRemoved ? '1px solid #ef9a9a' : '1px solid #a5d6a7',
+                                                        textDecoration: isRemoved ? 'line-through' : 'none'
+                                                    }}
+                                                >
+                                                    {isRemoved ? `No ${ing}` : ing}
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* 2. AGGIUNTE (EXTRA) */}
+                            {addList.length > 0 && (
+                                <div>
+                                    <h4 style={{margin:'0 0 10px 0', color:'#333'}}>Aggiungi Extra 😋</h4>
+                                    {addList.map((extra, idx) => {
+                                        const isAdded = tempVarianti.aggiunte.some(a => a.nome === extra.nome);
+                                        return (
+                                            <div key={idx} 
+                                                onClick={() => {
+                                                    // Toggle Aggiunta
+                                                    const newAggiunte = isAdded 
+                                                        ? tempVarianti.aggiunte.filter(a => a.nome !== extra.nome)
+                                                        : [...tempVarianti.aggiunte, extra];
+                                                    setTempVarianti({...tempVarianti, aggiunte: newAggiunte});
+                                                }}
+                                                style={{
+                                                    display:'flex', justifyContent:'space-between', alignItems:'center',
+                                                    padding:'12px', marginBottom:'8px', borderRadius:'8px', cursor:'pointer',
+                                                    background: isAdded ? '#e3f2fd' : '#f9f9f9',
+                                                    border: isAdded ? '1px solid #2196f3' : '1px solid #eee'
+                                                }}
+                                            >
+                                                <span style={{fontWeight: isAdded ? 'bold' : 'normal'}}>{isAdded ? '✅' : '⬜'} {extra.nome}</span>
+                                                <span style={{fontWeight:'bold'}}>+{extra.prezzo.toFixed(2)}€</span>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* FOOTER AZIONE */}
+                    <div style={{padding:'20px', background:'#f9f9f9', borderTop:'1px solid #ddd', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                        <div style={{fontSize:'1.5rem', fontWeight:'bold', color: '#000'}}>
+                            {prezzoFinale.toFixed(2)} €
+                        </div>
+                        <button 
+                            onClick={() => {
+                                // COSTRUZIONE NOME CUSTOM (Es: "Margherita (No Basilico, +Bufala)")
+                                let note = [];
+                                if(tempVarianti.rimozioni.length > 0) note.push("No " + tempVarianti.rimozioni.join(", "));
+                                if(tempVarianti.aggiunte.length > 0) note.push("+" + tempVarianti.aggiunte.map(a => a.nome).join(", +"));
+                                
+                                const nomeFinale = note.length > 0 
+                                    ? `${selectedPiatto.nome} (${note.join(' / ')})` 
+                                    : selectedPiatto.nome;
+
+                                aggiungiAlCarrello({
+                                    ...selectedPiatto,
+                                    nome: nomeFinale, // Aggiorniamo il nome visivo
+                                    prezzo: prezzoFinale, // Aggiorniamo il prezzo
+                                    // Salviamo anche i dati grezzi per sicurezza futura
+                                    varianti_scelte: tempVarianti 
+                                });
+                            }}
+                            style={{
+                                background: priceColor, color:'white', border:'none', 
+                                padding:'15px 30px', borderRadius:'30px', fontSize:'1.1rem', 
+                                fontWeight:'bold', cursor:'pointer', display:'flex', alignItems:'center', gap:'10px'
+                            }}
+                        >
+                            AGGIUNGI AL CARRELLO
+                        </button>
+                    </div>
+
+                    <button onClick={() => setSelectedPiatto(null)} style={{position:'absolute', top:'15px', right:'15px', background:'white', color:'black', border:'none', borderRadius:'50%', width:'35px', height:'35px', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.2)'}}>✕</button>
+                </div>
+                );
+            })()}
         </div>
       )}
 
@@ -324,9 +424,14 @@ function Menu() {
                                     {(isSingleGroup || activeSubCategory === scKey) && (
                                         <div className="menu-list" style={{padding: '0', width: '100%'}}>
                                             {sottoCats[scKey].map((prodotto) => (
-                                                <div key={prodotto.id} 
-                                                    className="card" 
-                                                    onClick={() => prodotto.immagine_url ? setSelectedPiatto(prodotto) : null} 
+    <div key={prodotto.id} 
+        className="card" 
+        
+        // --- NUOVO ONCLICK (Apre sempre il modale e resetta varianti) ---
+        onClick={() => { 
+            setSelectedPiatto(prodotto); 
+            setTempVarianti({ rimozioni: [], aggiunte: [] }); 
+        }}
                                                     style={{ 
                                                         display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', 
                                                         cursor: prodotto.immagine_url ? 'pointer' : 'default', 
