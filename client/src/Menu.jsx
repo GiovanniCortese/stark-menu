@@ -47,8 +47,12 @@ function Menu() {
           setMenu(data.menu || []);
           setStyle(data.style || {});
           
+          // Blocco Abbonamento (Schermata Rossa)
           if(data.subscription_active === false) setIsSuspended(true);
-          setCanOrder(data.ordini_abilitati);
+          
+          // FIX QUI: COMBINIAMO I DUE BLOCCHI (Ristoratore + Super Admin)
+          // Se kitchen_active è false (blocco super admin), canOrder diventa false anche se ordini_abilitati è true.
+          setCanOrder(data.ordini_abilitati && data.kitchen_active);
 
           if(data.menu && data.menu.length > 0) {
              const uniqueCats = [...new Set(data.menu.map(p => p.categoria_nome || p.categoria))];
