@@ -8,6 +8,7 @@ import AdminCategorie from './components_admin/AdminCategorie';
 import AdminGrafica from './components_admin/AdminGrafica';
 import AdminExcel from './components_admin/AdminExcel';
 import AdminUsers from './components_admin/AdminUsers'; // NUOVO IMPORT
+import AdminSicurezza from './components_admin/AdminSicurezza'; // <--- AGGIUNGI QUESTO
 
 function Admin() {
   const { slug } = useParams(); 
@@ -190,9 +191,17 @@ function Admin() {
             <button onClick={() => setTab('categorie')} style={{background: tab==='categorie'?'#333':'#ccc', flex:1, padding:10, border:'none', cursor:'pointer', color: tab==='categorie'?'white':'black', fontWeight:'bold'}}>📂 Categorie</button>
             <button onClick={() => setTab('style')} style={{background: tab==='style'?'#9b59b6':'#ccc', flex:1, padding:10, border:'none', cursor:'pointer', color: tab==='style'?'white':'black', fontWeight:'bold'}}>🎨 Grafica</button>
             <button onClick={() => setTab('excel')} style={{background: tab==='excel'?'#27ae60':'#ccc', flex:1, padding:10, border:'none', cursor:'pointer', color: tab==='excel'?'white':'black', fontWeight:'bold'}}>📊 Excel</button>
-            
-            {/* NUOVO TASTO UTENTI */}
             <button onClick={() => setTab('users')} style={{background: tab==='users'?'#e67e22':'#ccc', flex:1, padding:10, border:'none', cursor:'pointer', color: tab==='users'?'white':'black', fontWeight:'bold'}}>👥 Utenti</button>
+            <button 
+    onClick={() => setTab('security')} 
+    style={{
+        background: tab === 'security' ? '#2c3e50' : '#ccc', 
+        flex: 1, padding: 10, border: 'none', cursor: 'pointer', 
+        color: tab === 'security' ? 'white' : 'black', fontWeight: 'bold'
+    }}
+>
+    🔐 Sicurezza
+</button>
       </div>
 
       {/* --- CARICAMENTO DINAMICO DEI COMPONENTI --- */}
@@ -239,7 +248,12 @@ function Admin() {
             API_URL={API_URL} 
           />
       )}
-
+{tab === 'security' && (
+    <AdminSicurezza 
+      user={user} 
+      API_URL={API_URL} 
+    />
+)}
     </div>
   );
 }

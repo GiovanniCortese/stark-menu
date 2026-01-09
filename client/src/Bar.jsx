@@ -6,7 +6,11 @@ function Bar() {
   const [ordini, setOrdini] = useState([]);
   const [infoRistorante, setInfoRistorante] = useState(null); 
   const [isAuthorized, setIsAuthorized] = useState(false); 
+
   const [passwordInput, setPasswordInput] = useState("");
+  const [loginError, setLoginError] = useState(false);
+  const [loadingLogin, setLoadingLogin] = useState(false);
+
   const { slug } = useParams(); 
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
@@ -16,21 +20,37 @@ function Bar() {
     if (localStorage.getItem(sessionKey) === "true") setIsAuthorized(true);
   }, [slug]);
 
-  const handleLogin = (e) => {
-      e.preventDefault();
-      if(passwordInput==="tonystark") { 
-          setIsAuthorized(true); 
-          localStorage.setItem(`bar_session_${slug}`,"true"); 
-      } else { alert("Password Errata"); }
-  };
+// --- NUOVA FUNZIONE LOGIN (API) ---
+const handleLogin = async (e) => {
+    e.preventDefault();
+    if(!infoRistorante?.id) return;
+    setLoadingLogin(true); // Stato opzionale per feedback
+    try {
+        const res = await fetch(`${API_URL}/api/auth/station`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ 
+                ristorante_id: infoRistorante.id, 
+                role: 'bar', 
+                password: passwordInput 
+            })
+        });
+        const data = await res.json();
+        if(data.success) {
+            setIsAuthorized(true);
+            localStorage.setItem(`bar_session_${slug}`, "true");
+        } else { alert("Password Errata"); }
+    } catch(err) { alert("Errore connessione"); } 
+    finally { setLoadingLogin(false); }
+};
 
   const handleLogout = () => {
       if(confirm("Chiudere il Bar?")) {
           localStorage.removeItem(`bar_session_${slug}`);
           setIsAuthorized(false);
+          setPasswordInput("");
       }
   };
-
   const aggiorna = () => {
       if(!infoRistorante?.id) return;
       fetch(`${API_URL}/api/polling/${infoRistorante.id}`)

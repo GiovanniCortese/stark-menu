@@ -24,11 +24,20 @@ const pool = new Pool({
     ssl: { rejectUnauthorized: false }
 });
 
+// --- DATABASE AUTO-FIX (Aggiornato V9) ---
 const fixDatabase = async () => {
     try {
+        // 1. Varianti Categorie
         await pool.query("ALTER TABLE categorie ADD COLUMN IF NOT EXISTS varianti_default JSONB DEFAULT '[]'");
-        console.log("✅ DB Aggiornato: varianti_default presente");
-    } catch (e) { console.log("DB Check: OK"); }
+        
+        // 2. Password Reparti (Default '1234' se non impostate)
+        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS pw_cassa TEXT DEFAULT '1234'");
+        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS pw_cucina TEXT DEFAULT '1234'");
+        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS pw_bar TEXT DEFAULT '1234'");
+        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS pw_pizzeria TEXT DEFAULT '1234'");
+        
+        console.log("✅ DB Check: Colonne Password Reparti presenti.");
+    } catch (e) { console.log("DB Check OK"); }
 };
 fixDatabase();
 
@@ -510,6 +519,51 @@ app.get('/api/super/ristoranti', async (req, res) => { try { const r = await poo
 app.post('/api/super/ristoranti', async (req, res) => { try { await pool.query(`INSERT INTO ristoranti (nome, slug, email, telefono, password, account_attivo, servizio_attivo, ordini_abilitati, cucina_super_active) VALUES ($1, $2, $3, $4, $5, TRUE, TRUE, TRUE, TRUE)`, [req.body.nome, req.body.slug, req.body.email, req.body.telefono, req.body.password || 'tonystark']); res.json({ success: true }); } catch (e) { res.status(500).json({error: "Err"}); } });
 app.put('/api/super/ristoranti/:id', async (req, res) => { try { const { id } = req.params; if (req.body.account_attivo !== undefined) { await pool.query('UPDATE ristoranti SET account_attivo = $1 WHERE id = $2', [req.body.account_attivo, id]); return res.json({ success: true }); } if (req.body.cucina_super_active !== undefined) { await pool.query('UPDATE ristoranti SET cucina_super_active = $1 WHERE id = $2', [req.body.cucina_super_active, id]); return res.json({ success: true }); } let sql = "UPDATE ristoranti SET nome=$1, slug=$2, email=$3, telefono=$4"; let params = [req.body.nome, req.body.slug, req.body.email, req.body.telefono]; if (req.body.password) { sql += ", password=$5 WHERE id=$6"; params.push(req.body.password, id); } else { sql += " WHERE id=$5"; params.push(id); } await pool.query(sql, params); res.json({ success: true }); } catch (e) { res.status(500).json({error: "Err"}); } });
 app.delete('/api/super/ristoranti/:id', async (req, res) => { try { const id = req.params.id; await pool.query('DELETE FROM prodotti WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM categorie WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM ordini WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM ristoranti WHERE id = $1', [id]); res.json({ success: true }); } catch (e) { res.status(500).json({error: "Err"}); } });
+
+// ==========================================
+//          API SICUREZZA REPARTI
+// ==========================================
+
+// Login per lo Staff (Cucina, Bar, Pizzeria, Cassa)
+app.post('/api/auth/station', async (req, res) => {
+    try {
+        const { ristorante_id, role, password } = req.body;
+        
+        // Mappa il ruolo alla colonna del DB
+        const roleMap = {
+            'cassa': 'pw_cassa',
+            'cucina': 'pw_cucina',
+            'pizzeria': 'pw_pizzeria',
+            'bar': 'pw_bar'
+        };
+
+        const colonnaPwd = roleMap[role];
+        if (!colonnaPwd) return res.json({ success: false, error: "Ruolo non valido" });
+
+        const r = await pool.query(`SELECT id, nome, ${colonnaPwd} as password_reparto FROM ristoranti WHERE id = $1`, [ristorante_id]);
+        
+        if (r.rows.length === 0) return res.json({ success: false, error: "Ristorante non trovato" });
+        
+        // Verifica Password
+        if (String(r.rows[0].password_reparto) === String(password)) {
+            res.json({ success: true, nome_ristorante: r.rows[0].nome });
+        } else {
+            res.json({ success: false, error: "Password Errata" });
+        }
+    } catch (e) { res.status(500).json({ error: "Errore server" }); }
+});
+
+// Aggiorna password reparti (Solo Admin)
+app.put('/api/ristorante/security/:id', async (req, res) => {
+    try {
+        const { pw_cassa, pw_cucina, pw_pizzeria, pw_bar } = req.body;
+        await pool.query(
+            `UPDATE ristoranti SET pw_cassa=$1, pw_cucina=$2, pw_pizzeria=$3, pw_bar=$4 WHERE id=$5`,
+            [pw_cassa, pw_cucina, pw_pizzeria, pw_bar, req.params.id]
+        );
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: "Errore salvataggio" }); }
+});
 
 // ==========================================
 //              API UTENTI (CRM)

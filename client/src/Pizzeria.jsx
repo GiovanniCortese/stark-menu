@@ -16,14 +16,26 @@ function Pizzeria() {
     if (localStorage.getItem(sessionKey) === "true") setIsAuthorized(true);
   }, [slug]);
 
-  const handleLogin = (e) => {
-      e.preventDefault();
-      if(passwordInput==="tonystark") { 
-          setIsAuthorized(true); 
-          localStorage.setItem(`pizzeria_session_${slug}`,"true"); 
-      } else { alert("Password Errata"); }
-  };
-
+const handleLogin = async (e) => {
+    e.preventDefault();
+    if(!infoRistorante?.id) return;
+    try {
+        const res = await fetch(`${API_URL}/api/auth/station`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ 
+                ristorante_id: infoRistorante.id, 
+                role: 'pizzeria', 
+                password: passwordInput 
+            })
+        });
+        const data = await res.json();
+        if(data.success) {
+            setIsAuthorized(true);
+            localStorage.setItem(`pizzeria_session_${slug}`, "true");
+        } else { alert("Password Errata"); }
+    } catch(err) { alert("Errore connessione"); }
+};
   const handleLogout = () => {
       if(confirm("Chiudere la Pizzeria?")) {
         localStorage.removeItem(`pizzeria_session_${slug}`);
