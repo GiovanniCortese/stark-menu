@@ -333,12 +333,44 @@ app.get('/api/polling/:ristorante_id', async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Err" }); }
 });
 
+// NUOVA VERSIONE: Crea ordine + Log testuale dettagliato per la Cassa
 app.post('/api/ordine', async (req, res) => {
     try {
-        await pool.query("INSERT INTO ordini (ristorante_id, tavolo, prodotti, totale, stato) VALUES ($1, $2, $3, $4, 'in_attesa')", 
-            [req.body.ristorante_id, String(req.body.tavolo), JSON.stringify(req.body.prodotti), req.body.totale]);
+        const { ristorante_id, tavolo, prodotti, totale, cliente } = req.body;
+        
+        // 1. CREIAMO IL LOG INIZIALE DETTAGLIATO
+        const ora = new Date().toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+        let logIniziale = `[${ora}] 🆕 NUOVO ORDINE (Cliente: ${cliente || 'Ospite'})\n`;
+        
+        // Elenchiamo i prodotti nel log testuale
+        if (Array.isArray(prodotti)) {
+            prodotti.forEach(p => {
+                let note = "";
+                // Cerchiamo di capire se ci sono varianti per scriverle nel log
+                try {
+                    // Se varianti è oggetto o stringa, proviamo a estrarre info
+                    if(p.varianti_scelte) { // Se arriva dal frontend già formattato
+                         if(p.varianti_scelte.rimozioni && p.varianti_scelte.rimozioni.length > 0) note += ` (No: ${p.varianti_scelte.rimozioni.join(', ')})`;
+                         if(p.varianti_scelte.aggiunte && p.varianti_scelte.aggiunte.length > 0) note += ` (+: ${p.varianti_scelte.aggiunte.map(a=>a.nome).join(', ')})`;
+                    }
+                } catch(e) {}
+                
+                logIniziale += ` • ${p.nome}${note} - ${Number(p.prezzo).toFixed(2)}€\n`;
+            });
+        }
+        logIniziale += `TOTALE PARZIALE: ${Number(totale).toFixed(2)}€\n----------------------------------\n`;
+
+        // 2. INSERIAMO NEL DATABASE ANCHE IL CAMPO 'dettagli'
+        await pool.query(
+            "INSERT INTO ordini (ristorante_id, tavolo, prodotti, totale, stato, dettagli) VALUES ($1, $2, $3, $4, 'in_attesa', $5)", 
+            [ristorante_id, String(tavolo), JSON.stringify(prodotti), totale, logIniziale]
+        );
+        
         res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: "Err" }); }
+    } catch (e) { 
+        console.error("Errore ordine:", e);
+        res.status(500).json({ error: "Err" }); 
+    }
 });
 
 app.put('/api/ordine/:id/update-items', async (req, res) => { try { const { id } = req.params; const { prodotti, totale, logMsg } = req.body; let q = "UPDATE ordini SET prodotti = $1"; const p = [JSON.stringify(prodotti)]; let i = 2; if(totale!==undefined){q+=`, totale=$${i}`;p.push(totale);i++} if(logMsg){q+=`, dettagli=COALESCE(dettagli,'')||$${i}`;p.push(`\n[${new Date().toLocaleString()}] ${logMsg}`);i++} q+=` WHERE id=$${i}`; p.push(id); await pool.query(q, p); res.json({success:true}); } catch(e){ res.status(500).json({error:"Err"}); } });
