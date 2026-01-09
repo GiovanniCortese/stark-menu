@@ -1,4 +1,4 @@
-// client/src/Cassa.jsx - VERSIONE V32 (CASSA A PORTATE + COLORI) 💶
+// client/src/Cassa.jsx - VERSIONE V33 (BAR ULTIMO + TASTO ESCI) 💶
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -23,6 +23,14 @@ function Cassa() {
     e.preventDefault();
     if (passwordInput === "tonystark") { setIsAuthorized(true); localStorage.setItem(`cassa_session_${slug}`, "true"); }
     else alert("Password Errata");
+  };
+
+  // NUOVA FUNZIONE LOGOUT
+  const handleLogout = () => {
+      if(confirm("Vuoi uscire dalla Cassa?")) {
+          localStorage.removeItem(`cassa_session_${slug}`);
+          setIsAuthorized(false);
+      }
   };
 
   const aggiornaDati = () => {
@@ -131,6 +139,8 @@ function Cassa() {
           <div style={{display:'flex', gap:10}}>
             <button onClick={() => setTab('attivi')} style={{padding:'10px 20px', background: tab==='attivi'?'#2980b9':'#ccc', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Tavoli Attivi</button>
             <button onClick={() => setTab('storico')} style={{padding:'10px 20px', background: tab==='storico'?'#2980b9':'#ccc', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Storico</button>
+            {/* TASTO ESCI */}
+            <button onClick={handleLogout} style={{padding:'10px 20px', background:'#333', color:'white', border:'none', borderRadius:5, cursor:'pointer', marginLeft:10, fontWeight:'bold'}}>ESCI</button>
           </div>
       </header>
 
@@ -163,23 +173,26 @@ function Cassa() {
                                   // 1. Mappiamo prodotti con indice originale per non rompere i bottoni
                                   const prods = ord.prodotti.map((p, i) => ({...p, originalIdx: i}));
                                   
-                                  // 2. Definiamo le priorità se mancano (Fallback)
+                                  // 2. Definiamo le priorità
                                   const getCourse = (p) => {
-                                      if (p.course !== undefined) return p.course; 
-                                      if (p.is_bar) return 0; // Bar
+                                      // Se course esiste: 0 diventa 5 (Bar in fondo), altrimenti usa il numero
+                                      if (p.course !== undefined) return p.course === 0 ? 5 : p.course; 
+                                      
+                                      // Fallback se course non esiste
+                                      if (p.is_bar) return 5; // Bar -> 5 (Ultimo)
                                       if (p.is_pizzeria) return 3; // Pizza -> 3
                                       return 2; // Cucina default -> 2
                                   };
 
                                   const courses = [...new Set(prods.map(p => getCourse(p)))].sort((a,b)=>a-b);
 
-                                  // 3. Stili Visuali
+                                  // 3. Stili Visuali (Bar ora è il 5)
                                   const styles = {
-                                      0: { label: '🍹 BAR', bg: '#eef6fb', border: '#3498db', color: '#2980b9' },
                                       1: { label: '🟢 1ª PORTATA (Antipasti)', bg: '#eafaf1', border: '#27ae60', color: '#27ae60' },
                                       2: { label: '🟡 2ª PORTATA (Primi)', bg: '#fef5e7', border: '#f1c40f', color: '#d35400' },
                                       3: { label: '🔴 3ª PORTATA (Secondi/Pizze)', bg: '#fdf2e9', border: '#e67e22', color: '#c0392b' },
-                                      4: { label: '🍰 DESSERT', bg: '#fceceb', border: '#c0392b', color: '#c0392b' }
+                                      4: { label: '🍰 DESSERT', bg: '#fceceb', border: '#c0392b', color: '#c0392b' },
+                                      5: { label: '🍹 BAR', bg: '#eef6fb', border: '#3498db', color: '#2980b9' } // BAR SPOSTATO QUI
                                   };
 
                                   return courses.map(course => {
