@@ -1,4 +1,4 @@
-// client/src/Pizzeria.jsx - VERSIONE V4 (4 USCITE + DESSERT) 🍕
+// client/src/Pizzeria.jsx - VERSIONE V5 (LOGICA SINCRONIZZATA + FIX VISIBILITÀ) 🍕
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -40,10 +40,12 @@ function Pizzeria() {
             const gruppiTavolo = {};
 
             nuoviOrdini.forEach(ord => {
+                // Filtriamo solo i cibi (escluso Bar)
                 const itemsDiCompetenza = Array.isArray(ord.prodotti) 
                     ? ord.prodotti.filter(p => !p.is_bar) 
                     : [];
 
+                // Se tutto servito, nascondiamo il tavolo
                 const isTuttoServito = itemsDiCompetenza.length > 0 && itemsDiCompetenza.every(p => p.stato === 'servito');
                 if (isTuttoServito) return; 
 
@@ -118,23 +120,27 @@ function Pizzeria() {
       aggiorna();
   };
 
-  // --- LOGICA CORE: 4 USCITE PER PIZZERIA ---
+  // --- LOGICA CORE: 4 USCITE (SINCRONIZZATE CON CUCINA) ---
   const processaTavolo = (items) => {
       const courses = { 1: [], 2: [], 3: [], 4: [] };
+      
       items.forEach(p => {
-          let c = p.course || 2; 
+          // FIX: Se 'course' manca, prova a indovinare se è pizza (3) o cucina generica (2)
+          let c = p.course || (p.is_pizzeria ? 3 : 2);
+          
           if(c < 1) c = 1; if(c > 4) c = 4;
           
           if(!courses[c]) courses[c] = [];
           courses[c].push(p);
       });
 
+      // Controlliamo se le uscite precedenti sono complete per sbloccare le successive
       const isCourseComplete = (courseNum) => {
           if (!courses[courseNum] || courses[courseNum].length === 0) return true; 
           return courses[courseNum].every(p => p.stato === 'servito');
       };
 
-      // BLOCCO A CATENA
+      // LOGICA A CATENA (ANTIPASTI -> PRIMI -> PIZZE -> DESSERT)
       const courseStatus = {
           1: { locked: false, completed: isCourseComplete(1) },
           2: { locked: !isCourseComplete(1), completed: isCourseComplete(2) },
@@ -148,6 +154,7 @@ function Pizzeria() {
 
           const groups = [];
           courses[cNum].forEach(p => {
+              // Chiave unica per raggruppare (es. 2x Margherita)
               const key = `${p.nome}-${p.stato}-${p.is_pizzeria ? 'piz' : 'cuc'}`;
               const existing = groups.find(g => g.key === key);
               if (existing) {
@@ -167,7 +174,7 @@ function Pizzeria() {
           
           finalStructure.push({
               courseNum: cNum,
-              locked: courseStatus[cNum].locked,
+              locked: courseStatus[cNum].locked, // RIPRISTINATO IL BLOCCO
               items: groups
           });
       });
@@ -216,15 +223,16 @@ function Pizzeria() {
                     <div className="ticket-body" style={{textAlign:'left', paddingBottom:'5px'}}>
                         
                         {strutturaOrdine.map(section => {
-// GESTIONE TITOLI DINAMICI
-let headerColor = "#7f8c8d"; let headerBg = "#ecf0f1"; let title = `${section.courseNum}ª USCITA`;
-
-if (!section.locked) {
-    if(section.courseNum === 1) { headerColor = "#27ae60"; headerBg = "#e8f8f5"; title += " (INIZIARE)"; }
-    if(section.courseNum === 2) { headerColor = "#f39c12"; headerBg = "#fef9e7"; title += " (A SEGUIRE)"; }
-    if(section.courseNum === 3) { headerColor = "#d35400"; headerBg = "#fdebd0"; title += " (TERZO STEP)"; }
-    if(section.courseNum === 4) { headerColor = "#8e44ad"; headerBg = "#f4ecf7"; title += " (CHIUSURA)"; } 
-} else { title += " (IN ATTESA)"; }
+                            let headerColor = "#7f8c8d"; let headerBg = "#ecf0f1"; let title = `${section.courseNum}ª USCITA`;
+                            
+                            if (!section.locked) {
+                                if(section.courseNum === 1) { headerColor = "#27ae60"; headerBg = "#e8f8f5"; title += " (INIZIARE)"; }
+                                if(section.courseNum === 2) { headerColor = "#f39c12"; headerBg = "#fef9e7"; title += " (A SEGUIRE)"; }
+                                if(section.courseNum === 3) { headerColor = "#d35400"; headerBg = "#fdebd0"; title += " (TERZO STEP)"; }
+                                if(section.courseNum === 4) { headerColor = "#8e44ad"; headerBg = "#f4ecf7"; title += " (CHIUSURA)"; } 
+                            } else { 
+                                title += " (IN ATTESA)"; 
+                            }
 
                             return (
                                 <div key={section.courseNum} style={{marginBottom:'15px'}}>
@@ -241,20 +249,22 @@ if (!section.locked) {
                                     {section.items.map(item => {
                                         const isServito = item.stato === 'servito';
                                         
+                                        // LOGICA VISIVA: Se bloccato è GRIGIO CHIARO (#f9f9f9) e Opaco
                                         let bg = 'white'; let opacity = 1; let cursor = 'pointer';
 
                                         if (section.locked && !isServito) {
-                                            opacity = 0.5; cursor = 'not-allowed'; bg = '#f9f9f9';
+                                            opacity = 0.5; cursor = 'not-allowed'; bg = '#f9f9f9'; // Grigio chiaro per bloccato
                                         } else if (!item.isMyStation) {
-                                            bg = '#f0f0f0'; cursor = 'default';
+                                            bg = '#f0f0f0'; cursor = 'default'; // Grigio per roba altrui
                                         } else if (isServito) {
-                                            bg = '#e8f5e9'; cursor = 'default';
+                                            bg = '#e8f5e9'; cursor = 'default'; // Verde per servito
                                         }
 
                                         return (
                                             <div 
                                                 key={item.key}
                                                 onClick={() => {
+                                                    // SI PUO' CLICCARE SOLO SE E' IL MIO TURNO (SBLOCCATO)
                                                     if (item.isMyStation && !isServito && !section.locked) {
                                                         segnaPizzaPronta(item.sourceItems);
                                                     }
@@ -282,7 +292,6 @@ if (!section.locked) {
                                                             {item.nome}
                                                         </span>
                                                         
-                                                        {/* VARIANTI NEL TICKET PIZZERIA */}
                                                         {(() => {
                                                           try {
                                                             if(item.varianti_scelte) {
