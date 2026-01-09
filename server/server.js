@@ -353,4 +353,46 @@ app.post('/api/super/ristoranti', async (req, res) => { try { await pool.query(`
 app.put('/api/super/ristoranti/:id', async (req, res) => { try { const { id } = req.params; if (req.body.account_attivo !== undefined) { await pool.query('UPDATE ristoranti SET account_attivo = $1 WHERE id = $2', [req.body.account_attivo, id]); return res.json({ success: true }); } if (req.body.cucina_super_active !== undefined) { await pool.query('UPDATE ristoranti SET cucina_super_active = $1 WHERE id = $2', [req.body.cucina_super_active, id]); return res.json({ success: true }); } let sql = "UPDATE ristoranti SET nome=$1, slug=$2, email=$3, telefono=$4"; let params = [req.body.nome, req.body.slug, req.body.email, req.body.telefono]; if (req.body.password) { sql += ", password=$5 WHERE id=$6"; params.push(req.body.password, id); } else { sql += " WHERE id=$5"; params.push(id); } await pool.query(sql, params); res.json({ success: true }); } catch (e) { res.status(500).json({error: "Err"}); } });
 app.delete('/api/super/ristoranti/:id', async (req, res) => { try { const id = req.params.id; await pool.query('DELETE FROM prodotti WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM categorie WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM ordini WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM ristoranti WHERE id = $1', [id]); res.json({ success: true }); } catch (e) { res.status(500).json({error: "Err"}); } });
 
+// ==========================================
+//              API UTENTI (CRM)
+// ==========================================
+
+// 1. REGISTRAZIONE UTENTE
+app.post('/api/register', async (req, res) => {
+    try {
+        const { nome, email, password, telefono, indirizzo } = req.body;
+        // Controllo se esiste già
+        const check = await pool.query('SELECT * FROM utenti WHERE email = $1', [email]);
+        if (check.rows.length > 0) return res.json({ success: false, error: "Email già registrata" });
+
+        // Inserimento (Password in chiaro per ora, come richiesto dalla semplicità del progetto)
+        const r = await pool.query(
+            'INSERT INTO utenti (nome, email, password, telefono, indirizzo) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+            [nome, email, password, telefono, indirizzo]
+        );
+        res.json({ success: true, user: r.rows[0] });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 2. LOGIN UTENTE
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        const r = await pool.query('SELECT * FROM utenti WHERE email = $1 AND password = $2', [email, password]);
+        if (r.rows.length > 0) {
+            res.json({ success: true, user: r.rows[0] });
+        } else {
+            res.json({ success: false, error: "Credenziali errate" });
+        }
+    } catch (e) { res.status(500).json({ error: "Errore login" }); }
+});
+
+// 3. LISTA UTENTI (PER ADMIN)
+app.get('/api/utenti', async (req, res) => {
+    try {
+        const r = await pool.query('SELECT * FROM utenti ORDER BY data_registrazione DESC');
+        res.json(r.rows);
+    } catch (e) { res.status(500).json({ error: "Err" }); }
+});
+
 app.listen(port, () => console.log(`🚀 SERVER DEFINITIVO COMPLETE (Porta ${port})`));

@@ -1,4 +1,4 @@
-// client/src/Admin.jsx - VERSIONE V41 (BLOCCO TOTALE ABBONAMENTO) 🔒
+// client/src/Admin.jsx - VERSIONE V42 (AGGIUNTA GESTIONE UTENTI CRM) 🔒
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -7,6 +7,7 @@ import AdminMenu from './components_admin/AdminMenu';
 import AdminCategorie from './components_admin/AdminCategorie';
 import AdminGrafica from './components_admin/AdminGrafica';
 import AdminExcel from './components_admin/AdminExcel';
+import AdminUsers from './components_admin/AdminUsers'; // NUOVO IMPORT
 
 function Admin() {
   const { slug } = useParams(); 
@@ -23,7 +24,7 @@ function Admin() {
   
   // CONFIGURAZIONE COMPLETA (include account_attivo e cucina_super_active)
   const [config, setConfig] = useState({ 
-      account_attivo: true, // Default true per evitare flash rossi al caricamento
+      account_attivo: true, 
       cucina_super_active: true,
       ordini_abilitati: false, 
       servizio_attivo: false,
@@ -88,7 +89,6 @@ function Admin() {
     fetch(`${API_URL}/api/ristorante/config/${id}`)
         .then(r=>r.json())
         .then(d => {
-            // Uniamo i dati ricevuti allo stato config
             setConfig(prev => ({...prev, ...d}));
         }); 
     
@@ -134,7 +134,6 @@ function Admin() {
   if (!user) return null;
 
   // --- BLOCCO TOTALE: SE ABBONAMENTO SCADUTO ---
-  // Questo controllo avviene PRIMA di renderizzare qualsiasi tab.
   if (config.account_attivo === false) {
       return (
           <div className="container" style={{textAlign:'center', padding:'50px', maxWidth:'600px', margin:'50px auto'}}>
@@ -191,6 +190,9 @@ function Admin() {
             <button onClick={() => setTab('categorie')} style={{background: tab==='categorie'?'#333':'#ccc', flex:1, padding:10, border:'none', cursor:'pointer', color: tab==='categorie'?'white':'black', fontWeight:'bold'}}>📂 Categorie</button>
             <button onClick={() => setTab('style')} style={{background: tab==='style'?'#9b59b6':'#ccc', flex:1, padding:10, border:'none', cursor:'pointer', color: tab==='style'?'white':'black', fontWeight:'bold'}}>🎨 Grafica</button>
             <button onClick={() => setTab('excel')} style={{background: tab==='excel'?'#27ae60':'#ccc', flex:1, padding:10, border:'none', cursor:'pointer', color: tab==='excel'?'white':'black', fontWeight:'bold'}}>📊 Excel</button>
+            
+            {/* NUOVO TASTO UTENTI */}
+            <button onClick={() => setTab('users')} style={{background: tab==='users'?'#e67e22':'#ccc', flex:1, padding:10, border:'none', cursor:'pointer', color: tab==='users'?'white':'black', fontWeight:'bold'}}>👥 Utenti</button>
       </div>
 
       {/* --- CARICAMENTO DINAMICO DEI COMPONENTI --- */}
@@ -228,6 +230,13 @@ function Admin() {
             user={user} 
             API_URL={API_URL} 
             ricaricaDati={ricaricaDati} 
+          />
+      )}
+
+      {/* NUOVO COMPONENTE UTENTI */}
+      {tab === 'users' && (
+          <AdminUsers 
+            API_URL={API_URL} 
           />
       )}
 
