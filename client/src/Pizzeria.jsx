@@ -232,13 +232,15 @@ function Pizzeria() {
                     <div className="ticket-body" style={{textAlign:'left', paddingBottom:'5px'}}>
                         
                         {strutturaOrdine.map(section => {
-                            let headerColor = "#7f8c8d"; let headerBg = "#ecf0f1"; let title = `${section.courseNum}ª USCITA`;
-                            
-                            if (!section.locked) {
-                                if(section.courseNum === 1) { headerColor = "#27ae60"; headerBg = "#e8f8f5"; title += " (INIZIARE)"; }
-                                if(section.courseNum === 2) { headerColor = "#d35400"; headerBg = "#fdebd0"; title += " (A SEGUIRE)"; }
-                                if(section.courseNum === 3) { headerColor = "#c0392b"; headerBg = "#f9ebea"; title += " (DESSERT)"; }
-                            } else { title += " (IN ATTESA)"; }
+                         // GESTIONE TITOLI DINAMICI
+let headerColor = "#7f8c8d"; let headerBg = "#ecf0f1"; let title = `${section.courseNum}ª USCITA`;
+
+if (!section.locked) {
+    if(section.courseNum === 1) { headerColor = "#27ae60"; headerBg = "#e8f8f5"; title += " (INIZIARE)"; }
+    if(section.courseNum === 2) { headerColor = "#f39c12"; headerBg = "#fef9e7"; title += " (A SEGUIRE)"; }
+    if(section.courseNum === 3) { headerColor = "#d35400"; headerBg = "#fdebd0"; title += " (TERZO STEP)"; }
+    if(section.courseNum === 4) { headerColor = "#8e44ad"; headerBg = "#f4ecf7"; title += " (CHIUSURA)"; } 
+} else { title += " (IN ATTESA)"; }
 
                             return (
                                 <div key={section.courseNum} style={{marginBottom:'15px'}}>
