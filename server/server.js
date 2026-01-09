@@ -457,16 +457,18 @@ app.get('/api/polling/:ristorante_id', async (req, res) => {
 });
 
 // ==========================================
-//          API ORDINI (FIX ORARIO)
+//          API ORDINI (VERSIONE STAFF)
 // ==========================================
 
 app.post('/api/ordine', async (req, res) => {
     try {
-        const { ristorante_id, tavolo, prodotti, totale, cliente } = req.body;
+        // 1. Aggiungiamo 'cameriere' ai dati ricevuti dal frontend
+        const { ristorante_id, tavolo, prodotti, totale, cliente, cameriere } = req.body;
         
-        // --- FIX ORARIO: USA getNowItaly() ---
-        const dataOra = getNowItaly(); 
-        let logIniziale = `[${dataOra}] 🆕 NUOVO ORDINE (Cliente: ${cliente || 'Ospite'})\n`;
+        const dataOra = getNowItaly();
+        
+        // 2. Aggiorniamo il log iniziale per includere chi ha preso l'ordine
+        let logIniziale = `[${dataOra}] 🆕 ORDINE DA: ${cameriere ? cameriere : 'Cliente ('+cliente+')'}\n`;
         
         if (Array.isArray(prodotti)) {
             prodotti.forEach(p => {
@@ -482,10 +484,12 @@ app.post('/api/ordine', async (req, res) => {
         }
         logIniziale += `TOTALE PARZIALE: ${Number(totale).toFixed(2)}€\n----------------------------------\n`;
 
+        // 3. Eseguiamo la query aggiungendo la colonna cameriere alla fine
         await pool.query(
-            "INSERT INTO ordini (ristorante_id, tavolo, prodotti, totale, stato, dettagli) VALUES ($1, $2, $3, $4, 'in_attesa', $5)", 
-            [ristorante_id, String(tavolo), JSON.stringify(prodotti), totale, logIniziale]
+            "INSERT INTO ordini (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere) VALUES ($1, $2, $3, $4, 'in_attesa', $5, $6)", 
+            [ristorante_id, String(tavolo), JSON.stringify(prodotti), totale, logIniziale, cameriere || null]
         );
+        
         res.json({ success: true });
     } catch (e) { 
         console.error("Errore ordine:", e);

@@ -8,6 +8,8 @@ function Menu() {
   const [ristorante, setRistorante] = useState("");
   const [ristoranteId, setRistoranteId] = useState(null);
   const [style, setStyle] = useState({});
+  const [tavoloStaff, setTavoloStaff] = useState("");
+  const isStaff = user && (user.ruolo === 'cameriere' || user.ruolo === 'admin');
   
   // --- STATI LOGICI ---
   const [isSuspended, setIsSuspended] = useState(false);
@@ -162,14 +164,26 @@ function Menu() {
 // --- INCOLLA QUESTO IN MENU.JSX AL POSTO DI inviaOrdine ---
   const inviaOrdine = async () => {
       if(carrello.length === 0) return;
-      if(!canOrder) return; 
-      if(!confirm(`Confermi l'ordine per il tavolo ${numeroTavolo}?`)) return;
-
-      // 1. Calcoliamo quali step sono presenti (es. solo Pizza = [3], Pizza+Dolce = [3,4])
-      const stepPresenti = [...new Set(carrello.filter(c => !c.categoria_is_bar).map(c => c.course))].sort((a,b)=>a-b);
       
-      // 2. Li trasformiamo in sequenza 1, 2, 3...
-      // Es: Se ho solo [3], il 3 diventa 1. Se ho [1, 3], l'1 resta 1 e il 3 diventa 2.
+      // --- MODIFICA STAFF: Lo staff ignora il blocco canOrder ---
+      if(!canOrder && !isStaff) {
+          alert("La cucina è chiusa per gli ordini online.");
+          return;
+      }
+
+      // --- MODIFICA STAFF: Gestione numero tavolo dinamico ---
+      let tavoloFinale = numeroTavolo; // Prende quello dell'URL/QR di default
+      if (isStaff) {
+          const t = prompt("Inserisci il numero del tavolo:", tavoloStaff || numeroTavolo);
+          if (!t) return; // Annulla l'invio se il cameriere preme annulla
+          tavoloFinale = t;
+          setTavoloStaff(t); // Lo salva per l'ordine successivo (comodità)
+      }
+
+      if(!confirm(`Confermi l'ordine per il tavolo ${tavoloFinale}?`)) return;
+
+      // 1. Logica normalizzazione corsi (quella che avevi tu)
+      const stepPresenti = [...new Set(carrello.filter(c => !c.categoria_is_bar).map(c => c.course))].sort((a,b)=>a-b);
       const mapNuoviCorsi = {};
       stepPresenti.forEach((vecchioCorso, index) => {
           mapNuoviCorsi[vecchioCorso] = index + 1;
@@ -178,13 +192,11 @@ function Menu() {
       const prodottiNormalizzati = carrello.map(p => {
           let courseFinale = p.course;
           if (!p.categoria_is_bar) {
-              // Qui applichiamo la trasformazione: prende il numero sequenziale dell'ordine attuale
               courseFinale = mapNuoviCorsi[p.course] || 1; 
           }
-
           return {
               id: p.id, nome: p.nome, prezzo: p.prezzo,
-              course: courseFinale, // Ora sarà 1, 2, 3... basato sull'ordine reale
+              course: courseFinale,
               is_bar: p.categoria_is_bar,
               is_pizzeria: p.categoria_is_pizzeria,
               stato: 'in_attesa',
@@ -192,15 +204,33 @@ function Menu() {
           };
       });
 
+      // 2. Creazione Payload con campo 'cameriere'
       const payload = {
-          ristorante_id: ristoranteId, tavolo: numeroTavolo, cliente: user ? user.nome : "Ospite", 
-          prodotti: prodottiNormalizzati, totale: carrello.reduce((a,b)=>a+Number(b.prezzo),0)
+          ristorante_id: ristoranteId, 
+          tavolo: tavoloFinale, 
+          cliente: user ? user.nome : "Ospite",
+          cameriere: isStaff ? user.nome : null, // <--- Qui passiamo il nome del cameriere
+          prodotti: prodottiNormalizzati, 
+          totale: carrello.reduce((a,b)=>a+Number(b.prezzo),0)
       };
 
       try {
-          await fetch(`${API_URL}/api/ordine`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-          alert("✅ Ordine Inviato!"); setCarrello([]); setShowCheckout(false);
-      } catch(e) { alert("Errore connessione server."); }
+          const res = await fetch(`${API_URL}/api/ordine`, { 
+              method: 'POST', 
+              headers: {'Content-Type': 'application/json'}, 
+              body: JSON.stringify(payload) 
+          });
+          
+          if(res.ok) {
+              alert(isStaff ? `✅ Ordine inviato (Tavolo ${tavoloFinale})` : "✅ Ordine Inviato!"); 
+              setCarrello([]); 
+              setShowCheckout(false);
+          } else {
+              alert("Errore nell'invio dell'ordine.");
+          }
+      } catch(e) { 
+          alert("Errore connessione server."); 
+      }
   };
 
   // --- STYLE HELPERS ---
@@ -643,10 +673,20 @@ const addList = addListPiatto.length > 0 ? addListPiatto : addListCategoria;
                       
                       {/* --- TOTALE RIMOSSO DEFINITIVAMENTE --- */}
                       
-                      {/* --- PULSANTE CONFERMA: VISIBILE SOLO SE CUCINA APERTA --- */}
-                      {carrello.length > 0 && canOrder && (
-                            <button onClick={inviaOrdine} style={{width:'100%', padding:'15px', fontSize:'18px', background: '#159709ff', color:'white', border:`1px solid ${style?.text||'#ccc'}`, borderRadius:'30px', fontWeight:'bold', cursor:'pointer'}}>CONFERMA E INVIA 🚀</button>
-                      )}
+{/* Mostra il tasto se la cucina è aperta OPPURE se l'utente è dello staff */}
+{carrello.length > 0 && (canOrder || isStaff) && (
+    <button 
+        onClick={inviaOrdine} 
+        style={{
+            width:'100%', padding:'15px', fontSize:'18px', 
+            background: '#159709ff', color:'white', 
+            border:`1px solid ${style?.text||'#ccc'}`, 
+            borderRadius:'30px', fontWeight:'bold', cursor:'pointer'
+        }}
+    >
+        {isStaff ? "INVIA ORDINE STAFF 🚀" : "CONFERMA E INVIA 🚀"}
+    </button>
+)}
                       
                       <button onClick={() => setShowCheckout(false)} style={{width:'100%', padding:'15px', marginTop:'10px', background:'transparent', border:`1px solid ${style?.text||'#ccc'}`, color: style?.text||'#ccc', borderRadius:'30px', cursor:'pointer'}}>Torna al Menu</button>
                   </div>

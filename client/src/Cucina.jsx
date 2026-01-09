@@ -258,17 +258,29 @@ const handleLogin = async (e) => {
       <div className="ordini-grid">
         {tavoli.length === 0 && <div style={{textAlign: 'center', width: '100%', marginTop: '50px', color: '#888'}}><h2>Nessuna comanda in attesa 👨‍🍳</h2></div>}
 
-        {tavoli.map(tavoloData => {
-            const strutturaOrdine = processaTavolo(tavoloData.items);
+{tavoli.map(tavoloData => {
+    const strutturaOrdine = processaTavolo(tavoloData.items);
+    
+    // Recuperiamo il nome del cameriere dal primo item del gruppo
+    const nomeCameriere = tavoloData.items[0]?.cameriere;
+
+    return (
+        <div key={tavoloData.tavolo} className="ticket" style={{borderTop: '5px solid #d35400'}}>
+            <div className="ticket-header" style={{display:'flex', justifyContent:'space-between', alignItems:'center', background: '#d35400', color: 'white', padding: '10px'}}>
+                <div style={{display:'flex', flexDirection:'column'}}>
+                    <span style={{fontSize:'1.8rem'}}>Tavolo <strong>{tavoloData.tavolo}</strong></span>
+                    {/* MOSTRA IL NOME DEL CAMERIERE SOTTO IL NUMERO TAVOLO */}
+                    {nomeCameriere && (
+                        <span style={{fontSize:'0.9rem', background:'rgba(255,255,255,0.2)', padding:'2px 8px', borderRadius:'4px', marginTop:'2px', display:'inline-block', width:'fit-content'}}>
+                            👤 {nomeCameriere}
+                        </span>
+                    )}
+                </div>
+                <span style={{fontSize:'0.9rem', color:'#fff'}}>{new Date(tavoloData.orarioMin).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+            </div>
             
-            return (
-                <div key={tavoloData.tavolo} className="ticket" style={{borderTop: '5px solid #d35400'}}>
-                    <div className="ticket-header" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                        <span style={{fontSize:'1.8rem'}}>Tavolo <strong>{tavoloData.tavolo}</strong></span>
-                        <span style={{fontSize:'0.9rem', color:'#ffffffff'}}>{new Date(tavoloData.orarioMin).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
-                    </div>
-                    
-                    <div className="ticket-body" style={{textAlign:'left', paddingBottom:'5px'}}>
+            <div className="ticket-body" style={{textAlign:'left', paddingBottom:'5px'}}>
+            {/* ... resto del codice ... */}
                         {strutturaOrdine.map(section => {
                             let headerColor = "#7f8c8d"; let headerBg = "#ecf0f1"; 
                             let title = `${section.courseNum}° STEP`; 

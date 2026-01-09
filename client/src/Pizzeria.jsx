@@ -231,13 +231,23 @@ const handleLogin = async (e) => {
 
         {tavoli.map(tavoloData => {
             const strutturaOrdine = processaTavolo(tavoloData.items);
+            const nomeCameriere = tavoloData.items[0]?.cameriere;
             
             return (
                 <div key={tavoloData.tavolo} className="ticket" style={{background:'white', borderTop:'5px solid #e74c3c', marginBottom:20, borderRadius:8}}>
                     <div className="ticket-header" style={{padding:10, borderBottom:'1px solid #eee', background:'#fceceb', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                        <span style={{fontSize:'1.8rem', color:'#c0392b'}}>Tavolo <strong>{tavoloData.tavolo}</strong></span>
-                        <span style={{fontSize:'0.9rem', color:'#000000ff'}}>{new Date(tavoloData.orarioMin).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
-                    </div>
+    <div style={{display:'flex', flexDirection:'column'}}>
+        <span style={{fontSize:'1.8rem', color:'#c0392b'}}>Tavolo <strong>{tavoloData.tavolo}</strong></span>
+        
+        {/* --- AGGIUNGI QUESTO BLOCCO --- */}
+        {nomeCameriere && (
+            <span style={{fontSize:'0.9rem', background:'rgba(192, 57, 43, 0.1)', color: '#c0392b', padding:'2px 8px', borderRadius:'4px', marginTop:'2px', display:'inline-block', width:'fit-content', fontWeight: 'bold'}}>
+                👤 {nomeCameriere}
+            </span>
+        )}
+    </div>
+    <span style={{fontSize:'0.9rem', color:'#000000ff'}}>{new Date(tavoloData.orarioMin).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+</div>
                     
                     <div className="ticket-body" style={{textAlign:'left', paddingBottom:'5px'}}>
                         

@@ -174,9 +174,15 @@ const handleLogin = async (e) => {
 
         {ordiniPerTavolo.map(gruppo => (
             <div key={gruppo.tavolo} className="ticket" style={{background:'#ecf0f1', borderTop:'5px solid #3498db'}}>
-                <div className="ticket-header" style={{background:'#2980b9', color:'white', padding:'10px'}}>
-                    <span style={{fontSize:'1.5rem'}}>Tavolo <strong>{gruppo.tavolo}</strong></span>
-                </div>
+                <div className="ticket-header" style={{background:'#2980b9', color:'white', padding:'10px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+    <span style={{fontSize:'1.5rem'}}>Tavolo <strong>{gruppo.tavolo}</strong></span>
+    {/* MOSTRA CAMERIERE NEL TICKET GENERALE DEL TAVOLO */}
+    {gruppo.listaOrdini[0]?.cameriere && (
+        <span style={{background:'rgba(255,255,255,0.2)', padding:'2px 8px', borderRadius:'4px', fontSize:'0.9rem', fontWeight:'normal'}}>
+            👤 {gruppo.listaOrdini[0].cameriere}
+        </span>
+    )}
+</div>
                 
                 <div className="ticket-body" style={{textAlign:'left', paddingBottom:'5px'}}>
                     {gruppo.listaOrdini.map(ord => {
@@ -186,9 +192,10 @@ const handleLogin = async (e) => {
                         return (
                             <div key={ord.id} style={{marginBottom: '10px', borderBottom:'2px solid #bdc3c7'}}>
                                 <div style={{fontSize:'0.85rem', background:'#d6eaf8', padding:'4px 10px', color:'#2980b9', fontWeight:'bold', display:'flex', justifyContent:'space-between'}}>
-                                    <span>Ore {new Date(ord.data_ora).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                                    <span>{ord.cameriere}</span>
-                                </div>
+    <span>Ore {new Date(ord.data_ora).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+    {/* VERSIONE MIGLIORATA DEL NOME CAMERIERE NELLA RIGA ORDINE */}
+    <span>{ord.cameriere ? `👤 ${ord.cameriere}` : '📱 Cliente'}</span>
+</div>
 
                                 {prodottiRaggruppati.map((gruppoProd) => {
                                     const isServito = gruppoProd.stato === 'servito';
