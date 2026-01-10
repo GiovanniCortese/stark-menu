@@ -602,9 +602,7 @@ const addList = addListPiatto.length > 0 ? addListPiatto : addListCategoria;
                                   display:'inline-block', paddingRight:20
                               }}>
                                   {index + 1}ª PORTATA 
-                                  <span style={{fontSize:'0.8rem', marginLeft:10, color:'#888', fontWeight:'normal'}}>
-                                      ({courseNum === 1 ? 'Antipasti' : courseNum === 2 ? 'Primi' : courseNum === 3 ? 'Secondi/Pizze' : 'Dessert'})
-                                  </span>
+
                               </h3>
 
                               {itemsCucina.filter(i => i.course === courseNum).map(item => {
@@ -613,7 +611,7 @@ const addList = addListPiatto.length > 0 ? addListPiatto : addListCategoria;
                                   const ingredientiStr = (variantiObj.base || []).join(', ');
 
                                   return (
-                                  <div key={item.tempId} style={{background:'rgba(223, 0, 0, 0.1)', borderRadius:10, padding:15, marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                                  <div key={item.tempId} style={{background:'rgba(255,255,255,0.1)', borderRadius:10, padding:15, marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                                       <div>
                                           <div style={{fontWeight:'bold', fontSize:'1.1rem', color: titleColor}}>{item.nome}</div>
                                           
