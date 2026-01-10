@@ -174,6 +174,18 @@ const cambiaUscita = (tempId, delta) => {
 // --- INCOLLA QUESTO IN MENU.JSX AL POSTO DI inviaOrdine ---
   const inviaOrdine = async () => {
       if(carrello.length === 0) return;
+
+      // --- LOG DI CONTROLLO (Premi F12 nel browser per vederlo) ---
+      console.log("Stato Utente al momento dell'ordine:", user);
+      
+      // Controllo robusto dell'ID
+      let finalUserId = null;
+      if (user && user.id) {
+          finalUserId = user.id;
+      } else if (user && user.user && user.user.id) {
+          // A volte capita che l'oggetto sia annidato (es: {user: {id: 1, ...}})
+          finalUserId = user.user.id;
+      }
       
       // --- MODIFICA STAFF: Lo staff ignora il blocco canOrder ---
       if(!canOrder && !isStaff) {
@@ -218,7 +230,7 @@ const cambiaUscita = (tempId, delta) => {
       const payload = {
           ristorante_id: ristoranteId, 
           tavolo: tavoloFinale, 
-          utente_id: user ? user.id : null,
+          utente_id: finalUserId, // <--- USA QUESTA VARIABILE SICURA
           cliente: user ? user.nome : "Ospite",
           cameriere: isStaff ? user.nome : null, // <--- Qui passiamo il nome del cameriere
           prodotti: prodottiNormalizzati, 
