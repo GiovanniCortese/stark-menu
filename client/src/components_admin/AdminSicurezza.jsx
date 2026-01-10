@@ -26,20 +26,6 @@ function AdminSicurezza({ user, API_URL }) {
             alert("✅ Password Reparti Aggiornate!");
         } catch (e) { alert("Errore"); }
     };
-    
-    const registraIP = async () => {
-    try {
-        const res = await fetch(`${API_URL}/api/ristorante/register-ip/${user.id}`, { method: 'PUT' });
-        const data = await res.json();
-        if(data.success) {
-            alert("✅ WiFi del locale registrato! IP: " + data.ipRegistrato);
-        } else {
-            alert("❌ Errore nella registrazione IP");
-        }
-    } catch (e) {
-        alert("Errore di connessione");
-    }
-};
 
     const rowStyle = { marginBottom: 15, padding: 10, background: '#f9f9f9', borderRadius: 5, border: '1px solid #ddd' };
     const labelStyle = { display: 'block', fontWeight: 'bold', marginBottom: 5, color: '#333' };
