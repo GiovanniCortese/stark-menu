@@ -245,14 +245,13 @@ app.get('/api/stats/dashboard/:ristorante_id', async (req, res) => {
 });
 
 // ==========================================
-//    MODIFICA ORDINE PER SALVARE USER ID
+// API ORDINE UNIFICATA (LOG + SICUREZZA + CRM)
 // ==========================================
-// Quando crei l'ordine, salva anche utente_id se presente con controllo sicurezza ristorante
 app.post('/api/ordine', async (req, res) => {
     try {
         const { ristorante_id, tavolo, prodotti, totale, cliente, cameriere, utente_id } = req.body;
         
-        // 🛡️ CONTROLLO SICUREZZA STAFF
+        // 1. 🛡️ CONTROLLO SICUREZZA (Evita che staff di altri locali inviino ordini qui)
         if (utente_id) {
             const userCheck = await pool.query(
                 "SELECT ruolo, ristorante_id FROM utenti WHERE id = $1", 
@@ -260,7 +259,6 @@ app.post('/api/ordine', async (req, res) => {
             );
             if (userCheck.rows.length > 0) {
                 const user = userCheck.rows[0];
-                // Verifica che il cameriere appartenga a questo ristorante
                 if ((user.ruolo === 'cameriere' || user.ruolo === 'editor') && 
                     parseInt(user.ristorante_id) !== parseInt(ristorante_id)) {
                     return res.status(403).json({ success: false, error: "Accesso negato al locale." });
@@ -268,10 +266,11 @@ app.post('/api/ordine', async (req, res) => {
             }
         }
 
-        const dataOraFormat = getNowItaly(); // Stringa leggibile
-        let logIniziale = `[${dataOraFormat}] 🆕 ORDINE DA: ${cameriere ? cameriere : 'Cliente ('+cliente+')'}\n`;
+        const dataOraFormat = getNowItaly(); // La tua funzione per l'ora italiana
         
-        // Generazione Log Prodotti
+        // 2. GENERAZIONE LOG DETTAGLIATO PER LA CASSA
+        let logIniziale = `[${dataOraFormat}] 🆕 ORDINE DA: ${cameriere ? cameriere : 'Cliente (' + cliente + ')'}\n`;
+        
         if (Array.isArray(prodotti)) {
             prodotti.forEach(p => {
                 let note = "";
@@ -284,16 +283,27 @@ app.post('/api/ordine', async (req, res) => {
         }
         logIniziale += `TOTALE PARZIALE: ${Number(totale).toFixed(2)}€\n----------------------------------\n`;
 
-        // Salvataggio su DB (Usa sia data_ora automatica che data_ordine testuale per i log)
+        // 3. SALVATAGGIO SU DB (Include utente_id per il CRM)
+        // Assicurati che le colonne utente_id e cameriere esistano nella tabella ordini
         await pool.query(
-            "INSERT INTO ordini (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id, data_ordine) VALUES ($1, $2, $3, $4, 'in_attesa', $5, $6, $7, $8)", 
-            [ristorante_id, String(tavolo), JSON.stringify(prodotti), totale, logIniziale, cameriere || null, utente_id || null, dataOraFormat]
+            `INSERT INTO ordini 
+            (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id, data_ora) 
+            VALUES ($1, $2, $3, $4, 'in_attesa', $5, $6, $7, NOW())`, 
+            [
+                ristorante_id, 
+                String(tavolo), 
+                JSON.stringify(prodotti), 
+                totale, 
+                logIniziale, 
+                cameriere || null, 
+                utente_id || null
+            ]
         );
         
         res.json({ success: true });
     } catch (e) { 
-        console.error("Errore critico ordine:", e);
-        res.status(500).json({ error: "Errore interno" }); 
+        console.error("Errore critico salvataggio ordine:", e);
+        res.status(500).json({ error: "Errore interno durante l'invio dell'ordine" }); 
     }
 });
 
@@ -740,44 +750,6 @@ app.get('/api/polling/:ristorante_id', async (req, res) => {
 // ==========================================
 //          API ORDINI (VERSIONE STAFF)
 // ==========================================
-
-app.post('/api/ordine', async (req, res) => {
-    try {
-        // 1. Aggiungiamo 'cameriere' ai dati ricevuti dal frontend
-        const { ristorante_id, tavolo, prodotti, totale, cliente, cameriere } = req.body;
-        
-        const dataOra = getNowItaly();
-        
-        // 2. Aggiorniamo il log iniziale per includere chi ha preso l'ordine
-        let logIniziale = `[${dataOra}] 🆕 ORDINE DA: ${cameriere ? cameriere : 'Cliente ('+cliente+')'}\n`;
-        
-        if (Array.isArray(prodotti)) {
-            prodotti.forEach(p => {
-                let note = "";
-                try {
-                    if(p.varianti_scelte) { 
-                         if(p.varianti_scelte.rimozioni && p.varianti_scelte.rimozioni.length > 0) note += ` (No: ${p.varianti_scelte.rimozioni.join(', ')})`;
-                         if(p.varianti_scelte.aggiunte && p.varianti_scelte.aggiunte.length > 0) note += ` (+: ${p.varianti_scelte.aggiunte.map(a=>a.nome).join(', ')})`;
-                    }
-                } catch(e) {}
-                logIniziale += ` • ${p.nome}${note} - ${Number(p.prezzo).toFixed(2)}€\n`;
-            });
-        }
-        logIniziale += `TOTALE PARZIALE: ${Number(totale).toFixed(2)}€\n----------------------------------\n`;
-
-        // 3. Eseguiamo la query aggiungendo la colonna cameriere alla fine
-        await pool.query(
-            "INSERT INTO ordini (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere) VALUES ($1, $2, $3, $4, 'in_attesa', $5, $6)", 
-            [ristorante_id, String(tavolo), JSON.stringify(prodotti), totale, logIniziale, cameriere || null]
-        );
-        
-        res.json({ success: true });
-    } catch (e) { 
-        console.error("Errore ordine:", e);
-        res.status(500).json({ error: "Err" }); 
-    }
-});
-
 // --- FIX ORARIO NELL'AGGIORNAMENTO ---
 app.put('/api/ordine/:id/update-items', async (req, res) => { 
     try { 
