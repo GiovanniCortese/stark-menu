@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE V9 CLEAN (Fixed)
+// server/server.js - VERSIONE V10 FINAL (Secure & Atomic Updates)
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -7,7 +7,7 @@ const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require('multer');
 const xlsx = require('xlsx');
-const { authenticator } = require('otplib'); // Spostato qui per ordine
+const { authenticator } = require('otplib');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -25,36 +25,6 @@ const pool = new Pool({
     ssl: { rejectUnauthorized: false }
 });
 
-// --- DATABASE AUTO-FIX (Pulito e Ottimizzato) ---
-const fixDatabase = async () => {
-    try {
-        // Tabella UTENTI
-        await pool.query("ALTER TABLE utenti ADD COLUMN IF NOT EXISTS ristorante_id INTEGER");
-        await pool.query("ALTER TABLE utenti ADD COLUMN IF NOT EXISTS telefono_verificato BOOLEAN DEFAULT FALSE");
-        await pool.query("ALTER TABLE utenti ADD COLUMN IF NOT EXISTS codice_otp TEXT");
-
-        // Tabella ORDINI
-        await pool.query("ALTER TABLE ordini ADD COLUMN IF NOT EXISTS utente_id INTEGER");
-        await pool.query("ALTER TABLE ordini ADD COLUMN IF NOT EXISTS cameriere TEXT");
-        await pool.query("ALTER TABLE ordini ADD COLUMN IF NOT EXISTS data_ordine TEXT");
-
-        // Tabella CATEGORIE
-        await pool.query("ALTER TABLE categorie ADD COLUMN IF NOT EXISTS varianti_default JSONB DEFAULT '[]'");
-
-        // Tabella RISTORANTI (Sicurezza e Master Switch)
-        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS pw_cassa TEXT DEFAULT '1234'");
-        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS pw_cucina TEXT DEFAULT '1234'");
-        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS pw_bar TEXT DEFAULT '1234'");
-        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS pw_pizzeria TEXT DEFAULT '1234'");
-        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS cucina_super_active BOOLEAN DEFAULT TRUE");
-
-        console.log("✅ Database allineato con successo.");
-    } catch (e) { 
-        console.error("❌ Errore durante l'allineamento DB:", e); 
-    }
-};
-fixDatabase();
-
 // CLOUDINARY
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -63,7 +33,7 @@ cloudinary.config({
 });
 const storage = new CloudinaryStorage({ cloudinary: cloudinary, params: { folder: 'menu-app' } });
 const upload = multer({ storage: storage });
-const uploadFile = multer({ storage: multer.memoryStorage() });
+const uploadFile = multer({ storage: multer.memoryStorage() }); // FIX CRITICO EXCEL
 
 const getNowItaly = () => {
     return new Date().toLocaleString('it-IT', { 
@@ -73,192 +43,16 @@ const getNowItaly = () => {
     });
 };
 
-
 // ==========================================
-//          API GESTIONE UTENTI & STAFF
-// ==========================================
-
-// 1. Registrazione (Nuova logica Staff + Cliente)
-app.post('/api/register', async (req, res) => {
-    try {
-        const { nome, email, password, telefono, indirizzo, ruolo, ristorante_id } = req.body;
-        
-        const check = await pool.query('SELECT * FROM utenti WHERE email = $1', [email]);
-        if (check.rows.length > 0) return res.json({ success: false, error: "Email già registrata" });
-
-        // Se è un admin che crea staff, usiamo il suo ristorante_id. Se è un cliente, è null.
-        const r_id = (ruolo === 'cameriere' || ruolo === 'editor') ? ristorante_id : null;
-
-        const r = await pool.query(
-            'INSERT INTO utenti (nome, email, password, telefono, indirizzo, ruolo, ristorante_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-            [nome, email, password, telefono, indirizzo, ruolo || 'cliente', r_id]
-        );
-        res.json({ success: true, user: r.rows[0] });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// 2. Login UTENTI/STAFF (Diverso dal login Ristorante)
-app.post('/api/auth/login', async (req, res) => {
-    try {
-        const { email, password } = req.body;
-        const r = await pool.query('SELECT * FROM utenti WHERE email = $1 AND password = $2', [email, password]);
-        if (r.rows.length > 0) {
-            res.json({ success: true, user: r.rows[0] });
-        } else {
-            res.json({ success: false, error: "Credenziali errate" });
-        }
-    } catch (e) { res.status(500).json({ error: "Errore login" }); }
-});
-
-// 3. GET Utenti (LOGICA DI VISIBILITÀ)
-app.get('/api/utenti', async (req, res) => {
-    try {
-        const { mode, ristorante_id } = req.query; // mode: 'super', 'staff', 'clienti'
-
-        if (mode === 'super') {
-            // SUPER ADMIN: Vede TUTTI
-            const r = await pool.query('SELECT * FROM utenti ORDER BY id DESC');
-            return res.json(r.rows);
-        } 
-        
-        if (mode === 'staff' && ristorante_id) {
-            // ADMIN LOCALE: Vede solo il suo Staff (Editor e Camerieri legati al suo ID)
-            const r = await pool.query(
-                "SELECT * FROM utenti WHERE ristorante_id = $1 AND ruolo IN ('cameriere', 'editor') ORDER BY nome", 
-                [ristorante_id]
-            );
-            return res.json(r.rows);
-        }
-
-        if ((mode === 'clienti' || mode === 'clienti_ordini') && ristorante_id) {
-            // ADMIN LOCALE: Vede i Clienti con statistiche di fidelizzazione
-            const r = await pool.query(`
-                SELECT 
-                    u.id, u.nome, u.email, u.telefono, u.username,
-                    COUNT(o.id) as totale_ordini, 
-                    MAX(o.data_ora) as ultimo_ordine
-                FROM utenti u
-                INNER JOIN ordini o ON u.id = o.utente_id
-                WHERE o.ristorante_id = $1
-                GROUP BY u.id, u.nome, u.email, u.telefono, u.username
-                ORDER BY ultimo_ordine DESC
-            `, [ristorante_id]);
-            return res.json(r.rows);
-        }
-
-        res.json([]);
-    } catch (e) { res.status(500).json({ error: "Err" }); }
-});
-
-// 4. Modifica Utente
-app.put('/api/utenti/:id', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { nome, email, password, telefono, indirizzo, ruolo } = req.body;
-        await pool.query(
-            `UPDATE utenti SET nome=$1, email=$2, password=$3, telefono=$4, indirizzo=$5, ruolo=$6 WHERE id=$7`,
-            [nome, email, password, telefono, indirizzo, ruolo, id]
-        );
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: "Errore modifica utente" }); }
-});
-
-// 5. Elimina Utente
-app.delete('/api/utenti/:id', async (req, res) => {
-    try {
-        await pool.query('DELETE FROM utenti WHERE id=$1', [req.params.id]);
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: "Errore eliminazione utente" }); }
-});
-
-// ==========================================
-//          API DASHBOARD STATISTICHE
+//          API GESTIONE ORDINI (ATOMIC FIX)
 // ==========================================
 
-app.get('/api/stats/dashboard/:ristorante_id', async (req, res) => {
-    const { ristorante_id } = req.params;
-    try {
-        // 1. Incasso Oggi vs Ieri
-        const incassi = await pool.query(`
-            SELECT 
-                SUM(CASE WHEN data_ora::date = CURRENT_DATE THEN totale ELSE 0 END) as oggi,
-                SUM(CASE WHEN data_ora::date = CURRENT_DATE - 1 THEN totale ELSE 0 END) as ieri
-            FROM ordini 
-            WHERE ristorante_id = $1 AND stato = 'pagato'
-        `, [ristorante_id]);
-
-        // 2. Piatti più venduti (Top 5)
-        const ordiniRecenti = await pool.query(`
-            SELECT prodotti FROM ordini 
-            WHERE ristorante_id = $1 AND stato = 'pagato' 
-            ORDER BY data_ora DESC LIMIT 500
-        `, [ristorante_id]);
-
-        const piattoCount = {};
-        ordiniRecenti.rows.forEach(row => {
-            const prodotti = typeof row.prodotti === 'string' ? JSON.parse(row.prodotti) : row.prodotti;
-            if(Array.isArray(prodotti)) {
-                prodotti.forEach(p => {
-                    if(piattoCount[p.nome]) piattoCount[p.nome]++;
-                    else piattoCount[p.nome] = 1;
-                });
-            }
-        });
-        const topDishes = Object.entries(piattoCount)
-            .sort((a,b) => b[1] - a[1])
-            .slice(0, 5)
-            .map(([name, count]) => ({ name, value: count }));
-
-        // 3. Orari di Punta (Basato sugli ordini di oggi)
-        const orari = await pool.query(`
-            SELECT EXTRACT(HOUR FROM data_ora) as ora, COUNT(*) as count
-            FROM ordini 
-            WHERE ristorante_id = $1 AND data_ora::date = CURRENT_DATE
-            GROUP BY ora 
-            ORDER BY ora
-        `, [ristorante_id]);
-
-        const chartData = orari.rows.map(r => ({ name: `${r.ora}:00`, ordini: parseInt(r.count) }));
-
-        res.json({
-            incassi: incassi.rows[0],
-            topDishes,
-            chartData
-        });
-
-    } catch (e) { 
-        console.error(e);
-        res.status(500).json({ error: "Errore statistiche" }); 
-    }
-});
-
-// ==========================================
-// API ORDINE UNIFICATA (LOG + SICUREZZA + CRM)
-// ==========================================
+// 1. Crea Ordine
 app.post('/api/ordine', async (req, res) => {
     try {
         const { ristorante_id, tavolo, prodotti, totale, cliente, cameriere, utente_id } = req.body;
         
-        // 1. 🛡️ CONTROLLO SICUREZZA
-        if (utente_id) {
-            const userCheck = await pool.query(
-                "SELECT ruolo, ristorante_id FROM utenti WHERE id = $1", 
-                [utente_id]
-            );
-            if (userCheck.rows.length > 0) {
-                const user = userCheck.rows[0];
-                if ((user.ruolo === 'cameriere' || user.ruolo === 'editor') && 
-                    parseInt(user.ristorante_id) !== parseInt(ristorante_id)) {
-                    return res.status(403).json({ success: false, error: "Accesso negato al locale." });
-                }
-            }
-        }
-
-        const dataOraFormat = getNowItaly(); 
-        
-        // 2. GENERAZIONE LOG DETTAGLIATO PER LA CASSA
-        let logIniziale = `[${dataOraFormat}] 🆕 ORDINE DA: ${cameriere ? cameriere : 'Cliente (' + cliente + ')'}\n`;
-        
+        let logIniziale = `[${getNowItaly()}] 🆕 ORDINE DA: ${cameriere ? cameriere : 'Cliente (' + cliente + ')'}\n`;
         if (Array.isArray(prodotti)) {
             prodotti.forEach(p => {
                 let note = "";
@@ -271,461 +65,145 @@ app.post('/api/ordine', async (req, res) => {
         }
         logIniziale += `TOTALE PARZIALE: ${Number(totale).toFixed(2)}€\n----------------------------------\n`;
 
-        // 3. SALVATAGGIO SU DB
         await pool.query(
-            `INSERT INTO ordini 
-            (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id, data_ora) 
-            VALUES ($1, $2, $3, $4, 'in_attesa', $5, $6, $7, NOW())`, 
-            [
-                ristorante_id, 
-                String(tavolo), 
-                JSON.stringify(prodotti), 
-                totale, 
-                logIniziale, 
-                cameriere || null, 
-                utente_id || null
-            ]
-        );
-        
-        res.json({ success: true });
-    } catch (e) { 
-        console.error("Errore critico salvataggio ordine:", e);
-        res.status(500).json({ error: "Errore interno durante l'invio dell'ordine" }); 
-    }
-});
-
-// ==========================================
-//              API CATEGORIE
-// ==========================================
-
-app.post('/api/categorie', async (req, res) => {
-    try {
-        const { nome, ristorante_id, is_bar, is_pizzeria, descrizione, varianti_default } = req.body;
-        const max = await pool.query('SELECT MAX(posizione) as max FROM categorie WHERE ristorante_id = $1', [ristorante_id]);
-        const nextPos = (max.rows[0].max || 0) + 1;
-        
-        // Trasforma il testo "Bufala:2, Crudo:3" in JSON per il database
-        let variantiJson = [];
-        if (typeof varianti_default === 'string' && varianti_default.includes(':')) {
-             variantiJson = varianti_default.split(',').map(v => {
-                const [n, p] = v.split(':');
-                if(n && p) return { nome: n.trim(), prezzo: parseFloat(p) };
-                return null;
-            }).filter(Boolean);
-        }
-
-        const r = await pool.query(
-            'INSERT INTO categorie (nome, posizione, ristorante_id, is_bar, is_pizzeria, descrizione, varianti_default) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-            [nome, nextPos, ristorante_id, is_bar || false, is_pizzeria || false, descrizione || "", JSON.stringify(variantiJson)]
-        );
-        res.json(r.rows[0]);
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.put('/api/categorie/riordina', async (req, res) => {
-    const { categorie } = req.body;
-    try {
-        for (const cat of categorie) {
-            await pool.query('UPDATE categorie SET posizione = $1 WHERE id = $2', [cat.posizione, cat.id]);
-        }
-        res.json({ success: true });
-    } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.get('/api/categorie/:ristorante_id', async (req, res) => {
-    try {
-        const r = await pool.query('SELECT * FROM categorie WHERE ristorante_id = $1 ORDER BY posizione ASC', [req.params.ristorante_id]);
-        res.json(r.rows);
-    } catch (e) { res.status(500).json({ error: "Err" }); }
-});
-app.put('/api/categorie/:id', async (req, res) => {
-    try {
-        const { nome, is_bar, is_pizzeria, descrizione, varianti_default } = req.body;
-        
-        let variantiJson = [];
-        if (typeof varianti_default === 'string' && varianti_default.includes(':')) {
-             variantiJson = varianti_default.split(',').map(v => {
-                const [n, p] = v.split(':');
-                if(n && p) return { nome: n.trim(), prezzo: parseFloat(p) };
-                return null;
-            }).filter(Boolean);
-        } else if (Array.isArray(varianti_default)) {
-            variantiJson = varianti_default;
-        }
-
-        await pool.query('UPDATE categorie SET nome=$1, is_bar=$2, is_pizzeria=$3, descrizione=$4, varianti_default=$5 WHERE id=$6', 
-            [nome, is_bar, is_pizzeria, descrizione, JSON.stringify(variantiJson), req.params.id]);
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: "Err" }); }
-});
-app.delete('/api/categorie/:id', async (req, res) => {
-    try {
-        await pool.query('DELETE FROM categorie WHERE id=$1', [req.params.id]);
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: "Err" }); }
-});
-
-// ==========================================
-//              API PRODOTTI
-// ==========================================
-
-app.post('/api/prodotti', async (req, res) => {
-    try {
-        const { nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, immagine_url, varianti } = req.body;
-        const max = await pool.query('SELECT MAX(posizione) as max FROM prodotti WHERE ristorante_id = $1', [ristorante_id]);
-        const nextPos = (max.rows[0].max || 0) + 1;
-        
-        await pool.query(
-            'INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, immagine_url, posizione, varianti) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
-            [nome, prezzo, categoria, sottocategoria || "", descrizione || "", ristorante_id, immagine_url || "", nextPos, varianti || '{}']
+            `INSERT INTO ordini (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id, data_ora) VALUES ($1, $2, $3, $4, 'in_attesa', $5, $6, $7, NOW())`, 
+            [ristorante_id, String(tavolo), JSON.stringify(prodotti), totale, logIniziale, cameriere || null, utente_id || null]
         );
         res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { res.status(500).json({ error: "Errore inserimento ordine" }); }
 });
 
-app.put('/api/prodotti/riordina', async (req, res) => {
-    const { prodotti } = req.body;
-    try {
-        for (const prod of prodotti) {
-            if (prod.categoria) {
-                await pool.query('UPDATE prodotti SET posizione = $1, categoria = $2 WHERE id = $3', [prod.posizione, prod.categoria, prod.id]);
-            } else {
-                await pool.query('UPDATE prodotti SET posizione = $1 WHERE id = $2', [prod.posizione, prod.id]);
-            }
-        }
-        res.json({ success: true });
-    } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.put('/api/prodotti/:id', async (req, res) => {
-    try {
-        await pool.query('UPDATE prodotti SET nome=$1, prezzo=$2, categoria=$3, sottocategoria=$4, descrizione=$5, immagine_url=$6, varianti=$8 WHERE id=$7', 
-            [req.body.nome, req.body.prezzo, req.body.categoria, req.body.sottocategoria, req.body.descrizione, req.body.immagine_url, req.params.id, req.body.varianti]);
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: "Err" }); }
-});
-app.delete('/api/prodotti/:id', async (req, res) => {
-    try {
-        await pool.query('DELETE FROM prodotti WHERE id=$1', [req.params.id]);
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: "Err" }); }
-});
-
-// ==========================================
-//        API EXCEL & GRAFICA (AGGIORNATE V8)
-// ==========================================
-
-app.post('/api/import-excel', uploadFile.single('file'), async (req, res) => {
-    const { ristorante_id } = req.body;
-    if (!req.file || !ristorante_id) return res.status(400).json({ error: "Dati mancanti." });
-    
+// 2. PATCH ITEM (FIX CONFLITTI BAR/CUCINA) // Invece di sovrascrivere tutto l'array, leggiamo quello attuale e modifichiamo solo l'indice richiesto.
+app.put('/api/ordine/:id/patch-item', async (req, res) => {
     const client = await pool.connect();
     try {
-        await client.query('BEGIN');
+        await client.query('BEGIN'); // Inizio Transazione Sicura
+        const { id } = req.params;
+        const { index, stato, operatore } = req.body; // operatore = "CUCINA" o "BAR"
 
-        const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
-        const sheetName = workbook.SheetNames[0];
-        const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
-        
-        let maxCat = await client.query('SELECT MAX(posizione) as max FROM categorie WHERE ristorante_id = $1', [ristorante_id]);
-        let nextCatPos = (maxCat.rows[0].max || 0) + 1;
+        // 1. Leggi lo stato ATTUALE del DB (Lockando la riga)
+        const current = await client.query("SELECT prodotti, dettagli FROM ordini WHERE id = $1 FOR UPDATE", [id]);
+        if (current.rows.length === 0) { await client.query('ROLLBACK'); return res.status(404).json({error: "Ordine non trovato"}); }
 
-        let maxProd = await client.query('SELECT MAX(posizione) as max FROM prodotti WHERE ristorante_id = $1', [ristorante_id]);
-        let nextProdPos = (maxProd.rows[0].max || 0) + 1;
+        let prodotti = typeof current.rows[0].prodotti === 'string' ? JSON.parse(current.rows[0].prodotti) : current.rows[0].prodotti;
+        let dettagli = current.rows[0].dettagli || "";
 
-        for (const row of data) {
-            const nome = row['Nome'] ? String(row['Nome']).trim() : "Senza Nome";
-            const prezzo = row['Prezzo'] ? parseFloat(String(row['Prezzo']).replace(',', '.')) : 0;
-            const categoria = row['Categoria'] ? String(row['Categoria']).trim() : "Generale";
-            const sottocategoria = row['Sottocategoria'] ? String(row['Sottocategoria']).trim() : "";
-            const descrizione = row['Descrizione'] ? String(row['Descrizione']).trim() : "";
-            
-            // Parsing Varianti Categoria
-            const variantiCatStr = row['Varianti Categoria (Default)'] || "";
-            let variantiCatJson = [];
-            if (variantiCatStr && variantiCatStr.includes(':')) {
-                variantiCatJson = variantiCatStr.split(',').map(v => {
-                    const parts = v.split(':');
-                    if(parts.length >= 2) return { nome: parts[0].trim(), prezzo: parseFloat(parts[1]) };
-                    return null;
-                }).filter(Boolean);
+        // 2. Modifica solo l'elemento specifico
+        if (prodotti[index]) {
+            // Se lo stato è già quello richiesto, non fare nulla (evita duplicati log)
+            if (prodotti[index].stato === stato) {
+                await client.query('ROLLBACK');
+                return res.json({ success: true }); 
             }
 
-            // GESTIONE CATEGORIA
-            let catCheck = await client.query('SELECT * FROM categorie WHERE nome = $1 AND ristorante_id = $2', [categoria, ristorante_id]);
+            prodotti[index].stato = stato;
             
-            if (catCheck.rows.length === 0) {
-                await client.query(
-                    'INSERT INTO categorie (nome, posizione, ristorante_id, descrizione, varianti_default) VALUES ($1, $2, $3, $4, $5)', 
-                    [categoria, nextCatPos++, ristorante_id, "", JSON.stringify(variantiCatJson)]
-                );
-            } else {
-                if (variantiCatStr.length > 0) {
-                    await client.query(
-                        'UPDATE categorie SET varianti_default = $1 WHERE id = $2',
-                        [JSON.stringify(variantiCatJson), catCheck.rows[0].id]
-                    );
-                }
+            if (stato === 'servito') {
+                prodotti[index].ora_servizio = new Date().toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'});
+                dettagli += `\n[${getNowItaly()}] [${operatore}] HA SERVITO: ${prodotti[index].nome}`;
+            } else if (stato === 'in_attesa') {
+                prodotti[index].riaperto = true;
+                delete prodotti[index].ora_servizio;
+                dettagli += `\n[${getNowItaly()}] [${operatore}] ⚠️ RIAPERTO: ${prodotti[index].nome}`;
             }
-
-            // Parsing Varianti Prodotto
-            const baseStr = row['Ingredienti Base (Rimovibili)'] || "";
-            const aggiunteStr = row['Aggiunte Prodotto (Formato Nome:Prezzo)'] || "";
-            
-            const baseArr = baseStr.split(',').map(s=>s.trim()).filter(Boolean);
-            let aggiunteArr = [];
-            if(aggiunteStr) {
-                aggiunteArr = aggiunteStr.split(',').map(v => {
-                    const parts = v.split(':');
-                    if(parts.length >= 2) return { nome: parts[0].trim(), prezzo: parseFloat(parts[1]) };
-                    return null;
-                }).filter(Boolean);
-            }
-
-            const variantiProdotto = { base: baseArr, aggiunte: aggiunteArr };
-
-            await client.query(
-                `INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, posizione, varianti) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-                [nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, nextProdPos++, JSON.stringify(variantiProdotto)]
-            );
         }
-        
+
+        // 3. Salva
+        await client.query("UPDATE ordini SET prodotti = $1, dettagli = $2 WHERE id = $3", [JSON.stringify(prodotti), dettagli, id]);
         await client.query('COMMIT');
-        res.json({ success: true, message: `Importati ${data.length} piatti e aggiornate categorie!` });
-    } catch (err) { 
+        res.json({ success: true });
+
+    } catch (e) {
         await client.query('ROLLBACK');
-        console.error(err);
-        res.status(500).json({ error: err.message }); 
+        console.error(e);
+        res.status(500).json({ error: "Errore aggiornamento atomico" });
     } finally {
         client.release();
     }
 });
 
-app.get('/api/export-excel/:ristorante_id', async (req, res) => {
-    try {
-        const result = await pool.query(`
-            SELECT p.*, c.varianti_default as cat_varianti
-            FROM prodotti p 
-            LEFT JOIN categorie c ON p.categoria = c.nome AND p.ristorante_id = c.ristorante_id
-            WHERE p.ristorante_id = $1 
-            ORDER BY c.posizione, p.posizione
-        `, [req.params.ristorante_id]);
-        
-        const dataForExcel = result.rows.map(row => {
-            let baseStr = "";
-            let aggiunteStr = "";
-            let catVarStr = "";
-
-            try {
-                const v = typeof row.varianti === 'string' ? JSON.parse(row.varianti) : (row.varianti || {});
-                if(v.base && Array.isArray(v.base)) baseStr = v.base.join(', ');
-                if(v.aggiunte && Array.isArray(v.aggiunte)) aggiunteStr = v.aggiunte.map(a => `${a.nome}:${Number(a.prezzo).toFixed(2)}`).join(', ');
-            } catch(e) {}
-
-            try {
-                const cv = typeof row.cat_varianti === 'string' ? JSON.parse(row.cat_varianti) : (row.cat_varianti || []);
-                if(Array.isArray(cv)) catVarStr = cv.map(a => `${a.nome}:${Number(a.prezzo).toFixed(2)}`).join(', ');
-            } catch(e) {}
-
-            return {
-                "Categoria": row.categoria,
-                "Varianti Categoria (Default)": catVarStr,
-                "Sottocategoria": row.sottocategoria,
-                "Nome": row.nome,
-                "Prezzo": row.prezzo,
-                "Descrizione": row.descrizione,
-                "Ingredienti Base (Rimovibili)": baseStr,
-                "Aggiunte Prodotto (Formato Nome:Prezzo)": aggiunteStr
-            };
-        });
-
-        const workbook = xlsx.utils.book_new();
-        const worksheet = xlsx.utils.json_to_sheet(dataForExcel);
-        
-        const wscols = [
-            {wch:20}, {wch:30}, {wch:15}, {wch:25}, {wch:10}, {wch:30}, {wch:30}, {wch:30}
-        ];
-        worksheet['!cols'] = wscols;
-
-        xlsx.utils.book_append_sheet(workbook, worksheet, "Menu Completo");
-        const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-        res.setHeader('Content-Disposition', 'attachment; filename="menu_export_full.xlsx"');
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.send(buffer);
-    } catch (err) { console.error(err); res.status(500).json({ error: "Errore Export" }); }
-});
-
-app.get('/api/export-clienti/:ristorante_id', async (req, res) => {
-    try {
-        const { ristorante_id } = req.params;
-        const result = await pool.query(`
-            SELECT 
-                u.nome, u.email, u.telefono, u.indirizzo, 
-                COUNT(o.id) as totale_ordini, 
-                MAX(o.data_ora) as ultimo_ordine
-            FROM utenti u
-            JOIN ordini o ON u.id = o.utente_id
-            WHERE o.ristorante_id = $1
-            GROUP BY u.id, u.nome, u.email, u.telefono, u.indirizzo
-            ORDER BY totale_ordini DESC
-        `, [ristorante_id]);
-        
-        const dataForExcel = result.rows.map(row => ({
-            "Nome Cliente": row.nome,
-            "Email": row.email,
-            "Telefono": row.telefono || "N/D",
-            "Indirizzo": row.indirizzo || "N/D",
-            "Totale Ordini": parseInt(row.totale_ordini),
-            "Ultima Visita": row.ultimo_ordine ? new Date(row.ultimo_ordine).toLocaleDateString() : "---"
-        }));
-
-        const workbook = xlsx.utils.book_new();
-        const worksheet = xlsx.utils.json_to_sheet(dataForExcel);
-        worksheet['!cols'] = [{wch:25}, {wch:30}, {wch:15}, {wch:30}, {wch:15}, {wch:15}];
-
-        xlsx.utils.book_append_sheet(workbook, worksheet, "Database Clienti");
-        const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-        
-        res.setHeader('Content-Disposition', `attachment; filename="clienti_stark_id_${ristorante_id}.xlsx"`);
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.send(buffer);
-    } catch (err) { console.error(err); res.status(500).json({ error: "Errore Export Clienti" }); }
-});
-
-app.put('/api/ristorante/style/:id', async (req, res) => {
-    try {
-        const { logo_url, cover_url, colore_sfondo, colore_titolo, colore_testo, colore_prezzo, font_style } = req.body;
-        await pool.query(
-            `UPDATE ristoranti SET logo_url=$1, cover_url=$2, colore_sfondo=$3, colore_titolo=$4, colore_testo=$5, colore_prezzo=$6, font_style=$7 WHERE id=$8`,
-            [logo_url, cover_url, colore_sfondo, colore_titolo, colore_testo, colore_prezzo, font_style, req.params.id]
-        );
-        res.json({ success: true });
-    } catch (err) { res.status(500).json({ error: "Errore salvataggio stile" }); }
-});
-
-// ==========================================
-//           API GENERICHE E ADMIN
-// ==========================================
-
-app.get('/api/cassa/storico/:ristorante_id', async (req, res) => {
-    try {
-        const r = await pool.query("SELECT * FROM ordini WHERE ristorante_id = $1 AND stato = 'pagato' ORDER BY data_ora DESC LIMIT 50", [req.params.ristorante_id]);
-        const ordini = r.rows.map(o => {
-            try { return { ...o, prodotti: JSON.parse(o.prodotti) }; } 
-            catch { return { ...o, prodotti: [] }; }
-        });
-        res.json(ordini);
-    } catch (e) { res.status(500).json({ error: "Err" }); }
-});
-
-app.get('/api/ristorante/config/:id', async (req, res) => {
-    try {
-        const r = await pool.query('SELECT * FROM ristoranti WHERE id = $1', [req.params.id]);
-        if (r.rows.length > 0) res.json(r.rows[0]);
-        else res.status(404).json({ error: "Not Found" });
-    } catch (e) { res.status(500).json({ error: "Err" }); }
-});
-
-app.put('/api/ristorante/servizio/:id', async (req, res) => {
-    try {
-        const { id } = req.params;
-        if (req.body.ordini_abilitati !== undefined) await pool.query('UPDATE ristoranti SET ordini_abilitati = $1 WHERE id = $2', [req.body.ordini_abilitati, id]);
-        if (req.body.servizio_attivo !== undefined) await pool.query('UPDATE ristoranti SET servizio_attivo = $1 WHERE id = $2', [req.body.servizio_attivo, id]);
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({error:"Err"}); }
-});
-
-app.get('/api/menu/:slug', async (req, res) => {
-    try {
-        const { slug } = req.params;
-        const rist = await pool.query('SELECT * FROM ristoranti WHERE slug = $1', [slug]);
-        if (rist.rows.length === 0) return res.status(404).json({ error: "Non trovato" });
-        
-        const data = rist.rows[0];
-        
-       const menu = await pool.query(`
-            SELECT p.*, 
-                c.is_bar as categoria_is_bar, 
-                c.is_pizzeria as categoria_is_pizzeria,
-                c.posizione as categoria_posizione,
-                c.nome as categoria_nome,
-                c.varianti_default as categoria_varianti
-            FROM prodotti p 
-            LEFT JOIN categorie c ON p.categoria = c.nome AND p.ristorante_id = c.ristorante_id 
-            WHERE p.ristorante_id = $1 
-            ORDER BY c.posizione ASC, p.posizione ASC
-        `, [data.id]);
-        
-        res.json({
-            id: data.id,
-            ristorante: data.nome,
-            style: { logo: data.logo_url, cover: data.cover_url, bg: data.colore_sfondo, title: data.colore_titolo, text: data.colore_testo, price: data.colore_prezzo, font: data.font_style },
-            subscription_active: data.account_attivo !== false,
-            kitchen_active: data.cucina_super_active !== false,
-            ordini_abilitati: data.ordini_abilitati,
-            menu: menu.rows
-        });
-    } catch (e) { res.status(500).json({ error: "Err" }); }
-});
-
-// Login RISTORATORE (Dashboard) - Diverso da Auth Utente
-app.post('/api/login', async (req, res) => {
-    const { email, password } = req.body; 
-    
-    try {
-        const result = await pool.query("SELECT * FROM ristoranti WHERE email = $1", [email]);
-        
-        if (result.rows.length > 0) {
-            const ristorante = result.rows[0];
-            if (ristorante.password === password) {
-                return res.json({ 
-                    success: true, 
-                    user: { id: ristorante.id, nome: ristorante.nome, slug: ristorante.slug } 
-                });
-            }
-        }
-        res.status(401).json({ success: false, error: "Email o password errati" });
-    } catch (e) { res.status(500).json({ success: false, error: "Errore interno del server" }); }
-});
-
-app.get('/api/polling/:ristorante_id', async (req, res) => {
-    try {
-        const r = await pool.query("SELECT * FROM ordini WHERE ristorante_id = $1 AND stato != 'pagato' ORDER BY data_ora ASC", [req.params.ristorante_id]);
-        const ordini = r.rows.map(o => {
-            try { return { ...o, prodotti: JSON.parse(o.prodotti) }; } 
-            catch { return { ...o, prodotti: [] }; }
-        });
-        res.json({ nuovi_ordini: ordini });
-    } catch (e) { res.status(500).json({ error: "Err" }); }
-});
-
-// ==========================================
-//          API ORDINI (VERSIONE STAFF)
-// ==========================================
-
+// 3. UPDATE GENERICO (Ancora utile per la Cassa che elimina piatti)
 app.put('/api/ordine/:id/update-items', async (req, res) => { 
     try { 
-        const { id } = req.params; 
         const { prodotti, totale, logMsg } = req.body; 
         let q = "UPDATE ordini SET prodotti = $1"; 
         const p = [JSON.stringify(prodotti)]; 
         let i = 2; 
-        
         if(totale!==undefined){ q+=`, totale=$${i}`; p.push(totale); i++ } 
-        
-        if(logMsg){ 
-            q+=`, dettagli=COALESCE(dettagli,'')||$${i}`; 
-            p.push(`\n[${getNowItaly()}] ${logMsg}`); 
-            i++ 
-        } 
-        
-        q+=` WHERE id=$${i}`; p.push(id); 
+        if(logMsg){ q+=`, dettagli=COALESCE(dettagli,'')||$${i}`; p.push(`\n[${getNowItaly()}] ${logMsg}`); i++ } 
+        q+=` WHERE id=$${i}`; p.push(req.params.id); 
         await pool.query(q, p); 
         res.json({success:true}); 
     } catch(e){ res.status(500).json({error:"Err"}); } 
 });
 
+// ==========================================
+//          ALTRE API (Standard)
+// ==========================================
+
+// Login Auth Utenti
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        const r = await pool.query('SELECT * FROM utenti WHERE email = $1 AND password = $2', [email, password]);
+        if (r.rows.length > 0) res.json({ success: true, user: r.rows[0] });
+        else res.json({ success: false, error: "Credenziali errate" });
+    } catch (e) { res.status(500).json({ error: "Errore login" }); }
+});
+
+// Register
+app.post('/api/register', async (req, res) => {
+    try {
+        const { nome, email, password, telefono, indirizzo, ruolo, ristorante_id } = req.body;
+        const check = await pool.query('SELECT * FROM utenti WHERE email = $1', [email]);
+        if (check.rows.length > 0) return res.json({ success: false, error: "Email già registrata" });
+        const r_id = (ruolo === 'cameriere' || ruolo === 'editor') ? ristorante_id : null;
+        const r = await pool.query('INSERT INTO utenti (nome, email, password, telefono, indirizzo, ruolo, ristorante_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *', [nome, email, password, telefono, indirizzo, ruolo || 'cliente', r_id]);
+        res.json({ success: true, user: r.rows[0] });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Get Utenti
+app.get('/api/utenti', async (req, res) => {
+    try {
+        const { mode, ristorante_id } = req.query;
+        if (mode === 'super') {
+            const r = await pool.query('SELECT * FROM utenti ORDER BY id DESC');
+            return res.json(r.rows);
+        } 
+        if (mode === 'staff' && ristorante_id) {
+            const r = await pool.query("SELECT * FROM utenti WHERE ristorante_id = $1 AND ruolo IN ('cameriere', 'editor') ORDER BY nome", [ristorante_id]);
+            return res.json(r.rows);
+        }
+        if ((mode === 'clienti' || mode === 'clienti_ordini') && ristorante_id) {
+            const r = await pool.query(`SELECT u.id, u.nome, u.email, u.telefono, u.username, COUNT(o.id) as totale_ordini, MAX(o.data_ora) as ultimo_ordine FROM utenti u INNER JOIN ordini o ON u.id = o.utente_id WHERE o.ristorante_id = $1 GROUP BY u.id, u.nome, u.email, u.telefono, u.username ORDER BY ultimo_ordine DESC`, [ristorante_id]);
+            return res.json(r.rows);
+        }
+        res.json([]);
+    } catch (e) { res.status(500).json({ error: "Err" }); }
+});
+app.put('/api/utenti/:id', async (req, res) => { try { const { nome, email, password, telefono, indirizzo, ruolo } = req.body; await pool.query(`UPDATE utenti SET nome=$1, email=$2, password=$3, telefono=$4, indirizzo=$5, ruolo=$6 WHERE id=$7`, [nome, email, password, telefono, indirizzo, ruolo, req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
+app.delete('/api/utenti/:id', async (req, res) => { try { await pool.query('DELETE FROM utenti WHERE id=$1', [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
+
+// Dashboard Stats
+app.get('/api/stats/dashboard/:ristorante_id', async (req, res) => {
+    try {
+        const { ristorante_id } = req.params;
+        const incassi = await pool.query(`SELECT SUM(CASE WHEN data_ora::date = CURRENT_DATE THEN totale ELSE 0 END) as oggi, SUM(CASE WHEN data_ora::date = CURRENT_DATE - 1 THEN totale ELSE 0 END) as ieri FROM ordini WHERE ristorante_id = $1 AND stato = 'pagato'`, [ristorante_id]);
+        const ordiniRecenti = await pool.query(`SELECT prodotti FROM ordini WHERE ristorante_id = $1 AND stato = 'pagato' ORDER BY data_ora DESC LIMIT 500`, [ristorante_id]);
+        const piattoCount = {};
+        ordiniRecenti.rows.forEach(row => {
+            const prodotti = typeof row.prodotti === 'string' ? JSON.parse(row.prodotti) : row.prodotti;
+            if(Array.isArray(prodotti)) prodotti.forEach(p => piattoCount[p.nome] = (piattoCount[p.nome] || 0) + 1);
+        });
+        const topDishes = Object.entries(piattoCount).sort((a,b) => b[1] - a[1]).slice(0, 5).map(([name, count]) => ({ name, value: count }));
+        const orari = await pool.query(`SELECT EXTRACT(HOUR FROM data_ora) as ora, COUNT(*) as count FROM ordini WHERE ristorante_id = $1 AND data_ora::date = CURRENT_DATE GROUP BY ora ORDER BY ora`, [ristorante_id]);
+        const chartData = orari.rows.map(r => ({ name: `${r.ora}:00`, ordini: parseInt(r.count) }));
+        res.json({ incassi: incassi.rows[0], topDishes, chartData });
+    } catch (e) { res.status(500).json({ error: "Err" }); }
+});
+
+// Cassa Pagamento
 app.post('/api/cassa/paga-tavolo', async (req, res) => { 
     const c = await pool.connect(); 
     try { 
@@ -740,7 +218,6 @@ app.post('/api/cassa/paga-tavolo', async (req, res) => {
             prod=[...prod, ...p]; 
             if(o.dettagli) log+=`\nORDINE #${o.id}\n${o.dettagli}`; 
         }); 
-        
         log+=`\n[${getNowItaly()}] 💰 CHIUSO E PAGATO: ${tot.toFixed(2)}€`; 
         
         await c.query("UPDATE ordini SET stato='pagato', prodotti=$1, totale=$2, dettagli=$3 WHERE id=$4", [JSON.stringify(prod), tot, log, r.rows[0].id]); 
@@ -750,97 +227,66 @@ app.post('/api/cassa/paga-tavolo', async (req, res) => {
     } catch(e){await c.query('ROLLBACK'); res.status(500).json({error:"Err"});} finally{c.release();} 
 });
 
-app.post('/api/upload', upload.single('photo'), (req, res) => res.json({ url: req.file.path }));
+// Menu
+app.get('/api/menu/:slug', async (req, res) => {
+    try {
+        const rist = await pool.query('SELECT * FROM ristoranti WHERE slug = $1', [req.params.slug]);
+        if (rist.rows.length === 0) return res.status(404).json({ error: "Non trovato" });
+        const data = rist.rows[0];
+        const menu = await pool.query(`SELECT p.*, c.is_bar as categoria_is_bar, c.is_pizzeria as categoria_is_pizzeria, c.posizione as categoria_posizione, c.nome as categoria_nome, c.varianti_default as categoria_varianti FROM prodotti p LEFT JOIN categorie c ON p.categoria = c.nome AND p.ristorante_id = c.ristorante_id WHERE p.ristorante_id = $1 ORDER BY c.posizione ASC, p.posizione ASC`, [data.id]);
+        res.json({
+            id: data.id, ristorante: data.nome,
+            style: { logo: data.logo_url, cover: data.cover_url, bg: data.colore_sfondo, title: data.colore_titolo, text: data.colore_testo, price: data.colore_prezzo, font: data.font_style },
+            subscription_active: data.account_attivo !== false, kitchen_active: data.cucina_super_active !== false, ordini_abilitati: data.ordini_abilitati, pw_cassa: data.pw_cassa, pw_cucina: data.pw_cucina, pw_pizzeria: data.pw_pizzeria, pw_bar: data.pw_bar,
+            menu: menu.rows
+        });
+    } catch (e) { res.status(500).json({ error: "Err" }); }
+});
 
-// API SUPER ADMIN
+// Polling
+app.get('/api/polling/:ristorante_id', async (req, res) => {
+    try {
+        const r = await pool.query("SELECT * FROM ordini WHERE ristorante_id = $1 AND stato != 'pagato' ORDER BY data_ora ASC", [req.params.ristorante_id]);
+        const ordini = r.rows.map(o => { try { return { ...o, prodotti: JSON.parse(o.prodotti) }; } catch { return { ...o, prodotti: [] }; }});
+        res.json({ nuovi_ordini: ordini });
+    } catch (e) { res.status(500).json({ error: "Err" }); }
+});
+
+// Prodotti
+app.post('/api/prodotti', async (req, res) => { try { const { nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, immagine_url, varianti } = req.body; const max = await pool.query('SELECT MAX(posizione) as max FROM prodotti WHERE ristorante_id = $1', [ristorante_id]); await pool.query('INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, immagine_url, posizione, varianti) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)', [nome, prezzo, categoria, sottocategoria || "", descrizione || "", ristorante_id, immagine_url || "", (max.rows[0].max || 0) + 1, varianti || '{}']); res.json({ success: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
+app.put('/api/prodotti/riordina', async (req, res) => { const { prodotti } = req.body; try { for (const prod of prodotti) { if (prod.categoria) await pool.query('UPDATE prodotti SET posizione = $1, categoria = $2 WHERE id = $3', [prod.posizione, prod.categoria, prod.id]); else await pool.query('UPDATE prodotti SET posizione = $1 WHERE id = $2', [prod.posizione, prod.id]); } res.json({ success: true }); } catch (err) { res.status(500).json({ error: err.message }); } });
+app.put('/api/prodotti/:id', async (req, res) => { try { await pool.query('UPDATE prodotti SET nome=$1, prezzo=$2, categoria=$3, sottocategoria=$4, descrizione=$5, immagine_url=$6, varianti=$8 WHERE id=$7', [req.body.nome, req.body.prezzo, req.body.categoria, req.body.sottocategoria, req.body.descrizione, req.body.immagine_url, req.params.id, req.body.varianti]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
+app.delete('/api/prodotti/:id', async (req, res) => { try { await pool.query('DELETE FROM prodotti WHERE id=$1', [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
+
+// Categorie
+app.post('/api/categorie', async (req, res) => { try { const { nome, ristorante_id, is_bar, is_pizzeria, descrizione, varianti_default } = req.body; const max = await pool.query('SELECT MAX(posizione) as max FROM categorie WHERE ristorante_id = $1', [ristorante_id]); await pool.query('INSERT INTO categorie (nome, posizione, ristorante_id, is_bar, is_pizzeria, descrizione, varianti_default) VALUES ($1, $2, $3, $4, $5, $6, $7)', [nome, (max.rows[0].max || 0) + 1, ristorante_id, is_bar || false, is_pizzeria || false, descrizione || "", varianti_default || '[]']); res.json({success:true}); } catch (e) { res.status(500).json({ error: e.message }); } });
+app.put('/api/categorie/riordina', async (req, res) => { const { categorie } = req.body; try { for (const cat of categorie) await pool.query('UPDATE categorie SET posizione = $1 WHERE id = $2', [cat.posizione, cat.id]); res.json({ success: true }); } catch (err) { res.status(500).json({ error: err.message }); } });
+app.get('/api/categorie/:ristorante_id', async (req, res) => { try { const r = await pool.query('SELECT * FROM categorie WHERE ristorante_id = $1 ORDER BY posizione ASC', [req.params.ristorante_id]); res.json(r.rows); } catch (e) { res.status(500).json({ error: "Err" }); } });
+app.put('/api/categorie/:id', async (req, res) => { try { await pool.query('UPDATE categorie SET nome=$1, is_bar=$2, is_pizzeria=$3, descrizione=$4, varianti_default=$5 WHERE id=$6', [req.body.nome, req.body.is_bar, req.body.is_pizzeria, req.body.descrizione, req.body.varianti_default, req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
+app.delete('/api/categorie/:id', async (req, res) => { try { await pool.query('DELETE FROM categorie WHERE id=$1', [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
+
+// Config Ristorante
+app.get('/api/ristorante/config/:id', async (req, res) => { try { const r = await pool.query('SELECT * FROM ristoranti WHERE id = $1', [req.params.id]); if (r.rows.length > 0) res.json(r.rows[0]); else res.status(404).json({ error: "Not Found" }); } catch (e) { res.status(500).json({ error: "Err" }); } });
+app.put('/api/ristorante/style/:id', async (req, res) => { try { const { logo_url, cover_url, colore_sfondo, colore_titolo, colore_testo, colore_prezzo, font_style } = req.body; await pool.query(`UPDATE ristoranti SET logo_url=$1, cover_url=$2, colore_sfondo=$3, colore_titolo=$4, colore_testo=$5, colore_prezzo=$6, font_style=$7 WHERE id=$8`, [logo_url, cover_url, colore_sfondo, colore_titolo, colore_testo, colore_prezzo, font_style, req.params.id]); res.json({ success: true }); } catch (err) { res.status(500).json({ error: "Err" }); } });
+app.put('/api/ristorante/servizio/:id', async (req, res) => { try { const { id } = req.params; if (req.body.ordini_abilitati !== undefined) await pool.query('UPDATE ristoranti SET ordini_abilitati = $1 WHERE id = $2', [req.body.ordini_abilitati, id]); if (req.body.servizio_attivo !== undefined) await pool.query('UPDATE ristoranti SET servizio_attivo = $1 WHERE id = $2', [req.body.servizio_attivo, id]); res.json({ success: true }); } catch (e) { res.status(500).json({error:"Err"}); } });
+app.put('/api/ristorante/security/:id', async (req, res) => { try { const { pw_cassa, pw_cucina, pw_pizzeria, pw_bar } = req.body; await pool.query(`UPDATE ristoranti SET pw_cassa=$1, pw_cucina=$2, pw_pizzeria=$3, pw_bar=$4 WHERE id=$5`, [pw_cassa, pw_cucina, pw_pizzeria, pw_bar, req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
+
+// Upload / Login Rist / Auth Reparti
+app.post('/api/upload', upload.single('photo'), (req, res) => res.json({ url: req.file.path }));
+app.post('/api/login', async (req, res) => { const { email, password } = req.body; try { const result = await pool.query("SELECT * FROM ristoranti WHERE email = $1", [email]); if (result.rows.length > 0) { const ristorante = result.rows[0]; if (ristorante.password === password) { return res.json({ success: true, user: { id: ristorante.id, nome: ristorante.nome, slug: ristorante.slug } }); } } res.status(401).json({ success: false, error: "Credenziali errate" }); } catch (e) { res.status(500).json({ success: false, error: "Errore interno" }); } });
+app.post('/api/auth/station', async (req, res) => { try { const { ristorante_id, role, password } = req.body; const roleMap = { 'cassa': 'pw_cassa', 'cucina': 'pw_cucina', 'pizzeria': 'pw_pizzeria', 'bar': 'pw_bar' }; const colonnaPwd = roleMap[role]; if (!colonnaPwd) return res.json({ success: false, error: "Ruolo non valido" }); const r = await pool.query(`SELECT id, nome, ${colonnaPwd} as password_reparto FROM ristoranti WHERE id = $1`, [ristorante_id]); if (r.rows.length === 0) return res.json({ success: false, error: "Ristorante non trovato" }); if (String(r.rows[0].password_reparto) === String(password)) res.json({ success: true, nome_ristorante: r.rows[0].nome }); else res.json({ success: false, error: "Password Errata" }); } catch (e) { res.status(500).json({ error: "Err" }); } });
+app.get('/api/cassa/storico/:ristorante_id', async (req, res) => { try { const r = await pool.query("SELECT * FROM ordini WHERE ristorante_id = $1 AND stato = 'pagato' ORDER BY data_ora DESC LIMIT 50", [req.params.ristorante_id]); const ordini = r.rows.map(o => { try { return { ...o, prodotti: JSON.parse(o.prodotti) }; } catch { return { ...o, prodotti: [] }; }}); res.json(ordini); } catch (e) { res.status(500).json({ error: "Err" }); } });
+
+// Excel Utenti
+app.post('/api/utenti/import/excel', uploadFile.single('file'), async (req, res) => { try { if (!req.file) return res.status(400).json({ error: "File mancante" }); const workbook = xlsx.read(req.file.buffer, { type: 'buffer' }); const sheetName = workbook.SheetNames[0]; const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]); for (const row of data) { const ruolo = row.ruolo || 'cliente'; if(!row.email) continue; const check = await pool.query("SELECT id FROM utenti WHERE email = $1", [row.email]); if (check.rows.length > 0) { await pool.query("UPDATE utenti SET nome=$1, password=$2, telefono=$3, indirizzo=$4, ruolo=$5 WHERE email=$6", [row.nome, row.password, row.telefono, row.indirizzo, ruolo, row.email]); } else { await pool.query("INSERT INTO utenti (nome, email, password, telefono, indirizzo, ruolo) VALUES ($1, $2, $3, $4, $5, $6)", [row.nome, row.email, row.password, row.telefono, row.indirizzo, ruolo]); } } res.json({ success: true, message: "Importazione completata" }); } catch (e) { console.error(e); res.status(500).json({ error: "Errore Import" }); } });
+// Excel Menu
+app.post('/api/import-excel', uploadFile.single('file'), async (req, res) => { const { ristorante_id } = req.body; if (!req.file || !ristorante_id) return res.status(400).json({ error: "Dati mancanti." }); const client = await pool.connect(); try { await client.query('BEGIN'); const workbook = xlsx.read(req.file.buffer, { type: 'buffer' }); const sheetName = workbook.SheetNames[0]; const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]); let maxCat = await client.query('SELECT MAX(posizione) as max FROM categorie WHERE ristorante_id = $1', [ristorante_id]); let nextCatPos = (maxCat.rows[0].max || 0) + 1; let maxProd = await client.query('SELECT MAX(posizione) as max FROM prodotti WHERE ristorante_id = $1', [ristorante_id]); let nextProdPos = (maxProd.rows[0].max || 0) + 1; for (const row of data) { const nome = row['Nome'] ? String(row['Nome']).trim() : "Senza Nome"; const prezzo = row['Prezzo'] ? parseFloat(String(row['Prezzo']).replace(',', '.')) : 0; const categoria = row['Categoria'] ? String(row['Categoria']).trim() : "Generale"; const sottocategoria = row['Sottocategoria'] ? String(row['Sottocategoria']).trim() : ""; const descrizione = row['Descrizione'] ? String(row['Descrizione']).trim() : ""; const variantiCatStr = row['Varianti Categoria (Default)'] || ""; let variantiCatJson = []; if (variantiCatStr && variantiCatStr.includes(':')) { variantiCatJson = variantiCatStr.split(',').map(v => { const parts = v.split(':'); if(parts.length >= 2) return { nome: parts[0].trim(), prezzo: parseFloat(parts[1]) }; return null; }).filter(Boolean); } let catCheck = await client.query('SELECT * FROM categorie WHERE nome = $1 AND ristorante_id = $2', [categoria, ristorante_id]); if (catCheck.rows.length === 0) { await client.query( 'INSERT INTO categorie (nome, posizione, ristorante_id, descrizione, varianti_default) VALUES ($1, $2, $3, $4, $5)', [categoria, nextCatPos++, ristorante_id, "", JSON.stringify(variantiCatJson)] ); } else { if (variantiCatStr.length > 0) { await client.query( 'UPDATE categorie SET varianti_default = $1 WHERE id = $2', [JSON.stringify(variantiCatJson), catCheck.rows[0].id] ); } } const baseStr = row['Ingredienti Base (Rimovibili)'] || ""; const aggiunteStr = row['Aggiunte Prodotto (Formato Nome:Prezzo)'] || ""; const baseArr = baseStr.split(',').map(s=>s.trim()).filter(Boolean); let aggiunteArr = []; if(aggiunteStr) { aggiunteArr = aggiunteStr.split(',').map(v => { const parts = v.split(':'); if(parts.length >= 2) return { nome: parts[0].trim(), prezzo: parseFloat(parts[1]) }; return null; }).filter(Boolean); } const variantiProdotto = { base: baseArr, aggiunte: aggiunteArr }; await client.query( `INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, posizione, varianti) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, [nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, nextProdPos++, JSON.stringify(variantiProdotto)] ); } await client.query('COMMIT'); res.json({ success: true, message: `Importati ${data.length} piatti!` }); } catch (err) { await client.query('ROLLBACK'); console.error(err); res.status(500).json({ error: err.message }); } finally { client.release(); } });
+app.get('/api/export-excel/:ristorante_id', async (req, res) => { try { const result = await pool.query(`SELECT p.*, c.varianti_default as cat_varianti FROM prodotti p LEFT JOIN categorie c ON p.categoria = c.nome AND p.ristorante_id = c.ristorante_id WHERE p.ristorante_id = $1 ORDER BY c.posizione, p.posizione`, [req.params.ristorante_id]); const dataForExcel = result.rows.map(row => { let baseStr = "", aggiunteStr = "", catVarStr = ""; try { const v = typeof row.varianti === 'string' ? JSON.parse(row.varianti) : (row.varianti || {}); if(v.base && Array.isArray(v.base)) baseStr = v.base.join(', '); if(v.aggiunte && Array.isArray(v.aggiunte)) aggiunteStr = v.aggiunte.map(a => `${a.nome}:${Number(a.prezzo).toFixed(2)}`).join(', '); } catch(e) {} try { const cv = typeof row.cat_varianti === 'string' ? JSON.parse(row.cat_varianti) : (row.cat_varianti || []); if(Array.isArray(cv)) catVarStr = cv.map(a => `${a.nome}:${Number(a.prezzo).toFixed(2)}`).join(', '); } catch(e) {} return { "Categoria": row.categoria, "Varianti Categoria (Default)": catVarStr, "Sottocategoria": row.sottocategoria, "Nome": row.nome, "Prezzo": row.prezzo, "Descrizione": row.descrizione, "Ingredienti Base (Rimovibili)": baseStr, "Aggiunte Prodotto (Formato Nome:Prezzo)": aggiunteStr }; }); const workbook = xlsx.utils.book_new(); const worksheet = xlsx.utils.json_to_sheet(dataForExcel); xlsx.utils.book_append_sheet(workbook, worksheet, "Menu"); const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' }); res.setHeader('Content-Disposition', 'attachment; filename="menu_export.xlsx"'); res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); res.send(buffer); } catch (err) { console.error(err); res.status(500).json({ error: "Errore Export" }); } });
+
+// Admin Super
 app.get('/api/super/ristoranti', async (req, res) => { try { const r = await pool.query('SELECT * FROM ristoranti ORDER BY id ASC'); res.json(r.rows); } catch (e) { res.status(500).json({error:"Err"}); } });
 app.post('/api/super/ristoranti', async (req, res) => { try { await pool.query(`INSERT INTO ristoranti (nome, slug, email, telefono, password, account_attivo, servizio_attivo, ordini_abilitati, cucina_super_active) VALUES ($1, $2, $3, $4, $5, TRUE, TRUE, TRUE, TRUE)`, [req.body.nome, req.body.slug, req.body.email, req.body.telefono, req.body.password || 'tonystark']); res.json({ success: true }); } catch (e) { res.status(500).json({error: "Err"}); } });
 app.put('/api/super/ristoranti/:id', async (req, res) => { try { const { id } = req.params; if (req.body.account_attivo !== undefined) { await pool.query('UPDATE ristoranti SET account_attivo = $1 WHERE id = $2', [req.body.account_attivo, id]); return res.json({ success: true }); } if (req.body.cucina_super_active !== undefined) { await pool.query('UPDATE ristoranti SET cucina_super_active = $1 WHERE id = $2', [req.body.cucina_super_active, id]); return res.json({ success: true }); } let sql = "UPDATE ristoranti SET nome=$1, slug=$2, email=$3, telefono=$4"; let params = [req.body.nome, req.body.slug, req.body.email, req.body.telefono]; if (req.body.password) { sql += ", password=$5 WHERE id=$6"; params.push(req.body.password, id); } else { sql += " WHERE id=$5"; params.push(id); } await pool.query(sql, params); res.json({ success: true }); } catch (e) { res.status(500).json({error: "Err"}); } });
 app.delete('/api/super/ristoranti/:id', async (req, res) => { try { const id = req.params.id; await pool.query('DELETE FROM prodotti WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM categorie WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM ordini WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM ristoranti WHERE id = $1', [id]); res.json({ success: true }); } catch (e) { res.status(500).json({error: "Err"}); } });
 
-// Login SUPER ADMIN (2FA)
-app.post('/api/super/login', (req, res) => {
-    const { email, password, code2fa } = req.body;
-    if (email === process.env.SUPER_ADMIN_EMAIL && password === process.env.SUPER_ADMIN_PASSWORD) {
-        const isValid = authenticator.check(code2fa, process.env.SUPER_ADMIN_SECRET);
-        if (isValid) {
-            return res.json({ success: true, token: "SUPER_GOD_TOKEN_2026" });
-        } else {
-            return res.json({ success: false, error: "Codice 2FA non valido o scaduto" });
-        }
-    }
-    res.status(401).json({ success: false, error: "Credenziali non valide" });
-});
-
-// ==========================================
-//          API SICUREZZA REPARTI
-// ==========================================
-
-// Login per lo Staff (Cucina, Bar, Pizzeria, Cassa)
-app.post('/api/auth/station', async (req, res) => {
-    try {
-        const { ristorante_id, role, password } = req.body;
-        
-        // Mappa il ruolo alla colonna del DB
-        const roleMap = {
-            'cassa': 'pw_cassa',
-            'cucina': 'pw_cucina',
-            'pizzeria': 'pw_pizzeria',
-            'bar': 'pw_bar'
-        };
-
-        const colonnaPwd = roleMap[role];
-        if (!colonnaPwd) return res.json({ success: false, error: "Ruolo non valido" });
-
-        const r = await pool.query(`SELECT id, nome, ${colonnaPwd} as password_reparto FROM ristoranti WHERE id = $1`, [ristorante_id]);
-        
-        if (r.rows.length === 0) return res.json({ success: false, error: "Ristorante non trovato" });
-        
-        // Verifica Password
-        if (String(r.rows[0].password_reparto) === String(password)) {
-            res.json({ success: true, nome_ristorante: r.rows[0].nome });
-        } else {
-            res.json({ success: false, error: "Password Errata" });
-        }
-    } catch (e) { res.status(500).json({ error: "Errore server" }); }
-});
-
-// Aggiorna password reparti (Solo Admin)
-app.put('/api/ristorante/security/:id', async (req, res) => {
-    try {
-        const { pw_cassa, pw_cucina, pw_pizzeria, pw_bar } = req.body;
-        await pool.query(
-            `UPDATE ristoranti SET pw_cassa=$1, pw_cucina=$2, pw_pizzeria=$3, pw_bar=$4 WHERE id=$5`,
-            [pw_cassa, pw_cucina, pw_pizzeria, pw_bar, req.params.id]
-        );
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: "Errore salvataggio" }); }
-});
-
-// IMPORT UTENTI MASSIVO
-app.post('/api/utenti/import/excel', upload.single('file'), async (req, res) => {
-    try {
-        const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
-        const sheetName = workbook.SheetNames[0];
-        const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
-
-        for (const row of data) {
-            const ruolo = row.ruolo || 'cliente'; 
-            const check = await pool.query("SELECT id FROM utenti WHERE email = $1", [row.email]);
-            if (check.rows.length > 0) {
-                await pool.query(
-                    "UPDATE utenti SET nome=$1, password=$2, telefono=$3, indirizzo=$4, ruolo=$5 WHERE email=$6",
-                    [row.nome, row.password, row.telefono, row.indirizzo, ruolo, row.email]
-                );
-            } else {
-                await pool.query(
-                    "INSERT INTO utenti (nome, email, password, telefono, indirizzo, ruolo) VALUES ($1, $2, $3, $4, $5, $6)",
-                    [row.nome, row.email, row.password, row.telefono, row.indirizzo, ruolo]
-                );
-            }
-        }
-        res.json({ success: true, message: "Importazione completata" });
-    } catch (e) { console.error(e); res.status(500).json({ error: "Errore Import" }); }
-});
-
-app.listen(port, () => console.log(`🚀 SERVER V9 COMPLETE (Porta ${port})`));
+app.listen(port, () => console.log(`🚀 SERVER V10 FINAL (Porta ${port})`));

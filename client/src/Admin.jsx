@@ -1,6 +1,7 @@
 // client/src/Admin.jsx - VERSIONE V42 (AGGIUNTA GESTIONE UTENTI CRM) 🔒
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import API_URL from './config'; // <--- IMPORTANTE
 
 // *** IMPORTIAMO I SOTTO-COMPONENTI ***
 import AdminMenu from './components_admin/AdminMenu';

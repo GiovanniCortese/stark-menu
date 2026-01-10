@@ -116,40 +116,28 @@ const handleLogin = async (e) => {
   }, [isAuthorized, infoRistorante]);
 
   const segnaPiattoServito = async (targetItems) => {
-      const updatesPorOrdine = {};
-
-      targetItems.forEach(item => {
-          if(!updatesPorOrdine[item.parentOrderId]) {
-              updatesPorOrdine[item.parentOrderId] = {
-                  originalProducts: item.fullOrderProducts,
-                  indicesToUpdate: []
-              };
-          }
-          updatesPorOrdine[item.parentOrderId].indicesToUpdate.push(item.originalIndex);
-      });
-
-      const promises = Object.keys(updatesPorOrdine).map(async (orderId) => {
-          const data = updatesPorOrdine[orderId];
-          const nuoviProdotti = [...data.originalProducts];
-          const oraAttuale = new Date().toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'});
-          
-          let nomePiattoLog = "";
-          data.indicesToUpdate.forEach(idx => {
-              nuoviProdotti[idx].stato = 'servito';
-              nuoviProdotti[idx].ora_servizio = oraAttuale;
-              nomePiattoLog = nuoviProdotti[idx].nome;
-          });
-          const logMsg = `[CUCINA 👨‍🍳] HA SERVITO: ${nomePiattoLog} (x${data.indicesToUpdate.length})`;
-
-          return fetch(`${API_URL}/api/ordine/${orderId}/update-items`, {
+      // Invece di raggruppare, spariamo un aggiornamento per ogni singolo piatto.
+      // Il server gestirà la coda per evitare conflitti.
+      const promises = targetItems.map(item => {
+          return fetch(`${API_URL}/api/ordine/${item.parentOrderId}/patch-item`, {
               method: 'PUT',
               headers: {'Content-Type': 'application/json'},
-              body: JSON.stringify({ prodotti: nuoviProdotti, logMsg: logMsg })
+              body: JSON.stringify({ 
+                  index: item.originalIndex, // Diciamo al server ESATTAMENTE quale riga toccare
+                  stato: 'servito',
+                  operatore: 'CUCINA 👨‍🍳'   // Questo apparirà nel log
+              })
           });
       });
 
-      await Promise.all(promises);
-      aggiorna();
+      // Promise.all aspetta che tutti i "colpi" siano andati a segno
+      try {
+          await Promise.all(promises);
+          aggiorna(); // Ricarica la vista subito dopo
+      } catch (error) {
+          console.error("Errore aggiornamento piatti:", error);
+          alert("Errore di connessione durante l'aggiornamento.");
+      }
   };
 
   // --- HELPER: GENERA CHIAVE UNICA PER VARIANTI ---
