@@ -66,8 +66,6 @@ const getNowItaly = () => {
     });
 };
 
-// ... (LE TUE API DI LOGIN/MENU RIMANGONO UGUALI FINO A "API UTENTI") ...
-// ... INCOLLA QUI SOTTO LE API CHE TI SCRIVO ORA ...
 
 // ==========================================
 //          API GESTIONE UTENTI & STAFF
@@ -154,6 +152,14 @@ app.put('/api/utenti/:id', async (req, res) => {
         );
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: "Errore modifica utente" }); }
+});
+
+// 5. Elimina Utente
+app.delete('/api/utenti/:id', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM utenti WHERE id=$1', [req.params.id]);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: "Errore eliminazione utente" }); }
 });
 
 // ==========================================
