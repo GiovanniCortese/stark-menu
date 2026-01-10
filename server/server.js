@@ -312,24 +312,34 @@ app.delete('/api/categorie/:id', async (req, res) => { try { await pool.query('D
 // Config Ristorante
 app.get('/api/ristorante/config/:id', async (req, res) => { try { const r = await pool.query('SELECT * FROM ristoranti WHERE id = $1', [req.params.id]); if (r.rows.length > 0) res.json(r.rows[0]); else res.status(404).json({ error: "Not Found" }); } catch (e) { res.status(500).json({ error: "Err" }); } });
 
-// 1. ROTTA DI FIX DATABASE (Lanciala una volta sola visitando /api/db-fix-grafica)
+// server/server.js - SEZIONE GRAFICA V2 (Nuovi campi + Fix DB)
+
+// 1. ROTTA DI FIX DATABASE (Lanciala visitando: /api/db-fix-grafica)
 app.get('/api/db-fix-grafica', async (req, res) => {
     try {
-        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS colore_card TEXT DEFAULT '#ffffff'");
-        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS colore_btn TEXT DEFAULT '#27ae60'");
-        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS colore_btn_text TEXT DEFAULT '#ffffff'");
-        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS colore_border TEXT DEFAULT '#e0e0e0'");
-        res.send("✅ Database Grafica Aggiornato! Nuove colonne create.");
+        const cols = [
+            "colore_card", "colore_btn", "colore_btn_text", "colore_border",
+            "colore_tavolo_bg", "colore_tavolo_text", // Nuovo: Tavolo
+            "colore_carrello_bg", "colore_carrello_text", // Nuovo: Barra Carrello
+            "colore_checkout_bg", "colore_checkout_text" // Nuovo: Riepilogo
+        ];
+        for (const c of cols) {
+            await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS ${c} TEXT DEFAULT ''`);
+        }
+        res.send("✅ Database Grafica Aggiornato con TUTTI i nuovi campi!");
     } catch (e) { res.status(500).send("Errore DB: " + e.message); }
 });
 
-// 2. API STILE AGGIORNATA (Salva tutti i nuovi campi)
+// 2. API STILE AGGIORNATA (Salva tutto)
 app.put('/api/ristorante/style/:id', async (req, res) => {
     try {
         const { 
             logo_url, cover_url, 
             colore_sfondo, colore_titolo, colore_testo, colore_prezzo, 
-            colore_card, colore_btn, colore_btn_text, colore_border, // Nuovi campi
+            colore_card, colore_btn, colore_btn_text, colore_border,
+            colore_tavolo_bg, colore_tavolo_text,
+            colore_carrello_bg, colore_carrello_text,
+            colore_checkout_bg, colore_checkout_text,
             font_style 
         } = req.body;
 
@@ -338,12 +348,18 @@ app.put('/api/ristorante/style/:id', async (req, res) => {
             logo_url=$1, cover_url=$2, 
             colore_sfondo=$3, colore_titolo=$4, colore_testo=$5, colore_prezzo=$6, 
             colore_card=$7, colore_btn=$8, colore_btn_text=$9, colore_border=$10,
-            font_style=$11 
-            WHERE id=$12`,
+            colore_tavolo_bg=$11, colore_tavolo_text=$12,
+            colore_carrello_bg=$13, colore_carrello_text=$14,
+            colore_checkout_bg=$15, colore_checkout_text=$16,
+            font_style=$17 
+            WHERE id=$18`,
             [
                 logo_url, cover_url, 
                 colore_sfondo, colore_titolo, colore_testo, colore_prezzo, 
-                colore_card || '#ffffff', colore_btn || '#27ae60', colore_btn_text || '#ffffff', colore_border || '#e0e0e0',
+                colore_card, colore_btn, colore_btn_text, colore_border,
+                colore_tavolo_bg, colore_tavolo_text,
+                colore_carrello_bg, colore_carrello_text,
+                colore_checkout_bg, colore_checkout_text,
                 font_style, req.params.id
             ]
         );
