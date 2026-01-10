@@ -101,42 +101,28 @@ const handleLogin = async (e) => {
       } 
   }, [isAuthorized, infoRistorante]);
 
-  const segnaPizzaPronta = async (targetItems) => {
-      const updatesPorOrdine = {};
-
-      targetItems.forEach(item => {
-          if(!updatesPorOrdine[item.parentOrderId]) {
-              updatesPorOrdine[item.parentOrderId] = {
-                  originalProducts: item.fullOrderProducts,
-                  indicesToUpdate: []
-              };
-          }
-          updatesPorOrdine[item.parentOrderId].indicesToUpdate.push(item.originalIndex);
-      });
-
-      const promises = Object.keys(updatesPorOrdine).map(async (orderId) => {
-          const data = updatesPorOrdine[orderId];
-          const nuoviProdotti = [...data.originalProducts];
-          const oraAttuale = new Date().toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'});
-          
-          let nomePiattoLog = "";
-          data.indicesToUpdate.forEach(idx => {
-              nuoviProdotti[idx].stato = 'servito';
-              nuoviProdotti[idx].ora_servizio = oraAttuale;
-              nomePiattoLog = nuoviProdotti[idx].nome;
-          });
-
-          const logMsg = `[PIZZERIA 🍕] HA SFORNATO: ${nomePiattoLog} (x${data.indicesToUpdate.length})`;
-
-          return fetch(`${API_URL}/api/ordine/${orderId}/update-items`, {
+const segnaPizzaPronta = async (targetItems) => {
+      // FIX ATOMICO: Aggiorniamo ogni pizza singolarmente
+      // In questo modo non sovrascriviamo le modifiche fatte da Bar o Cucina
+      const promises = targetItems.map(item => {
+          return fetch(`${API_URL}/api/ordine/${item.parentOrderId}/patch-item`, {
               method: 'PUT',
               headers: {'Content-Type': 'application/json'},
-              body: JSON.stringify({ prodotti: nuoviProdotti, logMsg: logMsg })
+              body: JSON.stringify({ 
+                  index: item.originalIndex, // L'indice esatto della pizza nell'array
+                  stato: 'servito',
+                  operatore: 'PIZZERIA 🍕'   // La firma che apparirà nel Log
+              })
           });
       });
 
-      await Promise.all(promises);
-      aggiorna();
+      try {
+          await Promise.all(promises);
+          aggiorna(); // Ricarica la vista subito dopo
+      } catch (error) {
+          console.error("Errore Pizzeria:", error);
+          alert("Errore di connessione durante l'aggiornamento.");
+      }
   };
 
   // --- HELPER: GENERA CHIAVE UNICA PER VARIANTI ---

@@ -77,27 +77,28 @@ const handleLogin = async (e) => {
       } 
   }, [isAuthorized, infoRistorante]);
 
-  const segnaBibitaServita = async (ordineId, prodottiAttuali, indices) => {
-      const nuoviProdotti = [...prodottiAttuali];
-      const primoItem = nuoviProdotti[indices[0]];
-      if (primoItem.stato === 'servito') return; 
-
-      const nuovoStato = 'servito';
-      indices.forEach(idx => {
-          const item = nuoviProdotti[idx];
-          item.stato = nuovoStato;
-          item.ora_servizio = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+const segnaBibitaServita = async (ordineId, prodottiAttuali, indices) => {
+      // FIX ATOMICO: Aggiorniamo ogni bibita singolarmente usando l'endpoint sicuro.
+      // Non usiamo più "prodottiAttuali" per sovrascrivere tutto, ma inviamo comandi precisi.
+      const promises = indices.map(idx => {
+          return fetch(`${API_URL}/api/ordine/${ordineId}/patch-item`, {
+              method: 'PUT',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ 
+                  index: idx,          // L'indice esatto della bibita nell'array
+                  stato: 'servito',
+                  operatore: 'BAR 🍹'  // La firma che apparirà nel Log della Cassa
+              })
+          });
       });
 
-      const qty = indices.length;
-      const logMsg = `[BAR 🍹] HA SERVITO: ${qty > 1 ? qty + 'x ' : ''}${primoItem.nome}`;
-
-      await fetch(`${API_URL}/api/ordine/${ordineId}/update-items`, {
-          method: 'PUT',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ prodotti: nuoviProdotti, logMsg: logMsg })
-      });
-      aggiorna();
+      try {
+          await Promise.all(promises);
+          aggiorna(); // Ricarica la vista subito dopo aver confermato
+      } catch (error) {
+          console.error("Errore Bar:", error);
+          alert("Errore di connessione durante l'aggiornamento.");
+      }
   };
 
   // --- HELPER CHIAVE VARIANTI ---
