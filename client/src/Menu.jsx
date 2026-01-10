@@ -535,31 +535,21 @@ const addList = addListPiatto.length > 0 ? addListPiatto : addListCategoria;
                             {prezzoFinale.toFixed(2)} €
                         </div>
                         <button 
-                            onClick={() => {
-                                let note = [];
-                                if(tempVarianti.rimozioni.length > 0) note.push("No " + tempVarianti.rimozioni.join(", "));
-                                if(tempVarianti.aggiunte.length > 0) note.push("+" + tempVarianti.aggiunte.map(a => a.nome).join(", +"));
-                                
-                                const nomeFinale = note.length > 0 
-                                    ? `${selectedPiatto.nome} (${note.join(' / ')})` 
-                                    : selectedPiatto.nome;
-
-                                aggiungiAlCarrello({
-                                    ...selectedPiatto,
-                                    nome: nomeFinale, 
-                                    prezzo: prezzoFinale, 
-                                    varianti_scelte: tempVarianti 
-                                });
-                            }}
-                            style={{
-                                background: priceColor, color:'white', border:'none', 
-                                padding:'15px 30px', borderRadius:'30px', fontSize:'1.1rem', 
-                                fontWeight:'bold', cursor:'pointer', display:'flex', alignItems:'center', gap:'10px'
-                            }}
-                        >
-                            {/* TASTO CON TESTO DINAMICO */}
-                            {canOrder ? "AGGIUNGI AL CARRELLO" : "AGGIUNGI ALLA LISTA"}
-                        </button>
+    onClick={() => {
+        // --- MODIFICA: NON MODIFICHIAMO PIÙ IL NOME ---
+        // Prima creavamo 'nomeFinale', ora usiamo direttamente selectedPiatto.nome
+        
+        aggiungiAlCarrello({
+            ...selectedPiatto,
+            nome: selectedPiatto.nome, // NESSUNA AGGIUNTA DI TESTO QUI
+            prezzo: prezzoFinale, 
+            varianti_scelte: tempVarianti 
+        });
+    }}
+    style={{ /* ...stili esistenti... */ }}
+>
+    {canOrder ? "AGGIUNGI" : "LISTA"}
+</button>
                     </div>
 
                     <button onClick={() => setSelectedPiatto(null)} style={{position:'absolute', top:'15px', right:'15px', background:'white', color:'black', border:'none', borderRadius:'50%', width:'35px', height:'35px', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.2)'}}>✕</button>

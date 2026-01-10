@@ -73,7 +73,9 @@ const handleLogin = async (e) => {
                             originalIndex: idx,
                             fullOrderProducts: ord.prodotti,
                             stato: prod.stato,      // Importante per la chiave
-                            riaperto: prod.riaperto // Importante per la chiave
+                            riaperto: prod.riaperto, // Importante per la chiave
+                            cameriere: ord.cameriere, 
+                          cliente: ord.cliente
                         });
                     });
                 }
@@ -231,22 +233,35 @@ const handleLogin = async (e) => {
 
         {tavoli.map(tavoloData => {
             const strutturaOrdine = processaTavolo(tavoloData.items);
-            const nomeCameriere = tavoloData.items[0]?.cameriere;
+            // --- CALCOLO CHI HA PRESO L'ORDINE ---
+const primoItem = tavoloData.items[0];
+const nomeChi = primoItem?.cameriere 
+    ? `👤 ${primoItem.cameriere}` 
+    : `📱 ${primoItem?.cliente || 'Cliente'}`;
             
             return (
                 <div key={tavoloData.tavolo} className="ticket" style={{background:'white', borderTop:'5px solid #e74c3c', marginBottom:20, borderRadius:8}}>
-                    <div className="ticket-header" style={{padding:10, borderBottom:'1px solid #eee', background:'#fceceb', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-    <div style={{display:'flex', flexDirection:'column'}}>
-        <span style={{fontSize:'1.8rem', color:'#c0392b'}}>Tavolo <strong>{tavoloData.tavolo}</strong></span>
+                    <div className="ticket-header" style={{
+    display:'flex', justifyContent:'space-between', alignItems:'flex-start', 
+    background: '#d35400', // (Usa #c0392b se sei in Pizzeria)
+    color: 'white', padding: '10px'
+}}>
+    <div>
+        <span style={{fontSize:'1.8rem', display:'block'}}>Tavolo <strong>{tavoloData.tavolo}</strong></span>
         
-        {/* --- AGGIUNGI QUESTO BLOCCO --- */}
-        {nomeCameriere && (
-            <span style={{fontSize:'0.9rem', background:'rgba(192, 57, 43, 0.1)', color: '#c0392b', padding:'2px 8px', borderRadius:'4px', marginTop:'2px', display:'inline-block', width:'fit-content', fontWeight: 'bold'}}>
-                👤 {nomeCameriere}
-            </span>
-        )}
+        {/* --- BADGE CAMERIERE / CLIENTE --- */}
+        <span style={{
+            fontSize:'0.9rem', 
+            background:'rgba(255,255,255,0.2)', 
+            padding:'2px 8px', borderRadius:'4px', marginTop:'4px', 
+            display:'inline-block', fontWeight:'bold'
+        }}>
+            {nomeChi}
+        </span>
     </div>
-    <span style={{fontSize:'0.9rem', color:'#000000ff'}}>{new Date(tavoloData.orarioMin).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+    <span style={{fontSize:'0.9rem', color:'#fff', marginTop:'5px'}}>
+        {new Date(tavoloData.orarioMin).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+    </span>
 </div>
                     
                     <div className="ticket-body" style={{textAlign:'left', paddingBottom:'5px'}}>
@@ -285,28 +300,42 @@ const handleLogin = async (e) => {
                                                         {item.count}x
                                                     </span>
                                                     <div style={{flex:1}}>
-                                                        <div style={{fontSize:'1.1rem', fontWeight: isServito ? 'normal' : 'bold', textDecoration: isServito ? 'line-through' : 'none', color: isServito ? '#aaa' : '#000'}}>
-                                                            {item.nome}
-                                                        </div>
-                                                        
-                                                        {/* --- VISUALIZZAZIONE VARIANTI FIXATA --- */}
-                                                        {item.varianti_scelte && (
-                                                            <div style={{marginTop:'2px'}}>
-                                                                {item.varianti_scelte.rimozioni?.map((ing, i) => (
-                                                                    <span key={i} style={{background:'#c0392b', color:'white', fontSize:'0.75rem', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold', marginRight:'5px', display:'inline-block'}}>
-                                                                        NO {ing}
-                                                                    </span>
-                                                                ))}
-                                                                {item.varianti_scelte.aggiunte?.map((ing, i) => (
-                                                                    <span key={i} style={{background:'#27ae60', color:'white', fontSize:'0.75rem', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold', marginRight:'5px', display:'inline-block'}}>
-                                                                        + {ing.nome}
-                                                                    </span>
-                                                                ))}
-                                                            </div>
-                                                        )}
+    <div style={{
+        fontSize:'1.1rem', 
+        fontWeight: isServito ? 'normal' : 'bold', 
+        textDecoration: isServito ? 'line-through' : 'none', 
+        color: isServito ? '#aaa' : '#000'
+    }}>
+        {item.nome}
+    </div>
+    
+    {/* --- NUOVA RIGA: REPARTO DI APPARTENENZA --- */}
+    <div style={{fontSize:'0.75rem', color:'#7f8c8d', fontStyle:'italic', marginTop:'2px'}}>
+        {item.is_pizzeria ? '🍕 Pizzeria' : '👨‍🍳 Cucina'}
+    </div>
 
-                                                        {item.riaperto && item.stato === 'in_attesa' && <div style={{display:'inline-block', marginTop:'2px', background:'#f39c12', color:'white', padding:'2px 5px', borderRadius:'3px', fontSize:'0.7rem', fontWeight:'bold'}}>⚠️ RIAPERTO</div>}
-                                                    </div>
+    {/* VARIANTI (Rimangono i badge colorati, ma il testo sopra è pulito) */}
+    {item.varianti_scelte && (
+        <div style={{marginTop:'4px'}}>
+            {item.varianti_scelte.rimozioni?.map((ing, i) => (
+                <span key={i} style={{background:'#c0392b', color:'white', fontSize:'0.75rem', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold', marginRight:'5px', display:'inline-block'}}>
+                    NO {ing}
+                </span>
+            ))}
+            {item.varianti_scelte.aggiunte?.map((ing, i) => (
+                <span key={i} style={{background:'#27ae60', color:'white', fontSize:'0.75rem', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold', marginRight:'5px', display:'inline-block'}}>
+                    + {ing.nome}
+                </span>
+            ))}
+        </div>
+    )}
+    
+    {item.riaperto && item.stato === 'in_attesa' && (
+        <div style={{display:'inline-block', marginTop:'2px', background:'#f39c12', color:'white', padding:'2px 5px', borderRadius:'3px', fontSize:'0.7rem', fontWeight:'bold'}}>
+            ⚠️ RIAPERTO
+        </div>
+    )}
+</div>
                                                 </div>
 
                                                 <div style={{textAlign:'right'}}>
