@@ -229,11 +229,35 @@ app.get('/api/stats/dashboard/:ristorante_id', async (req, res) => {
 // ==========================================
 //    MODIFICA ORDINE PER SALVARE USER ID
 // ==========================================
-// Quando crei l'ordine, salva anche utente_id se presente
+// Quando crei l'ordine, salva anche utente_id se presente con controllo sicurezza ristorante
 app.post('/api/ordine', async (req, res) => {
     try {
-        const { ristorante_id, tavolo, prodotti, totale, cliente, cameriere, utente_id } = req.body; // <--- utente_id NUOVO
+        const { ristorante_id, tavolo, prodotti, totale, cliente, cameriere, utente_id } = req.body;
         
+        // --- 🛡️ INIZIO CONTROLLO SICUREZZA CAMERIERE ---
+        if (utente_id) {
+            // Verifichiamo sul database chi è questo utente e a quale ristorante appartiene
+            const userCheck = await pool.query(
+                "SELECT ruolo, ristorante_id FROM utenti WHERE id = $1", 
+                [utente_id]
+            );
+            const user = userCheck.rows[0];
+
+            if (user) {
+                // Se l'utente è staff (cameriere o editor), deve appartenere a questo ristorante
+                if (user.ruolo === 'cameriere' || user.ruolo === 'editor') {
+                    if (parseInt(user.ristorante_id) !== parseInt(ristorante_id)) {
+                        console.error(`⚠️ ACCESSO NEGATO: Cameriere ${utente_id} ha provato a ordinare nel ristorante ${ristorante_id}`);
+                        return res.status(403).json({ 
+                            success: false, 
+                            error: "Non sei autorizzato a ordinare per questo ristorante." 
+                        });
+                    }
+                }
+            }
+        }
+        // --- FINE CONTROLLO SICUREZZA ---
+
         const dataOra = getNowItaly();
         let logIniziale = `[${dataOra}] 🆕 ORDINE DA: ${cameriere ? cameriere : 'Cliente ('+cliente+')'}\n`;
         
@@ -251,16 +275,16 @@ app.post('/api/ordine', async (req, res) => {
         }
         logIniziale += `TOTALE PARZIALE: ${Number(totale).toFixed(2)}€\n----------------------------------\n`;
 
-        // AGGIUNTO utente_id ALLA QUERY
+        // INSERIMENTO NEL DATABASE
         await pool.query(
-            "INSERT INTO ordini (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id) VALUES ($1, $2, $3, $4, 'in_attesa', $5, $6, $7)", 
-            [ristorante_id, String(tavolo), JSON.stringify(prodotti), totale, logIniziale, cameriere || null, utente_id || null]
+            "INSERT INTO ordini (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id, data_ordine) VALUES ($1, $2, $3, $4, 'in_attesa', $5, $6, $7, $8)", 
+            [ristorante_id, String(tavolo), JSON.stringify(prodotti), totale, logIniziale, cameriere || null, utente_id || null, dataOra]
         );
         
         res.json({ success: true });
     } catch (e) { 
         console.error("Errore ordine:", e);
-        res.status(500).json({ error: "Err" }); 
+        res.status(500).json({ error: "Errore durante l'invio dell'ordine" }); 
     }
 });
 

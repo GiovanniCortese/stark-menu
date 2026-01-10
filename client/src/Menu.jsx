@@ -38,7 +38,13 @@ function Menu() {
 
   // --- STATI UTENTE (AUTH) ---
   const [user, setUser] = useState(null);
-  const isStaff = user && (user.ruolo === 'cameriere' || user.ruolo === 'admin');
+  // Verifica se l'utente è staff E se appartiene a questo specifico ristorante
+const isStaffQui = user && 
+                  (user.ruolo === 'cameriere' || user.ruolo === 'admin' || user.ruolo === 'editor') && 
+                  parseInt(user.ristorante_id) === parseInt(ristoranteId);
+
+// Usa isStaffQui per decidere se ignorare il blocco canOrder
+const puoOrdinareSempre = isStaffQui;
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [authData, setAuthData] = useState({ nome:'', email:'', password:'', telefono:'', indirizzo:'' });
