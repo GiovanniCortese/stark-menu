@@ -205,7 +205,7 @@ function SuperAdmin() {
         {ristoranti.map(r => (
             <div key={r.id} style={{border: '1px solid #ddd', borderRadius: '12px', overflow:'hidden', background: r.account_attivo !== false ? '#fff' : '#f2f2f2', boxShadow: '0 5px 15px rgba(0,0,0,0.08)', display:'flex', flexDirection:'column'}}>
                 <div style={{padding:'15px', borderBottom:'1px solid #eee', display:'flex', justifyContent:'space-between'}}>
-                    <div><h2 style={{margin:0, fontSize:'1.4rem'}}>{r.nome}</h2><span style={{background:'#333', color:'#fff', padding:'3px 8px', borderRadius:'4px', fontSize:'0.8rem'}}>/{r.slug}</span></div>
+                    <div><h2 style={{margin:0, fontSize:'1.4rem'}}>{r.nome}</h2><span style={{background:'#000000ff', color:'#fff', padding:'3px 8px', borderRadius:'4px', fontSize:'0.8rem'}}>/{r.slug}</span></div>
                     <div style={{display:'flex', gap:5}}><button onClick={() => apriModaleModifica(r)} style={{background:'#f39c12', border:'none', borderRadius:4, padding:5}}>✏️</button><button onClick={() => handleElimina(r.id, r.nome)} style={{background:'#c0392b', color:'white', border:'none', borderRadius:4, padding:5}}>🗑️</button></div>
                 </div>
                 <div style={{padding:15, flex:1}}><p>📧 {r.email || '-'}</p><p>📞 {r.telefono || '-'}</p></div>
