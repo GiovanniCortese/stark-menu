@@ -331,10 +331,11 @@ const handleAdminLogin = async (e) => {
           />
       )}
 
-      {/* NUOVO COMPONENTE UTENTI */}
+{/* NUOVO COMPONENTE UTENTI */}
       {tab === 'users' && (
           <AdminUsers 
             API_URL={API_URL} 
+            user={user} 
           />
       )}
 {tab === 'security' && (
