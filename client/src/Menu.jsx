@@ -610,34 +610,59 @@ const addList = addListPiatto.length > 0 ? addListPiatto : addListCategoria;
                                   const ingredientiStr = (variantiObj.base || []).join(', ');
 
                                   return (
-                                  <div key={item.tempId} style={{background:'rgba(255,255,255,0.1)', borderRadius:10, padding:15, marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                                     <div>
+<div key={item.tempId} style={{background:'rgba(255,255,255,0.1)', borderRadius:10, padding:15, marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+    <div style={{flex: 1}}>
         <div style={{fontWeight:'bold', fontSize:'1.1rem', color: titleColor}}>{item.nome}</div>
         
-        {/* VISUALIZZAZIONE VARIANTI SCELTE NEL RIEPILOGO */}
+        {/* 1. DESCRIZIONE DEL PIATTO */}
+        {item.descrizione && (
+            <div style={{fontSize:'12px', color:'#ccc', fontStyle:'italic', marginTop:'4px', lineHeight:'1.2'}}>
+                {item.descrizione}
+            </div>
+        )}
+
+        {/* 2. INGREDIENTI BASE (RECUPERATI DAL JSON) */}
+        {(() => {
+            const v = typeof item.varianti === 'string' ? JSON.parse(item.varianti || '{}') : (item.varianti || {});
+            if (v.base && v.base.length > 0) {
+                return (
+                    <div style={{fontSize:'11px', color:'#999', marginTop:'4px'}}>
+                        🧂 Ingredienti: {v.base.join(', ')}
+                    </div>
+                );
+            }
+        })()}
+
+        {/* 3. MODIFICHE SPECIFICHE (RIMOZIONI E AGGIUNTE) */}
         {item.varianti_scelte && (
-            <div style={{marginTop:'5px'}}>
+            <div style={{marginTop:'8px', display:'flex', flexWrap:'wrap', gap:'5px'}}>
                 {item.varianti_scelte.rimozioni?.map((ing, i) => (
-                    <span key={i} style={{background:'#c0392b', color:'white', fontSize:'10px', padding:'2px 6px', borderRadius:'4px', marginRight:'5px'}}>NO {ing}</span>
+                    <span key={i} style={{background:'#c0392b', color:'white', fontSize:'10px', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold'}}>
+                        NO {ing}
+                    </span>
                 ))}
                 {item.varianti_scelte.aggiunte?.map((ing, i) => (
-                    <span key={i} style={{background:'#27ae60', color:'white', fontSize:'10px', padding:'2px 6px', borderRadius:'4px', marginRight:'5px'}}>+ {ing.nome}</span>
+                    <span key={i} style={{background:'#27ae60', color:'white', fontSize:'10px', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold'}}>
+                        + {ing.nome}
+                    </span>
                 ))}
             </div>
         )}
 
-        <div style={{color:'#aaa', fontSize:'0.9rem', marginTop: '5px'}}>
+        <div style={{color: priceColor, fontSize:'0.9rem', marginTop: '8px', fontWeight: 'bold'}}>
             {Number(item.prezzo).toFixed(2)} € • {item.categoria_is_pizzeria ? '🍕 Pizza' : '🍳 Cucina'}
         </div>
     </div>
-                                      <div style={{display:'flex', flexDirection:'column', gap:5}}>
-                                          <div style={{display:'flex', gap:5}}>
-                                              <button onClick={() => cambiaUscita(item.tempId, -1)} style={{background:'#ecf0f1', color:'#333', fontSize:'0.8rem', padding:'5px 8px', borderRadius:'4px', cursor:'pointer'}}>⬆️</button>
-                                              <button onClick={() => cambiaUscita(item.tempId, 1)} style={{background:'#ecf0f1', color:'#333', fontSize:'0.8rem', padding:'5px 8px', borderRadius:'4px', cursor:'pointer'}}>⬇️</button>
-                                          </div>
-                                          <button onClick={() => rimuoviDalCarrello(item.tempId)} style={{background:'#e74c3c', color:'white', fontSize:'0.8rem', padding:'5px 10px', borderRadius:'4px', cursor:'pointer', border:'none'}}>ELIMINA</button>
-                                      </div>
-                                  </div>
+
+    {/* Bottoni laterali per cambio uscita e rimozione rimangono invariati */}
+    <div style={{display:'flex', flexDirection:'column', gap:5, marginLeft: '10px'}}>
+        <div style={{display:'flex', gap:5}}>
+            <button onClick={() => cambiaUscita(item.tempId, -1)} style={{background:'#ecf0f1', color:'#333', fontSize:'0.8rem', padding:'5px 8px', borderRadius:'4px'}}>⬆️</button>
+            <button onClick={() => cambiaUscita(item.tempId, 1)} style={{background:'#ecf0f1', color:'#333', fontSize:'0.8rem', padding:'5px 8px', borderRadius:'4px'}}>⬇️</button>
+        </div>
+        <button onClick={() => rimuoviDalCarrello(item.tempId)} style={{background:'#e74c3c', color:'white', fontSize:'0.8rem', padding:'5px 10px', borderRadius:'4px', border:'none'}}>ELIMINA</button>
+    </div>
+</div>
                                   )
                               })}
                           </div>
