@@ -37,11 +37,15 @@ function Menu() {
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
   // --- STATI UTENTE (AUTH) ---
-  const [user, setUser] = useState(null);
-  // Verifica se l'utente è staff E se appartiene a questo specifico ristorante
+const [user, setUser] = useState(null);
+
+// Definiamo isStaffQui con il controllo incrociato dell'ID ristorante
 const isStaffQui = user && 
                   (user.ruolo === 'cameriere' || user.ruolo === 'admin' || user.ruolo === 'editor') && 
                   parseInt(user.ristorante_id) === parseInt(ristoranteId);
+
+// Questa riga serve per far funzionare la funzione inviaOrdine senza cambiare tutto il codice interno
+const isStaff = isStaffQui;
 
 // Usa isStaffQui per decidere se ignorare il blocco canOrder
 const puoOrdinareSempre = isStaffQui;
@@ -699,8 +703,8 @@ const addList = addListPiatto.length > 0 ? addListPiatto : addListCategoria;
                       
                       {/* --- TOTALE RIMOSSO DEFINITIVAMENTE --- */}
                       
-{/* Mostra il tasto se la cucina è aperta OPPURE se l'utente è dello staff */}
-{carrello.length > 0 && (canOrder || isStaff) && (
+{/* Mostra il tasto se la cucina è aperta OPPURE se l'utente è dello staff AUTORIZZATO */}
+{carrello.length > 0 && (canOrder || isStaffQui) && (
     <button 
         onClick={inviaOrdine} 
         style={{
@@ -710,7 +714,7 @@ const addList = addListPiatto.length > 0 ? addListPiatto : addListCategoria;
             borderRadius:'30px', fontWeight:'bold', cursor:'pointer'
         }}
     >
-        {isStaff ? "INVIA ORDINE STAFF 🚀" : "CONFERMA E INVIA 🚀"}
+        {isStaffQui ? "INVIA ORDINE STAFF 🚀" : "CONFERMA E INVIA 🚀"}
     </button>
 )}
                       
