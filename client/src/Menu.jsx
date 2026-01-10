@@ -15,6 +15,7 @@ function Menu() {
   const [isSuspended, setIsSuspended] = useState(false);
   const [canOrder, setCanOrder] = useState(true); // Se false -> Modalità Wish List
   const [isStaff, setIsStaff] = useState(false);
+  const [user, setUser] = useState(null);
   
   // --- STATI CARRELLO E ORDINE ---
   const [carrello, setCarrello] = useState([]); 
