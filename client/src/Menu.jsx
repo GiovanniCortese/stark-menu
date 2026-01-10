@@ -351,53 +351,88 @@ const cambiaUscita = (tempId, delta) => {
                                             const ingredientiStr = (variantiObj.base || []).join(', ');
                                             const hasVarianti = (variantiObj.base && variantiObj.base.length > 0) || (activeVarianti.length > 0);
                                                 return (
-                                                <div key={prodotto.id} className="card"
-                                                    // MODALE SEMPRE APRIBILE
-                                                    onClick={() => prodotto.immagine_url ? apriModale(prodotto) : null}
-                                                    style={{ 
-                                                        display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', 
-                                                        cursor: prodotto.immagine_url ? 'pointer' : 'default', 
-                                                        backgroundColor: 'white', marginBottom: '1px', borderRadius: '0',
-                                                        borderBottom: '1px solid #eee'
-                                                    }}
-                                                >
-                                                    {prodotto.immagine_url && <img src={prodotto.immagine_url} style={{width:'70px', height:'70px', objectFit:'cover', borderRadius:'5px', flexShrink: 0}} />}
-                                                    
-                                                    <div className="info" style={{flex: 1}}>
-                                                        <h3 style={{margin:'0 0 4px 0', fontSize:'16px', color: '#222'}}>{prodotto.nome}</h3>
-                                                        {prodotto.descrizione && (<p style={{fontSize:'12px', color:'#666', margin:'0 0 4px 0', lineHeight:'1.2'}}>{prodotto.descrizione}</p>)}
-                                                        {ingredientiStr && (
-                                                            <p style={{fontSize:'11px', color:'#555', fontStyle:'italic', margin:'0 0 5px 0'}}>
-                                                                <span style={{fontWeight:'bold'}}>Ingredienti:</span> {ingredientiStr}
-                                                            </p>
-                                                        )}
-                                                        <div style={{fontSize:'14px', fontWeight:'bold', color: priceColor}}>{Number(prodotto.prezzo).toFixed(2)} €</div>
-                                                    </div>
-                                                    
-                                                    {/* PULSANTI SEMPRE VISIBILI (Anche in Wish List) */}
-                                                    <div style={{display:'flex', gap:'5px', alignItems:'center'}}>
-                                                        {hasVarianti && (
-                                                            <button 
-                                                                onClick={(e) => { e.stopPropagation(); apriModale(prodotto); }}
-                                                                style={{
-                                                                    background:'transparent', border:'1px solid #ccc', color:'#555',
-                                                                    borderRadius:'5px', padding:'5px 8px', fontSize:'12px', cursor:'pointer', fontWeight:'bold'
-                                                                }}
-                                                            >
-                                                                Modifica ✏️
-                                                            </button>
-                                                        )}
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); aggiungiAlCarrello(prodotto); }} 
-                                                            style={{ 
-                                                                background:'#f0f0f0', color:'#333', borderRadius:'50%', width:'35px', height:'35px', 
-                                                                border:'none', fontSize:'22px', display:'flex', alignItems:'center', justifyContent:'center', cursor: 'pointer' 
-                                                            }}
-                                                        >
-                                                            +
-                                                        </button>
-                                                    </div>
-                                                </div>
+<div key={prodotto.id} className="card"
+    onClick={() => prodotto.immagine_url ? apriModale(prodotto) : null}
+    style={{
+        background: style?.colore_card || 'white', 
+        border: `1px solid ${style?.colore_border || '#eee'}`,
+        borderRadius: '12px',
+        padding: '15px',
+        marginBottom: '15px',
+        boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
+        display: 'flex', 
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        cursor: prodotto.immagine_url ? 'pointer' : 'default'
+    }}>
+    
+    {/* Immagine se c'è */}
+    {prodotto.immagine_url && (
+        <img src={prodotto.immagine_url} style={{width:'70px', height:'70px', objectFit:'cover', borderRadius:'8px', marginRight:'15px'}} alt={prodotto.nome} />
+    )}
+
+    <div style={{flex:1}}>
+        <div style={{
+            fontSize: '1.1rem', fontWeight: 'bold', 
+            color: style?.colore_titolo || '#333', 
+            fontFamily: style?.font_style
+        }}>
+            {prodotto.nome}
+        </div>
+        <div style={{
+            fontSize: '0.9rem', color: style?.colore_testo || '#666', 
+            marginTop: '4px', fontFamily: style?.font_style, lineHeight: '1.2'
+        }}>
+            {prodotto.descrizione}
+        </div>
+        
+        {/* Ingredienti (se presenti) */}
+        {ingredientiStr && (
+            <p style={{fontSize:'11px', color: style?.colore_testo || '#555', fontStyle:'italic', margin:'4px 0 0 0', opacity:0.8}}>
+                <span style={{fontWeight:'bold'}}>Ingr:</span> {ingredientiStr}
+            </p>
+        )}
+
+        <div style={{
+            marginTop: '8px', fontWeight: 'bold', fontSize: '1.1rem',
+            color: style?.colore_prezzo || '#e67e22'
+        }}>
+            € {Number(prodotto.prezzo).toFixed(2)}
+        </div>
+    </div>
+    
+    {/* TASTI AZIONE */}
+    <div style={{display:'flex', gap:'10px', alignItems:'center'}}>
+        {hasVarianti && (
+             <button 
+                onClick={(e) => { e.stopPropagation(); apriModale(prodotto); }}
+                style={{
+                    background:'transparent', 
+                    border:`1px solid ${style?.colore_border || '#ccc'}`, 
+                    color: style?.colore_testo || '#555',
+                    borderRadius:'5px', padding:'5px 8px', fontSize:'12px', cursor:'pointer', fontWeight:'bold'
+                }}
+            >
+                Modifica
+            </button>
+        )}
+    
+        <button 
+            onClick={(e) => { e.stopPropagation(); aggiungiAlCarrello(prodotto); }}
+            style={{
+                background: style?.colore_btn || '#27ae60',
+                color: style?.colore_btn_text || 'white',
+                border: 'none',
+                borderRadius: '50%', width: '40px', height: '40px',
+                fontSize: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+                cursor: 'pointer'
+            }}
+        >
+            +
+        </button>
+    </div>
+</div>
                                             )})}
                                         </div>
                                     )}
