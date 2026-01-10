@@ -613,7 +613,7 @@ const addList = addListPiatto.length > 0 ? addListPiatto : addListCategoria;
                                   const ingredientiStr = (variantiObj.base || []).join(', ');
 
                                   return (
-                                  <div key={item.tempId} style={{background:'rgba(255,255,255,0.1)', borderRadius:10, padding:15, marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                                  <div key={item.tempId} style={{background:'rgba(223, 0, 0, 0.1)', borderRadius:10, padding:15, marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                                       <div>
                                           <div style={{fontWeight:'bold', fontSize:'1.1rem', color: titleColor}}>{item.nome}</div>
                                           
