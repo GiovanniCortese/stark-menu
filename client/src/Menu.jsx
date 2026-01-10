@@ -602,7 +602,6 @@ const addList = addListPiatto.length > 0 ? addListPiatto : addListCategoria;
                                   display:'inline-block', paddingRight:20
                               }}>
                                   {index + 1}ª PORTATA 
-
                               </h3>
 
                               {itemsCucina.filter(i => i.course === courseNum).map(item => {
