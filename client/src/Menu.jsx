@@ -83,56 +83,68 @@ function Menu() {
 
 // --- 1. CARICAMENTO DATI E SICUREZZA STAFF ---
   useEffect(() => {
+    // Reset stati iniziali per evitare glitch visivi
+    setError(false);
+    
     fetch(`${API_URL}/api/menu/${currentSlug}`)
       .then(res => {
-          if(!res.ok) throw new Error("Errore caricamento");
+          if(!res.ok) throw new Error("Errore caricamento dati");
           return res.json();
       })
       .then(data => {
-          // Dati base
+          if (!data || data.error) {
+              // Se il ristorante non esiste o c'è un errore
+              setError(true);
+              return;
+          }
+
+          // 1. Impostazione Dati Ristorante
           setRistoranteId(data.id);
-          setRistorante(data.ristorante || data.nome); // Gestisce entrambi i casi di nome
+          setRistorante(data.ristorante || data.nome);
           setMenu(data.menu || []);
           setStyle(data.style || {});
           
-          // --- LOGICA SICUREZZA STAFF (NUOVA) ---
-          const userLoggato = JSON.parse(localStorage.getItem('user'));
-          let staffAutorizzato = false;
+          // 2. Controllo Staff (Protetto da errori)
+          try {
+              const userStr = localStorage.getItem('user');
+              const userLoggato = userStr ? JSON.parse(userStr) : null;
+              
+              if (userLoggato && userLoggato.ristorante_id) {
+                  // Verifica ID e Ruolo
+                  const lavoraQui = Number(userLoggato.ristorante_id) === Number(data.id);
+                  const isRuoloStaff = ['cameriere', 'admin', 'editor'].includes(userLoggato.ruolo);
 
-          if (userLoggato) {
-             // Verifico se l'utente lavora ESATTAMENTE in questo ristorante
-             const lavoraQui = Number(userLoggato.ristorante_id) === Number(data.id);
-             const isRuoloStaff = ['cameriere', 'admin', 'editor'].includes(userLoggato.ruolo);
-
-             if (isRuoloStaff && lavoraQui) {
-                 staffAutorizzato = true;
-                 setIsStaff(true); // ✅ È Staff DI QUESTO LOCALE
-             } else {
-                 setIsStaff(false); // ❌ È Staff ALTROVE -> Qui è Cliente
-             }
-          } else {
-              setIsStaff(false);
+                  if (isRuoloStaff && lavoraQui) {
+                      setIsStaff(true); // ✅ Staff autorizzato
+                  } else {
+                      setIsStaff(false); // ❌ Staff di un altro locale o Cliente
+                  }
+              } else {
+                  setIsStaff(false); // Utente non loggato o dati incompleti
+              }
+          } catch (err) {
+              console.log("Errore lettura utente locale:", err);
+              setIsStaff(false); // In caso di errore, trattalo come cliente
           }
 
-          // Controllo Abbonamento (Blocco Totale)
+          // 3. Controllo Sospensione
           if(data.subscription_active === false || data.account_attivo === false) {
               setIsSuspended(true);
           }
           
-          // IMPOSTAZIONE STATO CUCINA
-          // Se sei staff autorizzato puoi ordinare anche se la cucina è chiusa
-          // Altrimenti dipendi dagli interruttori
+          // 4. Stato Cucina
+          // Se abilitato dal ristoratore AND la cucina non è stata spenta col master switch
           const cucinaAperta = data.ordini_abilitati && (data.kitchen_active !== false);
           setCanOrder(cucinaAperta);
 
-          // Imposta Categoria Attiva di default
+          // 5. Categoria di Default
           if(data.menu && data.menu.length > 0) {
              const uniqueCats = [...new Set(data.menu.map(p => p.categoria_nome || p.categoria))];
              if(uniqueCats.length > 0) setActiveCategory(uniqueCats[0]);
           }
       })
       .catch(err => {
-          console.error("Errore Menu:", err);
+          console.error("Errore Fetch Menu:", err);
           setError(true);
       });
   }, [currentSlug]);
