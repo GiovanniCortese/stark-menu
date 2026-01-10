@@ -106,13 +106,11 @@ const puoOrdinareSempre = isStaffQui;
           
           if(data.subscription_active === false) setIsSuspended(true);
           
-          // IMPOSTAZIONE STATO CUCINA
           setCanOrder(data.ordini_abilitati && data.kitchen_active);
 
-          if(data.menu && data.menu.length > 0) {
-             const uniqueCats = [...new Set(data.menu.map(p => p.categoria_nome || p.categoria))];
-             if(uniqueCats.length > 0) setActiveCategory(uniqueCats[0]);
-          }
+          // MODIFICA: Rimuoviamo il blocco che settava setActiveCategory(uniqueCats[0])
+          // In questo modo activeCategory rimane null e l'accordion è chiuso.
+          setActiveCategory(null); 
       })
       .catch(err => {
           console.error("Errore Menu:", err);
@@ -160,15 +158,16 @@ const puoOrdinareSempre = isStaffQui;
       setCarrello(carrello.filter(i => i.tempId !== tempId));
   };
 
-  const cambiaUscita = (tempId, delta) => {
-      setCarrello(carrello.map(item => {
-          if (item.tempId === tempId) {
-              let newCourse = item.course + delta;
-              if (newCourse < 1) newCourse = 1;
-              if (newCourse > 4) newCourse = 4;
-              return { ...item, course: newCourse };
-          }
-          return item;
+const cambiaUscita = (tempId, delta) => {
+    setCarrello(carrello.map(item => {
+        if (item.tempId === tempId) {
+            let newCourse = (item.course || 1) + delta;
+            // Permette il range completo da 1 a 4
+            if (newCourse < 1) newCourse = 1;
+            if (newCourse > 4) newCourse = 4;
+            return { ...item, course: newCourse };
+        }
+        return item;
       }));
   };
 

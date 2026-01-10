@@ -25,7 +25,7 @@ const [loadingLogin, setLoadingLogin] = useState(false);
   // --- STATI GLOBALI ---
   const [user, setUser] = useState(null); 
   const [loading, setLoading] = useState(true); 
-  const [tab, setTab] = useState('menu'); 
+  const [tab, setTab] = useState('dashboard'); 
   
   // Dati condivisi
   const [menu, setMenu] = useState([]); 

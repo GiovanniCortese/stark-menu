@@ -20,21 +20,24 @@ function AdminUsers({ API_URL, user }) {
     }
 }, [user]); // Si attiva ogni volta che 'user' viene caricato o cambia
 
-    const ricaricaTutto = () => {
+const ricaricaTutto = () => {
     if (!user || !user.id) return;
 
-        // 1. Carica Staff
-        fetch(`${API_URL}/api/utenti?mode=staff&ristorante_id=${user.id}`)
-            .then(res => res.json())
-            .then(data => setStaff(Array.isArray(data) ? data : []))
-            .catch(err => console.error(err));
-        
-        // 2. Carica Clienti
-        fetch(`${API_URL}/api/utenti?mode=clienti&ristorante_id=${user.id}`)
-            .then(res => res.json())
-            .then(data => setClienti(Array.isArray(data) ? data : []))
-            .catch(err => console.error(err));
-    };
+    // 1. Carica Staff
+    fetch(`${API_URL}/api/utenti?mode=staff&ristorante_id=${user.id}`)
+        .then(res => res.json())
+        .then(data => setStaff(Array.isArray(data) ? data : []))
+        .catch(err => console.error("Errore Staff:", err));
+    
+    // 2. Carica Clienti (Assicurati che mode=clienti sia gestito dal backend)
+    fetch(`${API_URL}/api/utenti?mode=clienti&ristorante_id=${user.id}`)
+        .then(res => res.json())
+        .then(data => {
+            console.log("Dati clienti ricevuti:", data); // Per debug
+            setClienti(Array.isArray(data) ? data : []);
+        })
+        .catch(err => console.error("Errore Clienti:", err));
+};
 
     const handleSave = async (e) => {
         e.preventDefault();
