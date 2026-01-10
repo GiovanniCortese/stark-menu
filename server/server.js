@@ -571,6 +571,55 @@ app.get('/api/export-excel/:ristorante_id', async (req, res) => {
     } catch (err) { console.error(err); res.status(500).json({ error: "Errore Export" }); }
 });
 
+app.get('/api/export-clienti/:ristorante_id', async (req, res) => {
+    try {
+        const { ristorante_id } = req.params;
+
+        // Query CRM: recupera chi ha ordinato e quante volte
+        const result = await pool.query(`
+            SELECT 
+                u.nome, 
+                u.email, 
+                u.telefono, 
+                u.indirizzo, 
+                COUNT(o.id) as totale_ordini, 
+                MAX(o.data_ora) as ultimo_ordine
+            FROM utenti u
+            JOIN ordini o ON u.id = o.utente_id
+            WHERE o.ristorante_id = $1
+            GROUP BY u.id, u.nome, u.email, u.telefono, u.indirizzo
+            ORDER BY totale_ordini DESC
+        `, [ristorante_id]);
+        
+        const dataForExcel = result.rows.map(row => ({
+            "Nome Cliente": row.nome,
+            "Email": row.email,
+            "Telefono": row.telefono || "N/D",
+            "Indirizzo": row.indirizzo || "N/D",
+            "Totale Ordini": parseInt(row.totale_ordini),
+            "Ultima Visita": row.ultimo_ordine ? new Date(row.ultimo_ordine).toLocaleDateString() : "---"
+        }));
+
+        const workbook = xlsx.utils.book_new();
+        const worksheet = xlsx.utils.json_to_sheet(dataForExcel);
+        
+        // Formattazione larghezza colonne
+        worksheet['!cols'] = [
+            {wch:25}, {wch:30}, {wch:15}, {wch:30}, {wch:15}, {wch:15}
+        ];
+
+        xlsx.utils.book_append_sheet(workbook, worksheet, "Database Clienti");
+        const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+        
+        res.setHeader('Content-Disposition', `attachment; filename="clienti_stark_id_${ristorante_id}.xlsx"`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(buffer);
+    } catch (err) { 
+        console.error(err); 
+        res.status(500).json({ error: "Errore Export Clienti" }); 
+    }
+});
+
 app.put('/api/ristorante/style/:id', async (req, res) => {
     try {
         const { logo_url, cover_url, colore_sfondo, colore_titolo, colore_testo, colore_prezzo, font_style } = req.body;

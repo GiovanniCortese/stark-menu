@@ -147,8 +147,44 @@ const ricaricaTutto = () => {
             )}
 
             {/* AREA CLIENTI */}
-           {tab === 'clienti' && (
+{tab === 'clienti' && (
     <div className="table-container">
+        {/* BARRA AZIONI: DOWNLOAD EXCEL */}
+        <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center', 
+            marginBottom: '20px', 
+            background: '#e8f8f5', 
+            padding: '15px', 
+            borderRadius: '10px',
+            border: '1px solid #16a085'
+        }}>
+            <div style={{color: '#16a085'}}>
+                <strong>📊 Database CRM</strong>
+                <div style={{fontSize: '0.8rem'}}>Esporta l'elenco dei clienti che hanno ordinato nel tuo locale.</div>
+            </div>
+            <button 
+                onClick={() => window.open(`${API_URL}/api/export-clienti/${user.id}`, '_blank')}
+                style={{ 
+                    background: '#27ae60', 
+                    color: 'white', 
+                    border: 'none', 
+                    padding: '10px 20px', 
+                    borderRadius: '8px', 
+                    cursor: 'pointer', 
+                    fontWeight: 'bold', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '8px',
+                    boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                }}
+            >
+                <span>📥</span> SCARICA EXCEL
+            </button>
+        </div>
+
+        {/* TABELLA */}
         <table style={{width:'100%', borderCollapse:'collapse'}}>
             <thead>
                 <tr style={{background:'#f0f0f0', textAlign:'left'}}>
@@ -163,15 +199,14 @@ const ricaricaTutto = () => {
                     <tr key={c.id} style={{borderBottom:'1px solid #eee'}}>
                         <td style={{padding:10}}>
                             <strong>{c.nome}</strong><br/>
-                            <small>@{c.username}</small>
+                            <small style={{color: '#888'}}>@{c.username || 'user'}</small>
                         </td>
                         <td style={{padding:10}}>
                             {c.email}<br/>
-                            {c.telefono || 'N/D'}
+                            <span style={{fontSize: '0.9rem', color: '#666'}}>{c.telefono || 'N/D'}</span>
                         </td>
                         <td style={{padding:10}}>
-                            {/* Il backend dovrà restituire questo conteggio */}
-                            <span style={{background:'#3498db', color:'white', padding:'2px 8px', borderRadius:10}}>
+                            <span style={{background:'#3498db', color:'white', padding:'2px 8px', borderRadius:10, fontSize: '0.9rem'}}>
                                 {c.totale_ordini || 0} ordini
                             </span>
                         </td>
@@ -182,7 +217,7 @@ const ricaricaTutto = () => {
                 ))}
             </tbody>
         </table>
-        {clienti.length === 0 && <p style={{padding:20, textAlign:'center'}}>Nessun cliente ha ancora effettuato ordini in questo locale.</p>}
+        {clienti.length === 0 && <p style={{padding:20, textAlign:'center', color: '#999'}}>Nessun cliente ha ancora effettuato ordini in questo locale.</p>}
     </div>
 )}
 
