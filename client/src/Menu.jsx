@@ -109,6 +109,10 @@ function Menu() {
               const userStr = localStorage.getItem('user');
               const userLoggato = userStr ? JSON.parse(userStr) : null;
               
+              // ⬇️⬇️ QUESTA È LA RIGA CHE MANCAVA! ⬇️⬇️
+              setUser(userLoggato); 
+              // ⬆️⬆️ Senza questa, avrai l'errore "user is not defined" ⬆️⬆️
+
               if (userLoggato && userLoggato.ristorante_id) {
                   // Verifica ID e Ruolo
                   const lavoraQui = Number(userLoggato.ristorante_id) === Number(data.id);
@@ -124,7 +128,8 @@ function Menu() {
               }
           } catch (err) {
               console.log("Errore lettura utente locale:", err);
-              setIsStaff(false); // In caso di errore, trattalo come cliente
+              setIsStaff(false); 
+              setUser(null); // Reset in caso di errore
           }
 
           // 3. Controllo Sospensione
@@ -133,7 +138,6 @@ function Menu() {
           }
           
           // 4. Stato Cucina
-          // Se abilitato dal ristoratore AND la cucina non è stata spenta col master switch
           const cucinaAperta = data.ordini_abilitati && (data.kitchen_active !== false);
           setCanOrder(cucinaAperta);
 
