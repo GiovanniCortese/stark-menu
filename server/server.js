@@ -41,6 +41,41 @@ await pool.query("ALTER TABLE ordini ADD COLUMN IF NOT EXISTS cameriere TEXT");
 await pool.query("ALTER TABLE utenti ADD COLUMN IF NOT EXISTS telefono_verificato BOOLEAN DEFAULT FALSE");
 await pool.query("ALTER TABLE utenti ADD COLUMN IF NOT EXISTS codice_otp TEXT");
 
+// --- 1. AGGIUNTA COLONNE (dentro la funzione fixDatabase) ---
+await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS ip_wifi_locale TEXT");
+await pool.query("ALTER TABLE utenti ADD COLUMN IF NOT EXISTS telefono_verificato BOOLEAN DEFAULT FALSE");
+await pool.query("ALTER TABLE utenti ADD COLUMN IF NOT EXISTS codice_otp TEXT");
+
+// --- 2. NUOVE ROTTE API (da aggiungere in server.js) ---
+
+// Verifica se l'IP del cliente corrisponde a quello del locale
+app.get('/api/check-connection/:ristorante_id', async (req, res) => {
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    try {
+        const rist = await pool.query("SELECT ip_wifi_locale FROM ristoranti WHERE id = $1", [req.params.ristorante_id]);
+        const isSede = (clientIp === rist.rows[0]?.ip_wifi_locale);
+        res.json({ inSede: isSede, ipRilevato: clientIp });
+    } catch (e) { res.status(500).send(e); }
+});
+
+// Salvataggio IP del locale (da chiamare nell'area Admin)
+app.put('/api/ristorante/register-ip/:id', async (req, res) => {
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    try {
+        await pool.query("UPDATE ristoranti SET ip_wifi_locale = $1 WHERE id = $2", [clientIp, req.params.id]);
+        res.json({ success: true, ipRegistrato: clientIp });
+    } catch (e) { res.status(500).send(e); }
+});
+
+// Invio OTP (Simulato)
+app.post('/api/auth/send-otp', async (req, res) => {
+    const { telefono } = req.body;
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+    await pool.query("UPDATE utenti SET codice_otp = $1 WHERE telefono = $2", [otp, telefono]);
+    console.log(`[SMS] Codice per ${telefono}: ${otp}`); // Per ora lo leggi in console
+    res.json({ success: true, message: "Codice inviato!" });
+});
+
         console.log("✅ DB Check: Colonne Password Reparti presenti.");
     } catch (e) { console.log("DB Check OK"); }
 };

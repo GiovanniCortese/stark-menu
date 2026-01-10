@@ -27,6 +27,17 @@ function Menu() {
 
   // Stato temporaneo per le varianti mentre il modale è aperto
   const [tempVarianti, setTempVarianti] = useState({ rimozioni: [], aggiunte: [] });
+const [isInLocale, setIsInLocale] = useState(false);
+// Recuperiamo l'utente per controllare se il telefono è verificato
+const userLocal = JSON.parse(localStorage.getItem('stark_user')); 
+
+useEffect(() => {
+    if (ristoranteId) {
+        fetch(`${API_URL}/api/check-connection/${ristoranteId}`)
+            .then(r => r.json())
+            .then(data => setIsInLocale(data.inSede));
+    }
+}, [ristoranteId, API_URL]);
   
   // --- PARAMETRI URL ---
   const { slug } = useParams();
@@ -240,7 +251,7 @@ function Menu() {
   const titleColor = style.title || '#fff';
   const priceColor = style.price || '#27ae60';
   const font = style.font || 'sans-serif';
-
+const puòOrdinare = isStaff || isInLocale || (user?.telefono_verificato);
   const categorieUniche = [...new Set(menu.map(p => p.categoria_nome || p.categoria))];
   const piattiFiltrati = menu.filter(p => (p.categoria_nome || p.categoria) === activeCategory);
 
@@ -693,19 +704,38 @@ const addList = addListPiatto.length > 0 ? addListPiatto : addListCategoria;
                       
                       {/* --- TOTALE RIMOSSO DEFINITIVAMENTE --- */}
                       
-{/* Mostra il tasto se la cucina è aperta OPPURE se l'utente è dello staff */}
+{/* --- NUOVA LOGICA PULSANTE DINAMICO --- */}
 {carrello.length > 0 && (canOrder || isStaff) && (
-    <button 
-        onClick={inviaOrdine} 
-        style={{
-            width:'100%', padding:'15px', fontSize:'18px', 
-            background: '#159709ff', color:'white', 
-            border:`1px solid ${style?.text||'#ccc'}`, 
-            borderRadius:'30px', fontWeight:'bold', cursor:'pointer'
-        }}
-    >
-        {isStaff ? "INVIA ORDINE STAFF 🚀" : "CONFERMA E INVIA 🚀"}
-    </button>
+    <>
+        {puòOrdinare ? (
+            <button 
+                onClick={inviaOrdine} 
+                style={{
+                    width:'100%', padding:'15px', fontSize:'18px', 
+                    background: '#159709ff', color:'white', 
+                    border:`1px solid ${style?.text||'#ccc'}`, 
+                    borderRadius:'30px', fontWeight:'bold', cursor:'pointer'
+                }}
+            >
+                {isStaff ? `ORDINE STAFF (Tavolo ${tavoloStaff || numeroTavolo}) 🚀` : "CONFERMA E INVIA 🚀"}
+            </button>
+        ) : (
+            <div style={{textAlign:'center', padding:'10px', background:'rgba(231, 76, 60, 0.1)', borderRadius:'15px'}}>
+                <p style={{color:'#e74c3c', fontSize:'13px', fontWeight:'bold', margin:'0 0 10px 0'}}>
+                    ⚠️ Per ordinare connettiti al WiFi del locale o effettua l'accesso con telefono verificato.
+                </p>
+                <button 
+                    onClick={() => setShowAuthModal(true)} 
+                    style={{
+                        width:'100%', padding:'12px', background:'#3498db', color:'white', 
+                        border:'none', borderRadius:'30px', fontWeight:'bold', cursor:'pointer'
+                    }}
+                >
+                    ACCEDI / VERIFICA TELEFONO 📱
+                </button>
+            </div>
+        )}
+    </>
 )}
                       
                       <button onClick={() => setShowCheckout(false)} style={{width:'100%', padding:'15px', marginTop:'10px', background:'transparent', border:`1px solid ${style?.text||'#ccc'}`, color: style?.text||'#ccc', borderRadius:'30px', cursor:'pointer'}}>Torna al Menu</button>
