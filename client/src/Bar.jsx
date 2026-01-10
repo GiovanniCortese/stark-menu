@@ -174,14 +174,33 @@ const handleLogin = async (e) => {
 
         {ordiniPerTavolo.map(gruppo => (
             <div key={gruppo.tavolo} className="ticket" style={{background:'#ecf0f1', borderTop:'5px solid #3498db'}}>
-                <div className="ticket-header" style={{background:'#2980b9', color:'white', padding:'10px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-    <span style={{fontSize:'1.5rem'}}>Tavolo <strong>{gruppo.tavolo}</strong></span>
-    {/* MOSTRA CAMERIERE NEL TICKET GENERALE DEL TAVOLO */}
-    {gruppo.listaOrdini[0]?.cameriere && (
-        <span style={{background:'rgba(255,255,255,0.2)', padding:'2px 8px', borderRadius:'4px', fontSize:'0.9rem', fontWeight:'normal'}}>
-            👤 {gruppo.listaOrdini[0].cameriere}
+                {/* HEADER AGGIORNATO BAR */}
+<div className="ticket-header" style={{
+    background:'#2980b9', 
+    color:'white', 
+    padding:'10px', 
+    display:'flex', 
+    justifyContent:'space-between', 
+    alignItems:'flex-start'
+}}>
+    <div>
+        <span style={{fontSize:'1.5rem', display:'block'}}>Tavolo <strong>{gruppo.tavolo}</strong></span>
+        {/* LOGICA NOME: Prende il primo ordine della lista per quel tavolo */}
+        <span style={{
+            fontSize:'0.9rem', 
+            background:'rgba(255,255,255,0.2)', 
+            padding:'2px 8px', borderRadius:'4px', marginTop:'4px', 
+            display:'inline-block', fontWeight:'bold'
+        }}>
+            {gruppo.listaOrdini[0]?.cameriere 
+                ? `👤 ${gruppo.listaOrdini[0].cameriere}` 
+                : `📱 ${gruppo.listaOrdini[0]?.cliente || 'Cliente'}`}
         </span>
-    )}
+    </div>
+    {/* Orario del primo ordine */}
+    <span style={{fontSize:'0.9rem', marginTop:'5px'}}>
+        {new Date(gruppo.listaOrdini[0].data_ora).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+    </span>
 </div>
                 
                 <div className="ticket-body" style={{textAlign:'left', paddingBottom:'5px'}}>
@@ -220,6 +239,11 @@ const handleLogin = async (e) => {
                                                     <span style={{fontSize:'1.1rem', fontWeight: isServito ? 'normal' : 'bold', textDecoration: isServito ? 'line-through' : 'none', color: isServito ? '#7f8c8d' : '#2c3e50'}}>
                                                         {gruppoProd.nome}
                                                     </span>
+
+                                                    {/* --- NUOVA RIGA REPARTO --- */}
+    <div style={{fontSize:'0.75rem', color:'#7f8c8d', fontStyle:'italic', marginTop:'2px'}}>
+        🍹 Bar
+    </div>
 
                                                     {/* --- VISUALIZZAZIONE VARIANTI BAR --- */}
                                                     {gruppoProd.varianti_scelte && (
