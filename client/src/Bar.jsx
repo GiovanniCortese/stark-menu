@@ -174,21 +174,14 @@ const handleLogin = async (e) => {
 
         {ordiniPerTavolo.map(gruppo => (
             <div key={gruppo.tavolo} className="ticket" style={{background:'#ecf0f1', borderTop:'5px solid #3498db'}}>
-                <div className="ticket-header" style={{display:'flex', justifyContent:'space-between', alignItems:'center', background: '#2980b9', color: 'white', padding: '10px', borderRadius: '8px 8px 0 0'}}>
-    <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-        <span style={{fontSize:'1.6rem', fontWeight:'bold'}}>Tavolo {tavoloData.tavolo}</span>
-        
-        {/* Identificazione: 🤵 Staff o 📱 Cliente */}
-        <div style={{display:'flex', alignItems:'center', background:'rgba(255,255,255,0.2)', padding:'4px 10px', borderRadius:'20px'}}>
-            {/* Controllo sul primo ordine del tavolo per l'icona */}
-            <span style={{fontSize:'1.1rem', marginRight:'5px'}}>
-                {tavoloData.listaOrdini[0]?.cameriere ? "🤵" : "📱"}
-            </span>
-            <span style={{fontSize:'0.85rem', fontWeight:'bold'}}>
-                {tavoloData.listaOrdini[0]?.cameriere || tavoloData.listaOrdini[0]?.cliente || "Cliente"}
-            </span>
-        </div>
-    </div>
+                <div className="ticket-header" style={{background:'#2980b9', color:'white', padding:'10px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+    <span style={{fontSize:'1.5rem'}}>Tavolo <strong>{gruppo.tavolo}</strong></span>
+    {/* MOSTRA CAMERIERE NEL TICKET GENERALE DEL TAVOLO */}
+    {gruppo.listaOrdini[0]?.cameriere && (
+        <span style={{background:'rgba(255,255,255,0.2)', padding:'2px 8px', borderRadius:'4px', fontSize:'0.9rem', fontWeight:'normal'}}>
+            👤 {gruppo.listaOrdini[0].cameriere}
+        </span>
+    )}
 </div>
                 
                 <div className="ticket-body" style={{textAlign:'left', paddingBottom:'5px'}}>
@@ -198,31 +191,12 @@ const handleLogin = async (e) => {
 
                         return (
                             <div key={ord.id} style={{marginBottom: '10px', borderBottom:'2px solid #bdc3c7'}}>
-                              <div style={{flex:1}}>
-    {/* Titolo pulito (rimuove parentesi) */}
-    <div style={{fontSize:'1.2rem', fontWeight: isServito ? 'normal' : 'bold', textDecoration: isServito ? 'line-through' : 'none', color: isServito ? '#aaa' : '#fff', lineHeight:'1.1'}}>
-        {gruppoProd.nome.split('(')[0].trim()}
-    </div>
-    
-    {/* Sottotitolo Reparto (Opzionale per il Bar, ma utile per coerenza) */}
-    <div style={{fontSize:'0.7rem', color:'#bdc3c7', marginTop:'2px'}}>🍹 Reparto Bar</div>
-
-    {/* Varianti (Badge colorati) */}
-    {gruppoProd.varianti_scelte && (
-        <div style={{marginTop:'5px', display:'flex', flexWrap:'wrap', gap:'4px'}}>
-            {gruppoProd.varianti_scelte.rimozioni?.map((ing, i) => (
-                <span key={i} style={{background:'#c0392b', color:'white', fontSize:'0.7rem', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold'}}>
-                    NO {ing}
-                </span>
-            ))}
-            {gruppoProd.varianti_scelte.aggiunte?.map((ing, i) => (
-                <span key={i} style={{background:'#27ae60', color:'white', fontSize:'0.7rem', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold'}}>
-                    + {ing.nome}
-                </span>
-            ))}
-        </div>
-    )}
+                                <div style={{fontSize:'0.85rem', background:'#d6eaf8', padding:'4px 10px', color:'#2980b9', fontWeight:'bold', display:'flex', justifyContent:'space-between'}}>
+    <span>Ore {new Date(ord.data_ora).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+    {/* VERSIONE MIGLIORATA DEL NOME CAMERIERE NELLA RIGA ORDINE */}
+    <span>{ord.cameriere ? `👤 ${ord.cameriere}` : '📱 Cliente'}</span>
 </div>
+
                                 {prodottiRaggruppati.map((gruppoProd) => {
                                     const isServito = gruppoProd.stato === 'servito';
                                     const indiciDaModificare = gruppoProd.indices; 

@@ -215,11 +215,15 @@ function Cassa() {
                   <div key={tavolo} style={{background:'white', padding:20, borderRadius:10, boxShadow:'0 4px 10px rgba(0,0,0,0.1)'}}>
                       <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', borderBottom:'2px solid #ddd', paddingBottom:10, marginBottom:10}}>
                         <h2 style={{margin:0, color:'#000'}}>Tavolo {tavolo}</h2>
-                        {/* Identificazione chi ordina: Cameriere 🤵 o Cliente 📱 */}
-    <div style={{display:'flex', alignItems:'center', gap:5, marginTop:5, color:'#555', fontSize:'0.9rem', background:'#f0f0f0', padding:'2px 8px', borderRadius:20, width:'fit-content'}}>
-        <span>{datiTavolo.cameriere ? "🤵" : "📱"}</span> 
-        <strong style={{fontSize:'0.85rem'}}>{datiTavolo.cameriere || datiTavolo.cliente || "Cliente"}</strong>
-    </div>
+                        <div style={{textAlign:'right'}}>
+                            <h2 style={{margin:0, color:'#27ae60', marginBottom:'5px'}}>{tavoliAttivi[tavolo].totale.toFixed(2)}€</h2>
+                            <button 
+                            onClick={() => setSelectedLog({ id: `Tavolo ${tavolo} (LIVE)`, dettagli: tavoliAttivi[tavolo].fullLog })}
+                            style={{background:'#27ae60', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:11, fontWeight:'bold'}}
+                            >
+                                🟢 LOG LIVE
+                            </button>
+                        </div>
                     </div>
 
                       {tavoliAttivi[tavolo].ordini.map(ord => (

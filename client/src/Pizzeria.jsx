@@ -236,16 +236,17 @@ const handleLogin = async (e) => {
             return (
                 <div key={tavoloData.tavolo} className="ticket" style={{background:'white', borderTop:'5px solid #e74c3c', marginBottom:20, borderRadius:8}}>
                     <div className="ticket-header" style={{padding:10, borderBottom:'1px solid #eee', background:'#fceceb', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-    <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-        <span style={{fontSize:'1.8rem', color:'#c0392b', fontWeight:'bold'}}>Tavolo {tavoloData.tavolo}</span>
+    <div style={{display:'flex', flexDirection:'column'}}>
+        <span style={{fontSize:'1.8rem', color:'#c0392b'}}>Tavolo <strong>{tavoloData.tavolo}</strong></span>
         
-        {/* Identificazione: Cameriere 🤵 o Cliente 📱 */}
-        <div style={{display:'flex', alignItems:'center', background:'rgba(192, 57, 43, 0.1)', color: '#c0392b', padding:'4px 10px', borderRadius:'20px'}}>
-            <span style={{fontSize:'1.2rem', marginRight:'5px'}}>{tavoloData.cameriere ? "🤵" : "📱"}</span>
-            <span style={{fontSize:'0.9rem', fontWeight:'bold'}}>{tavoloData.cameriere || tavoloData.cliente || "Cliente"}</span>
-        </div>
+        {/* --- AGGIUNGI QUESTO BLOCCO --- */}
+        {nomeCameriere && (
+            <span style={{fontSize:'0.9rem', background:'rgba(192, 57, 43, 0.1)', color: '#c0392b', padding:'2px 8px', borderRadius:'4px', marginTop:'2px', display:'inline-block', width:'fit-content', fontWeight: 'bold'}}>
+                👤 {nomeCameriere}
+            </span>
+        )}
     </div>
-    <span style={{fontSize:'0.9rem', color:'#000'}}>{new Date(tavoloData.orarioMin).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+    <span style={{fontSize:'0.9rem', color:'#000000ff'}}>{new Date(tavoloData.orarioMin).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
 </div>
                     
                     <div className="ticket-body" style={{textAlign:'left', paddingBottom:'5px'}}>
@@ -284,32 +285,28 @@ const handleLogin = async (e) => {
                                                         {item.count}x
                                                     </span>
                                                     <div style={{flex:1}}>
-    {/* Titolo pulito: rimuove il testo tra parentesi */}
-    <div style={{fontSize:'1.2rem', fontWeight: isServito ? 'normal' : 'bold', textDecoration: isServito ? 'line-through' : 'none', color: isServito ? '#aaa' : '#000', lineHeight:'1.1'}}>
-        {item.nome.split('(')[0].trim()}
-    </div>
-    
-    {/* Indicazione Reparto (Sotto il nome) */}
-    <div style={{fontSize:'0.75rem', color:'#7f8c8d', marginTop:'2px', fontStyle:'italic'}}>
-        {item.is_pizzeria ? '🍕 Pizzeria' : '🍽️ Cucina'}
-    </div>
+                                                        <div style={{fontSize:'1.1rem', fontWeight: isServito ? 'normal' : 'bold', textDecoration: isServito ? 'line-through' : 'none', color: isServito ? '#aaa' : '#000'}}>
+                                                            {item.nome}
+                                                        </div>
+                                                        
+                                                        {/* --- VISUALIZZAZIONE VARIANTI FIXATA --- */}
+                                                        {item.varianti_scelte && (
+                                                            <div style={{marginTop:'2px'}}>
+                                                                {item.varianti_scelte.rimozioni?.map((ing, i) => (
+                                                                    <span key={i} style={{background:'#c0392b', color:'white', fontSize:'0.75rem', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold', marginRight:'5px', display:'inline-block'}}>
+                                                                        NO {ing}
+                                                                    </span>
+                                                                ))}
+                                                                {item.varianti_scelte.aggiunte?.map((ing, i) => (
+                                                                    <span key={i} style={{background:'#27ae60', color:'white', fontSize:'0.75rem', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold', marginRight:'5px', display:'inline-block'}}>
+                                                                        + {ing.nome}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        )}
 
-    {/* Varianti: solo etichette colorate (No testo nel titolo) */}
-    {item.varianti_scelte && (
-        <div style={{marginTop:'5px', display:'flex', flexWrap:'wrap', gap:'4px'}}>
-            {item.varianti_scelte.rimozioni?.map((ing, i) => (
-                <span key={i} style={{background:'#c0392b', color:'white', fontSize:'0.75rem', padding:'3px 6px', borderRadius:'4px', fontWeight:'bold'}}>
-                    NO {ing}
-                </span>
-            ))}
-            {item.varianti_scelte.aggiunte?.map((ing, i) => (
-                <span key={i} style={{background:'#27ae60', color:'white', fontSize:'0.75rem', padding:'3px 6px', borderRadius:'4px', fontWeight:'bold'}}>
-                    + {ing.nome}
-                </span>
-            ))}
-        </div>
-    )}
-</div>
+                                                        {item.riaperto && item.stato === 'in_attesa' && <div style={{display:'inline-block', marginTop:'2px', background:'#f39c12', color:'white', padding:'2px 5px', borderRadius:'3px', fontSize:'0.7rem', fontWeight:'bold'}}>⚠️ RIAPERTO</div>}
+                                                    </div>
                                                 </div>
 
                                                 <div style={{textAlign:'right'}}>
