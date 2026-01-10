@@ -1,28 +1,35 @@
-// client/src/components_admin/AdminUsers.jsx - VERSIONE FINAL (Staff vs Clienti) 👥
+// client/src/components_admin/AdminUsers.jsx - VERSIONE FIX LISTE 🛠️
 import { useState, useEffect } from 'react';
-import * as XLSX from 'xlsx'; // Assicurati di installare: npm install xlsx
+import * as XLSX from 'xlsx'; 
 
-function AdminUsers({ API_URL, user }) { // Aggiunto 'user' per filtrare per ristorante
+function AdminUsers({ API_URL, user }) { 
     const [staff, setStaff] = useState([]);
     const [clienti, setClienti] = useState([]);
-    const [tab, setTab] = useState('staff'); // 'staff' | 'clienti'
+    const [tab, setTab] = useState('staff'); 
     
     const [editingUser, setEditingUser] = useState(null); 
     const [showNewModal, setShowNewModal] = useState(false);
     
-    // Stato per nuovo Staff (Default ruolo: Cameriere)
     const [newUser, setNewUser] = useState({ nome: '', email: '', password: '', telefono: '', indirizzo: '', ruolo: 'cameriere' });
 
-    useEffect(() => { ricaricaTutto(); }, []);
+    // 🛠️ FIX IMPORTANTE: Aggiunto [user] alle dipendenze.
+    // Ora ricarica i dati appena 'user' diventa disponibile o cambia.
+    useEffect(() => { 
+        if (user && user.id) {
+            ricaricaTutto(); 
+        }
+    }, [user]);
 
     const ricaricaTutto = () => {
-        // 1. Carica Staff (Editor/Camerieri del locale)
+        if (!user || !user.id) return;
+
+        // 1. Carica Staff
         fetch(`${API_URL}/api/utenti?mode=staff&ristorante_id=${user.id}`)
             .then(res => res.json())
             .then(data => setStaff(Array.isArray(data) ? data : []))
             .catch(err => console.error(err));
         
-        // 2. Carica Clienti (Quelli che hanno ordinato)
+        // 2. Carica Clienti
         fetch(`${API_URL}/api/utenti?mode=clienti&ristorante_id=${user.id}`)
             .then(res => res.json())
             .then(data => setClienti(Array.isArray(data) ? data : []))
@@ -47,7 +54,6 @@ function AdminUsers({ API_URL, user }) { // Aggiunto 'user' per filtrare per ris
 
     const handleCreateStaff = async (e) => {
         e.preventDefault();
-        // Forza l'ID del ristorante e limita i ruoli
         const payload = { ...newUser, ristorante_id: user.id };
         
         try {
@@ -66,11 +72,9 @@ function AdminUsers({ API_URL, user }) { // Aggiunto 'user' per filtrare per ris
         } catch(err) { alert("Errore connessione"); }
     };
 
-    // Export Excel Client-Side (Scarica quello che vedi)
     const downloadExcel = () => { 
         const data = tab === 'staff' ? staff : clienti;
         const filename = tab === 'staff' ? 'Staff_Lista.xlsx' : 'Clienti_Lista.xlsx';
-        
         const ws = XLSX.utils.json_to_sheet(data);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Dati");
@@ -78,9 +82,9 @@ function AdminUsers({ API_URL, user }) { // Aggiunto 'user' per filtrare per ris
     };
 
     return (
-        <div className="card" style={{ padding: '25px', background: 'white', borderRadius: '15px', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', flexDirection: 'column', alignItems: 'stretch' }}>
+        <div className="card" style={{ padding: '25px', background: 'white', borderRadius: '15px', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', display:'flex', flexDirection: 'column', alignItems: 'stretch' }}>
             
-            {/* 1. TITOLO & TABS */}
+            {/* TITOLO & TABS */}
             <div style={{ borderBottom: '2px solid #eee', paddingBottom: '15px', marginBottom: '20px', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:10 }}>
                 <h2 style={{ margin: 0, color: '#2c3e50', fontSize: '1.8rem' }}>👥 Gestione Persone</h2>
                 
@@ -94,7 +98,7 @@ function AdminUsers({ API_URL, user }) { // Aggiunto 'user' per filtrare per ris
                 </div>
             </div>
 
-            {/* 2. AREA STAFF */}
+            {/* AREA STAFF */}
             {tab === 'staff' && (
                 <>
                     <div style={{ display: 'flex', gap: '12px', marginBottom: '25px' }}>
@@ -114,6 +118,7 @@ function AdminUsers({ API_URL, user }) { // Aggiunto 'user' per filtrare per ris
                                 </tr>
                             </thead>
                             <tbody>
+                                {staff.length === 0 && <tr><td colSpan="4" style={{padding:20, textAlign:'center'}}>Nessun membro staff trovato.</td></tr>}
                                 {staff.map(u => (
                                     <tr key={u.id} style={{ borderBottom: '1px solid #eee' }}>
                                         <td style={{ padding: '15px' }}>
@@ -137,11 +142,11 @@ function AdminUsers({ API_URL, user }) { // Aggiunto 'user' per filtrare per ris
                 </>
             )}
 
-            {/* 3. AREA CLIENTI */}
+            {/* AREA CLIENTI */}
             {tab === 'clienti' && (
                 <>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', background:'#e8f8f5', padding:'15px', borderRadius:'8px' }}>
-                        <p style={{margin:0, color:'#16a085'}}>Visualizzi solo i clienti che hanno effettuato almeno un ordine.</p>
+                        <p style={{margin:0, color:'#16a085'}}>Visualizzi solo i clienti registrati al tuo locale.</p>
                         <button onClick={downloadExcel} style={{ background: '#27ae60', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span>📥</span> EXPORT EXCEL
                         </button>
@@ -176,7 +181,7 @@ function AdminUsers({ API_URL, user }) { // Aggiunto 'user' per filtrare per ris
                 </>
             )}
 
-            {/* MODALE NUOVO STAFF (Limitato a Editor/Cameriere) */}
+            {/* MODALE NUOVO STAFF */}
             {showNewModal && (
                 <div style={modalOverlayStyle}>
                     <div style={modalContentStyle}>
@@ -201,7 +206,7 @@ function AdminUsers({ API_URL, user }) { // Aggiunto 'user' per filtrare per ris
                 </div>
             )}
 
-            {/* MODALE MODIFICA (Solo per Staff) */}
+            {/* MODALE MODIFICA */}
             {editingUser && (
                 <div style={modalOverlayStyle}>
                     <div style={modalContentStyle}>

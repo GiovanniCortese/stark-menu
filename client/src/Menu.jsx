@@ -102,24 +102,25 @@ function Menu() {
           setMenu(data.menu || []);
           setStyle(data.style || {});
           
-          // Variabile temporanea per calcolo immediato
           let isStaffLocal = false; 
 
-          // 2. Controllo Staff & Utente
+          // 2. Controllo Staff & Utente (FIX MAIUSCOLE/MINUSCOLE) 🛠️
           try {
               const userStr = localStorage.getItem('user');
               const userLoggato = userStr ? JSON.parse(userStr) : null;
               
-              setUser(userLoggato); // Aggiorna grafica utente
+              setUser(userLoggato); // Aggiorna grafica
 
               if (userLoggato && userLoggato.ristorante_id) {
-                  // Verifica corrispondenza ID e Ruolo
                   const lavoraQui = Number(userLoggato.ristorante_id) === Number(data.id);
-                  const isRuoloStaff = ['cameriere', 'admin', 'editor'].includes(userLoggato.ruolo);
+                  
+                  // Convertiamo il ruolo in minuscolo per sicurezza
+                  const ruolo = (userLoggato.ruolo || '').toLowerCase();
+                  const isRuoloStaff = ['cameriere', 'admin', 'editor'].includes(ruolo);
 
                   if (isRuoloStaff && lavoraQui) {
                       setIsStaff(true);
-                      isStaffLocal = true; // ✅ È Staff, memorizziamolo subito
+                      isStaffLocal = true; 
                   } else {
                       setIsStaff(false);
                   }
@@ -132,16 +133,14 @@ function Menu() {
               setUser(null);
           }
 
-          // 3. Sospensione Account (Vince su tutto)
+          // 3. Sospensione
           if(data.subscription_active === false || data.account_attivo === false) {
               setIsSuspended(true);
           }
           
-          // 4. STATO CUCINA (FIX QUI) 🛠️
-          // La cucina è aperta se l'interruttore è ON...
+          // 4. STATO CUCINA
+          // Se la cucina è aperta O se sei Staff, puoi ordinare
           const cucinaFisicaAperta = data.ordini_abilitati && (data.kitchen_active !== false);
-          
-          // ...MA se sei Staff (isStaffLocal), puoi ordinare anche se è chiusa!
           setCanOrder(cucinaFisicaAperta || isStaffLocal);
 
           // 5. Categoria
