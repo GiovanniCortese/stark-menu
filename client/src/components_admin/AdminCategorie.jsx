@@ -23,8 +23,13 @@ function AdminCategorie({ user, categorie, setCategorie, API_URL, ricaricaDati }
       } catch(e) { alert("Errore connessione"); }
   };
 
-  const cancellaCategoria = async (id) => { if(confirm("Eliminare?")) { await fetch(`${API_URL}/api/categorie/${id}`, {method:'DELETE'}); ricaricaDati(); }};
-  const avviaModificaCat = (cat) => { 
+const cancellaCategoria = async (id) => { 
+    if (user.ruolo === 'editor') return alert("⛔ GLI EDITOR NON POSSONO CANCELLARE LE CATEGORIE.");
+    if(confirm("Eliminare?")) { 
+        await fetch(`${API_URL}/api/categorie/${id}`, {method:'DELETE'}); 
+        ricaricaDati(); 
+    }
+};  const avviaModificaCat = (cat) => { 
     setEditCatId(cat.id); 
     
     // Converte l'array JSON in stringa leggibile (es. "Bufala:2, Crudo:3")

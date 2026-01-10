@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE FIX ORARIO E FORMATO ITALIA 🇮🇹
+// server/server.js - VERSIONE V_ROLES & STATS
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -24,29 +24,31 @@ const pool = new Pool({
     ssl: { rejectUnauthorized: false }
 });
 
-// --- DATABASE AUTO-FIX (Aggiornato V9) ---
+// --- DATABASE AUTO-FIX (Aggiornato per Ruoli e Stats) ---
 const fixDatabase = async () => {
     try {
-        // 1. Varianti Categorie
-        await pool.query("ALTER TABLE categorie ADD COLUMN IF NOT EXISTS varianti_default JSONB DEFAULT '[]'");
+        // Collega lo staff al ristorante
+        await pool.query("ALTER TABLE utenti ADD COLUMN IF NOT EXISTS ristorante_id INTEGER");
         
-        // 2. Password Reparti (Default '1234' se non impostate)
+        // Collega gli ordini all'utente registrato (per lo storico clienti)
+        await pool.query("ALTER TABLE ordini ADD COLUMN IF NOT EXISTS utente_id INTEGER");
+
+        // Altri fix esistenti
+        await pool.query("ALTER TABLE categorie ADD COLUMN IF NOT EXISTS varianti_default JSONB DEFAULT '[]'");
         await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS pw_cassa TEXT DEFAULT '1234'");
         await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS pw_cucina TEXT DEFAULT '1234'");
         await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS pw_bar TEXT DEFAULT '1234'");
         await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS pw_pizzeria TEXT DEFAULT '1234'");
-       
-        // Aggiunge campi per Cameriere nell'ordine e verifica cellulare utenti
-await pool.query("ALTER TABLE ordini ADD COLUMN IF NOT EXISTS cameriere TEXT");
-await pool.query("ALTER TABLE utenti ADD COLUMN IF NOT EXISTS telefono_verificato BOOLEAN DEFAULT FALSE");
-await pool.query("ALTER TABLE utenti ADD COLUMN IF NOT EXISTS codice_otp TEXT");
+        await pool.query("ALTER TABLE ordini ADD COLUMN IF NOT EXISTS cameriere TEXT");
+        await pool.query("ALTER TABLE utenti ADD COLUMN IF NOT EXISTS telefono_verificato BOOLEAN DEFAULT FALSE");
+        await pool.query("ALTER TABLE utenti ADD COLUMN IF NOT EXISTS codice_otp TEXT");
 
-        console.log("✅ DB Check: Colonne Password Reparti presenti.");
+        console.log("✅ DB Check: Colonne Ruoli e Stats presenti.");
     } catch (e) { console.log("DB Check OK"); }
 };
 fixDatabase();
 
-// CONFIGURAZIONE CLOUDINARY
+// CLOUDINARY
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
     api_key: process.env.CLOUDINARY_API_KEY,
@@ -54,9 +56,8 @@ cloudinary.config({
 });
 const storage = new CloudinaryStorage({ cloudinary: cloudinary, params: { folder: 'menu-app' } });
 const upload = multer({ storage: storage });
-const uploadFile = multer({ storage: multer.memoryStorage() }); // Per Excel
+const uploadFile = multer({ storage: multer.memoryStorage() });
 
-// --- FUNZIONE HELPER PER DATA E ORA ITALIANA ---
 const getNowItaly = () => {
     return new Date().toLocaleString('it-IT', { 
         timeZone: 'Europe/Rome',
@@ -64,6 +65,198 @@ const getNowItaly = () => {
         hour: '2-digit', minute: '2-digit', second: '2-digit'
     });
 };
+
+// ... (LE TUE API DI LOGIN/MENU RIMANGONO UGUALI FINO A "API UTENTI") ...
+// ... INCOLLA QUI SOTTO LE API CHE TI SCRIVO ORA ...
+
+// ==========================================
+//          API GESTIONE UTENTI & STAFF
+// ==========================================
+
+// 1. Registrazione (Aggiornata per Admin che crea Staff)
+app.post('/api/register', async (req, res) => {
+    try {
+        const { nome, email, password, telefono, indirizzo, ruolo, ristorante_id } = req.body;
+        
+        const check = await pool.query('SELECT * FROM utenti WHERE email = $1', [email]);
+        if (check.rows.length > 0) return res.json({ success: false, error: "Email già registrata" });
+
+        // Se è un admin che crea staff, usiamo il suo ristorante_id. Se è un cliente, è null.
+        const r_id = (ruolo === 'cameriere' || ruolo === 'editor') ? ristorante_id : null;
+
+        const r = await pool.query(
+            'INSERT INTO utenti (nome, email, password, telefono, indirizzo, ruolo, ristorante_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+            [nome, email, password, telefono, indirizzo, ruolo || 'cliente', r_id]
+        );
+        res.json({ success: true, user: r.rows[0] });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 2. Login (Uguale a prima)
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        const r = await pool.query('SELECT * FROM utenti WHERE email = $1 AND password = $2', [email, password]);
+        if (r.rows.length > 0) {
+            res.json({ success: true, user: r.rows[0] });
+        } else {
+            res.json({ success: false, error: "Credenziali errate" });
+        }
+    } catch (e) { res.status(500).json({ error: "Errore login" }); }
+});
+
+// 3. GET Utenti (LOGICA DI VISIBILITÀ)
+app.get('/api/utenti', async (req, res) => {
+    try {
+        const { mode, ristorante_id } = req.query; // mode: 'super', 'staff', 'clienti'
+
+        if (mode === 'super') {
+            // SUPER ADMIN: Vede TUTTI
+            const r = await pool.query('SELECT * FROM utenti ORDER BY id DESC');
+            return res.json(r.rows);
+        } 
+        
+        if (mode === 'staff' && ristorante_id) {
+            // ADMIN LOCALE: Vede solo il suo Staff (Editor e Camerieri legati al suo ID)
+            const r = await pool.query(
+                "SELECT * FROM utenti WHERE ristorante_id = $1 AND ruolo IN ('cameriere', 'editor') ORDER BY nome", 
+                [ristorante_id]
+            );
+            return res.json(r.rows);
+        }
+
+        if (mode === 'clienti' && ristorante_id) {
+            // ADMIN LOCALE: Vede i Clienti che hanno fatto ordini nel suo locale
+            // Usiamo DISTINCT per non duplicarli se hanno fatto 100 ordini
+            const r = await pool.query(`
+                SELECT DISTINCT u.id, u.nome, u.email, u.telefono, u.indirizzo, MAX(o.data_ora) as ultimo_ordine
+                FROM utenti u
+                JOIN ordini o ON u.id = o.utente_id
+                WHERE o.ristorante_id = $1
+                GROUP BY u.id, u.nome, u.email, u.telefono, u.indirizzo
+                ORDER BY ultimo_ordine DESC
+            `, [ristorante_id]);
+            return res.json(r.rows);
+        }
+
+        res.json([]);
+    } catch (e) { res.status(500).json({ error: "Err" }); }
+});
+
+// 4. Modifica Utente
+app.put('/api/utenti/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { nome, email, password, telefono, indirizzo, ruolo } = req.body;
+        await pool.query(
+            `UPDATE utenti SET nome=$1, email=$2, password=$3, telefono=$4, indirizzo=$5, ruolo=$6 WHERE id=$7`,
+            [nome, email, password, telefono, indirizzo, ruolo, id]
+        );
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: "Errore modifica utente" }); }
+});
+
+// ==========================================
+//          API DASHBOARD STATISTICHE
+// ==========================================
+
+app.get('/api/stats/dashboard/:ristorante_id', async (req, res) => {
+    const { ristorante_id } = req.params;
+    try {
+        // 1. Incasso Oggi vs Ieri
+        const incassi = await pool.query(`
+            SELECT 
+                SUM(CASE WHEN data_ora::date = CURRENT_DATE THEN totale ELSE 0 END) as oggi,
+                SUM(CASE WHEN data_ora::date = CURRENT_DATE - 1 THEN totale ELSE 0 END) as ieri
+            FROM ordini 
+            WHERE ristorante_id = $1 AND stato = 'pagato'
+        `, [ristorante_id]);
+
+        // 2. Piatti più venduti (Top 5)
+        // Nota: i prodotti sono in JSON, quindi è complesso fare query SQL pure. 
+        // Per semplicità ed efficienza, prendiamo gli ultimi 1000 ordini ed elaboriamo in JS.
+        // Se hai migliaia di ordini al giorno, servirebbe una tabella di dettaglio 'ordini_items'.
+        const ordiniRecenti = await pool.query(`
+            SELECT prodotti FROM ordini 
+            WHERE ristorante_id = $1 AND stato = 'pagato' 
+            ORDER BY data_ora DESC LIMIT 500
+        `, [ristorante_id]);
+
+        const piattoCount = {};
+        ordiniRecenti.rows.forEach(row => {
+            const prodotti = typeof row.prodotti === 'string' ? JSON.parse(row.prodotti) : row.prodotti;
+            if(Array.isArray(prodotti)) {
+                prodotti.forEach(p => {
+                    if(piattoCount[p.nome]) piattoCount[p.nome]++;
+                    else piattoCount[p.nome] = 1;
+                });
+            }
+        });
+        const topDishes = Object.entries(piattoCount)
+            .sort((a,b) => b[1] - a[1])
+            .slice(0, 5)
+            .map(([name, count]) => ({ name, value: count }));
+
+        // 3. Orari di Punta (Basato sugli ordini di oggi)
+        const orari = await pool.query(`
+            SELECT EXTRACT(HOUR FROM data_ora) as ora, COUNT(*) as count
+            FROM ordini 
+            WHERE ristorante_id = $1 AND data_ora::date = CURRENT_DATE
+            GROUP BY ora 
+            ORDER BY ora
+        `, [ristorante_id]);
+
+        const chartData = orari.rows.map(r => ({ name: `${r.ora}:00`, ordini: parseInt(r.count) }));
+
+        res.json({
+            incassi: incassi.rows[0],
+            topDishes,
+            chartData
+        });
+
+    } catch (e) { 
+        console.error(e);
+        res.status(500).json({ error: "Errore statistiche" }); 
+    }
+});
+
+// ==========================================
+//    MODIFICA ORDINE PER SALVARE USER ID
+// ==========================================
+// Quando crei l'ordine, salva anche utente_id se presente
+app.post('/api/ordine', async (req, res) => {
+    try {
+        const { ristorante_id, tavolo, prodotti, totale, cliente, cameriere, utente_id } = req.body; // <--- utente_id NUOVO
+        
+        const dataOra = getNowItaly();
+        let logIniziale = `[${dataOra}] 🆕 ORDINE DA: ${cameriere ? cameriere : 'Cliente ('+cliente+')'}\n`;
+        
+        if (Array.isArray(prodotti)) {
+            prodotti.forEach(p => {
+                let note = "";
+                try {
+                    if(p.varianti_scelte) { 
+                         if(p.varianti_scelte.rimozioni && p.varianti_scelte.rimozioni.length > 0) note += ` (No: ${p.varianti_scelte.rimozioni.join(', ')})`;
+                         if(p.varianti_scelte.aggiunte && p.varianti_scelte.aggiunte.length > 0) note += ` (+: ${p.varianti_scelte.aggiunte.map(a=>a.nome).join(', ')})`;
+                    }
+                } catch(e) {}
+                logIniziale += ` • ${p.nome}${note} - ${Number(p.prezzo).toFixed(2)}€\n`;
+            });
+        }
+        logIniziale += `TOTALE PARZIALE: ${Number(totale).toFixed(2)}€\n----------------------------------\n`;
+
+        // AGGIUNTO utente_id ALLA QUERY
+        await pool.query(
+            "INSERT INTO ordini (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id) VALUES ($1, $2, $3, $4, 'in_attesa', $5, $6, $7)", 
+            [ristorante_id, String(tavolo), JSON.stringify(prodotti), totale, logIniziale, cameriere || null, utente_id || null]
+        );
+        
+        res.json({ success: true });
+    } catch (e) { 
+        console.error("Errore ordine:", e);
+        res.status(500).json({ error: "Err" }); 
+    }
+});
 
 // ==========================================
 //              API CATEGORIE
@@ -708,4 +901,4 @@ app.post('/api/utenti/import/excel', upload.single('file'), async (req, res) => 
     } catch (e) { console.error(e); res.status(500).json({ error: "Errore Import" }); }
 });
 
-app.listen(port, () => console.log(`🚀 SERVER DEFINITIVO COMPLETE (Porta ${port})`));
+app.listen(port, () => console.log(`🚀 SERVER V9 COMPLETE (Porta ${port})`));

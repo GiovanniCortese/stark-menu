@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 
 function SuperAdmin() {
   const [ristoranti, setRistoranti] = useState([]);
+  const [utentiGlobali, setUtentiGlobali] = useState([]); // <--- AGGIUNGI QUESTO
   const [authorized, setAuthorized] = useState(false);
   const [loginData, setLoginData] = useState({ email: '', password: '', code2fa: '' });
   const [error, setError] = useState("");
@@ -46,10 +47,17 @@ const handleSuperLogin = async (e) => {
 };
 
   const caricaDati = () => {
+    // Carica Ristoranti
     fetch(`${API_URL}/api/super/ristoranti`)
       .then(res => res.json())
       .then(data => { if(Array.isArray(data)) setRistoranti(data); })
       .catch(err => console.error(err));
+
+    // Carica Utenti Globali (AGGIUNGI QUESTO BLOCCO)
+    fetch(`${API_URL}/api/utenti?mode=super`)
+      .then(r => r.json())
+      .then(data => { if(Array.isArray(data)) setUtentiGlobali(data); })
+      .catch(e => console.error(e));
   };
 
   const handleInputChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -281,6 +289,35 @@ const entraNelPannello = (slug) => {
             );
         })}
       </div>
+      
+      {/* --- SEZIONE LISTA UTENTI GLOBALE --- */}
+<div style={{marginTop:50, borderTop:'2px solid #333', paddingTop:20}}>
+    <h2 style={{color:'#333'}}>🌍 Utenti Globali Registrati ({utentiGlobali.length})</h2>
+    <div style={{maxHeight:'400px', overflowY:'auto', background:'white', border:'1px solid #ddd', borderRadius:10}}>
+        <table style={{width:'100%', borderCollapse:'collapse'}}>
+            <thead style={{position:'sticky', top:0, background:'#2c3e50', color:'white'}}>
+                <tr>
+                    <th style={{padding:10}}>ID</th>
+                    <th style={{padding:10}}>Nome</th>
+                    <th style={{padding:10}}>Email</th>
+                    <th style={{padding:10}}>Ruolo</th>
+                    <th style={{padding:10}}>Locale ID</th>
+                </tr>
+            </thead>
+            <tbody>
+                {utentiGlobali.map(u => (
+                    <tr key={u.id} style={{borderBottom:'1px solid #eee'}}>
+                        <td style={{padding:10}}>{u.id}</td>
+                        <td style={{padding:10}}>{u.nome}</td>
+                        <td style={{padding:10}}>{u.email}</td>
+                        <td style={{padding:10}}>{u.ruolo}</td>
+                        <td style={{padding:10}}>{u.ristorante_id || '-'}</td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+    </div>
+</div>
 
       {/* MODALE */}
       {showModal && (
@@ -302,6 +339,7 @@ const entraNelPannello = (slug) => {
           </div>
       )}
     </div>
+
   );
 }
 
