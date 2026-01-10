@@ -43,8 +43,24 @@ const fixDatabase = async () => {
         await pool.query("ALTER TABLE utenti ADD COLUMN IF NOT EXISTS telefono_verificato BOOLEAN DEFAULT FALSE");
         await pool.query("ALTER TABLE utenti ADD COLUMN IF NOT EXISTS codice_otp TEXT");
 
-        console.log("✅ DB Check: Colonne Ruoli e Stats presenti.");
-    } catch (e) { console.log("DB Check OK"); }
+        // Fix Tabella UTENTI
+        await pool.query("ALTER TABLE utenti ADD COLUMN IF NOT EXISTS ristorante_id INTEGER");
+        
+        // Fix Tabella ORDINI
+        await pool.query("ALTER TABLE ordini ADD COLUMN IF NOT EXISTS utente_id INTEGER");
+        await pool.query("ALTER TABLE ordini ADD COLUMN IF NOT EXISTS data_ordine TEXT");
+
+        // Fix Tabella RISTORANTI (Sicurezza e Master Switch)
+        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS pw_cassa TEXT DEFAULT '1234'");
+        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS pw_cucina TEXT DEFAULT '1234'");
+        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS pw_bar TEXT DEFAULT '1234'");
+        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS pw_pizzeria TEXT DEFAULT '1234'");
+        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS cucina_super_active BOOLEAN DEFAULT TRUE");
+
+        console.log("✅ Database allineato con successo.");
+    } catch (e) { 
+        console.error("❌ Errore durante l'allineamento DB:", e); 
+    }
 };
 fixDatabase();
 
@@ -234,57 +250,48 @@ app.post('/api/ordine', async (req, res) => {
     try {
         const { ristorante_id, tavolo, prodotti, totale, cliente, cameriere, utente_id } = req.body;
         
-        // --- 🛡️ INIZIO CONTROLLO SICUREZZA CAMERIERE ---
+        // 🛡️ CONTROLLO SICUREZZA STAFF
         if (utente_id) {
-            // Verifichiamo sul database chi è questo utente e a quale ristorante appartiene
             const userCheck = await pool.query(
                 "SELECT ruolo, ristorante_id FROM utenti WHERE id = $1", 
                 [utente_id]
             );
-            const user = userCheck.rows[0];
-
-            if (user) {
-                // Se l'utente è staff (cameriere o editor), deve appartenere a questo ristorante
-                if (user.ruolo === 'cameriere' || user.ruolo === 'editor') {
-                    if (parseInt(user.ristorante_id) !== parseInt(ristorante_id)) {
-                        console.error(`⚠️ ACCESSO NEGATO: Cameriere ${utente_id} ha provato a ordinare nel ristorante ${ristorante_id}`);
-                        return res.status(403).json({ 
-                            success: false, 
-                            error: "Non sei autorizzato a ordinare per questo ristorante." 
-                        });
-                    }
+            if (userCheck.rows.length > 0) {
+                const user = userCheck.rows[0];
+                // Verifica che il cameriere appartenga a questo ristorante
+                if ((user.ruolo === 'cameriere' || user.ruolo === 'editor') && 
+                    parseInt(user.ristorante_id) !== parseInt(ristorante_id)) {
+                    return res.status(403).json({ success: false, error: "Accesso negato al locale." });
                 }
             }
         }
-        // --- FINE CONTROLLO SICUREZZA ---
 
-        const dataOra = getNowItaly();
-        let logIniziale = `[${dataOra}] 🆕 ORDINE DA: ${cameriere ? cameriere : 'Cliente ('+cliente+')'}\n`;
+        const dataOraFormat = getNowItaly(); // Stringa leggibile
+        let logIniziale = `[${dataOraFormat}] 🆕 ORDINE DA: ${cameriere ? cameriere : 'Cliente ('+cliente+')'}\n`;
         
+        // Generazione Log Prodotti
         if (Array.isArray(prodotti)) {
             prodotti.forEach(p => {
                 let note = "";
-                try {
-                    if(p.varianti_scelte) { 
-                         if(p.varianti_scelte.rimozioni && p.varianti_scelte.rimozioni.length > 0) note += ` (No: ${p.varianti_scelte.rimozioni.join(', ')})`;
-                         if(p.varianti_scelte.aggiunte && p.varianti_scelte.aggiunte.length > 0) note += ` (+: ${p.varianti_scelte.aggiunte.map(a=>a.nome).join(', ')})`;
-                    }
-                } catch(e) {}
+                if(p.varianti_scelte) { 
+                     if(p.varianti_scelte.rimozioni?.length > 0) note += ` (No: ${p.varianti_scelte.rimozioni.join(', ')})`;
+                     if(p.varianti_scelte.aggiunte?.length > 0) note += ` (+: ${p.varianti_scelte.aggiunte.map(a=>a.nome).join(', ')})`;
+                }
                 logIniziale += ` • ${p.nome}${note} - ${Number(p.prezzo).toFixed(2)}€\n`;
             });
         }
         logIniziale += `TOTALE PARZIALE: ${Number(totale).toFixed(2)}€\n----------------------------------\n`;
 
-        // INSERIMENTO NEL DATABASE
+        // Salvataggio su DB (Usa sia data_ora automatica che data_ordine testuale per i log)
         await pool.query(
             "INSERT INTO ordini (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id, data_ordine) VALUES ($1, $2, $3, $4, 'in_attesa', $5, $6, $7, $8)", 
-            [ristorante_id, String(tavolo), JSON.stringify(prodotti), totale, logIniziale, cameriere || null, utente_id || null, dataOra]
+            [ristorante_id, String(tavolo), JSON.stringify(prodotti), totale, logIniziale, cameriere || null, utente_id || null, dataOraFormat]
         );
         
         res.json({ success: true });
     } catch (e) { 
-        console.error("Errore ordine:", e);
-        res.status(500).json({ error: "Errore durante l'invio dell'ordine" }); 
+        console.error("Errore critico ordine:", e);
+        res.status(500).json({ error: "Errore interno" }); 
     }
 });
 
