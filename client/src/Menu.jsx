@@ -14,8 +14,6 @@ function Menu() {
   // --- STATI LOGICI ---
   const [isSuspended, setIsSuspended] = useState(false);
   const [canOrder, setCanOrder] = useState(true); // Se false -> Modalità Wish List
-  const [isStaff, setIsStaff] = useState(false);
-  const [user, setUser] = useState(null);
   
   // --- STATI CARRELLO E ORDINE ---
   const [carrello, setCarrello] = useState([]); 
@@ -39,6 +37,8 @@ function Menu() {
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
   // --- STATI UTENTE (AUTH) ---
+  const [user, setUser] = useState(null);
+  const isStaff = user && (user.ruolo === 'cameriere' || user.ruolo === 'admin');
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [authData, setAuthData] = useState({ nome:'', email:'', password:'', telefono:'', indirizzo:'' });
@@ -81,77 +81,35 @@ function Menu() {
       }
   };
 
-// --- 1. CARICAMENTO DATI E SICUREZZA STAFF ---
+  // --- 1. CARICAMENTO DATI ---
   useEffect(() => {
-    setError(false);
-    
     fetch(`${API_URL}/api/menu/${currentSlug}`)
       .then(res => {
-          if(!res.ok) throw new Error("Errore caricamento dati");
+          if(!res.ok) throw new Error("Errore caricamento");
           return res.json();
       })
       .then(data => {
-          if (!data || data.error) {
-              setError(true);
-              return;
-          }
-
-          // 1. Dati Ristorante
           setRistoranteId(data.id);
-          setRistorante(data.ristorante || data.nome);
+          setRistorante(data.ristorante);
           setMenu(data.menu || []);
           setStyle(data.style || {});
           
-          let isStaffLocal = false; 
-
-          // 2. Controllo Staff & Utente (FIX MAIUSCOLE/MINUSCOLE) 🛠️
-         try {
-    const userStr = localStorage.getItem('user') || localStorage.getItem('stark_user');
-    const userLoggato = userStr ? JSON.parse(userStr) : null;
-    
-    setUser(userLoggato); 
-
-    if (userLoggato && userLoggato.ristorante_id) {
-        // Controllo ID
-        const lavoraQui = Number(userLoggato.ristorante_id) === Number(data.id);
-        // Controllo Ruolo (senza distinzione tra maiuscole e minuscole)
-        const ruolo = (userLoggato.ruolo || '').toLowerCase();
-        const isRuoloStaff = ['cameriere', 'admin', 'editor'].includes(ruolo);
-
-        if (isRuoloStaff && lavoraQui) {
-            setIsStaff(true);
-            isStaffLocal = true; // Variabile di supporto per il calcolo immediato
-        } else {
-            setIsStaff(false);
-        }
-    }
-} catch (err) {
-    setIsStaff(false);
-}
-
-          // 3. Sospensione
-          if(data.subscription_active === false || data.account_attivo === false) {
-              setIsSuspended(true);
-          }
+          if(data.subscription_active === false) setIsSuspended(true);
           
-          // 4. STATO CUCINA
-          // Se la cucina è aperta O se sei Staff, puoi ordinar
-const cucinaFisicaAperta = data.ordini_abilitati && (data.kitchen_active !== false);
-// Lo staff di questo locale ignora la chiusura della cucina
-setCanOrder(cucinaFisicaAperta || isStaffLocal);
+          // IMPOSTAZIONE STATO CUCINA
+          setCanOrder(data.ordini_abilitati && data.kitchen_active);
 
-          // 5. Categoria
           if(data.menu && data.menu.length > 0) {
              const uniqueCats = [...new Set(data.menu.map(p => p.categoria_nome || p.categoria))];
              if(uniqueCats.length > 0) setActiveCategory(uniqueCats[0]);
           }
       })
       .catch(err => {
-          console.error("Errore Fetch:", err);
+          console.error("Errore Menu:", err);
           setError(true);
       });
   }, [currentSlug]);
-  
+
   // --- HELPER: APERTURA MODALE PULITO ---
   const apriModale = (piatto) => {
       setSelectedPiatto(piatto);
