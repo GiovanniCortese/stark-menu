@@ -1,4 +1,4 @@
-// client/src/components_admin/AdminUsers.jsx - VERSIONE FIX LISTE 🛠️
+// client/src/components_admin/AdminUsers.jsx - VERSIONE V_FINAL
 import { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx'; 
 
@@ -12,36 +12,32 @@ function AdminUsers({ API_URL, user }) {
     
     const [newUser, setNewUser] = useState({ nome: '', email: '', password: '', telefono: '', indirizzo: '', ruolo: 'cameriere' });
 
-    // 🛠️ FIX IMPORTANTE: Aggiunto [user] alle dipendenze.
+    // 🔄 Caricamento dati
     useEffect(() => { 
-    if (user && user.id) {
-        ricaricaTutto(); 
-        // Facciamo un refresh ogni 10 secondi per il CRM
-        const interval = setInterval(ricaricaTutto, 10000); 
-        return () => clearInterval(interval);
-    }
-}, [user]);
+        if (user && user.id) {
+            ricaricaTutto(); 
+            const interval = setInterval(ricaricaTutto, 10000); 
+            return () => clearInterval(interval);
+        }
+    }, [user]);
 
-const ricaricaTutto = () => {
-    if (!user || !user.id) return;
+    const ricaricaTutto = () => {
+        if (!user || !user.id) return;
 
-    // 1. Carica lo Staff (chi lavora nel locale)
-    fetch(`${API_URL}/api/utenti?mode=staff&ristorante_id=${user.id}`)
-        .then(res => res.json())
-        .then(data => setStaff(Array.isArray(data) ? data : []))
-        .catch(err => console.error("Errore Staff:", err));
-    
-    // 2. Carica i Clienti REALI (chi ha ordinato in questo locale)
-    // Usiamo mode=clienti_ordini per distinguere la logica sul backend
-    fetch(`${API_URL}/api/utenti?mode=clienti_ordini&ristorante_id=${user.id}`)
-        .then(res => res.json())
-        .then(data => {
-            // Qui 'data' dovrebbe contenere anche i campi: count_ordini, ultimo_ordine, ecc.
-            setClienti(Array.isArray(data) ? data : []);
-        })
-        .catch(err => console.error("Errore Clienti CRM:", err));
-};
+        // 1. Carica Staff
+        fetch(`${API_URL}/api/utenti?mode=staff&ristorante_id=${user.id}`)
+            .then(res => res.json())
+            .then(data => setStaff(Array.isArray(data) ? data : []))
+            .catch(err => console.error("Errore Staff:", err));
+        
+        // 2. Carica Clienti CRM
+        fetch(`${API_URL}/api/utenti?mode=clienti_ordini&ristorante_id=${user.id}`)
+            .then(res => res.json())
+            .then(data => setClienti(Array.isArray(data) ? data : []))
+            .catch(err => console.error("Errore Clienti:", err));
+    };
 
+    // 💾 Salva Modifiche Staff
     const handleSave = async (e) => {
         e.preventDefault();
         try {
@@ -58,6 +54,7 @@ const ricaricaTutto = () => {
         } catch(err) { alert("Errore connessione"); }
     };
 
+    // ➕ Crea Nuovo Staff
     const handleCreateStaff = async (e) => {
         e.preventDefault();
         const payload = { ...newUser, ristorante_id: user.id };
@@ -78,38 +75,49 @@ const ricaricaTutto = () => {
         } catch(err) { alert("Errore connessione"); }
     };
 
-    const downloadExcel = () => { 
-        const data = tab === 'staff' ? staff : clienti;
-        const filename = tab === 'staff' ? 'Staff_Lista.xlsx' : 'Clienti_Lista.xlsx';
-        const ws = XLSX.utils.json_to_sheet(data);
+    // 🗑️ Elimina Staff
+    const handleDelete = async (id) => {
+        if(!window.confirm("Sei sicuro di voler eliminare questo utente?")) return;
+        try {
+            await fetch(`${API_URL}/api/utenti/${id}`, { method: 'DELETE' });
+            ricaricaTutto();
+        } catch(e) { alert("Errore eliminazione"); }
+    };
+
+    // 📥 Export Excel Locale (Solo per la vista Staff)
+    const downloadStaffExcel = () => { 
+        const ws = XLSX.utils.json_to_sheet(staff);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Dati");
-        XLSX.writeFile(wb, filename);
+        XLSX.utils.book_append_sheet(wb, ws, "Staff");
+        XLSX.writeFile(wb, 'Staff_Lista.xlsx');
     };
 
     return (
         <div className="card" style={{ padding: '25px', background: 'white', borderRadius: '15px', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', display:'flex', flexDirection: 'column', alignItems: 'stretch' }}>
             
-            {/* TITOLO & TABS */}
+            {/* HEADER */}
             <div style={{ borderBottom: '2px solid #eee', paddingBottom: '15px', marginBottom: '20px', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:10 }}>
                 <h2 style={{ margin: 0, color: '#2c3e50', fontSize: '1.8rem' }}>👥 Gestione Persone</h2>
                 
                 <div style={{display:'flex', gap:'10px'}}>
-                    <button onClick={()=>setTab('staff')} style={{padding:'10px 20px', borderRadius:'30px', border:'none', cursor:'pointer', fontWeight:'bold', background: tab==='staff'?'#2c3e50':'#f0f0f0', color: tab==='staff'?'white':'#555', boxShadow: tab==='staff'?'0 4px 10px rgba(0,0,0,0.2)':'none'}}>
-                        👔 IL MIO STAFF ({staff.length})
+                    <button onClick={()=>setTab('staff')} style={{padding:'10px 20px', borderRadius:'30px', border:'none', cursor:'pointer', fontWeight:'bold', background: tab==='staff'?'#2c3e50':'#f0f0f0', color: tab==='staff'?'white':'#555', transition:'0.3s'}}>
+                        👔 STAFF ({staff.length})
                     </button>
-                    <button onClick={()=>setTab('clienti')} style={{padding:'10px 20px', borderRadius:'30px', border:'none', cursor:'pointer', fontWeight:'bold', background: tab==='clienti'?'#27ae60':'#f0f0f0', color: tab==='clienti'?'white':'#555', boxShadow: tab==='clienti'?'0 4px 10px rgba(0,0,0,0.2)':'none'}}>
-                        🍔 I MIEI CLIENTI ({clienti.length})
+                    <button onClick={()=>setTab('clienti')} style={{padding:'10px 20px', borderRadius:'30px', border:'none', cursor:'pointer', fontWeight:'bold', background: tab==='clienti'?'#27ae60':'#f0f0f0', color: tab==='clienti'?'white':'#555', transition:'0.3s'}}>
+                        🍔 CLIENTI ({clienti.length})
                     </button>
                 </div>
             </div>
 
-            {/* AREA STAFF */}
+            {/* === TAB STAFF === */}
             {tab === 'staff' && (
                 <>
-                    <div style={{ display: 'flex', gap: '12px', marginBottom: '25px' }}>
+                    <div style={{ display: 'flex', justifyContent:'space-between', marginBottom: '25px' }}>
                         <button onClick={() => setShowNewModal(true)} style={{ background: '#3498db', color: 'white', padding: '12px 20px', borderRadius: '8px', fontWeight: 'bold', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span>➕</span> AGGIUNGI STAFF
+                        </button>
+                        <button onClick={downloadStaffExcel} style={{ background: '#1abc9c', color: 'white', padding: '12px 20px', borderRadius: '8px', fontWeight: 'bold', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span>📥</span> EXCEL STAFF
                         </button>
                     </div>
 
@@ -137,8 +145,9 @@ const ricaricaTutto = () => {
                                             <div style={{ color: '#3498db', fontSize: '14px' }}>{u.email}</div>
                                             <div style={{ color: '#d35400', fontWeight: 'bold', fontSize: '12px', marginTop: '4px' }}>🔑 {u.password}</div>
                                         </td>
-                                        <td style={{ padding: '15px' }}>
+                                        <td style={{ padding: '15px', display:'flex', gap:10 }}>
                                             <button onClick={() => setEditingUser({...u})} style={{ background: '#f1c40f', border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer' }}>✏️</button>
+                                            <button onClick={() => handleDelete(u.id)} style={{ background: '#e74c3c', color:'white', border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer' }}>🗑️</button>
                                         </td>
                                     </tr>
                                 ))}
@@ -148,91 +157,70 @@ const ricaricaTutto = () => {
                 </>
             )}
 
-            {/* AREA CLIENTI */}
-{tab === 'clienti' && (
-    <div className="table-container">
-        {/* BARRA AZIONI: DOWNLOAD EXCEL */}
-        <div style={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center', 
-            marginBottom: '20px', 
-            background: '#e8f8f5', 
-            padding: '15px', 
-            borderRadius: '10px',
-            border: '1px solid #16a085'
-        }}>
-            <div style={{color: '#16a085'}}>
-                <strong>📊 Database CRM</strong>
-                <div style={{fontSize: '0.8rem'}}>Esporta l'elenco dei clienti che hanno ordinato nel tuo locale.</div>
-            </div>
-            <button 
-                onClick={() => window.open(`${API_URL}/api/export-clienti/${user.id}`, '_blank')}
-                style={{ 
-                    background: '#27ae60', 
-                    color: 'white', 
-                    border: 'none', 
-                    padding: '10px 20px', 
-                    borderRadius: '8px', 
-                    cursor: 'pointer', 
-                    fontWeight: 'bold', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '8px',
-                    boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
-                }}
-            >
-                <span>📥</span> SCARICA EXCEL
-            </button>
-        </div>
+            {/* === TAB CLIENTI === */}
+            {tab === 'clienti' && (
+                <div style={{width:'100%'}}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', background: '#e8f8f5', padding: '15px', borderRadius: '10px', border: '1px solid #16a085' }}>
+                        <div style={{color: '#16a085'}}>
+                            <strong>📊 Database CRM</strong>
+                            <div style={{fontSize: '0.8rem'}}>Elenco dei clienti che hanno ordinato nel locale.</div>
+                        </div>
+                        <button 
+                            onClick={() => window.open(`${API_URL}/api/export-clienti/${user.id}`, '_blank')}
+                            style={{ background: '#27ae60', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}
+                        >
+                            <span>📥</span> SCARICA REPORT EXCEL
+                        </button>
+                    </div>
 
-        {/* TABELLA */}
-        <table style={{width:'100%', borderCollapse:'collapse'}}>
-            <thead>
-                <tr style={{background:'#f0f0f0', textAlign:'left'}}>
-                    <th style={{padding:10}}>Cliente</th>
-                    <th style={{padding:10}}>Contatti</th>
-                    <th style={{padding:10}}>Ordini Totali</th>
-                    <th style={{padding:10}}>Ultima Visita</th>
-                </tr>
-            </thead>
-            <tbody>
-                {clienti.map(c => (
-                    <tr key={c.id} style={{borderBottom:'1px solid #eee'}}>
-                        <td style={{padding:10}}>
-                            <strong>{c.nome}</strong><br/>
-                            <small style={{color: '#888'}}>@{c.username || 'user'}</small>
-                        </td>
-                        <td style={{padding:10}}>
-                            {c.email}<br/>
-                            <span style={{fontSize: '0.9rem', color: '#666'}}>{c.telefono || 'N/D'}</span>
-                        </td>
-                        <td style={{padding:10}}>
-                            <span style={{background:'#3498db', color:'white', padding:'2px 8px', borderRadius:10, fontSize: '0.9rem'}}>
-                                {c.totale_ordini || 0} ordini
-                            </span>
-                        </td>
-                        <td style={{padding:10}}>
-                            {c.ultimo_ordine ? new Date(c.ultimo_ordine).toLocaleDateString() : '---'}
-                        </td>
-                    </tr>
-                ))}
-            </tbody>
-        </table>
-        {clienti.length === 0 && <p style={{padding:20, textAlign:'center', color: '#999'}}>Nessun cliente ha ancora effettuato ordini in questo locale.</p>}
-    </div>
-)}
+                    <table style={{width:'100%', borderCollapse:'collapse'}}>
+                        <thead>
+                            <tr style={{background:'#f0f0f0', textAlign:'left'}}>
+                                <th style={{padding:10}}>Cliente</th>
+                                <th style={{padding:10}}>Contatti</th>
+                                <th style={{padding:10}}>Ordini</th>
+                                <th style={{padding:10}}>Ultima Visita</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {clienti.length === 0 && <tr><td colSpan="4" style={{padding:20, textAlign:'center', color: '#999'}}>Nessun cliente ha ancora effettuato ordini.</td></tr>}
+                            {clienti.map(c => (
+                                <tr key={c.id} style={{borderBottom:'1px solid #eee'}}>
+                                    <td style={{padding:10}}>
+                                        <strong>{c.nome}</strong><br/>
+                                        <small style={{color: '#888'}}>@{c.username || 'user'}</small>
+                                    </td>
+                                    <td style={{padding:10}}>
+                                        {c.email}<br/>
+                                        <span style={{fontSize: '0.9rem', color: '#666'}}>{c.telefono || 'N/D'}</span>
+                                    </td>
+                                    <td style={{padding:10}}>
+                                        <span style={{background:'#3498db', color:'white', padding:'2px 8px', borderRadius:10, fontSize: '0.9rem'}}>
+                                            {c.totale_ordini || 0} ordini
+                                        </span>
+                                    </td>
+                                    <td style={{padding:10}}>
+                                        {c.ultimo_ordine ? new Date(c.ultimo_ordine).toLocaleDateString() : '---'}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
 
-            {/* MODALE NUOVO STAFF */}
+            {/* === MODALI === */}
+            
+            {/* NUOVO STAFF */}
             {showNewModal && (
                 <div style={modalOverlayStyle}>
                     <div style={modalContentStyle}>
-                        <h3 style={{marginTop:0}}>🆕 Nuovo Membro Staff</h3>
+                        <h3 style={{marginTop:0}}>🆕 Nuovo Staff</h3>
                         <form onSubmit={handleCreateStaff} style={formStyle}>
-                            <label style={{fontSize:'12px', fontWeight:'bold', color:'#7f8c8d'}}>RUOLO</label>
+                            <label style={labelStyle}>RUOLO</label>
                             <select value={newUser.ruolo} onChange={e => setNewUser({...newUser, ruolo: e.target.value})} style={inputStyle}>
-                                <option value="cameriere">Cameriere (Prende ordini ai tavoli)</option>
-                                <option value="editor">Editor (Modifica solo il Menu)</option>
+                                <option value="cameriere">Cameriere (Prende ordini)</option>
+                                <option value="editor">Editor (Modifica Menu)</option>
                             </select>
                             
                             <input type="text" placeholder="Nome Completo" required value={newUser.nome} onChange={e => setNewUser({...newUser, nome: e.target.value})} style={inputStyle} />
@@ -240,21 +228,21 @@ const ricaricaTutto = () => {
                             <input type="text" placeholder="Password" required value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} style={inputStyle} />
                             
                             <div style={{display:'flex', gap:10, marginTop:10}}>
-                                <button type="submit" style={{flex:1, background:'#27ae60', color:'white', padding:12, border:'none', borderRadius:8, fontWeight:'bold'}}>CREA STAFF</button>
-                                <button type="button" onClick={() => setShowNewModal(false)} style={{flex:1, background:'#e74c3c', color:'white', padding:12, border:'none', borderRadius:8}}>ANNULLA</button>
+                                <button type="submit" style={btnSaveStyle}>CREA</button>
+                                <button type="button" onClick={() => setShowNewModal(false)} style={btnCancelStyle}>ANNULLA</button>
                             </div>
                         </form>
                     </div>
                 </div>
             )}
 
-            {/* MODALE MODIFICA */}
+            {/* MODIFICA STAFF */}
             {editingUser && (
                 <div style={modalOverlayStyle}>
                     <div style={modalContentStyle}>
                         <h3 style={{marginTop:0}}>✏️ Modifica Staff</h3>
                         <form onSubmit={handleSave} style={formStyle}>
-                            <label style={{fontSize:'12px', fontWeight:'bold', color:'#7f8c8d'}}>RUOLO</label>
+                            <label style={labelStyle}>RUOLO</label>
                             <select value={editingUser.ruolo} onChange={e => setEditingUser({...editingUser, ruolo: e.target.value})} style={inputStyle}>
                                 <option value="cameriere">Cameriere</option>
                                 <option value="editor">Editor</option>
@@ -264,8 +252,8 @@ const ricaricaTutto = () => {
                             <input type="text" placeholder="Password" value={editingUser.password} onChange={e=>setEditingUser({...editingUser, password:e.target.value})} style={inputStyle} required />
                             
                             <div style={{display:'flex', gap:10, marginTop:10}}>
-                                <button type="submit" style={{flex:1, background:'#27ae60', color:'white', padding:12, border:'none', borderRadius:8, fontWeight:'bold'}}>SALVA</button>
-                                <button type="button" onClick={() => setEditingUser(null)} style={{flex:1, background:'#e74c3c', color:'white', padding:12, border:'none', borderRadius:8}}>ANNULLA</button>
+                                <button type="submit" style={btnSaveStyle}>SALVA</button>
+                                <button type="button" onClick={() => setEditingUser(null)} style={btnCancelStyle}>ANNULLA</button>
                             </div>
                         </form>
                     </div>
@@ -280,5 +268,8 @@ const modalOverlayStyle = { position:'fixed', top:0, left:0, right:0, bottom:0, 
 const modalContentStyle = { background:'white', padding:30, borderRadius:15, width:'90%', maxWidth:'400px', boxShadow: '0 10px 40px rgba(0,0,0,0.5)' };
 const formStyle = { display:'flex', flexDirection:'column', gap:12 };
 const inputStyle = { padding:12, border:'1px solid #ddd', borderRadius:8, fontSize: '14px' };
+const labelStyle = { fontSize:'12px', fontWeight:'bold', color:'#7f8c8d' };
+const btnSaveStyle = { flex:1, background:'#27ae60', color:'white', padding:12, border:'none', borderRadius:8, fontWeight:'bold', cursor:'pointer' };
+const btnCancelStyle = { flex:1, background:'#e74c3c', color:'white', padding:12, border:'none', borderRadius:8, cursor:'pointer' };
 
 export default AdminUsers;
