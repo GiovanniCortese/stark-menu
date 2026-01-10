@@ -81,7 +81,7 @@ function Menu() {
       }
   };
 
-  // --- 1. CARICAMENTO DATI ---
+// --- 1. CARICAMENTO DATI E SICUREZZA STAFF ---
   useEffect(() => {
     fetch(`${API_URL}/api/menu/${currentSlug}`)
       .then(res => {
@@ -89,16 +89,43 @@ function Menu() {
           return res.json();
       })
       .then(data => {
+          // Dati base
           setRistoranteId(data.id);
-          setRistorante(data.ristorante);
+          setRistorante(data.ristorante || data.nome); // Gestisce entrambi i casi di nome
           setMenu(data.menu || []);
           setStyle(data.style || {});
           
-          if(data.subscription_active === false) setIsSuspended(true);
+          // --- LOGICA SICUREZZA STAFF (NUOVA) ---
+          const userLoggato = JSON.parse(localStorage.getItem('user'));
+          let staffAutorizzato = false;
+
+          if (userLoggato) {
+             // Verifico se l'utente lavora ESATTAMENTE in questo ristorante
+             const lavoraQui = Number(userLoggato.ristorante_id) === Number(data.id);
+             const isRuoloStaff = ['cameriere', 'admin', 'editor'].includes(userLoggato.ruolo);
+
+             if (isRuoloStaff && lavoraQui) {
+                 staffAutorizzato = true;
+                 setIsStaff(true); // ✅ È Staff DI QUESTO LOCALE
+             } else {
+                 setIsStaff(false); // ❌ È Staff ALTROVE -> Qui è Cliente
+             }
+          } else {
+              setIsStaff(false);
+          }
+
+          // Controllo Abbonamento (Blocco Totale)
+          if(data.subscription_active === false || data.account_attivo === false) {
+              setIsSuspended(true);
+          }
           
           // IMPOSTAZIONE STATO CUCINA
-          setCanOrder(data.ordini_abilitati && data.kitchen_active);
+          // Se sei staff autorizzato puoi ordinare anche se la cucina è chiusa
+          // Altrimenti dipendi dagli interruttori
+          const cucinaAperta = data.ordini_abilitati && (data.kitchen_active !== false);
+          setCanOrder(cucinaAperta);
 
+          // Imposta Categoria Attiva di default
           if(data.menu && data.menu.length > 0) {
              const uniqueCats = [...new Set(data.menu.map(p => p.categoria_nome || p.categoria))];
              if(uniqueCats.length > 0) setActiveCategory(uniqueCats[0]);
