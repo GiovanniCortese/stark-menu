@@ -52,7 +52,12 @@ app.post('/api/ordine', async (req, res) => {
     try {
         const { ristorante_id, tavolo, prodotti, totale, cliente, cameriere, utente_id } = req.body;
         
-        let logIniziale = `[${getNowItaly()}] 🆕 ORDINE DA: ${cameriere ? cameriere : 'Cliente (' + cliente + ')'}\n`;
+        // ✅ FIX: Generiamo la data leggibile SUBITO (es: "10/01/2026, 22:30:00")
+        const dataOrdineLeggibile = getNowItaly(); 
+
+        // Usiamo la data appena generata anche nel log per coerenza
+        let logIniziale = `[${dataOrdineLeggibile}] 🆕 ORDINE DA: ${cameriere ? cameriere : 'Cliente (' + cliente + ')'}\n`;
+        
         if (Array.isArray(prodotti)) {
             prodotti.forEach(p => {
                 let note = "";
@@ -65,12 +70,27 @@ app.post('/api/ordine', async (req, res) => {
         }
         logIniziale += `TOTALE PARZIALE: ${Number(totale).toFixed(2)}€\n----------------------------------\n`;
 
+        // ✅ FIX QUERY: Aggiunto 'data_ordine' nelle colonne e '$8' nei valori
         await pool.query(
-            `INSERT INTO ordini (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id, data_ora) VALUES ($1, $2, $3, $4, 'in_attesa', $5, $6, $7, NOW())`, 
-            [ristorante_id, String(tavolo), JSON.stringify(prodotti), totale, logIniziale, cameriere || null, utente_id || null]
+            `INSERT INTO ordini 
+            (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id, data_ora, data_ordine) 
+            VALUES ($1, $2, $3, $4, 'in_attesa', $5, $6, $7, NOW(), $8)`, 
+            [
+                ristorante_id, 
+                String(tavolo), 
+                JSON.stringify(prodotti), 
+                totale, 
+                logIniziale, 
+                cameriere || null, 
+                utente_id || null,
+                dataOrdineLeggibile // <--- Ecco il valore che mancava!
+            ]
         );
         res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: "Errore inserimento ordine" }); }
+    } catch (e) { 
+        console.error("Errore inserimento ordine:", e); 
+        res.status(500).json({ error: "Errore inserimento ordine" }); 
+    }
 });
 
 // 2. PATCH ITEM (FIX CONFLITTI BAR/CUCINA) // Invece di sovrascrivere tutto l'array, leggiamo quello attuale e modifichiamo solo l'indice richiesto.
@@ -166,21 +186,45 @@ app.post('/api/register', async (req, res) => {
 // Get Utenti
 app.get('/api/utenti', async (req, res) => {
     try {
-        const { mode, ristorante_id } = req.query;
+        const { mode, ristorante_id } = req.query; // mode: 'super', 'staff', 'clienti'
+
         if (mode === 'super') {
+            // SUPER ADMIN: Vede TUTTI
             const r = await pool.query('SELECT * FROM utenti ORDER BY id DESC');
             return res.json(r.rows);
         } 
+        
         if (mode === 'staff' && ristorante_id) {
-            const r = await pool.query("SELECT * FROM utenti WHERE ristorante_id = $1 AND ruolo IN ('cameriere', 'editor') ORDER BY nome", [ristorante_id]);
+            // ADMIN LOCALE: Vede solo il suo Staff (Editor e Camerieri legati al suo ID)
+            const r = await pool.query(
+                "SELECT * FROM utenti WHERE ristorante_id = $1 AND ruolo IN ('cameriere', 'editor') ORDER BY nome", 
+                [ristorante_id]
+            );
             return res.json(r.rows);
         }
+
         if ((mode === 'clienti' || mode === 'clienti_ordini') && ristorante_id) {
-            const r = await pool.query(`SELECT u.id, u.nome, u.email, u.telefono, COUNT(o.id) as totale_ordini, MAX(o.data_ora) as ultimo_ordine FROM utenti u INNER JOIN ordini o ON u.id = o.utente_id WHERE o.ristorante_id = $1 GROUP BY u.id, u.nome, u.email, u.telefono, ORDER BY ultimo_ordine DESC`, [ristorante_id]);
+            // ADMIN LOCALE: Vede i Clienti con statistiche di fidelizzazione
+            // ✅ FIX: Rimosso 'u.username' e corretta la virgola prima di ORDER BY
+            const r = await pool.query(`
+                SELECT 
+                    u.id, u.nome, u.email, u.telefono, 
+                    COUNT(o.id) as totale_ordini, 
+                    MAX(o.data_ora) as ultimo_ordine
+                FROM utenti u
+                INNER JOIN ordini o ON u.id = o.utente_id
+                WHERE o.ristorante_id = $1
+                GROUP BY u.id, u.nome, u.email, u.telefono
+                ORDER BY ultimo_ordine DESC
+            `, [ristorante_id]);
             return res.json(r.rows);
         }
+
         res.json([]);
-    } catch (e) { res.status(500).json({ error: "Err" }); }
+    } catch (e) { 
+        console.error("Errore API Utenti:", e); // Aggiunto log per debug futuro
+        res.status(500).json({ error: e.message }); 
+    }
 });
 app.put('/api/utenti/:id', async (req, res) => { try { const { nome, email, password, telefono, indirizzo, ruolo } = req.body; await pool.query(`UPDATE utenti SET nome=$1, email=$2, password=$3, telefono=$4, indirizzo=$5, ruolo=$6 WHERE id=$7`, [nome, email, password, telefono, indirizzo, ruolo, req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
 app.delete('/api/utenti/:id', async (req, res) => { try { await pool.query('DELETE FROM utenti WHERE id=$1', [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
