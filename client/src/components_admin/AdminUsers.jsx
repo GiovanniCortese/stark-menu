@@ -13,12 +13,14 @@ function AdminUsers({ API_URL, user }) {
     const [newUser, setNewUser] = useState({ nome: '', email: '', password: '', telefono: '', indirizzo: '', ruolo: 'cameriere' });
 
     // 🛠️ FIX IMPORTANTE: Aggiunto [user] alle dipendenze.
-    // Ora ricarica i dati appena 'user' diventa disponibile o cambia.
     useEffect(() => { 
     if (user && user.id) {
         ricaricaTutto(); 
+        // Facciamo un refresh ogni 10 secondi per il CRM
+        const interval = setInterval(ricaricaTutto, 10000); 
+        return () => clearInterval(interval);
     }
-}, [user]); // Si attiva ogni volta che 'user' viene caricato o cambia
+}, [user]);
 
 const ricaricaTutto = () => {
     if (!user || !user.id) return;

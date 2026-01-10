@@ -218,6 +218,7 @@ const cambiaUscita = (tempId, delta) => {
       const payload = {
           ristorante_id: ristoranteId, 
           tavolo: tavoloFinale, 
+          utente_id: user ? user.id : null,
           cliente: user ? user.nome : "Ospite",
           cameriere: isStaff ? user.nome : null, // <--- Qui passiamo il nome del cameriere
           prodotti: prodottiNormalizzati, 
