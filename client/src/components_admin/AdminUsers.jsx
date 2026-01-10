@@ -1,11 +1,13 @@
-// client/src/components_admin/AdminUsers.jsx - VERSIONE V_FINAL
+// client/src/components_admin/AdminUsers.jsx - VERSIONE V_FINAL (FIXED)
 import { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx'; 
 
 function AdminUsers({ API_URL, user }) { 
     const [staff, setStaff] = useState([]);
     const [clienti, setClienti] = useState([]);
-    const [tab, setTab] = useState('staff'); 
+    
+    // ✅ MODIFICA 1: Default su 'clienti' per vederli subito
+    const [tab, setTab] = useState('clienti'); 
     
     const [editingUser, setEditingUser] = useState(null); 
     const [showNewModal, setShowNewModal] = useState(false);
@@ -84,12 +86,30 @@ function AdminUsers({ API_URL, user }) {
         } catch(e) { alert("Errore eliminazione"); }
     };
 
-    // 📥 Export Excel Locale (Solo per la vista Staff)
+    // 📥 Export Excel Staff (Locale)
     const downloadStaffExcel = () => { 
         const ws = XLSX.utils.json_to_sheet(staff);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Staff");
         XLSX.writeFile(wb, 'Staff_Lista.xlsx');
+    };
+
+    // ✅ MODIFICA 2: Export Excel Clienti (Locale - ROBUSTO)
+    const scaricaExcelClienti = () => {
+        if (clienti.length === 0) return alert("Nessun cliente da esportare!");
+
+        const datiPuliti = clienti.map(c => ({
+            "Nome Cliente": c.nome || "Sconosciuto",
+            "Email": c.email || "N/A",
+            "Telefono": c.telefono || "",
+            "Totale Ordini": c.totale_ordini || 0,
+            "Ultima Visita": c.ultimo_ordine ? new Date(c.ultimo_ordine).toLocaleString('it-IT') : "Mai"
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(datiPuliti);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Clienti");
+        XLSX.writeFile(wb, "Clienti_CRM.xlsx");
     };
 
     return (
@@ -100,11 +120,11 @@ function AdminUsers({ API_URL, user }) {
                 <h2 style={{ margin: 0, color: '#2c3e50', fontSize: '1.8rem' }}>👥 Gestione Persone</h2>
                 
                 <div style={{display:'flex', gap:'10px'}}>
-                    <button onClick={()=>setTab('staff')} style={{padding:'10px 20px', borderRadius:'30px', border:'none', cursor:'pointer', fontWeight:'bold', background: tab==='staff'?'#2c3e50':'#f0f0f0', color: tab==='staff'?'white':'#555', transition:'0.3s'}}>
-                        👔 STAFF ({staff.length})
-                    </button>
                     <button onClick={()=>setTab('clienti')} style={{padding:'10px 20px', borderRadius:'30px', border:'none', cursor:'pointer', fontWeight:'bold', background: tab==='clienti'?'#27ae60':'#f0f0f0', color: tab==='clienti'?'white':'#555', transition:'0.3s'}}>
                         🍔 CLIENTI ({clienti.length})
+                    </button>
+                    <button onClick={()=>setTab('staff')} style={{padding:'10px 20px', borderRadius:'30px', border:'none', cursor:'pointer', fontWeight:'bold', background: tab==='staff'?'#2c3e50':'#f0f0f0', color: tab==='staff'?'white':'#555', transition:'0.3s'}}>
+                        👔 STAFF ({staff.length})
                     </button>
                 </div>
             </div>
@@ -165,8 +185,9 @@ function AdminUsers({ API_URL, user }) {
                             <strong>📊 Database CRM</strong>
                             <div style={{fontSize: '0.8rem'}}>Elenco dei clienti che hanno ordinato nel locale.</div>
                         </div>
+                        {/* ✅ TASTO EXCEL CORRETTO */}
                         <button 
-                            onClick={() => window.open(`${API_URL}/api/export-clienti/${user.id}`, '_blank')}
+                            onClick={scaricaExcelClienti}
                             style={{ background: '#27ae60', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}
                         >
                             <span>📥</span> SCARICA REPORT EXCEL
@@ -187,8 +208,8 @@ function AdminUsers({ API_URL, user }) {
                             {clienti.map(c => (
                                 <tr key={c.id} style={{borderBottom:'1px solid #eee'}}>
                                     <td style={{padding:10}}>
-                                        <strong>{c.nome}</strong><br/>
-                                        <small style={{color: '#888'}}>@{c.username || 'user'}</small>
+                                        {/* ✅ MODIFICA 3: Rimosso Username (@user) */}
+                                        <strong style={{fontSize:'1.1rem'}}>{c.nome}</strong>
                                     </td>
                                     <td style={{padding:10}}>
                                         {c.email}<br/>
@@ -209,7 +230,7 @@ function AdminUsers({ API_URL, user }) {
                 </div>
             )}
 
-            {/* === MODALI === */}
+            {/* === MODALI (INVARIATI) === */}
             
             {/* NUOVO STAFF */}
             {showNewModal && (
