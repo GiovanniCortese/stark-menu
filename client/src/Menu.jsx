@@ -105,33 +105,29 @@ function Menu() {
           let isStaffLocal = false; 
 
           // 2. Controllo Staff & Utente (FIX MAIUSCOLE/MINUSCOLE) 🛠️
-          try {
-              const userStr = localStorage.getItem('user');
-              const userLoggato = userStr ? JSON.parse(userStr) : null;
-              
-              setUser(userLoggato); // Aggiorna grafica
+         try {
+    const userStr = localStorage.getItem('user') || localStorage.getItem('stark_user');
+    const userLoggato = userStr ? JSON.parse(userStr) : null;
+    
+    setUser(userLoggato); 
 
-              if (userLoggato && userLoggato.ristorante_id) {
-                  const lavoraQui = Number(userLoggato.ristorante_id) === Number(data.id);
-                  
-                  // Convertiamo il ruolo in minuscolo per sicurezza
-                  const ruolo = (userLoggato.ruolo || '').toLowerCase();
-                  const isRuoloStaff = ['cameriere', 'admin', 'editor'].includes(ruolo);
+    if (userLoggato && userLoggato.ristorante_id) {
+        // Controllo ID
+        const lavoraQui = Number(userLoggato.ristorante_id) === Number(data.id);
+        // Controllo Ruolo (senza distinzione tra maiuscole e minuscole)
+        const ruolo = (userLoggato.ruolo || '').toLowerCase();
+        const isRuoloStaff = ['cameriere', 'admin', 'editor'].includes(ruolo);
 
-                  if (isRuoloStaff && lavoraQui) {
-                      setIsStaff(true);
-                      isStaffLocal = true; 
-                  } else {
-                      setIsStaff(false);
-                  }
-              } else {
-                  setIsStaff(false);
-              }
-          } catch (err) {
-              console.log("Errore lettura utente:", err);
-              setIsStaff(false);
-              setUser(null);
-          }
+        if (isRuoloStaff && lavoraQui) {
+            setIsStaff(true);
+            isStaffLocal = true; // Variabile di supporto per il calcolo immediato
+        } else {
+            setIsStaff(false);
+        }
+    }
+} catch (err) {
+    setIsStaff(false);
+}
 
           // 3. Sospensione
           if(data.subscription_active === false || data.account_attivo === false) {
@@ -139,9 +135,10 @@ function Menu() {
           }
           
           // 4. STATO CUCINA
-          // Se la cucina è aperta O se sei Staff, puoi ordinare
-          const cucinaFisicaAperta = data.ordini_abilitati && (data.kitchen_active !== false);
-          setCanOrder(cucinaFisicaAperta || isStaffLocal);
+          // Se la cucina è aperta O se sei Staff, puoi ordinar
+const cucinaFisicaAperta = data.ordini_abilitati && (data.kitchen_active !== false);
+// Lo staff di questo locale ignora la chiusura della cucina
+setCanOrder(cucinaFisicaAperta || isStaffLocal);
 
           // 5. Categoria
           if(data.menu && data.menu.length > 0) {

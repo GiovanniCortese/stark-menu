@@ -15,13 +15,13 @@ function AdminUsers({ API_URL, user }) {
     // 🛠️ FIX IMPORTANTE: Aggiunto [user] alle dipendenze.
     // Ora ricarica i dati appena 'user' diventa disponibile o cambia.
     useEffect(() => { 
-        if (user && user.id) {
-            ricaricaTutto(); 
-        }
-    }, [user]);
+    if (user && user.id) {
+        ricaricaTutto(); 
+    }
+}, [user]); // Si attiva ogni volta che 'user' viene caricato o cambia
 
     const ricaricaTutto = () => {
-        if (!user || !user.id) return;
+    if (!user || !user.id) return;
 
         // 1. Carica Staff
         fetch(`${API_URL}/api/utenti?mode=staff&ristorante_id=${user.id}`)
