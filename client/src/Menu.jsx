@@ -14,6 +14,7 @@ function Menu() {
   // --- STATI LOGICI ---
   const [isSuspended, setIsSuspended] = useState(false);
   const [canOrder, setCanOrder] = useState(true); // Se false -> Modalità Wish List
+  const [isStaff, setIsStaff] = useState(false);
   
   // --- STATI CARRELLO E ORDINE ---
   const [carrello, setCarrello] = useState([]); 
@@ -37,8 +38,6 @@ function Menu() {
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
   // --- STATI UTENTE (AUTH) ---
-  const [user, setUser] = useState(null);
-  const isStaff = user && (user.ruolo === 'cameriere' || user.ruolo === 'admin');
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [authData, setAuthData] = useState({ nome:'', email:'', password:'', telefono:'', indirizzo:'' });
