@@ -245,21 +245,36 @@ const handleLogin = async (e) => {
         🍹 Bar
     </div>
 
-                                                    {/* --- VISUALIZZAZIONE VARIANTI BAR --- */}
-                                                    {gruppoProd.varianti_scelte && (
-                                                            <div style={{marginTop:'2px'}}>
-                                                                {gruppoProd.varianti_scelte.rimozioni?.map((ing, i) => (
-                                                                    <span key={i} style={{background:'#c0392b', color:'white', fontSize:'0.75rem', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold', marginRight:'5px', display:'inline-block'}}>
-                                                                        NO {ing}
-                                                                    </span>
-                                                                ))}
-                                                                {gruppoProd.varianti_scelte.aggiunte?.map((ing, i) => (
-                                                                    <span key={i} style={{background:'#27ae60', color:'white', fontSize:'0.75rem', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold', marginRight:'5px', display:'inline-block'}}>
-                                                                        + {ing.nome}
-                                                                    </span>
-                                                                ))}
-                                                            </div>
-                                                    )}
+                                                   {/* --- VISUALIZZAZIONE VARIANTI BAR (GIA' PRESENTE) --- */}
+{gruppoProd.varianti_scelte && (
+    <div style={{marginTop:'2px'}}>
+        {gruppoProd.varianti_scelte.rimozioni?.map((ing, i) => (
+            <span key={i} style={{background:'#c0392b', color:'white', fontSize:'0.75rem', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold', marginRight:'5px', display:'inline-block'}}>
+                NO {ing}
+            </span>
+        ))}
+        {gruppoProd.varianti_scelte.aggiunte?.map((ing, i) => (
+            <span key={i} style={{background:'#27ae60', color:'white', fontSize:'0.75rem', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold', marginRight:'5px', display:'inline-block'}}>
+                + {ing.nome}
+            </span>
+        ))}
+    </div>
+)}
+
+{/* --- AGGIUNTA MODIFICA CASSA PER IL BAR --- */}
+<div style={{marginTop:'4px', display:'flex', gap:'5px'}}>
+    {gruppoProd.chiuso_da_cassa && isServito && (
+        <span style={{background:'#27ae60', color:'white', padding:'2px 6px', borderRadius:'4px', fontSize:'0.7rem', fontWeight:'bold'}}>
+            ✅ FATTO DALLA CASSA
+        </span>
+    )}
+    
+    {gruppoProd.riaperto && !isServito && (
+        <span style={{background:'#f39c12', color:'white', padding:'2px 5px', borderRadius:'3px', fontSize:'0.7rem', fontWeight:'bold'}}>
+            ⚠️ RIAPERTO DALLA CASSA
+        </span>
+    )}
+</div>
                                                 </div>
                                             </div>
                                             {isServito && <span>✅</span>}

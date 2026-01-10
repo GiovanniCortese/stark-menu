@@ -611,18 +611,25 @@ const addList = addListPiatto.length > 0 ? addListPiatto : addListCategoria;
 
                                   return (
                                   <div key={item.tempId} style={{background:'rgba(255,255,255,0.1)', borderRadius:10, padding:15, marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                                      <div>
-                                          <div style={{fontWeight:'bold', fontSize:'1.1rem', color: titleColor}}>{item.nome}</div>
-                                          
-                                          {/* NUOVO: DESCRIZIONE E INGREDIENTI NEL RIEPILOGO */}
-                                          {item.descrizione && (<div style={{fontSize:'11px', color:'#ccc', fontStyle:'italic', lineHeight:'1.2', marginBottom:'2px'}}>{item.descrizione}</div>)}
-                                          {ingredientiStr && (<div style={{fontSize:'11px', color:'#999', marginBottom:'2px'}}>🧂 {ingredientiStr}</div>)}
+                                     <div>
+        <div style={{fontWeight:'bold', fontSize:'1.1rem', color: titleColor}}>{item.nome}</div>
+        
+        {/* VISUALIZZAZIONE VARIANTI SCELTE NEL RIEPILOGO */}
+        {item.varianti_scelte && (
+            <div style={{marginTop:'5px'}}>
+                {item.varianti_scelte.rimozioni?.map((ing, i) => (
+                    <span key={i} style={{background:'#c0392b', color:'white', fontSize:'10px', padding:'2px 6px', borderRadius:'4px', marginRight:'5px'}}>NO {ing}</span>
+                ))}
+                {item.varianti_scelte.aggiunte?.map((ing, i) => (
+                    <span key={i} style={{background:'#27ae60', color:'white', fontSize:'10px', padding:'2px 6px', borderRadius:'4px', marginRight:'5px'}}>+ {ing.nome}</span>
+                ))}
+            </div>
+        )}
 
-                                          {/* DETTAGLI PIATTO */}
-                                          <div style={{color:'#aaa', fontSize:'0.9rem'}}>
-                                              {Number(item.prezzo).toFixed(2)} € • {item.categoria_is_pizzeria ? '🍕 Pizza' : '🍳 Cucina'}
-                                          </div>
-                                      </div>
+        <div style={{color:'#aaa', fontSize:'0.9rem', marginTop: '5px'}}>
+            {Number(item.prezzo).toFixed(2)} € • {item.categoria_is_pizzeria ? '🍕 Pizza' : '🍳 Cucina'}
+        </div>
+    </div>
                                       <div style={{display:'flex', flexDirection:'column', gap:5}}>
                                           <div style={{display:'flex', gap:5}}>
                                               <button onClick={() => cambiaUscita(item.tempId, -1)} style={{background:'#ecf0f1', color:'#333', fontSize:'0.8rem', padding:'5px 8px', borderRadius:'4px', cursor:'pointer'}}>⬆️</button>

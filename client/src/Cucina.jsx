@@ -358,11 +358,27 @@ const nomeChi = primoItem?.cameriere
             ))}
         </div>
     )}
+
+    {/* --- INSERISCI QUI LA MODIFICA PER LA CASSA --- */}
+{item.chiuso_da_cassa && item.stato === 'servito' && (
+    <div style={{
+        display:'inline-block', 
+        marginTop:'4px', 
+        background:'#27ae60', 
+        color:'white', 
+        padding:'2px 6px', 
+        borderRadius:'4px', 
+        fontSize:'0.7rem', 
+        fontWeight:'bold'
+    }}>
+        ✅ FATTO DALLA CASSA
+    </div>
+)}
     
-    {item.riaperto && item.stato === 'in_attesa' && (
-        <div style={{display:'inline-block', marginTop:'2px', background:'#f39c12', color:'white', padding:'2px 5px', borderRadius:'3px', fontSize:'0.7rem', fontWeight:'bold'}}>
-            ⚠️ RIAPERTO
-        </div>
+            {item.riaperto && item.stato === 'in_attesa' && (
+             <div style={{display:'inline-block', marginTop:'2px', background:'#f39c12', color:'white', padding:'2px 5px', borderRadius:'3px', fontSize:'0.7rem', fontWeight:'bold'}}>
+                  ⚠️ RIAPERTO
+             </div>
     )}
 </div>
                                                 </div>

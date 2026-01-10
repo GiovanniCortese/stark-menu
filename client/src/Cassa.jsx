@@ -120,26 +120,31 @@ function Cassa() {
   // --- AZIONI ---
 
   const modificaStatoProdotto = async (ord, indexDaModificare) => {
-      const nuoviProdotti = [...ord.prodotti];
-      const item = nuoviProdotti[indexDaModificare];
-      const nuovoStato = item.stato === 'servito' ? 'in_attesa' : 'servito';
-      
-      item.stato = nuovoStato;
-      if (nuovoStato === 'servito') {
-          item.ora_servizio = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-      } else {
-          delete item.ora_servizio;
-      }
-      
-      const logMsg = `[CASSA 💶] HA SEGNATO ${nuovoStato === 'servito' ? 'SERVITO' : 'IN ATTESA'}: ${item.nome}`;
+    const nuoviProdotti = [...ord.prodotti];
+    const item = nuoviProdotti[indexDaModificare];
+    const nuovoStato = item.stato === 'servito' ? 'in_attesa' : 'servito';
+    
+    item.stato = nuovoStato;
 
-      await fetch(`${API_URL}/api/ordine/${ord.id}/update-items`, {
-          method: 'PUT',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ prodotti: nuoviProdotti, logMsg })
-      });
-      aggiornaDati();
-  };
+    if (nuovoStato === 'in_attesa') {
+        item.riaperto = true; 
+        delete item.ora_servizio;
+    } else {
+        item.ora_servizio = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        item.chiuso_da_cassa = true; 
+    }
+    
+    const logMsg = nuovoStato === 'in_attesa' 
+        ? `[CASSA 💶] ⚠️ RIAPERTO DALLA CASSA: ${item.nome}`
+        : `[CASSA 💶] ✅ FATTO DALLA CASSA: ${item.nome}`;
+
+    await fetch(`${API_URL}/api/ordine/${ord.id}/update-items`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ prodotti: nuoviProdotti, logMsg })
+    });
+    aggiornaDati();
+};
 
   const eliminaProdotto = async (ord, indexDaEliminare) => {
       if(!confirm("Eliminare questo piatto?")) return;
@@ -293,6 +298,22 @@ function Cassa() {
                                                         }}>
                                                             {p.nome}
                                                         </div>
+
+                                                        {/* --- AGGIUNTA: VISUALIZZAZIONE VARIANTI E INGREDIENTI IN CASSA --- */}
+{p.varianti_scelte && (
+    <div style={{marginTop:'2px', display:'flex', flexWrap:'wrap', gap:'4px'}}>
+        {p.varianti_scelte.rimozioni?.map((ing, i) => (
+            <span key={i} style={{background:'#fceaea', color:'#c0392b', fontSize:'10px', padding:'1px 5px', borderRadius:'3px', border:'1px solid #fadbd8'}}>
+                NO {ing}
+            </span>
+        ))}
+        {p.varianti_scelte.aggiunte?.map((ing, i) => (
+            <span key={i} style={{background:'#e8f5e9', color:'#27ae60', fontSize:'10px', padding:'1px 5px', borderRadius:'3px', border:'1px solid #c8e6c9'}}>
+                + {ing.nome}
+            </span>
+        ))}
+    </div>
+)}
                                                         
                                                         {/* SOTTOTITOLO REPARTO E PREZZO */}
                                                         <div style={{fontSize:'0.75rem', color:'#666', fontStyle:'italic', marginTop:'2px'}}>
@@ -358,18 +379,42 @@ function Cassa() {
           </div>
       )}
 
-      {/* --- MODAL LOG --- */}
-      {selectedLog && (
-          <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999}}>
-              <div style={{background:'white', padding:30, borderRadius:10, maxWidth:600, width:'90%', maxHeight:'80vh', overflowY:'auto'}}>
-                  <h2 style={{color:'#000'}}>Dettagli Ordine #{selectedLog.id}</h2>
-                  <div style={{background:'#f0f0f0', color:'#0f0e0eff', padding:15, borderRadius:5, fontFamily:'monospace', whiteSpace:'pre-wrap', fontSize:13}}>
-                      {selectedLog.dettagli || "Nessun dettaglio registrato."}
-                  </div>
-                  <button onClick={() => setSelectedLog(null)} style={{marginTop:20, padding:'10px 20px', background:'#2c3e50', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Chiudi</button>
-              </div>
-          </div>
-      )}
+{/* --- MODAL LOG AGGIORNATO (IDENTICO AL LIVE) --- */}
+{selectedLog && (
+    <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999}}>
+        <div style={{background:'white', padding:30, borderRadius:10, maxWidth:600, width:'90%', maxHeight:'80vh', overflowY:'auto', boxShadow:'0 20px 50px rgba(0,0,0,0.5)'}}>
+            <h2 style={{color:'#000', marginTop:0, borderBottom:'2px solid #eee', paddingBottom:'10px'}}>
+                📋 LOG DETTAGLIATO {selectedLog.tavolo ? `TAVOLO ${selectedLog.tavolo}` : `ORDINE #${selectedLog.id}`}
+            </h2>
+            
+            <div style={{
+                background:'#1a1a1a', 
+                color:'#2ecc71', 
+                padding:20, 
+                borderRadius:8, 
+                fontFamily:'"Courier New", monospace', 
+                whiteSpace:'pre-wrap', // Mantiene la formattazione originale
+                fontSize:13,
+                lineHeight:'1.5',
+                border:'1px solid #333',
+                marginTop:'15px'
+            }}>
+                {selectedLog.dettagli || "Nessun log disponibile."}
+            </div>
+            
+            <button 
+                onClick={() => setSelectedLog(null)} 
+                style={{
+                    width:'100%', marginTop:25, padding:'15px', 
+                    background:'#2c3e50', color:'white', border:'none', 
+                    borderRadius:8, fontWeight:'bold', cursor:'pointer', fontSize:'16px'
+                }}
+            >
+                CHIUDI SCHERMATA
+            </button>
+        </div>
+    </div>
+)}
     </div>
   );
 }
