@@ -311,7 +311,49 @@ app.delete('/api/categorie/:id', async (req, res) => { try { await pool.query('D
 
 // Config Ristorante
 app.get('/api/ristorante/config/:id', async (req, res) => { try { const r = await pool.query('SELECT * FROM ristoranti WHERE id = $1', [req.params.id]); if (r.rows.length > 0) res.json(r.rows[0]); else res.status(404).json({ error: "Not Found" }); } catch (e) { res.status(500).json({ error: "Err" }); } });
-app.put('/api/ristorante/style/:id', async (req, res) => { try { const { logo_url, cover_url, colore_sfondo, colore_titolo, colore_testo, colore_prezzo, font_style } = req.body; await pool.query(`UPDATE ristoranti SET logo_url=$1, cover_url=$2, colore_sfondo=$3, colore_titolo=$4, colore_testo=$5, colore_prezzo=$6, font_style=$7 WHERE id=$8`, [logo_url, cover_url, colore_sfondo, colore_titolo, colore_testo, colore_prezzo, font_style, req.params.id]); res.json({ success: true }); } catch (err) { res.status(500).json({ error: "Err" }); } });
+
+// 1. ROTTA DI FIX DATABASE (Lanciala una volta sola visitando /api/db-fix-grafica)
+app.get('/api/db-fix-grafica', async (req, res) => {
+    try {
+        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS colore_card TEXT DEFAULT '#ffffff'");
+        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS colore_btn TEXT DEFAULT '#27ae60'");
+        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS colore_btn_text TEXT DEFAULT '#ffffff'");
+        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS colore_border TEXT DEFAULT '#e0e0e0'");
+        res.send("✅ Database Grafica Aggiornato! Nuove colonne create.");
+    } catch (e) { res.status(500).send("Errore DB: " + e.message); }
+});
+
+// 2. API STILE AGGIORNATA (Salva tutti i nuovi campi)
+app.put('/api/ristorante/style/:id', async (req, res) => {
+    try {
+        const { 
+            logo_url, cover_url, 
+            colore_sfondo, colore_titolo, colore_testo, colore_prezzo, 
+            colore_card, colore_btn, colore_btn_text, colore_border, // Nuovi campi
+            font_style 
+        } = req.body;
+
+        await pool.query(
+            `UPDATE ristoranti SET 
+            logo_url=$1, cover_url=$2, 
+            colore_sfondo=$3, colore_titolo=$4, colore_testo=$5, colore_prezzo=$6, 
+            colore_card=$7, colore_btn=$8, colore_btn_text=$9, colore_border=$10,
+            font_style=$11 
+            WHERE id=$12`,
+            [
+                logo_url, cover_url, 
+                colore_sfondo, colore_titolo, colore_testo, colore_prezzo, 
+                colore_card || '#ffffff', colore_btn || '#27ae60', colore_btn_text || '#ffffff', colore_border || '#e0e0e0',
+                font_style, req.params.id
+            ]
+        );
+        res.json({ success: true });
+    } catch (err) { 
+        console.error(err);
+        res.status(500).json({ error: "Errore salvataggio stile" }); 
+    }
+});
+
 app.put('/api/ristorante/servizio/:id', async (req, res) => { try { const { id } = req.params; if (req.body.ordini_abilitati !== undefined) await pool.query('UPDATE ristoranti SET ordini_abilitati = $1 WHERE id = $2', [req.body.ordini_abilitati, id]); if (req.body.servizio_attivo !== undefined) await pool.query('UPDATE ristoranti SET servizio_attivo = $1 WHERE id = $2', [req.body.servizio_attivo, id]); res.json({ success: true }); } catch (e) { res.status(500).json({error:"Err"}); } });
 app.put('/api/ristorante/security/:id', async (req, res) => { try { const { pw_cassa, pw_cucina, pw_pizzeria, pw_bar } = req.body; await pool.query(`UPDATE ristoranti SET pw_cassa=$1, pw_cucina=$2, pw_pizzeria=$3, pw_bar=$4 WHERE id=$5`, [pw_cassa, pw_cucina, pw_pizzeria, pw_bar, req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
 
