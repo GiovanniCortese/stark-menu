@@ -23,20 +23,21 @@ function AdminUsers({ API_URL, user }) {
 const ricaricaTutto = () => {
     if (!user || !user.id) return;
 
-    // 1. Carica Staff
+    // 1. Carica lo Staff (chi lavora nel locale)
     fetch(`${API_URL}/api/utenti?mode=staff&ristorante_id=${user.id}`)
         .then(res => res.json())
         .then(data => setStaff(Array.isArray(data) ? data : []))
         .catch(err => console.error("Errore Staff:", err));
     
-    // 2. Carica Clienti (Assicurati che mode=clienti sia gestito dal backend)
-    fetch(`${API_URL}/api/utenti?mode=clienti&ristorante_id=${user.id}`)
+    // 2. Carica i Clienti REALI (chi ha ordinato in questo locale)
+    // Usiamo mode=clienti_ordini per distinguere la logica sul backend
+    fetch(`${API_URL}/api/utenti?mode=clienti_ordini&ristorante_id=${user.id}`)
         .then(res => res.json())
         .then(data => {
-            console.log("Dati clienti ricevuti:", data); // Per debug
+            // Qui 'data' dovrebbe contenere anche i campi: count_ordini, ultimo_ordine, ecc.
             setClienti(Array.isArray(data) ? data : []);
         })
-        .catch(err => console.error("Errore Clienti:", err));
+        .catch(err => console.error("Errore Clienti CRM:", err));
 };
 
     const handleSave = async (e) => {
@@ -146,43 +147,44 @@ const ricaricaTutto = () => {
             )}
 
             {/* AREA CLIENTI */}
-            {tab === 'clienti' && (
-                <>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', background:'#e8f8f5', padding:'15px', borderRadius:'8px' }}>
-                        <p style={{margin:0, color:'#16a085'}}>Visualizzi solo i clienti registrati al tuo locale.</p>
-                        <button onClick={downloadExcel} style={{ background: '#27ae60', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span>📥</span> EXPORT EXCEL
-                        </button>
-                    </div>
-
-                    <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid #eee' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <thead>
-                                <tr style={{ background: '#f8f9fa', textAlign: 'left' }}>
-                                    <th style={{ padding: '15px', color: '#7f8c8d' }}>Cliente</th>
-                                    <th style={{ padding: '15px', color: '#7f8c8d' }}>Contatti</th>
-                                    <th style={{ padding: '15px', color: '#7f8c8d' }}>Ultimo Ordine</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {clienti.length === 0 && <tr><td colSpan="3" style={{padding:30, textAlign:'center', color:'#999'}}>Nessun cliente recente.</td></tr>}
-                                {clienti.map(u => (
-                                    <tr key={u.id} style={{ borderBottom: '1px solid #eee' }}>
-                                        <td style={{ padding: '15px', fontWeight: 'bold', color: '#333' }}>{u.nome}</td>
-                                        <td style={{ padding: '15px', fontSize:'13px' }}>
-                                            📧 {u.email}<br/>
-                                            📞 {u.telefono}
-                                        </td>
-                                        <td style={{ padding: '15px', color:'#2c3e50' }}>
-                                            📅 {u.ultimo_ordine ? new Date(u.ultimo_ordine).toLocaleDateString() : '-'}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </>
-            )}
+           {tab === 'clienti' && (
+    <div className="table-container">
+        <table style={{width:'100%', borderCollapse:'collapse'}}>
+            <thead>
+                <tr style={{background:'#f0f0f0', textAlign:'left'}}>
+                    <th style={{padding:10}}>Cliente</th>
+                    <th style={{padding:10}}>Contatti</th>
+                    <th style={{padding:10}}>Ordini Totali</th>
+                    <th style={{padding:10}}>Ultima Visita</th>
+                </tr>
+            </thead>
+            <tbody>
+                {clienti.map(c => (
+                    <tr key={c.id} style={{borderBottom:'1px solid #eee'}}>
+                        <td style={{padding:10}}>
+                            <strong>{c.nome}</strong><br/>
+                            <small>@{c.username}</small>
+                        </td>
+                        <td style={{padding:10}}>
+                            {c.email}<br/>
+                            {c.telefono || 'N/D'}
+                        </td>
+                        <td style={{padding:10}}>
+                            {/* Il backend dovrà restituire questo conteggio */}
+                            <span style={{background:'#3498db', color:'white', padding:'2px 8px', borderRadius:10}}>
+                                {c.totale_ordini || 0} ordini
+                            </span>
+                        </td>
+                        <td style={{padding:10}}>
+                            {c.ultimo_ordine ? new Date(c.ultimo_ordine).toLocaleDateString() : '---'}
+                        </td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+        {clienti.length === 0 && <p style={{padding:20, textAlign:'center'}}>Nessun cliente ha ancora effettuato ordini in questo locale.</p>}
+    </div>
+)}
 
             {/* MODALE NUOVO STAFF */}
             {showNewModal && (
