@@ -1,10 +1,37 @@
-// client/src/components_admin/AdminGrafica.jsx - VERSIONE PREMIUM UI 🎨
+// client/src/components_admin/AdminGrafica.jsx - VERSIONE V3 ULTIMATE
 import { useState } from 'react';
 
 function AdminGrafica({ user, config, setConfig, API_URL }) {
   const [uploading, setUploading] = useState(false);
 
-  // --- SALVATAGGIO ---
+  // --- FIX UPLOAD IMMAGINI ---
+  const handleUpload = async (e, type) => {
+      const f = e.target.files[0]; 
+      if(!f) return;
+      
+      setUploading(true);
+      const fd = new FormData(); 
+      fd.append('photo', f);
+      
+      try {
+        const r = await fetch(`${API_URL}/api/upload`, { method:'POST', body:fd });
+        if (!r.ok) throw new Error("Errore server upload");
+        
+        const d = await r.json();
+        if(d.url) {
+            setConfig(prev => ({...prev, [type]: d.url}));
+            alert("✅ Immagine caricata!");
+        } else {
+            alert("Errore: URL mancante nella risposta server.");
+        }
+      } catch(err) { 
+          console.error(err);
+          alert("Errore caricamento immagine: " + err.message); 
+      } finally {
+          setUploading(false); // SBLOCCA SEMPRE IL CARICAMENTO
+      }
+  };
+
   const handleSaveStyle = async () => {
       try {
         const res = await fetch(`${API_URL}/api/ristorante/style/${user.id}`, {
@@ -16,32 +43,18 @@ function AdminGrafica({ user, config, setConfig, API_URL }) {
       } catch (e) { alert("Errore di connessione"); }
   };
 
-  // --- UPLOAD IMMAGINI ---
-  const handleUpload = async (e, type) => {
-      const f = e.target.files[0]; if(!f) return;
-      setUploading(true);
-      const fd = new FormData(); fd.append('photo', f);
-      try {
-        const r = await fetch(`${API_URL}/api/upload`, {method:'POST', body:fd});
-        const d = await r.json();
-        if(d.url) setConfig(prev => ({...prev, [type]: d.url}));
-      } catch(err) { alert("Errore caricamento immagine"); }
-      setUploading(false);
-  };
-
-  // --- COMPONENTE INTERNO: PICKER COLORE ---
-  const ColorPicker = ({ label, value, field }) => (
+  const ColorPicker = ({ label, value, field, def }) => (
       <div style={styles.colorWrapper}>
           <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
               <input 
                   type="color" 
-                  value={value || '#000000'} 
+                  value={value || def || '#000000'} 
                   onChange={e => setConfig({...config, [field]: e.target.value})} 
                   style={styles.colorInput}
               />
               <div style={{display:'flex', flexDirection:'column'}}>
                   <span style={styles.colorLabel}>{label}</span>
-                  <span style={styles.colorHex}>{value || '#000000'}</span>
+                  <span style={styles.colorHex}>{value || def || 'Default'}</span>
               </div>
           </div>
       </div>
@@ -49,151 +62,126 @@ function AdminGrafica({ user, config, setConfig, API_URL }) {
 
   return (
       <div style={styles.container}>
-          
-          {/* === COLONNA SINISTRA: EDITOR === */}
           <div style={styles.editorColumn}>
               <div style={styles.header}>
-                  <h2 style={{margin:0, color:'#2c3e50'}}>🎨 Studio Grafico</h2>
-                  <p style={{margin:'5px 0 0', color:'#7f8c8d', fontSize:'0.9rem'}}>Personalizza l'identità del tuo brand.</p>
+                  <h2 style={{margin:0, color:'#2c3e50'}}>🎨 Studio Grafico Totale</h2>
+                  <p style={{margin:'5px 0 0', color:'#7f8c8d'}}>Controlla ogni singolo pixel della tua app.</p>
               </div>
 
-              {/* SEZIONE 1: BRANDING */}
+              {/* 1. BRAND */}
               <div style={styles.card}>
                   <h4 style={styles.sectionTitle}>📸 Logo & Copertina</h4>
-                  
                   <div style={styles.row}>
                       <div style={{flex:1}}>
-                          <label style={styles.label}>Logo (Quadrato)</label>
+                          <label style={styles.label}>Logo</label>
                           <div style={styles.fileInputWrapper}>
                               <span style={{fontSize:'20px'}}>🖼️</span>
                               <input type="file" onChange={(e) => handleUpload(e, 'logo_url')} style={styles.fileInputHidden} />
-                              <span style={{fontSize:'12px', color:'#555'}}>{uploading ? 'Caricamento...' : 'Clicca per caricare logo'}</span>
+                              <span style={{fontSize:'12px', color:'#555'}}>{uploading ? 'Attendi...' : 'Carica Logo'}</span>
                           </div>
                       </div>
                       <div style={{flex:1}}>
-                          <label style={styles.label}>Cover (Orizzontale)</label>
+                          <label style={styles.label}>Cover</label>
                           <div style={styles.fileInputWrapper}>
                               <span style={{fontSize:'20px'}}>🌄</span>
                               <input type="file" onChange={(e) => handleUpload(e, 'cover_url')} style={styles.fileInputHidden} />
-                              <span style={{fontSize:'12px', color:'#555'}}>{uploading ? 'Caricamento...' : 'Clicca per caricare cover'}</span>
+                              <span style={{fontSize:'12px', color:'#555'}}>{uploading ? 'Attendi...' : 'Carica Cover'}</span>
                           </div>
                       </div>
                   </div>
               </div>
 
-              {/* SEZIONE 2: COLORI GLOBALI */}
+              {/* 2. COLORI GLOBALI */}
               <div style={styles.card}>
                   <h4 style={styles.sectionTitle}>🌍 Colori Generali</h4>
                   <div style={styles.grid}>
-                      <ColorPicker label="Sfondo Pagina" value={config.colore_sfondo} field="colore_sfondo" />
-                      <ColorPicker label="Titoli Principali" value={config.colore_titolo} field="colore_titolo" />
-                      <ColorPicker label="Testi Descrizioni" value={config.colore_testo} field="colore_testo" />
+                      <ColorPicker label="Sfondo Pagina" value={config.colore_sfondo} field="colore_sfondo" def="#222222" />
+                      <ColorPicker label="Titoli Principali" value={config.colore_titolo} field="colore_titolo" def="#ffffff" />
+                      <ColorPicker label="Testi Descrizioni" value={config.colore_testo} field="colore_testo" def="#cccccc" />
                   </div>
               </div>
 
-              {/* SEZIONE 3: SCHEDA PRODOTTO */}
+              {/* 3. INFO TAVOLO */}
               <div style={styles.card}>
-                  <h4 style={styles.sectionTitle}>🥡 Scheda Prodotto (Card)</h4>
+                  <h4 style={styles.sectionTitle}>🍽️ Etichetta Tavolo (Header)</h4>
                   <div style={styles.grid}>
-                      <ColorPicker label="Sfondo Card" value={config.colore_card} field="colore_card" />
-                      <ColorPicker label="Bordi / Linee" value={config.colore_border} field="colore_border" />
-                      <ColorPicker label="Prezzo" value={config.colore_prezzo} field="colore_prezzo" />
+                      <ColorPicker label="Sfondo Numero" value={config.colore_tavolo_bg} field="colore_tavolo_bg" def="#27ae60" />
+                      <ColorPicker label="Testo Numero" value={config.colore_tavolo_text} field="colore_tavolo_text" def="#ffffff" />
                   </div>
               </div>
 
-              {/* SEZIONE 4: BOTTONI */}
+              {/* 4. SCHEDA PRODOTTO */}
               <div style={styles.card}>
-                  <h4 style={styles.sectionTitle}>🔘 Bottoni & Azioni</h4>
+                  <h4 style={styles.sectionTitle}>🥡 Scheda Prodotto (Menu)</h4>
                   <div style={styles.grid}>
-                      <ColorPicker label="Sfondo Bottone" value={config.colore_btn} field="colore_btn" />
-                      <ColorPicker label="Testo Bottone" value={config.colore_btn_text} field="colore_btn_text" />
+                      <ColorPicker label="Sfondo Card" value={config.colore_card} field="colore_card" def="#ffffff" />
+                      <ColorPicker label="Bordi / Linee" value={config.colore_border} field="colore_border" def="#eeeeee" />
+                      <ColorPicker label="Prezzo" value={config.colore_prezzo} field="colore_prezzo" def="#27ae60" />
+                      <ColorPicker label="Sfondo Btn +" value={config.colore_btn} field="colore_btn" def="#27ae60" />
+                      <ColorPicker label="Icona Btn +" value={config.colore_btn_text} field="colore_btn_text" def="#ffffff" />
                   </div>
               </div>
 
-              {/* SEZIONE 5: FONT */}
+              {/* 5. BARRA CARRELLO (BOTTOM) */}
               <div style={styles.card}>
-                  <h4 style={styles.sectionTitle}>🔤 Stile Testo (Font)</h4>
-                  <select 
-                      value={config.font_style} 
-                      onChange={e => setConfig({...config, font_style: e.target.value})} 
-                      style={styles.select}
-                  >
+                  <h4 style={styles.sectionTitle}>🛒 Barra Carrello (In basso)</h4>
+                  <div style={styles.grid}>
+                      <ColorPicker label="Sfondo Barra" value={config.colore_carrello_bg} field="colore_carrello_bg" def="#222222" />
+                      <ColorPicker label="Testo/Totale" value={config.colore_carrello_text} field="colore_carrello_text" def="#ffffff" />
+                  </div>
+              </div>
+
+              {/* 6. MODALE RIEPILOGO */}
+              <div style={styles.card}>
+                  <h4 style={styles.sectionTitle}>📝 Modale Riepilogo Ordine</h4>
+                  <div style={styles.grid}>
+                      <ColorPicker label="Sfondo Finestra" value={config.colore_checkout_bg} field="colore_checkout_bg" def="#222222" />
+                      <ColorPicker label="Testi Finestra" value={config.colore_checkout_text} field="colore_checkout_text" def="#ffffff" />
+                  </div>
+              </div>
+
+              <div style={styles.card}>
+                  <h4 style={styles.sectionTitle}>🔤 Font</h4>
+                  <select value={config.font_style} onChange={e => setConfig({...config, font_style: e.target.value})} style={styles.select}>
                       <option value="sans-serif">Moderno (Sans-Serif)</option>
                       <option value="serif">Elegante (Serif)</option>
-                      <option value="'Courier New', monospace">Vintage / Macchina da scrivere</option>
-                      <option value="'Brush Script MT', cursive">Corsivo / Pizzeria</option>
+                      <option value="'Courier New', monospace">Vintage</option>
+                      <option value="'Brush Script MT', cursive">Corsivo</option>
                   </select>
               </div>
 
-              <button onClick={handleSaveStyle} style={styles.saveButton}>
-                  💾 SALVA DESIGN
-              </button>
+              <button onClick={handleSaveStyle} style={styles.saveButton}>💾 APPLICA MODIFICHE</button>
           </div>
 
-          {/* === COLONNA DESTRA: ANTEPRIMA IPHONE === */}
+          {/* ANTEPRIMA */}
           <div style={styles.previewColumn}>
               <div style={styles.phoneMockup}>
-                  <div style={styles.phoneNotch}></div>
-                  <div style={styles.phoneScreen(config.colore_sfondo)}>
-                      
-                      {/* HEADER SIMULATO */}
-                      <div style={{textAlign:'center', padding:'20px 10px', marginBottom:'10px'}}>
-                          {config.logo_url && <img src={config.logo_url} style={{width:'50px', height:'50px', borderRadius:'50%', objectFit:'cover', boxShadow:'0 2px 5px rgba(0,0,0,0.2)'}} />}
-                          <h3 style={{margin:'5px 0', color: config.colore_titolo, fontFamily: config.font_style}}>Il Tuo Locale</h3>
-                          <div style={{fontSize:'10px', color: config.colore_testo}}>Tavolo: 5</div>
-                      </div>
-
-                      {/* CARD PRODOTTO SIMULATA */}
-                      <div style={{
-                          margin: '10px',
-                          padding: '12px',
-                          borderRadius: '12px',
-                          background: config.colore_card || 'white',
-                          border: `1px solid ${config.colore_border || '#eee'}`,
-                          boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
-                          display: 'flex', alignItems: 'center', gap:'10px'
-                      }}>
-                          <div style={{width:'50px', height:'50px', background:'#eee', borderRadius:'8px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'20px'}}>🍕</div>
-                          <div style={{flex:1}}>
-                              <div style={{fontWeight:'bold', fontSize:'14px', color: config.colore_titolo, fontFamily: config.font_style}}>Pizza Speciale</div>
-                              <div style={{fontSize:'10px', color: config.colore_testo, fontFamily: config.font_style}}>Pomodoro, Mozzarella, Basilico</div>
-                              <div style={{fontWeight:'bold', fontSize:'12px', color: config.colore_prezzo, marginTop:'2px'}}>€ 8.50</div>
+                  <div style={styles.phoneScreen(config.colore_sfondo || '#222')}>
+                      {/* HEADER */}
+                      <div style={{padding:'20px 10px', textAlign:'center', color:config.colore_titolo}}>
+                          {config.logo_url && <img src={config.logo_url} style={{width:50, height:50, borderRadius:'50%'}}/>}
+                          <div style={{marginTop:5, fontFamily: config.font_style}}>Tuo Locale</div>
+                          <div style={{marginTop:5}}>
+                              Tavolo: <span style={{background: config.colore_tavolo_bg || '#27ae60', color: config.colore_tavolo_text || 'white', padding:'2px 8px', borderRadius:4}}>5</span>
                           </div>
-                          <button style={{
-                              background: config.colore_btn || '#27ae60',
-                              color: config.colore_btn_text || 'white',
-                              border: 'none', borderRadius: '50%', width:'30px', height:'30px',
-                              display:'flex', alignItems:'center', justifyContent:'center', fontSize:'16px', cursor:'pointer'
-                          }}>+</button>
                       </div>
 
-                       {/* ALTRA CARD SIMULATA */}
-                       <div style={{
-                          margin: '10px',
-                          padding: '12px',
-                          borderRadius: '12px',
-                          background: config.colore_card || 'white',
-                          border: `1px solid ${config.colore_border || '#eee'}`,
-                          boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
-                          display: 'flex', alignItems: 'center', gap:'10px'
-                      }}>
-                          <div style={{width:'50px', height:'50px', background:'#eee', borderRadius:'8px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'20px'}}>🍺</div>
-                          <div style={{flex:1}}>
-                              <div style={{fontWeight:'bold', fontSize:'14px', color: config.colore_titolo, fontFamily: config.font_style}}>Birra Media</div>
-                              <div style={{fontSize:'10px', color: config.colore_testo, fontFamily: config.font_style}}>Bionda alla spina 0.4l</div>
-                              <div style={{fontWeight:'bold', fontSize:'12px', color: config.colore_prezzo, marginTop:'2px'}}>€ 5.00</div>
+                      {/* CARD PRODOTTO */}
+                      <div style={{background: config.colore_card || 'white', margin:10, padding:10, borderRadius:8, border:`1px solid ${config.colore_border||'#eee'}`}}>
+                          <div style={{color:config.colore_titolo||'#333', fontFamily: config.font_style, fontWeight:'bold'}}>Pizza</div>
+                          <div style={{color:config.colore_prezzo||'green'}}>€ 8.00</div>
+                          <button style={{background:config.colore_btn||'green', color:config.colore_btn_text||'white', border:'none', borderRadius:20, marginTop:5}}>+ AGGIUNGI</button>
+                      </div>
+
+                      {/* BARRA CARRELLO */}
+                      <div style={{position:'absolute', bottom:0, width:'100%', background:config.colore_carrello_bg||'#222', padding:15, color:config.colore_carrello_text||'white', boxSizing:'border-box', borderTop:`1px solid ${config.colore_prezzo}`}}>
+                          <div style={{display:'flex', justifyContent:'space-between'}}>
+                              <span>1 prodotto</span>
+                              <span style={{background:config.colore_btn||'green', padding:'2px 8px', borderRadius:4, color:config.colore_btn_text}}>VEDI</span>
                           </div>
-                          <button style={{
-                              background: config.colore_btn || '#27ae60',
-                              color: config.colore_btn_text || 'white',
-                              border: 'none', borderRadius: '50%', width:'30px', height:'30px',
-                              display:'flex', alignItems:'center', justifyContent:'center', fontSize:'16px', cursor:'pointer'
-                          }}>+</button>
                       </div>
-
                   </div>
               </div>
-              <p style={{textAlign:'center', color:'#999', fontSize:'12px', marginTop:'15px'}}>Anteprima Mobile in tempo reale</p>
           </div>
       </div>
   );

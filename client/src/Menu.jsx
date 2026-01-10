@@ -303,7 +303,13 @@ const cambiaUscita = (tempId, delta) => {
               
               <div style={{padding:'10px', textAlign:'center', borderBottom:`1px solid ${priceColor}`}}>
                   <span style={{color: text, fontSize:'1.1rem'}}>
-                      Tavolo: <strong style={{color:'white', background: priceColor, padding:'2px 8px', borderRadius:'5px'}}>{numeroTavolo}</strong>
+                      Tavolo: <strong style={{
+    background: style?.colore_tavolo_bg || style?.price || '#27ae60', // NUOVO
+    color: style?.colore_tavolo_text || 'white', // NUOVO
+    padding:'2px 8px', borderRadius:'5px'
+}}>
+    {numeroTavolo}
+</strong>
                   </span>
               </div>
           </div>
@@ -618,11 +624,14 @@ const addList = addListPiatto.length > 0 ? addListPiatto : addListCategoria;
 
       {/* BARRA CARRELLO */}
       {carrello.length > 0 && !showCheckout && (
-        <div className="carrello-bar">
-          <div className="totale">
-              {/* QUI MOSTRA SOLO IL NUMERO DI PRODOTTI, NIENTE PREZZO */}
-              <span>{carrello.length} prodotti</span>
-          </div>
+       <div className="carrello-bar" style={{
+    background: style?.colore_carrello_bg || '#222', // NUOVO
+    borderTop: `2px solid ${style?.colore_prezzo || '#ff9f43'}`,
+    color: style?.colore_carrello_text || 'white' // NUOVO
+}}>
+    <div className="totale" style={{color: style?.colore_carrello_text || 'white'}}>
+        <span>{carrello.length} prodotti</span>
+    </div>
           <button onClick={() => setShowCheckout(true)} className="btn-invia" style={{background: canOrder ? '#f1c40f' : '#3498db', color: canOrder ? 'black' : 'white'}}>
               {canOrder ? "VEDI ORDINE 📝" : "VEDI LA TUA LISTA 👀"}
           </button>
@@ -631,11 +640,13 @@ const addList = addListPiatto.length > 0 ? addListPiatto : addListCategoria;
 
       {/* CHECKOUT */}
       {showCheckout && (
-          <div style={{
-              position:'fixed', top:0, left:0, right:0, bottom:0, 
-              background: style.bg || '#222', zIndex:2000, 
-              display:'flex', flexDirection:'column', padding:'20px', overflowY:'auto'
-          }}>
+    <div style={{
+        position:'fixed', top:0, left:0, right:0, bottom:0, 
+        background: style?.colore_checkout_bg || style?.bg || '#222', // NUOVO
+        color: style?.colore_checkout_text || style?.text || 'white', // NUOVO
+        zIndex:2000, 
+        display:'flex', flexDirection:'column', padding:'20px', overflowY:'auto'
+    }}>
               
               <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px', borderBottom:`1px solid ${style?.text||'#ccc'}`, paddingBottom:'10px'}}>
                   <h2 style={{color: titleColor, margin:0}}>{canOrder ? "Riepilogo Ordine 📝" : "Lista per Cameriere 📝"}</h2>
