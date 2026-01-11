@@ -290,14 +290,19 @@ const cambiaUscita = (tempId, delta) => {
   return (
     <div style={{minHeight:'100vh', background: bg, color: text, fontFamily: font, paddingBottom:80}}>
       
-{/* --- HERO HEADER STABILE (Fix movimento orizzontale) --- */}
+{/* --- HERO HEADER (Logo Cerchio + Cover Intera) --- */}
       <div style={{
           width: '100%',
-          boxSizing: 'border-box', // <--- QUESTA RIGA FIXA IL MOVIMENTO! Include il padding nella larghezza totale.
+          boxSizing: 'border-box', // Blocca lo sfasamento laterale
           minHeight: '260px',
+          
+          // GESTIONE COVER:
           background: style.cover ? `url(${style.cover})` : '#222', 
-          backgroundSize: 'contain',
-          backgroundPosition: 'center',
+          backgroundSize: 'contain',    // <--- MOSTRA TUTTA LA FOTO (non la taglia)
+          backgroundRepeat: 'no-repeat', // Non ripeterla a mosaico
+          backgroundPosition: 'center',  // Mettila al centro
+          backgroundColor: style.bg || '#222', // Colore di riempimento se la foto non copre tutto
+          
           position: 'relative',
           display: 'flex',
           flexDirection: 'column',
@@ -306,43 +311,41 @@ const cambiaUscita = (tempId, delta) => {
           padding: '30px 20px',
           marginBottom: '0',
           boxShadow: '0 4px 15px rgba(0,0,0,0.4)',
-          overflow: 'hidden' // <--- SICUREZZA EXTRA: Taglia tutto ciò che esce dai bordi
+          overflow: 'hidden'
       }}>
           
-          {/* Overlay Scuro */}
+          {/* Overlay Scuro (leggero, per far leggere le scritte) */}
           <div style={{
               position:'absolute', inset:0, 
-              background:'linear-gradient(to top, rgba(0,0,0,0.8), rgba(0,0,0,0.2))', 
+              background:'linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0.1))', 
               zIndex: 1
           }}></div>
 
           {/* CONTENUTO */}
           <div style={{position:'relative', zIndex: 2, display:'flex', flexDirection:'column', alignItems:'center', gap:'15px', width:'100%'}}>
               
-              {/* 1. LOGO (Ora si adatta alla forma!) */}
+              {/* 1. LOGO A CERCHIO (Tornato come prima) */}
               {style.logo ? (
                   <div style={{
-                      // Togliamo la larghezza fissa quadrata per adattarci ai loghi lunghi
-                      maxWidth: '180px', // Larghezza massima aumentata
-                      maxHeight: '100px',
+                      width: '110px',        // Larghezza fissa
+                      height: '110px',       // Altezza fissa = Cerchio perfetto
                       background: 'white', 
-                      padding: '8px', 
-                      borderRadius: '15px', // NON PIÙ CERCHIO, ma rettangolo smussato
+                      padding: '5px', 
+                      borderRadius: '50%',   // <--- CERCHIO
                       boxShadow: '0 5px 20px rgba(0,0,0,0.5)',
-                      display: 'flex', alignItems:'center', justifyContent:'center'
+                      display: 'flex', alignItems:'center', justifyContent:'center',
+                      overflow: 'hidden'     // Assicura che nulla esca dal cerchio
                   }}>
                       <img src={style.logo} alt="Logo" style={{
                           width:'100%', height:'100%', 
-                          objectFit:'contain', // Fondamentale: mostra tutto il logo senza tagliarlo
-                          display:'block'
+                          objectFit:'contain', // <--- "CONTIENE" LA FOTO (si vede tutto il logo nel cerchio)
                       }} />
                   </div>
               ) : (
-                  // Icona solo se manca il logo
                   <div style={{fontSize:'40px', background:'white', padding:10, borderRadius:'50%'}}>🍽️</div>
               )}
 
-              {/* 2. TITOLO (Solo se no logo) */}
+              {/* 2. TITOLO (Se manca il logo) */}
               {!style.logo && (
                   <h1 style={{
                       margin: 0, color: '#fff', 
