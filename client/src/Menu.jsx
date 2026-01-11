@@ -59,6 +59,15 @@ const puoOrdinareSempre = isStaffQui;
     if(savedUser) setUser(JSON.parse(savedUser));
   }, []);
 
+  // --- HELPER IMMAGINI (Aggiungi questo dentro function Menu() prima del return) ---
+  const getImgUrl = (url) => {
+      if (!url) return null;
+      // Se l'url inizia già con http o data:image (base64), va bene così
+      if (url.startsWith('http') || url.startsWith('data:')) return url;
+      // Altrimenti aggiungi l'indirizzo del backend
+      return `${API_URL}${url}`;
+  };
+
   // FUNZIONE LOGIN / REGISTRAZIONE
   const handleAuth = async (e) => {
       e.preventDefault();
@@ -279,69 +288,84 @@ const cambiaUscita = (tempId, delta) => {
     <div style={{minHeight:'100vh', background: bg, color: text, fontFamily: font, paddingBottom:80}}>
       
 {/* HEADER LOGO FULL WIDTH + LOGIN (FIXED VERSION) */}
+     {/* HEADER STILE "ADMIN PREVIEW" (FIXED) */}
       <div style={{
-          width:'100%', 
-          position:'relative', 
-          marginBottom: 10,
-          background: style.cover_url ? `url(${style.cover_url})` : bg, // COPERTINA SFONDO
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          minHeight: style.cover_url ? '220px' : 'auto', // Se c'è cover, diamo altezza
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: style.cover_url ? 'flex-end' : 'flex-start'
+          position: 'relative',
+          marginBottom: '50px', // Spazio extra sotto per il logo che esce
       }}>
-          
-          {/* OVERLAY SCURO SE C'È LA COVER (Per leggere il testo) */}
-          {style.cover_url && (
-              <div style={{position:'absolute', top:0, left:0, right:0, bottom:0, background:'linear-gradient(to bottom, rgba(0,0,0,0.3), rgba(0,0,0,0.8))'}}></div>
-          )}
+          {/* 1. COPERTINA (Cover) */}
+          <div style={{
+              height: '180px', // Altezza fissa come una copertina social
+              background: style.cover_url ? `url(${getImgUrl(style.cover_url)})` : (style.bg || '#333'),
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              position: 'relative',
+              borderRadius: '0 0 20px 20px' // Arrotondamento solo sotto
+          }}>
+               {/* Overlay scuro per leggere meglio il tasto login se c'è immagine */}
+               {style.cover_url && (
+                  <div style={{position:'absolute', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.3)', borderRadius: '0 0 20px 20px'}}></div>
+               )}
 
-          {/* TASTO LOGIN (In alto a destra) */}
-          <div style={{position:'absolute', top:15, right:15, zIndex:100}}>
-              {user ? (
-                  <div onClick={logout} style={{background: priceColor, padding:'6px 12px', borderRadius:'20px', cursor:'pointer', display:'flex', alignItems:'center', gap:5, boxShadow:'0 2px 5px rgba(0,0,0,0.3)'}}>
-                      <span style={{fontSize:'12px', fontWeight:'bold', color:'white'}}>👤 {user.nome}</span>
-                  </div>
-              ) : (
-                  <button onClick={() => setShowAuthModal(true)} style={{background: style.colore_btn || '#3498db', color: style.colore_btn_text || 'white', border:'none', padding:'8px 15px', borderRadius:'20px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.3)'}}>
-                      Accedi
-                  </button>
-              )}
+               {/* TASTO LOGIN (In alto a destra) */}
+               <div style={{position:'absolute', top:15, right:15, zIndex:100}}>
+                  {user ? (
+                      <div onClick={logout} style={{background: 'rgba(0,0,0,0.6)', padding:'6px 12px', borderRadius:'20px', cursor:'pointer', display:'flex', alignItems:'center', gap:5, border:'1px solid rgba(255,255,255,0.5)'}}>
+                          <span style={{fontSize:'12px', fontWeight:'bold', color:'white'}}>👤 {user.nome}</span>
+                      </div>
+                  ) : (
+                      <button onClick={() => setShowAuthModal(true)} style={{background: style.colore_btn || '#3498db', color: style.colore_btn_text || 'white', border:'none', padding:'8px 15px', borderRadius:'20px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.3)'}}>
+                          Accedi
+                      </button>
+                  )}
+              </div>
           </div>
 
-          {/* CONTENUTO CENTRALE (Logo e Nome) */}
-          <div style={{position:'relative', zIndex:10, width: '100%', maxWidth: '600px', margin: '0 auto', padding:'20px', textAlign:'center'}}>
-              
-              {/* LOGO (Se esiste, lo mostriamo tondo al centro) */}
+          {/* 2. LOGO E NOME (Sovrapposti) */}
+          <div style={{
+              position: 'absolute', 
+              bottom: '-40px', // Fa uscire il contenuto dalla cover
+              left: 0, right: 0, 
+              textAlign: 'center',
+              zIndex: 10
+          }}>
+              {/* LOGO (Cerchio che esce) */}
               {style.logo_url && (
-                 <img src={style.logo_url} alt="Logo" style={{
+                 <img src={getImgUrl(style.logo_url)} alt="Logo" style={{
                      width:'100px', height:'100px', 
                      borderRadius:'50%', 
                      objectFit:'cover', 
-                     border:'4px solid white', 
+                     border: `4px solid ${bg}`, // Bordo dello stesso colore dello sfondo pagina
                      boxShadow:'0 4px 10px rgba(0,0,0,0.3)',
-                     marginBottom:'10px'
+                     background: '#fff' // Sfondo bianco se l'immagine è trasparente
                  }} />
               )}
               
-              {/* NOME RISTORANTE (Se non c'è logo o se vuoi mostrarlo sotto) */}
+              {/* NOME RISTORANTE (Se non c'è logo lo mettiamo grande, altrimenti sotto) */}
               {!style.logo_url && (
-                 <h1 style={{margin:0, color: titleColor, textShadow: '0 2px 4px rgba(0,0,0,0.5)'}}>{ristorante}</h1>
+                 <h1 style={{
+                     margin:0, color: '#fff', 
+                     textShadow: '0 2px 4px rgba(0,0,0,0.8)', 
+                     fontSize:'2rem', 
+                     position:'relative', top:'-20px'
+                 }}>{ristorante}</h1>
               )}
-              
-              {/* INFO TAVOLO */}
-              <div style={{marginTop:'10px'}}>
-                  <span style={{color: style.cover_url ? 'white' : text, fontSize:'1.1rem', textShadow: '0 1px 2px rgba(0,0,0,0.5)'}}>
-                      Tavolo: <strong style={{
-                          background: style.colore_tavolo_bg || priceColor, 
-                          color: style.colore_tavolo_text || 'white', 
-                          padding:'4px 12px', borderRadius:'8px',
-                          boxShadow:'0 2px 5px rgba(0,0,0,0.2)'
-                      }}>{numeroTavolo}</strong>
-                  </span>
-              </div>
           </div>
+      </div>
+
+      {/* 3. INFO TAVOLO E TITOLO (Sotto l'header) */}
+      <div style={{textAlign:'center', marginTop: style.logo_url ? '0px' : '20px', padding:'0 20px'}}>
+          {style.logo_url && <h2 style={{margin:'5px 0', color: titleColor}}>{ristorante}</h2>}
+          
+          <span style={{
+              background: style.colore_tavolo_bg || '#27ae60', 
+              color: style.colore_tavolo_text || 'white', 
+              padding:'4px 12px', borderRadius:'8px',
+              fontSize:'0.9rem', fontWeight:'bold',
+              boxShadow:'0 2px 5px rgba(0,0,0,0.2)'
+          }}>
+              Tavolo: {numeroTavolo}
+          </span>
       </div>
 
       {/* LISTA MENU A FISARMONICA */}
