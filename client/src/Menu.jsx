@@ -306,16 +306,49 @@ const cambiaUscita = (tempId, delta) => {
               )}
           </div>
 
-          <div style={{maxWidth: '600px', margin: '0 auto', width: '100%'}}>
-              {style.logo ? (
-                 <img src={style.logo} alt="Logo" style={{width:'100%', display:'block', objectFit:'cover'}} />
-              ) : (
-                 <div style={{padding:20, textAlign:'center'}}><h1 style={{margin:0, color: titleColor}}>{ristorante}</h1></div>
-              )}
+          {/* --- NUOVO HEADER (Stile Telefono) --- */}
+          <div style={{position:'relative', marginBottom:'60px'}}>
               
-              <div style={{padding:'10px', textAlign:'center', borderBottom:`1px solid ${priceColor}`}}>
-                  <span style={{color: text, fontSize:'1.1rem'}}>
-                      Tavolo:<strong style={{color: tavoloText, background: tavoloBg, padding:'2px 8px', borderRadius:'5px'}}>{numeroTavolo}</strong>
+              {/* 1. COVER (Sfondo) */}
+              <div style={{
+                  height: '160px', 
+                  background: style.cover ? `url(${style.cover})` : '#333',
+                  backgroundSize: 'cover', backgroundPosition: 'center',
+                  borderRadius: '0 0 20px 20px', // Arrotonda solo sotto
+                  position: 'relative'
+              }}>
+                  {/* Sfumatura opzionale per rendere leggibile se non c'è img */}
+                  {!style.cover && <div style={{position:'absolute', inset:0, background:'linear-gradient(45deg, #222, #444)'}}></div>}
+              </div>
+
+              {/* 2. LOGO (Rotondo e Sovrapposto) */}
+              <div style={{
+                  position: 'absolute', bottom: '-50px', left: '50%', transform: 'translateX(-50%)',
+                  width: '100px', height: '100px',
+                  background: bg, // Prende il colore di sfondo della pagina per il bordo
+                  padding: '5px', borderRadius: '50%',
+                  boxShadow: '0 5px 15px rgba(0,0,0,0.3)'
+              }}>
+                  {style.logo ? (
+                      <img src={style.logo} alt="Logo" style={{width:'100%', height:'100%', objectFit:'cover', borderRadius:'50%'}} />
+                  ) : (
+                      <div style={{width:'100%', height:'100%', borderRadius:'50%', background:'#ddd', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'30px'}}>🍽️</div>
+                  )}
+              </div>
+          </div>
+
+          {/* 3. NOME RISTORANTE E TAVOLO */}
+          <div style={{textAlign: 'center', padding: '0 20px 20px 20px'}}>
+              <h1 style={{margin: '0 0 10px 0', color: titleColor, fontSize:'26px', fontWeight:'800'}}>{ristorante}</h1>
+              
+              <div style={{display:'inline-block'}}>
+                  <span style={{
+                      background: tavoloBg, color: tavoloText, 
+                      padding: '6px 15px', borderRadius: '20px', 
+                      fontWeight: 'bold', fontSize: '14px',
+                      boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
+                  }}>
+                      Tavolo {numeroTavolo}
                   </span>
               </div>
           </div>
