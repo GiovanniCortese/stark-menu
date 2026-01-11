@@ -296,7 +296,7 @@ const cambiaUscita = (tempId, delta) => {
           boxSizing: 'border-box', // <--- QUESTA RIGA FIXA IL MOVIMENTO! Include il padding nella larghezza totale.
           minHeight: '260px',
           background: style.cover ? `url(${style.cover})` : '#222', 
-          backgroundSize: 'cover',
+          backgroundSize: 'contain',
           backgroundPosition: 'center',
           position: 'relative',
           display: 'flex',
@@ -319,24 +319,26 @@ const cambiaUscita = (tempId, delta) => {
           {/* CONTENUTO */}
           <div style={{position:'relative', zIndex: 2, display:'flex', flexDirection:'column', alignItems:'center', gap:'15px', width:'100%'}}>
               
-              {/* 1. LOGO */}
+              {/* 1. LOGO (Ora si adatta alla forma!) */}
               {style.logo ? (
                   <div style={{
-                      maxWidth: '180px',
+                      // Togliamo la larghezza fissa quadrata per adattarci ai loghi lunghi
+                      maxWidth: '180px', // Larghezza massima aumentata
                       maxHeight: '100px',
                       background: 'white', 
                       padding: '8px', 
-                      borderRadius: '15px',
+                      borderRadius: '15px', // NON PIÙ CERCHIO, ma rettangolo smussato
                       boxShadow: '0 5px 20px rgba(0,0,0,0.5)',
                       display: 'flex', alignItems:'center', justifyContent:'center'
                   }}>
                       <img src={style.logo} alt="Logo" style={{
                           width:'100%', height:'100%', 
-                          objectFit:'contain',
+                          objectFit:'contain', // Fondamentale: mostra tutto il logo senza tagliarlo
                           display:'block'
                       }} />
                   </div>
               ) : (
+                  // Icona solo se manca il logo
                   <div style={{fontSize:'40px', background:'white', padding:10, borderRadius:'50%'}}>🍽️</div>
               )}
 
