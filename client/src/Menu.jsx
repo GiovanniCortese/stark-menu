@@ -290,62 +290,63 @@ const cambiaUscita = (tempId, delta) => {
   return (
     <div style={{minHeight:'100vh', background: bg, color: text, fontFamily: font, paddingBottom:80}}>
       
-{/* --- HERO HEADER (Tutto unito fino ad Antipasti) --- */}
+{/* --- HERO HEADER STABILE (Fix movimento orizzontale) --- */}
       <div style={{
           width: '100%',
-          // Altezza minima per far vedere bene la foto
-          minHeight: '280px', 
-          // La Cover diventa lo sfondo di TUTTO il blocco
+          boxSizing: 'border-box', // <--- QUESTA RIGA FIXA IL MOVIMENTO! Include il padding nella larghezza totale.
+          minHeight: '260px',
           background: style.cover ? `url(${style.cover})` : '#222', 
-          backgroundSize: 'cover',       // Copre tutto lo spazio
-          backgroundPosition: 'center',  // Centra la foto
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
           position: 'relative',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          justifyContent: 'center',      // Centra verticalmente il contenuto
-          padding: '40px 20px',          // Spazio interno
-          marginBottom: '0px',           // NESSUN MARGINE SOTTO (Tocca "Antipasti")
-          boxShadow: '0 4px 20px rgba(0,0,0,0.3)' // Ombra per staccare dal menu
+          justifyContent: 'flex-end', 
+          padding: '30px 20px',
+          marginBottom: '0',
+          boxShadow: '0 4px 15px rgba(0,0,0,0.4)',
+          overflow: 'hidden' // <--- SICUREZZA EXTRA: Taglia tutto ciò che esce dai bordi
       }}>
           
-          {/* Overlay scuro: Serve per leggere il testo/logo se la foto è chiara */}
+          {/* Overlay Scuro */}
           <div style={{
               position:'absolute', inset:0, 
-              background:'linear-gradient(to bottom, rgba(0,0,0,0.3), rgba(0,0,0,0.7))',
+              background:'linear-gradient(to top, rgba(0,0,0,0.8), rgba(0,0,0,0.2))', 
               zIndex: 1
           }}></div>
 
-          {/* CONTENUTO (Sopra l'overlay) */}
-          <div style={{position:'relative', zIndex: 2, display:'flex', flexDirection:'column', alignItems:'center', gap:'15px'}}>
+          {/* CONTENUTO */}
+          <div style={{position:'relative', zIndex: 2, display:'flex', flexDirection:'column', alignItems:'center', gap:'15px', width:'100%'}}>
               
-              {/* 1. LOGO (Se c'è) */}
+              {/* 1. LOGO */}
               {style.logo ? (
                   <div style={{
-                      width: '110px', height: '110px',
-                      background: '#fff', // Bordo bianco per far staccare il logo dallo sfondo
-                      padding: '4px', borderRadius: '50%',
-                      boxShadow: '0 5px 15px rgba(0,0,0,0.4)',
+                      maxWidth: '180px',
+                      maxHeight: '100px',
+                      background: 'white', 
+                      padding: '8px', 
+                      borderRadius: '15px',
+                      boxShadow: '0 5px 20px rgba(0,0,0,0.5)',
                       display: 'flex', alignItems:'center', justifyContent:'center'
                   }}>
                       <img src={style.logo} alt="Logo" style={{
                           width:'100%', height:'100%', 
-                          objectFit:'contain', // Adatta il logo nel cerchio
-                          borderRadius:'50%'
+                          objectFit:'contain',
+                          display:'block'
                       }} />
                   </div>
               ) : (
-                  // Se NON c'è il logo, mostriamo un'icona o nulla
-                  <div style={{fontSize:'50px'}}>🍽️</div>
+                  <div style={{fontSize:'40px', background:'white', padding:10, borderRadius:'50%'}}>🍽️</div>
               )}
 
-              {/* 2. TITOLO (Visibile SOLO se NON c'è il logo) */}
+              {/* 2. TITOLO (Solo se no logo) */}
               {!style.logo && (
                   <h1 style={{
                       margin: 0, color: '#fff', 
-                      fontSize:'28px', fontWeight:'800', 
+                      fontSize:'26px', fontWeight:'800', 
                       textShadow: '0 2px 4px rgba(0,0,0,0.8)',
-                      textAlign: 'center'
+                      textAlign: 'center', lineHeight: '1.2'
                   }}>
                       {ristorante}
                   </h1>
@@ -354,11 +355,10 @@ const cambiaUscita = (tempId, delta) => {
               {/* 3. TAVOLO */}
               <div style={{
                   background: tavoloBg, color: tavoloText,
-                  padding: '6px 16px', borderRadius: '30px',
-                  fontSize: '14px', fontWeight: 'bold',
+                  padding: '6px 18px', borderRadius: '50px',
+                  fontSize: '14px', fontWeight: 'bold', letterSpacing: '0.5px',
                   boxShadow: '0 3px 10px rgba(0,0,0,0.3)',
-                  display: 'flex', alignItems:'center', gap:'6px',
-                  border: '2px solid rgba(255,255,255,0.2)' // Bordino leggero
+                  border: '1px solid rgba(255,255,255,0.3)'
               }}>
                   📍 Tavolo {numeroTavolo}
               </div>
