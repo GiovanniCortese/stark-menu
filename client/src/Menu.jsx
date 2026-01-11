@@ -290,18 +290,26 @@ const cambiaUscita = (tempId, delta) => {
   return (
     <div style={{minHeight:'100vh', background: bg, color: text, fontFamily: font, paddingBottom:80}}>
       
-{/* --- HERO HEADER (Logo Cerchio + Cover Intera) --- */}
+{/* --- HERO HEADER (REGOLE COVER PURE COME ADMIN) --- */}
       <div style={{
           width: '100%',
-          boxSizing: 'border-box', // Blocca lo sfasamento laterale
-          minHeight: '260px',
+          boxSizing: 'border-box',
+          minHeight: '260px', 
           
-          // GESTIONE COVER:
-          background: style.cover ? `url(${style.cover})` : '#222', 
-          backgroundSize: 'contain',    // <--- MOSTRA TUTTA LA FOTO (non la taglia)
-          backgroundRepeat: 'no-repeat', // Non ripeterla a mosaico
-          backgroundPosition: 'center',  // Mettila al centro
-          backgroundColor: style.bg || '#222', // Colore di riempimento se la foto non copre tutto
+          // --- QUI È LA CHIAVE ---
+          // 1. Usa l'immagine come sfondo
+          backgroundImage: style.cover ? `url(${style.cover})` : 'none',
+          backgroundColor: style.bg || '#333', // Colore se manca la foto
+          
+          // 2. "cover": Scala l'immagine finché non copre TUTTO lo spazio. 
+          // Se l'immagine è più larga del telefono, taglia i lati.
+          backgroundSize: 'cover',     
+          
+          // 3. "center": FONDAMENTALE. Dice "Prendi il centro della foto", non l'angolo in alto a sinistra.
+          backgroundPosition: 'center',  
+          
+          backgroundRepeat: 'no-repeat',
+          // ------------------------
           
           position: 'relative',
           display: 'flex',
@@ -314,7 +322,7 @@ const cambiaUscita = (tempId, delta) => {
           overflow: 'hidden'
       }}>
           
-          {/* Overlay Scuro (leggero, per far leggere le scritte) */}
+          {/* Overlay Scuro */}
           <div style={{
               position:'absolute', inset:0, 
               background:'linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0.1))', 
@@ -324,28 +332,27 @@ const cambiaUscita = (tempId, delta) => {
           {/* CONTENUTO */}
           <div style={{position:'relative', zIndex: 2, display:'flex', flexDirection:'column', alignItems:'center', gap:'15px', width:'100%'}}>
               
-              {/* 1. LOGO A CERCHIO (Tornato come prima) */}
+              {/* LOGO */}
               {style.logo ? (
                   <div style={{
-                      width: '110px',        // Larghezza fissa
-                      height: '110px',       // Altezza fissa = Cerchio perfetto
+                      width: '110px', height: '110px',       
                       background: 'white', 
                       padding: '5px', 
-                      borderRadius: '50%',   // <--- CERCHIO
+                      borderRadius: '50%',   
                       boxShadow: '0 5px 20px rgba(0,0,0,0.5)',
                       display: 'flex', alignItems:'center', justifyContent:'center',
-                      overflow: 'hidden'     // Assicura che nulla esca dal cerchio
+                      overflow: 'hidden'
                   }}>
                       <img src={style.logo} alt="Logo" style={{
                           width:'100%', height:'100%', 
-                          objectFit:'contain', // <--- "CONTIENE" LA FOTO (si vede tutto il logo nel cerchio)
+                          objectFit:'contain', 
                       }} />
                   </div>
               ) : (
                   <div style={{fontSize:'40px', background:'white', padding:10, borderRadius:'50%'}}>🍽️</div>
               )}
 
-              {/* 2. TITOLO (Se manca il logo) */}
+              {/* TITOLO */}
               {!style.logo && (
                   <h1 style={{
                       margin: 0, color: '#fff', 
@@ -357,7 +364,7 @@ const cambiaUscita = (tempId, delta) => {
                   </h1>
               )}
 
-              {/* 3. TAVOLO */}
+              {/* TAVOLO */}
               <div style={{
                   background: tavoloBg, color: tavoloText,
                   padding: '6px 18px', borderRadius: '50px',
