@@ -256,12 +256,24 @@ const cambiaUscita = (tempId, delta) => {
       }
   };
 
-  // --- STYLE HELPERS ---
+  // --- STYLE HELPERS (Menu.jsx riga ~225) ---
   const bg = style.bg || '#222';
   const text = style.text || '#fff';
   const titleColor = style.title || '#fff';
   const priceColor = style.price || '#27ae60';
   const font = style.font || 'sans-serif';
+
+  // NUOVE VARIABILI COLLEGATE AL SERVER
+  const cardBg = style.card_bg || 'white';
+  const cardBorder = style.card_border || '#eee';
+  
+  const btnBg = style.btn_bg || '#27ae60';         // Colore bottone +
+  const btnText = style.btn_text || 'white';       // Colore testo bottone +
+  
+  const tavoloBg = style.tavolo_bg || priceColor;  // Sfondo etichetta tavolo
+  const tavoloText = style.tavolo_text || 'white'; 
+  
+  // Nota: Carrello e Checkout li gestiamo direttamente negli stili inline sotto
 
   const categorieUniche = [...new Set(menu.map(p => p.categoria_nome || p.categoria))];
   const piattiFiltrati = menu.filter(p => (p.categoria_nome || p.categoria) === activeCategory);
@@ -303,7 +315,7 @@ const cambiaUscita = (tempId, delta) => {
               
               <div style={{padding:'10px', textAlign:'center', borderBottom:`1px solid ${priceColor}`}}>
                   <span style={{color: text, fontSize:'1.1rem'}}>
-                      Tavolo: <strong style={{color:'white', background: priceColor, padding:'2px 8px', borderRadius:'5px'}}>{numeroTavolo}</strong>
+                      Tavolo:<strong style={{color: tavoloText, background: tavoloBg, padding:'2px 8px', borderRadius:'5px'}}>{numeroTavolo}</strong>
                   </span>
               </div>
           </div>
@@ -357,14 +369,14 @@ const cambiaUscita = (tempId, delta) => {
                                                     style={{ 
                                                         display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', 
                                                         cursor: prodotto.immagine_url ? 'pointer' : 'default', 
-                                                        backgroundColor: 'white', marginBottom: '1px', borderRadius: '0',
-                                                        borderBottom: '1px solid #eee'
+                                                        backgroundColor: cardBg,
+                                                        borderBottom: `1px solid ${cardBorder}`
                                                     }}
                                                 >
                                                     {prodotto.immagine_url && <img src={prodotto.immagine_url} style={{width:'70px', height:'70px', objectFit:'cover', borderRadius:'5px', flexShrink: 0}} />}
                                                     
                                                     <div className="info" style={{flex: 1}}>
-                                                        <h3 style={{margin:'0 0 4px 0', fontSize:'16px', color: '#222'}}>{prodotto.nome}</h3>
+                                                        <h3 style={{margin:'0 0 4px 0', fontSize:'16px', color: style.text || '#222'}}>{prodotto.nome}</h3>
                                                         {prodotto.descrizione && (<p style={{fontSize:'12px', color:'#666', margin:'0 0 4px 0', lineHeight:'1.2'}}>{prodotto.descrizione}</p>)}
                                                         {ingredientiStr && (
                                                             <p style={{fontSize:'11px', color:'#555', fontStyle:'italic', margin:'0 0 5px 0'}}>
@@ -390,7 +402,7 @@ const cambiaUscita = (tempId, delta) => {
                                                         <button 
                                                             onClick={(e) => { e.stopPropagation(); aggiungiAlCarrello(prodotto); }} 
                                                             style={{ 
-                                                                background:'#f0f0f0', color:'#333', borderRadius:'50%', width:'35px', height:'35px', 
+                                                                background: btnBg, color: btnText, borderRadius:'50%', width:'35px', height:'35px', 
                                                                 border:'none', fontSize:'22px', display:'flex', alignItems:'center', justifyContent:'center', cursor: 'pointer' 
                                                             }}
                                                         >
@@ -583,7 +595,7 @@ const addList = addListPiatto.length > 0 ? addListPiatto : addListCategoria;
 
       {/* BARRA CARRELLO */}
       {carrello.length > 0 && !showCheckout && (
-        <div className="carrello-bar">
+        <div className="carrello-bar" style={{background: style.carrello_bg || 'white', color: style.carrello_text || 'black'}}>
           <div className="totale">
               {/* QUI MOSTRA SOLO IL NUMERO DI PRODOTTI, NIENTE PREZZO */}
               <span>{carrello.length} prodotti</span>
@@ -598,7 +610,8 @@ const addList = addListPiatto.length > 0 ? addListPiatto : addListCategoria;
       {showCheckout && (
           <div style={{
               position:'fixed', top:0, left:0, right:0, bottom:0, 
-              background: style.bg || '#222', zIndex:2000, 
+              background: style.checkout_bg || style.bg || '#222', 
+              color: style.checkout_text || style.text || 'white',
               display:'flex', flexDirection:'column', padding:'20px', overflowY:'auto'
           }}>
               
