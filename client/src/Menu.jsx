@@ -265,12 +265,19 @@ const cambiaUscita = (tempId, delta) => {
       }
   };
 
-  // --- STYLE HELPERS ---
-  const bg = style.bg || '#222';
-  const text = style.text || '#fff';
-  const titleColor = style.title || '#fff';
-  const priceColor = style.price || '#27ae60';
-  const font = style.font || 'sans-serif';
+// --- STYLE HELPERS (CORRETTO PER LEGGERE ADMIN GRAFICA) ---
+  // Mappiamo le chiavi salvate da AdminGrafica (es. colore_sfondo) sulle variabili usate qui
+  const bg = style.colore_sfondo || style.bg || '#222';
+  const text = style.colore_testo || style.text || '#fff';
+  const titleColor = style.colore_titolo || style.title || '#fff';
+  const priceColor = style.colore_prezzo || style.price || '#27ae60'; // Verde default
+  const font = style.font_style || style.font || 'sans-serif';
+  
+  // Colori extra specifici definiti nell'Admin
+  const cardBg = style.colore_card || 'white';
+  const cardBorder = style.colore_border || '#eee';
+  const btnColor = style.colore_btn || '#27ae60';
+  const btnText = style.colore_btn_text || 'white';
 
   const categorieUniche = [...new Set(menu.map(p => p.categoria_nome || p.categoria))];
   const piattiFiltrati = menu.filter(p => (p.categoria_nome || p.categoria) === activeCategory);
@@ -287,64 +294,69 @@ const cambiaUscita = (tempId, delta) => {
   return (
     <div style={{minHeight:'100vh', background: bg, color: text, fontFamily: font, paddingBottom:80}}>
       
-{/* HEADER LOGO FULL WIDTH + LOGIN (FIXED VERSION) */}
-     {/* HEADER STILE "ADMIN PREVIEW" (FIXED) */}
+{/* HEADER DINAMICO COLLEGATO AD ADMIN GRAFICA */}
       <div style={{
           position: 'relative',
-          marginBottom: '50px', // Spazio extra sotto per il logo che esce
+          marginBottom: '50px',
+          width: '100%',
+          maxWidth: '600px',
+          margin: '0 auto 50px auto' // Centrato
       }}>
           {/* 1. COPERTINA (Cover) */}
           <div style={{
-              height: '180px', // Altezza fissa come una copertina social
-              background: style.cover_url ? `url(${getImgUrl(style.cover_url)})` : (style.bg || '#333'),
+              height: '180px',
+              // QUI USIAMO getImgUrl E LA VARIABILE style.cover_url
+              background: style.cover_url ? `url(${getImgUrl(style.cover_url)})` : bg,
               backgroundSize: 'cover',
               backgroundPosition: 'center',
               position: 'relative',
-              borderRadius: '0 0 20px 20px' // Arrotondamento solo sotto
+              borderRadius: '0 0 20px 20px',
+              boxShadow: '0 4px 10px rgba(0,0,0,0.2)'
           }}>
-               {/* Overlay scuro per leggere meglio il tasto login se c'è immagine */}
+               {/* Overlay per rendere leggibile il tasto login */}
                {style.cover_url && (
-                  <div style={{position:'absolute', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.3)', borderRadius: '0 0 20px 20px'}}></div>
+                  <div style={{position:'absolute', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.2)', borderRadius: '0 0 20px 20px'}}></div>
                )}
 
                {/* TASTO LOGIN (In alto a destra) */}
                <div style={{position:'absolute', top:15, right:15, zIndex:100}}>
                   {user ? (
-                      <div onClick={logout} style={{background: 'rgba(0,0,0,0.6)', padding:'6px 12px', borderRadius:'20px', cursor:'pointer', display:'flex', alignItems:'center', gap:5, border:'1px solid rgba(255,255,255,0.5)'}}>
+                      <div onClick={logout} style={{background: 'rgba(0,0,0,0.6)', padding:'6px 12px', borderRadius:'20px', cursor:'pointer', display:'flex', alignItems:'center', gap:5, border:'1px solid rgba(255,255,255,0.5)', backdropFilter:'blur(4px)'}}>
                           <span style={{fontSize:'12px', fontWeight:'bold', color:'white'}}>👤 {user.nome}</span>
                       </div>
                   ) : (
-                      <button onClick={() => setShowAuthModal(true)} style={{background: style.colore_btn || '#3498db', color: style.colore_btn_text || 'white', border:'none', padding:'8px 15px', borderRadius:'20px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.3)'}}>
+                      <button onClick={() => setShowAuthModal(true)} style={{background: btnColor, color: btnText, border:'none', padding:'8px 15px', borderRadius:'20px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.3)'}}>
                           Accedi
                       </button>
                   )}
               </div>
           </div>
 
-          {/* 2. LOGO E NOME (Sovrapposti) */}
+          {/* 2. LOGO E NOME (Sovrapposti stile Instagram) */}
           <div style={{
               position: 'absolute', 
-              bottom: '-40px', // Fa uscire il contenuto dalla cover
+              bottom: '-40px', 
               left: 0, right: 0, 
               textAlign: 'center',
-              zIndex: 10
+              zIndex: 10,
+              display: 'flex', flexDirection: 'column', alignItems: 'center'
           }}>
-              {/* LOGO (Cerchio che esce) */}
+              {/* LOGO */}
               {style.logo_url && (
                  <img src={getImgUrl(style.logo_url)} alt="Logo" style={{
                      width:'100px', height:'100px', 
                      borderRadius:'50%', 
                      objectFit:'cover', 
-                     border: `4px solid ${bg}`, // Bordo dello stesso colore dello sfondo pagina
+                     border: `4px solid ${bg}`, // Bordo color sfondo pagina per stacco netto
                      boxShadow:'0 4px 10px rgba(0,0,0,0.3)',
-                     background: '#fff' // Sfondo bianco se l'immagine è trasparente
+                     background: '#fff'
                  }} />
               )}
               
-              {/* NOME RISTORANTE (Se non c'è logo lo mettiamo grande, altrimenti sotto) */}
+              {/* NOME RISTORANTE (Solo se manca il logo, oppure lo mettiamo sotto il logo) */}
               {!style.logo_url && (
                  <h1 style={{
-                     margin:0, color: '#fff', 
+                     margin:0, color: titleColor, 
                      textShadow: '0 2px 4px rgba(0,0,0,0.8)', 
                      fontSize:'2rem', 
                      position:'relative', top:'-20px'
@@ -355,14 +367,15 @@ const cambiaUscita = (tempId, delta) => {
 
       {/* 3. INFO TAVOLO E TITOLO (Sotto l'header) */}
       <div style={{textAlign:'center', marginTop: style.logo_url ? '0px' : '20px', padding:'0 20px'}}>
-          {style.logo_url && <h2 style={{margin:'5px 0', color: titleColor}}>{ristorante}</h2>}
+          {style.logo_url && <h2 style={{margin:'5px 0 10px 0', color: titleColor, fontSize:'1.5rem'}}>{ristorante}</h2>}
           
           <span style={{
-              background: style.colore_tavolo_bg || '#27ae60', 
+              background: style.colore_tavolo_bg || priceColor, 
               color: style.colore_tavolo_text || 'white', 
-              padding:'4px 12px', borderRadius:'8px',
+              padding:'6px 16px', borderRadius:'20px',
               fontSize:'0.9rem', fontWeight:'bold',
-              boxShadow:'0 2px 5px rgba(0,0,0,0.2)'
+              boxShadow:'0 2px 5px rgba(0,0,0,0.2)',
+              letterSpacing: '0.5px'
           }}>
               Tavolo: {numeroTavolo}
           </span>
