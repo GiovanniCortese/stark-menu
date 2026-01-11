@@ -59,15 +59,6 @@ const puoOrdinareSempre = isStaffQui;
     if(savedUser) setUser(JSON.parse(savedUser));
   }, []);
 
-  // --- HELPER IMMAGINI (Aggiungi questo dentro function Menu() prima del return) ---
-  const getImgUrl = (url) => {
-      if (!url) return null;
-      // Se l'url inizia già con http o data:image (base64), va bene così
-      if (url.startsWith('http') || url.startsWith('data:')) return url;
-      // Altrimenti aggiungi l'indirizzo del backend
-      return `${API_URL}${url}`;
-  };
-
   // FUNZIONE LOGIN / REGISTRAZIONE
   const handleAuth = async (e) => {
       e.preventDefault();
@@ -265,19 +256,12 @@ const cambiaUscita = (tempId, delta) => {
       }
   };
 
-// --- STYLE HELPERS (CORRETTO PER LEGGERE ADMIN GRAFICA) ---
-  // Mappiamo le chiavi salvate da AdminGrafica (es. colore_sfondo) sulle variabili usate qui
-  const bg = style.colore_sfondo || style.bg || '#222';
-  const text = style.colore_testo || style.text || '#fff';
-  const titleColor = style.colore_titolo || style.title || '#fff';
-  const priceColor = style.colore_prezzo || style.price || '#27ae60'; // Verde default
-  const font = style.font_style || style.font || 'sans-serif';
-  
-  // Colori extra specifici definiti nell'Admin
-  const cardBg = style.colore_card || 'white';
-  const cardBorder = style.colore_border || '#eee';
-  const btnColor = style.colore_btn || '#27ae60';
-  const btnText = style.colore_btn_text || 'white';
+  // --- STYLE HELPERS ---
+  const bg = style.bg || '#222';
+  const text = style.text || '#fff';
+  const titleColor = style.title || '#fff';
+  const priceColor = style.price || '#27ae60';
+  const font = style.font || 'sans-serif';
 
   const categorieUniche = [...new Set(menu.map(p => p.categoria_nome || p.categoria))];
   const piattiFiltrati = menu.filter(p => (p.categoria_nome || p.categoria) === activeCategory);
@@ -294,92 +278,37 @@ const cambiaUscita = (tempId, delta) => {
   return (
     <div style={{minHeight:'100vh', background: bg, color: text, fontFamily: font, paddingBottom:80}}>
       
-{/* HEADER DINAMICO COLLEGATO AD ADMIN GRAFICA */}
-      <div style={{
-          position: 'relative',
-          marginBottom: '50px',
-          width: '100%',
-          maxWidth: '600px',
-          margin: '0 auto 50px auto' // Centrato
-      }}>
-          {/* 1. COPERTINA (Cover) */}
-          <div style={{
-              height: '180px',
-              // QUI USIAMO getImgUrl E LA VARIABILE style.cover_url
-              background: style.cover_url ? `url(${getImgUrl(style.cover_url)})` : bg,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-              position: 'relative',
-              borderRadius: '0 0 20px 20px',
-              boxShadow: '0 4px 10px rgba(0,0,0,0.2)'
-          }}>
-               {/* Overlay per rendere leggibile il tasto login */}
-               {style.cover_url && (
-                  <div style={{position:'absolute', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.2)', borderRadius: '0 0 20px 20px'}}></div>
-               )}
-
-               {/* TASTO LOGIN (In alto a destra) */}
-               <div style={{position:'absolute', top:15, right:15, zIndex:100}}>
-                  {user ? (
-                      <div onClick={logout} style={{background: 'rgba(0,0,0,0.6)', padding:'6px 12px', borderRadius:'20px', cursor:'pointer', display:'flex', alignItems:'center', gap:5, border:'1px solid rgba(255,255,255,0.5)', backdropFilter:'blur(4px)'}}>
-                          <span style={{fontSize:'12px', fontWeight:'bold', color:'white'}}>👤 {user.nome}</span>
-                      </div>
-                  ) : (
-                      <button onClick={() => setShowAuthModal(true)} style={{background: btnColor, color: btnText, border:'none', padding:'8px 15px', borderRadius:'20px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.3)'}}>
-                          Accedi
-                      </button>
-                  )}
-              </div>
+{/* HEADER LOGO FULL WIDTH + LOGIN */}
+      <div style={{width:'100%', background: bg, marginBottom: 10, position:'relative'}}>
+          
+          {/* TASTO LOGIN/PROFILO (IN ALTO A DESTRA) */}
+          <div style={{position:'absolute', top:10, right:10, zIndex:100}}>
+              {user ? (
+                  <div onClick={logout} style={{background: priceColor, padding:'5px 10px', borderRadius:'20px', cursor:'pointer', display:'flex', alignItems:'center', gap:5, boxShadow:'0 2px 5px rgba(0,0,0,0.3)'}}>
+                      <span style={{fontSize:'12px', fontWeight:'bold', color:'white'}}>👤 {user.nome}</span>
+                  </div>
+              ) : (
+                  <button onClick={() => setShowAuthModal(true)} style={{background:'#3498db', color:'white', border:'none', padding:'8px 15px', borderRadius:'20px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.3)'}}>
+                      Accedi / Registrati
+                  </button>
+              )}
           </div>
 
-          {/* 2. LOGO E NOME (Sovrapposti stile Instagram) */}
-          <div style={{
-              position: 'absolute', 
-              bottom: '-40px', 
-              left: 0, right: 0, 
-              textAlign: 'center',
-              zIndex: 10,
-              display: 'flex', flexDirection: 'column', alignItems: 'center'
-          }}>
-              {/* LOGO */}
-              {style.logo_url && (
-                 <img src={getImgUrl(style.logo_url)} alt="Logo" style={{
-                     width:'100px', height:'100px', 
-                     borderRadius:'50%', 
-                     objectFit:'cover', 
-                     border: `4px solid ${bg}`, // Bordo color sfondo pagina per stacco netto
-                     boxShadow:'0 4px 10px rgba(0,0,0,0.3)',
-                     background: '#fff'
-                 }} />
+          <div style={{maxWidth: '600px', margin: '0 auto', width: '100%'}}>
+              {style.logo ? (
+                 <img src={style.logo} alt="Logo" style={{width:'100%', display:'block', objectFit:'cover'}} />
+              ) : (
+                 <div style={{padding:20, textAlign:'center'}}><h1 style={{margin:0, color: titleColor}}>{ristorante}</h1></div>
               )}
               
-              {/* NOME RISTORANTE (Solo se manca il logo, oppure lo mettiamo sotto il logo) */}
-              {!style.logo_url && (
-                 <h1 style={{
-                     margin:0, color: titleColor, 
-                     textShadow: '0 2px 4px rgba(0,0,0,0.8)', 
-                     fontSize:'2rem', 
-                     position:'relative', top:'-20px'
-                 }}>{ristorante}</h1>
-              )}
+              <div style={{padding:'10px', textAlign:'center', borderBottom:`1px solid ${priceColor}`}}>
+                  <span style={{color: text, fontSize:'1.1rem'}}>
+                      Tavolo: <strong style={{color:'white', background: priceColor, padding:'2px 8px', borderRadius:'5px'}}>{numeroTavolo}</strong>
+                  </span>
+              </div>
           </div>
       </div>
-
-      {/* 3. INFO TAVOLO E TITOLO (Sotto l'header) */}
-      <div style={{textAlign:'center', marginTop: style.logo_url ? '0px' : '20px', padding:'0 20px'}}>
-          {style.logo_url && <h2 style={{margin:'5px 0 10px 0', color: titleColor, fontSize:'1.5rem'}}>{ristorante}</h2>}
-          
-          <span style={{
-              background: style.colore_tavolo_bg || priceColor, 
-              color: style.colore_tavolo_text || 'white', 
-              padding:'6px 16px', borderRadius:'20px',
-              fontSize:'0.9rem', fontWeight:'bold',
-              boxShadow:'0 2px 5px rgba(0,0,0,0.2)',
-              letterSpacing: '0.5px'
-          }}>
-              Tavolo: {numeroTavolo}
-          </span>
-      </div>
+      {/* --- FINE DEL BLOCCO INCOLLATO --- */}
 
       {/* LISTA MENU A FISARMONICA */}
       <div style={{paddingBottom: '80px', marginTop: '10px', width: '100%', maxWidth: '600px', margin: '0 auto'}}> 
@@ -422,88 +351,53 @@ const cambiaUscita = (tempId, delta) => {
                                             const ingredientiStr = (variantiObj.base || []).join(', ');
                                             const hasVarianti = (variantiObj.base && variantiObj.base.length > 0) || (activeVarianti.length > 0);
                                                 return (
-<div key={prodotto.id} className="card"
-    onClick={() => prodotto.immagine_url ? apriModale(prodotto) : null}
-    style={{
-        background: style?.colore_card || 'white', 
-        border: `1px solid ${style?.colore_border || '#eee'}`,
-        borderRadius: '12px',
-        padding: '15px',
-        marginBottom: '15px',
-        boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
-        display: 'flex', 
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        cursor: prodotto.immagine_url ? 'pointer' : 'default'
-    }}>
-    
-    {/* Immagine se c'è */}
-    {prodotto.immagine_url && (
-        <img src={prodotto.immagine_url} style={{width:'70px', height:'70px', objectFit:'cover', borderRadius:'8px', marginRight:'15px'}} alt={prodotto.nome} />
-    )}
-
-    <div style={{flex:1}}>
-        <div style={{
-            fontSize: '1.1rem', fontWeight: 'bold', 
-            color: style?.colore_titolo || '#333', 
-            fontFamily: style?.font_style
-        }}>
-            {prodotto.nome}
-        </div>
-        <div style={{
-            fontSize: '0.9rem', color: style?.colore_testo || '#666', 
-            marginTop: '4px', fontFamily: style?.font_style, lineHeight: '1.2'
-        }}>
-            {prodotto.descrizione}
-        </div>
-        
-        {/* Ingredienti (se presenti) */}
-        {ingredientiStr && (
-            <p style={{fontSize:'11px', color: style?.colore_testo || '#555', fontStyle:'italic', margin:'4px 0 0 0', opacity:0.8}}>
-                <span style={{fontWeight:'bold'}}>Ingr:</span> {ingredientiStr}
-            </p>
-        )}
-
-        <div style={{
-            marginTop: '8px', fontWeight: 'bold', fontSize: '1.1rem',
-            color: style?.colore_prezzo || '#e67e22'
-        }}>
-            € {Number(prodotto.prezzo).toFixed(2)}
-        </div>
-    </div>
-    
-    {/* TASTI AZIONE */}
-    <div style={{display:'flex', gap:'10px', alignItems:'center'}}>
-        {hasVarianti && (
-             <button 
-                onClick={(e) => { e.stopPropagation(); apriModale(prodotto); }}
-                style={{
-                    background:'transparent', 
-                    border:`1px solid ${style?.colore_border || '#ccc'}`, 
-                    color: style?.colore_testo || '#555',
-                    borderRadius:'5px', padding:'5px 8px', fontSize:'12px', cursor:'pointer', fontWeight:'bold'
-                }}
-            >
-                Modifica
-            </button>
-        )}
-    
-        <button 
-            onClick={(e) => { e.stopPropagation(); aggiungiAlCarrello(prodotto); }}
-            style={{
-                background: style?.colore_btn || '#27ae60',
-                color: style?.colore_btn_text || 'white',
-                border: 'none',
-                borderRadius: '50%', width: '40px', height: '40px',
-                fontSize: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
-                cursor: 'pointer'
-            }}
-        >
-            +
-        </button>
-    </div>
-</div>
+                                                <div key={prodotto.id} className="card"
+                                                    // MODALE SEMPRE APRIBILE
+                                                    onClick={() => prodotto.immagine_url ? apriModale(prodotto) : null}
+                                                    style={{ 
+                                                        display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', 
+                                                        cursor: prodotto.immagine_url ? 'pointer' : 'default', 
+                                                        backgroundColor: 'white', marginBottom: '1px', borderRadius: '0',
+                                                        borderBottom: '1px solid #eee'
+                                                    }}
+                                                >
+                                                    {prodotto.immagine_url && <img src={prodotto.immagine_url} style={{width:'70px', height:'70px', objectFit:'cover', borderRadius:'5px', flexShrink: 0}} />}
+                                                    
+                                                    <div className="info" style={{flex: 1}}>
+                                                        <h3 style={{margin:'0 0 4px 0', fontSize:'16px', color: '#222'}}>{prodotto.nome}</h3>
+                                                        {prodotto.descrizione && (<p style={{fontSize:'12px', color:'#666', margin:'0 0 4px 0', lineHeight:'1.2'}}>{prodotto.descrizione}</p>)}
+                                                        {ingredientiStr && (
+                                                            <p style={{fontSize:'11px', color:'#555', fontStyle:'italic', margin:'0 0 5px 0'}}>
+                                                                <span style={{fontWeight:'bold'}}>Ingredienti:</span> {ingredientiStr}
+                                                            </p>
+                                                        )}
+                                                        <div style={{fontSize:'14px', fontWeight:'bold', color: priceColor}}>{Number(prodotto.prezzo).toFixed(2)} €</div>
+                                                    </div>
+                                                    
+                                                    {/* PULSANTI SEMPRE VISIBILI (Anche in Wish List) */}
+                                                    <div style={{display:'flex', gap:'5px', alignItems:'center'}}>
+                                                        {hasVarianti && (
+                                                            <button 
+                                                                onClick={(e) => { e.stopPropagation(); apriModale(prodotto); }}
+                                                                style={{
+                                                                    background:'transparent', border:'1px solid #ccc', color:'#555',
+                                                                    borderRadius:'5px', padding:'5px 8px', fontSize:'12px', cursor:'pointer', fontWeight:'bold'
+                                                                }}
+                                                            >
+                                                                Modifica ✏️
+                                                            </button>
+                                                        )}
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); aggiungiAlCarrello(prodotto); }} 
+                                                            style={{ 
+                                                                background:'#f0f0f0', color:'#333', borderRadius:'50%', width:'35px', height:'35px', 
+                                                                border:'none', fontSize:'22px', display:'flex', alignItems:'center', justifyContent:'center', cursor: 'pointer' 
+                                                            }}
+                                                        >
+                                                            +
+                                                        </button>
+                                                    </div>
+                                                </div>
                                             )})}
                                         </div>
                                     )}
@@ -689,14 +583,11 @@ const addList = addListPiatto.length > 0 ? addListPiatto : addListCategoria;
 
       {/* BARRA CARRELLO */}
       {carrello.length > 0 && !showCheckout && (
-       <div className="carrello-bar" style={{
-    background: style?.colore_carrello_bg || '#222', // NUOVO
-    borderTop: `2px solid ${style?.colore_prezzo || '#ff9f43'}`,
-    color: style?.colore_carrello_text || 'white' // NUOVO
-}}>
-    <div className="totale" style={{color: style?.colore_carrello_text || 'white'}}>
-        <span>{carrello.length} prodotti</span>
-    </div>
+        <div className="carrello-bar">
+          <div className="totale">
+              {/* QUI MOSTRA SOLO IL NUMERO DI PRODOTTI, NIENTE PREZZO */}
+              <span>{carrello.length} prodotti</span>
+          </div>
           <button onClick={() => setShowCheckout(true)} className="btn-invia" style={{background: canOrder ? '#f1c40f' : '#3498db', color: canOrder ? 'black' : 'white'}}>
               {canOrder ? "VEDI ORDINE 📝" : "VEDI LA TUA LISTA 👀"}
           </button>
@@ -705,13 +596,11 @@ const addList = addListPiatto.length > 0 ? addListPiatto : addListCategoria;
 
       {/* CHECKOUT */}
       {showCheckout && (
-    <div style={{
-        position:'fixed', top:0, left:0, right:0, bottom:0, 
-        background: style?.colore_checkout_bg || style?.bg || '#222', // NUOVO
-        color: style?.colore_checkout_text || style?.text || 'white', // NUOVO
-        zIndex:2000, 
-        display:'flex', flexDirection:'column', padding:'20px', overflowY:'auto'
-    }}>
+          <div style={{
+              position:'fixed', top:0, left:0, right:0, bottom:0, 
+              background: style.bg || '#222', zIndex:2000, 
+              display:'flex', flexDirection:'column', padding:'20px', overflowY:'auto'
+          }}>
               
               <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px', borderBottom:`1px solid ${style?.text||'#ccc'}`, paddingBottom:'10px'}}>
                   <h2 style={{color: titleColor, margin:0}}>{canOrder ? "Riepilogo Ordine 📝" : "Lista per Cameriere 📝"}</h2>
