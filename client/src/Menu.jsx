@@ -290,80 +290,79 @@ const cambiaUscita = (tempId, delta) => {
   return (
     <div style={{minHeight:'100vh', background: bg, color: text, fontFamily: font, paddingBottom:80}}>
       
-{/* HEADER LOGO FULL WIDTH + LOGIN */}
-      <div style={{width:'100%', background: bg, marginBottom: 10, position:'relative'}}>
+{/* --- HERO HEADER (Tutto unito fino ad Antipasti) --- */}
+      <div style={{
+          width: '100%',
+          // Altezza minima per far vedere bene la foto
+          minHeight: '280px', 
+          // La Cover diventa lo sfondo di TUTTO il blocco
+          background: style.cover ? `url(${style.cover})` : '#222', 
+          backgroundSize: 'cover',       // Copre tutto lo spazio
+          backgroundPosition: 'center',  // Centra la foto
+          position: 'relative',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',      // Centra verticalmente il contenuto
+          padding: '40px 20px',          // Spazio interno
+          marginBottom: '0px',           // NESSUN MARGINE SOTTO (Tocca "Antipasti")
+          boxShadow: '0 4px 20px rgba(0,0,0,0.3)' // Ombra per staccare dal menu
+      }}>
           
-          {/* TASTO LOGIN/PROFILO (IN ALTO A DESTRA) */}
-          <div style={{position:'absolute', top:10, right:10, zIndex:100}}>
-              {user ? (
-                  <div onClick={logout} style={{background: priceColor, padding:'5px 10px', borderRadius:'20px', cursor:'pointer', display:'flex', alignItems:'center', gap:5, boxShadow:'0 2px 5px rgba(0,0,0,0.3)'}}>
-                      <span style={{fontSize:'12px', fontWeight:'bold', color:'white'}}>👤 {user.nome}</span>
-                  </div>
-              ) : (
-                  <button onClick={() => setShowAuthModal(true)} style={{background:'#3498db', color:'white', border:'none', padding:'8px 15px', borderRadius:'20px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.3)'}}>
-                      Accedi / Registrati
-                  </button>
-              )}
-          </div>
+          {/* Overlay scuro: Serve per leggere il testo/logo se la foto è chiara */}
+          <div style={{
+              position:'absolute', inset:0, 
+              background:'linear-gradient(to bottom, rgba(0,0,0,0.3), rgba(0,0,0,0.7))',
+              zIndex: 1
+          }}></div>
 
-{/* --- NUOVO HEADER (Stile Telefono - FIX IMMAGINI) --- */}
-          <div style={{position:'relative', marginBottom:'60px'}}>
+          {/* CONTENUTO (Sopra l'overlay) */}
+          <div style={{position:'relative', zIndex: 2, display:'flex', flexDirection:'column', alignItems:'center', gap:'15px'}}>
               
-              {/* 1. COVER (Sfondo) */}
-              {/* Nota: usa 'cover' per riempire. Se l'img originale è piccola, apparirà sfocata. */}
-              <div style={{
-                  height: '160px', 
-                  background: style.cover ? `url(${style.cover})` : '#333',
-                  backgroundSize: 'cover',    // Riempie il box (può tagliare i bordi)
-                  backgroundPosition: 'center center', // Centra l'immagine
-                  backgroundRepeat: 'no-repeat',
-                  borderRadius: '0 0 20px 20px',
-                  position: 'relative',
-                  overflow: 'hidden' // Assicura che nulla esca dai bordi arrotondati
-              }}>
-                  {/* Sfumatura scura sopra la cover per far risaltare il logo e il testo se presenti */}
-                  <div style={{position:'absolute', inset:0, background:'linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0.1))'}}></div>
-              </div>
-
-              {/* 2. LOGO (Rotondo e Sovrapposto) */}
-              <div style={{
-                  position: 'absolute', bottom: '-45px', left: '50%', transform: 'translateX(-50%)',
-                  width: '90px', height: '90px', // Leggermente più piccolo per eleganza
-                  background: bg, // Il bordo prende il colore dello sfondo pagina
-                  padding: '4px', borderRadius: '50%', // Bordo leggermente più sottile
-                  boxShadow: '0 5px 15px rgba(0,0,0,0.2)',
-                  display: 'flex', alignItems:'center', justifyContent:'center', // Centra l'img nel cerchio
-                  overflow: 'hidden' // Maschera tutto ciò che esce dal cerchio
-              }}>
-                  {style.logo ? (
-                      // QUI LA MODIFICA CHIAVE: objectFit: 'contain'
+              {/* 1. LOGO (Se c'è) */}
+              {style.logo ? (
+                  <div style={{
+                      width: '110px', height: '110px',
+                      background: '#fff', // Bordo bianco per far staccare il logo dallo sfondo
+                      padding: '4px', borderRadius: '50%',
+                      boxShadow: '0 5px 15px rgba(0,0,0,0.4)',
+                      display: 'flex', alignItems:'center', justifyContent:'center'
+                  }}>
                       <img src={style.logo} alt="Logo" style={{
                           width:'100%', height:'100%', 
-                          objectFit:'contain', // ADATTA l'immagine intera dentro il cerchio senza tagliarla
+                          objectFit:'contain', // Adatta il logo nel cerchio
                           borderRadius:'50%'
                       }} />
-                  ) : (
-                      // Placeholder se non c'è logo
-                      <div style={{width:'100%', height:'100%', borderRadius:'50%', background:'#eee', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'35px'}}>🍽️</div>
-                  )}
-              </div>
-          </div>
+                  </div>
+              ) : (
+                  // Se NON c'è il logo, mostriamo un'icona o nulla
+                  <div style={{fontSize:'50px'}}>🍽️</div>
+              )}
 
-          {/* 3. NOME RISTORANTE E TAVOLO */}
-          <div style={{textAlign: 'center', padding: '10px 20px 20px 20px'}}>
-              <h1 style={{margin: '0 0 10px 0', color: titleColor, fontSize:'24px', fontWeight:'800', letterSpacing:'-0.5px'}}>{ristorante}</h1>
-              
-              <div style={{display:'inline-block'}}>
-                  <span style={{
-                      background: tavoloBg, color: tavoloText, 
-                      padding: '5px 12px', borderRadius: '20px', 
-                      fontWeight: '600', fontSize: '13px',
-                      boxShadow: '0 2px 5px rgba(0,0,0,0.15)',
-                      display: 'flex', alignItems: 'center', gap:'5px'
+              {/* 2. TITOLO (Visibile SOLO se NON c'è il logo) */}
+              {!style.logo && (
+                  <h1 style={{
+                      margin: 0, color: '#fff', 
+                      fontSize:'28px', fontWeight:'800', 
+                      textShadow: '0 2px 4px rgba(0,0,0,0.8)',
+                      textAlign: 'center'
                   }}>
-                     📍 Tavolo {numeroTavolo}
-                  </span>
+                      {ristorante}
+                  </h1>
+              )}
+
+              {/* 3. TAVOLO */}
+              <div style={{
+                  background: tavoloBg, color: tavoloText,
+                  padding: '6px 16px', borderRadius: '30px',
+                  fontSize: '14px', fontWeight: 'bold',
+                  boxShadow: '0 3px 10px rgba(0,0,0,0.3)',
+                  display: 'flex', alignItems:'center', gap:'6px',
+                  border: '2px solid rgba(255,255,255,0.2)' // Bordino leggero
+              }}>
+                  📍 Tavolo {numeroTavolo}
               </div>
+
           </div>
       </div>
       {/* --- FINE DEL BLOCCO INCOLLATO --- */}
