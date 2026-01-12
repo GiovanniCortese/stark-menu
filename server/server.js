@@ -391,4 +391,45 @@ app.post('/api/super/ristoranti', async (req, res) => { try { await pool.query(`
 app.put('/api/super/ristoranti/:id', async (req, res) => { try { const { id } = req.params; if (req.body.account_attivo !== undefined) { await pool.query('UPDATE ristoranti SET account_attivo = $1 WHERE id = $2', [req.body.account_attivo, id]); return res.json({ success: true }); } if (req.body.cucina_super_active !== undefined) { await pool.query('UPDATE ristoranti SET cucina_super_active = $1 WHERE id = $2', [req.body.cucina_super_active, id]); return res.json({ success: true }); } let sql = "UPDATE ristoranti SET nome=$1, slug=$2, email=$3, telefono=$4"; let params = [req.body.nome, req.body.slug, req.body.email, req.body.telefono]; if (req.body.password) { sql += ", password=$5 WHERE id=$6"; params.push(req.body.password, id); } else { sql += " WHERE id=$5"; params.push(id); } await pool.query(sql, params); res.json({ success: true }); } catch (e) { res.status(500).json({error: "Err"}); } });
 app.delete('/api/super/ristoranti/:id', async (req, res) => { try { const id = req.params.id; await pool.query('DELETE FROM prodotti WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM categorie WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM ordini WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM ristoranti WHERE id = $1', [id]); res.json({ success: true }); } catch (e) { res.status(500).json({error: "Err"}); } });
 
+// ==========================================
+//          LOGIN SUPER ADMIN (2FA)
+// ==========================================
+app.post('/api/super/login', (req, res) => {
+    try {
+        const { email, password, code2fa } = req.body;
+
+        // 1. Recupera credenziali e segreto dal .env
+        const adminEmail = process.env.ADMIN_EMAIL;       // es: tony@stark.com
+        const adminPass = process.env.ADMIN_PASSWORD;     // es: jarvis123
+        const adminSecret = process.env.ADMIN_2FA_SECRET; // Il segreto di Google Auth
+
+        // Controllo configurazione server
+        if (!adminEmail || !adminPass || !adminSecret) {
+            console.error("❌ ERRORE: Variabili d'ambiente ADMIN mancanti nel .env");
+            return res.status(500).json({ success: false, error: "Configurazione Server Incompleta" });
+        }
+
+        // 2. Verifica Email e Password
+        if (email !== adminEmail || password !== adminPass) {
+            return res.json({ success: false, error: "Credenziali non valide" });
+        }
+
+        // 3. Verifica Codice 2FA (Google Authenticator)
+        // authenticator è già importato da 'otplib' all'inizio del tuo server.js
+        const isValidToken = authenticator.check(code2fa, adminSecret);
+
+        if (!isValidToken) {
+            return res.json({ success: false, error: "Codice 2FA Errato o Scaduto" });
+        }
+
+        // 4. Successo: Restituisce il token "magico" che il frontend si aspetta
+        // Vedi riga 46 di SuperAdmin.jsx: controlla se il token è "SUPER_GOD_TOKEN_2026"
+        res.json({ success: true, token: "SUPER_GOD_TOKEN_2026" });
+
+    } catch (e) {
+        console.error("Errore Super Login:", e);
+        res.status(500).json({ success: false, error: "Errore interno server" });
+    }
+});
+
 app.listen(port, () => console.log(`🚀 SERVER V10 FINAL (Porta ${port})`));
