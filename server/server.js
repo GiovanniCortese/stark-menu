@@ -330,53 +330,41 @@ app.get('/api/db-fix-grafica', async (req, res) => {
     } catch (e) { res.status(500).send("Errore DB: " + e.message); }
 });
 
-// 2. API STILE AGGIORNATA (Salva tutto)
+// AGGIORNA ROTTA STYLE
 app.put('/api/ristorante/style/:id', async (req, res) => {
     try {
         const { 
-            logo_url, cover_url, 
-            colore_sfondo, colore_titolo, colore_testo, colore_prezzo, 
+            logo_url, cover_url, colore_sfondo, colore_titolo, colore_testo, colore_prezzo, 
             colore_card, colore_btn, colore_btn_text, colore_border,
             colore_tavolo_bg, colore_tavolo_text,
             colore_carrello_bg, colore_carrello_text,
             colore_checkout_bg, colore_checkout_text,
-            font_style,
-            // NUOVI
-            info_footer, url_allergeni, colore_modal_bg, colore_modal_text
+            font_style, info_footer, url_allergeni, colore_modal_bg, colore_modal_text
         } = req.body;
 
-        const query = `
-            UPDATE ristoranti SET 
-            logo_url=$1, cover_url=$2, 
-            colore_sfondo=$3, colore_titolo=$4, colore_testo=$5, colore_prezzo=$6, 
+        await pool.query(
+            `UPDATE ristoranti SET 
+            logo_url=$1, cover_url=$2, colore_sfondo=$3, colore_titolo=$4, colore_testo=$5, colore_prezzo=$6, 
             colore_card=$7, colore_btn=$8, colore_btn_text=$9, colore_border=$10,
-            colore_tavolo_bg=$11, colore_tavolo_text=$12,
-            colore_carrello_bg=$13, colore_carrello_text=$14,
-            colore_checkout_bg=$15, colore_checkout_text=$16,
-            font_style=$17,
-            info_footer=$18, url_allergeni=$19,
-            colore_modal_bg=$20, colore_modal_text=$21
-            WHERE id=$22
-        `;
-        
-        const values = [
-            logo_url, cover_url, 
-            colore_sfondo, colore_titolo, colore_testo, colore_prezzo, 
-            colore_card, colore_btn, colore_btn_text, colore_border,
-            colore_tavolo_bg, colore_tavolo_text,
-            colore_carrello_bg, colore_carrello_text,
-            colore_checkout_bg, colore_checkout_text,
-            font_style,
-            info_footer, url_allergeni, colore_modal_bg, colore_modal_text,
-            req.params.id
-        ];
-
-        await pool.query(query, values);
+            colore_tavolo_bg=$11, colore_tavolo_text=$12, colore_carrello_bg=$13, colore_carrello_text=$14,
+            colore_checkout_bg=$15, colore_checkout_text=$16, font_style=$17,
+            info_footer=$18, url_allergeni=$19, colore_modal_bg=$20, colore_modal_text=$21
+            WHERE id=$22`,
+            [
+                logo_url, cover_url, colore_sfondo, colore_titolo, colore_testo, colore_prezzo, 
+                colore_card, colore_btn, colore_btn_text, colore_border,
+                colore_tavolo_bg, colore_tavolo_text, colore_carrello_bg, colore_carrello_text,
+                colore_checkout_bg, colore_checkout_text, font_style,
+                info_footer, url_allergeni, colore_modal_bg, colore_modal_text, req.params.id
+            ]
+        );
         res.json({ success: true });
-    } catch (err) { 
-        console.error(err);
-        res.status(500).json({ error: "Errore salvataggio stile" }); 
-    }
+    } catch (err) { res.status(500).json({ error: "Errore salvataggio" }); }
+});
+
+// AGGIORNA ROTTA PRODOTTI (Aggiungi 'allergeni' nel body e nella query)
+app.post('/api/prodotti', async (req, res) => {
+    // Aggiungi allergeni al destructuring e alla query INSERT
 });
 
 app.put('/api/ristorante/servizio/:id', async (req, res) => { try { const { id } = req.params; if (req.body.ordini_abilitati !== undefined) await pool.query('UPDATE ristoranti SET ordini_abilitati = $1 WHERE id = $2', [req.body.ordini_abilitati, id]); if (req.body.servizio_attivo !== undefined) await pool.query('UPDATE ristoranti SET servizio_attivo = $1 WHERE id = $2', [req.body.servizio_attivo, id]); res.json({ success: true }); } catch (e) { res.status(500).json({error:"Err"}); } });

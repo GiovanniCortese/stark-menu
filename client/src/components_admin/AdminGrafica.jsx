@@ -163,7 +163,9 @@ function AdminGrafica({ user, config, setConfig, API_URL }) {
                   </div>
               </div>
 
-              {/* 6. MODALE PRODOTTO (Barra +) */}
+              {/* ⬇️ INCOLLA QUI IL NUOVO CODICE ⬇️ */}
+
+              {/* SEZIONE MODALE PRODOTTO */}
               <div style={styles.card}>
                   <h4 style={styles.sectionTitle}>⚙️ Configuratore (Tasto +)</h4>
                   <div style={styles.grid}>
@@ -172,24 +174,21 @@ function AdminGrafica({ user, config, setConfig, API_URL }) {
                   </div>
               </div>
 
-              {/* 7. INFO EXTRA & FOOTER */}
+              {/* SEZIONE INFO EXTRA */}
               <div style={styles.card}>
                   <h4 style={styles.sectionTitle}>ℹ️ Info Legali & Allergeni</h4>
-                  
                   <div style={{marginBottom:15}}>
                       <label style={styles.label}>Testo a fine pagina (es. Coperto, Surgelati)</label>
                       <textarea 
                           value={config.info_footer || ''}
                           onChange={e => setConfig({...config, info_footer: e.target.value})}
-                          placeholder="Es: Coperto 2.00€ - Alcuni prodotti potrebbero essere congelati..."
                           style={{width:'100%', padding:10, borderRadius:5, border:'1px solid #ddd', minHeight:60}}
                       />
                   </div>
-
-                  <div style={styles.row}>
-                      <ImageUploader label="Scheda Allergeni (Foto/PDF)" type="url_allergeni" currentUrl={config.url_allergeni} icon="📋" />
-                  </div>
+                  <ImageUploader label="Scheda Allergeni (Foto/PDF)" type="url_allergeni" currentUrl={config.url_allergeni} icon="📋" />
               </div>
+
+              {/* ⬆️ FINE INCOLLA ⬆️ */}
               
 
               {/* 8. FONT */}

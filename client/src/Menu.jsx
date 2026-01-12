@@ -2,11 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 
-const LISTA_ALLERGENI = [
-    "Glutine 🌾", "Crostacei 🦐", "Uova 🥚", "Pesce 🐟", "Arachidi 🥜", 
-    "Soia 🫘", "Latte 🥛", "Frutta a guscio 🌰", "Sedano 🥬", "Senape 🌭", 
-    "Sesamo 🍔", "Solfiti 🍷", "Lupini 🌼", "Molluschi 🐙"
-];  // <--- MANCAVA PROPRIO QUESTO (];)
+const LISTA_ALLERGENI = ["Glutine 🌾", "Crostacei 🦐", "Uova 🥚", "Pesce 🐟", "Arachidi 🥜", "Soia 🫘", "Latte 🥛", "Frutta a guscio 🌰", "Sedano 🥬", "Senape 🌭", "Sesamo 🍔", "Solfiti 🍷", "Lupini 🌼", "Molluschi 🐙"];
 
 function Menu() {
   // --- STATI DATI ---
@@ -300,11 +296,12 @@ const cambiaUscita = (tempId, delta) => {
     <div style={{minHeight:'100vh', background: bg, color: text, fontFamily: font, paddingBottom:80}}>
       
       {/* ⬇️⬇️ INCOLLA QUI IL BLOCCO STYLE ⬇️⬇️ */}
-      <style>{`
-          :root { color-scheme: light; } 
-          body, html { background-color: ${style.bg || '#fff'} !important; color: ${style.text || '#000'} !important; }
-          input, textarea, select { background-color: #fff; color: #000; }
-      `}</style>
+        <style>{`
+    :root { color-scheme: light; } 
+    body, html { background-color: ${style.bg || '#fff'} !important; color: ${style.text || '#000'} !important; }
+    input, textarea, select { background-color: #fff; color: #000; }
+`}</style>
+
       {/* ⬆️⬆️ FINE INCOLLA ⬆️⬆️ */}
 
 {/* --- HEADER COMPLETO (Hero + Login + Fix Checkout) --- */}
@@ -524,27 +521,14 @@ const cambiaUscita = (tempId, delta) => {
 
 {/* FOOTER INFO & ALLERGENI */}
       <div style={{textAlign:'center', padding:'30px 20px', fontSize:'12px', color: style.text, opacity:0.7, marginBottom:'60px'}}>
-          
-          {/* Testo Footer (Coperto, etc) */}
-          {style.info_footer && (
-              <p style={{whiteSpace:'pre-line', marginBottom:'15px'}}>{style.info_footer}</p>
-          )}
-
-          {/* Tasto Vedi Lista Allergeni */}
+          {style.info_footer && <p style={{whiteSpace:'pre-line', marginBottom:'15px'}}>{style.info_footer}</p>}
           {style.url_allergeni && (
-              <a href={style.url_allergeni} target="_blank" rel="noopener noreferrer" 
-                 style={{
-                     display:'inline-block', padding:'8px 15px', 
-                     border:`1px solid ${style.text}`, borderRadius:'20px', 
-                     color: style.text, textDecoration:'none', fontWeight:'bold'
-                 }}>
-                 📋 VEDI LISTA ALLERGENI COMPLETA
+              <a href={style.url_allergeni} target="_blank" rel="noopener noreferrer" style={{ display:'inline-block', padding:'8px 15px', border:`1px solid ${style.text}`, borderRadius:'20px', color: style.text, textDecoration:'none', fontWeight:'bold' }}>
+                  📋 VEDI LISTA ALLERGENI COMPLETA
               </a>
           )}
-          
           <div style={{marginTop:15, fontSize:10}}>Powered by StarkMenu</div>
       </div>
-
       {/* ⬆️⬆️ FINE INCOLLA ⬆️⬆️ */}
 
 {/* --- MODALE LOGIN / REGISTRAZIONE --- */}
