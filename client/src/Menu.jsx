@@ -2,6 +2,12 @@
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 
+const LISTA_ALLERGENI = [
+    "Glutine 🌾", "Crostacei 🦐", "Uova 🥚", "Pesce 🐟", "Arachidi 🥜", 
+    "Soia 🫘", "Latte 🥛", "Frutta a guscio 🌰", "Sedano 🥬", "Senape 🌭", 
+    "Sesamo 🍔", "Solfiti 🍷", "Lupini 🌼", "Molluschi 🐙"
+];  // <--- MANCAVA PROPRIO QUESTO (];)
+
 function Menu() {
   // --- STATI DATI ---
   const [menu, setMenu] = useState([]);
@@ -272,6 +278,9 @@ const cambiaUscita = (tempId, delta) => {
   
   const tavoloBg = style.tavolo_bg || priceColor;  // Sfondo etichetta tavolo
   const tavoloText = style.tavolo_text || 'white'; 
+
+  const modalBg = style.colore_modal_bg || '#ffffff';
+  const modalText = style.colore_modal_text || '#000000';
   
   // Nota: Carrello e Checkout li gestiamo direttamente negli stili inline sotto
 
@@ -290,6 +299,14 @@ const cambiaUscita = (tempId, delta) => {
   return (
     <div style={{minHeight:'100vh', background: bg, color: text, fontFamily: font, paddingBottom:80}}>
       
+      {/* ⬇️⬇️ INCOLLA QUI IL BLOCCO STYLE ⬇️⬇️ */}
+      <style>{`
+          :root { color-scheme: light; } 
+          body, html { background-color: ${style.bg || '#fff'} !important; color: ${style.text || '#000'} !important; }
+          input, textarea, select { background-color: #fff; color: #000; }
+      `}</style>
+      {/* ⬆️⬆️ FINE INCOLLA ⬆️⬆️ */}
+
 {/* --- HEADER COMPLETO (Hero + Login + Fix Checkout) --- */}
       {/* Questa riga dice: MOSTRA SOLO SE IL CARRELLO È CHIUSO */}
       {!showCheckout && (
@@ -457,6 +474,15 @@ const cambiaUscita = (tempId, delta) => {
                                                                 <span style={{fontWeight:'bold'}}>Ingredienti:</span> {ingredientiStr}
                                                             </p>
                                                         )}
+                                                        
+                                                        {/* ⬇️⬇️ INCOLLA QUI IL CODICE ALLERGENI ⬇️⬇️ */}
+    {prodotto.allergeni && Array.isArray(prodotto.allergeni) && prodotto.allergeni.length > 0 && (
+        <div style={{fontSize:'10px', color: style.text, opacity:0.8, marginTop:'4px'}}>
+            ⚠️ {prodotto.allergeni.map(a => a.split(' ')[1]).join(' ')} 
+        </div>
+    )}
+    {/* ⬆️⬆️ FINE INCOLLA ⬆️⬆️ */}
+
                                                         <div style={{fontSize:'14px', fontWeight:'bold', color: priceColor}}>{Number(prodotto.prezzo).toFixed(2)} €</div>
                                                     </div>
                                                     
@@ -495,6 +521,31 @@ const cambiaUscita = (tempId, delta) => {
             </div>
         ))}
       </div>
+
+{/* FOOTER INFO & ALLERGENI */}
+      <div style={{textAlign:'center', padding:'30px 20px', fontSize:'12px', color: style.text, opacity:0.7, marginBottom:'60px'}}>
+          
+          {/* Testo Footer (Coperto, etc) */}
+          {style.info_footer && (
+              <p style={{whiteSpace:'pre-line', marginBottom:'15px'}}>{style.info_footer}</p>
+          )}
+
+          {/* Tasto Vedi Lista Allergeni */}
+          {style.url_allergeni && (
+              <a href={style.url_allergeni} target="_blank" rel="noopener noreferrer" 
+                 style={{
+                     display:'inline-block', padding:'8px 15px', 
+                     border:`1px solid ${style.text}`, borderRadius:'20px', 
+                     color: style.text, textDecoration:'none', fontWeight:'bold'
+                 }}>
+                 📋 VEDI LISTA ALLERGENI COMPLETA
+              </a>
+          )}
+          
+          <div style={{marginTop:15, fontSize:10}}>Powered by StarkMenu</div>
+      </div>
+
+      {/* ⬆️⬆️ FINE INCOLLA ⬆️⬆️ */}
 
 {/* --- MODALE LOGIN / REGISTRAZIONE --- */}
       {showAuthModal && (
@@ -559,7 +610,9 @@ const addList = addListPiatto.length > 0 ? addListPiatto : addListCategoria;
 
                 return (
                 <div style={{
-                    background: 'white', color: '#000', borderRadius: '10px', overflow: 'hidden',
+                    background: modalBg,   // <--- MODIFICATO (era 'white')
+                    color: modalText,      // <--- MODIFICATO (era '#000')
+                    borderRadius: '10px', overflow: 'hidden',
                     maxWidth: '600px', width: '100%', maxHeight:'95vh', overflowY:'auto',
                     boxShadow: '0 10px 30px rgba(0,0,0,0.5)', position:'relative', display:'flex', flexDirection:'column'
                 }} onClick={e => e.stopPropagation()}>

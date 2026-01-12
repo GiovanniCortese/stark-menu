@@ -117,6 +117,7 @@ function AdminGrafica({ user, config, setConfig, API_URL }) {
                   <div style={styles.row}>
                       <ImageUploader label="Logo (Quadrato)" type="logo_url" currentUrl={config.logo_url} icon="🖼️" />
                       <ImageUploader label="Cover (Orizzontale)" type="cover_url" currentUrl={config.cover_url} icon="🌄" />
+                      <ImageUploader label="Scheda Allergeni (Foto/PDF)" type="url_allergeni" currentUrl={config.url_allergeni} icon="📋" />
                   </div>
               </div>
 
@@ -162,7 +163,36 @@ function AdminGrafica({ user, config, setConfig, API_URL }) {
                   </div>
               </div>
 
-              {/* 6. FONT */}
+              {/* 6. MODALE PRODOTTO (Barra +) */}
+              <div style={styles.card}>
+                  <h4 style={styles.sectionTitle}>⚙️ Configuratore (Tasto +)</h4>
+                  <div style={styles.grid}>
+                      <SmartColorPicker label="Sfondo Modale" value={config.colore_modal_bg} field="colore_modal_bg" def="#ffffff" />
+                      <SmartColorPicker label="Testo Modale" value={config.colore_modal_text} field="colore_modal_text" def="#000000" />
+                  </div>
+              </div>
+
+              {/* 7. INFO EXTRA & FOOTER */}
+              <div style={styles.card}>
+                  <h4 style={styles.sectionTitle}>ℹ️ Info Legali & Allergeni</h4>
+                  
+                  <div style={{marginBottom:15}}>
+                      <label style={styles.label}>Testo a fine pagina (es. Coperto, Surgelati)</label>
+                      <textarea 
+                          value={config.info_footer || ''}
+                          onChange={e => setConfig({...config, info_footer: e.target.value})}
+                          placeholder="Es: Coperto 2.00€ - Alcuni prodotti potrebbero essere congelati..."
+                          style={{width:'100%', padding:10, borderRadius:5, border:'1px solid #ddd', minHeight:60}}
+                      />
+                  </div>
+
+                  <div style={styles.row}>
+                      <ImageUploader label="Scheda Allergeni (Foto/PDF)" type="url_allergeni" currentUrl={config.url_allergeni} icon="📋" />
+                  </div>
+              </div>
+              
+
+              {/* 8. FONT */}
               <div style={styles.card}>
                   <h4 style={styles.sectionTitle}>🔤 Font</h4>
                   <select value={config.font_style} onChange={e => setConfig({...config, font_style: e.target.value})} style={styles.select}>

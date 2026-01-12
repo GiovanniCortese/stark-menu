@@ -249,7 +249,36 @@ const onDragEnd = async (result) => {
                       </div>
                       
                       <textarea placeholder="Descrizione" value={nuovoPiatto.descrizione} onChange={e => setNuovoPiatto({...nuovoPiatto, descrizione: e.target.value})} style={{padding:'10px', minHeight:'60px'}}/>
-                      
+                      <textarea 
+    placeholder="Descrizione" 
+    value={nuovoPiatto.descrizione} 
+    onChange={e => setNuovoPiatto({...nuovoPiatto, descrizione: e.target.value})} 
+    style={{padding:'10px', minHeight:'60px'}}
+/>
+
+{/* ⬇️⬇️ INCOLLA QUI IL BLOCCO ALLERGENI ⬇️⬇️ */}
+{/* SEZIONE ALLERGENI */}
+<div style={{background:'#f9f9f9', padding:'10px', borderRadius:'5px', marginBottom:'10px', border:'1px solid #eee'}}>
+    <label style={{fontWeight:'bold', fontSize:'12px', display:'block', marginBottom:'5px'}}>⚠️ ALLERGENI PRESENTI</label>
+    <div style={{display:'flex', flexWrap:'wrap', gap:'10px'}}>
+        {LISTA_ALLERGENI.map(all => (
+            <label key={all} style={{display:'flex', alignItems:'center', gap:'5px', fontSize:'11px', cursor:'pointer', background:'white', padding:'4px 8px', borderRadius:'15px', border: (nuovoPiatto.allergeni || []).includes(all) ? '1px solid #e74c3c' : '1px solid #ddd'}}>
+                <input 
+                    type="checkbox" 
+                    checked={(nuovoPiatto.allergeni || []).includes(all)}
+                    onChange={(e) => {
+                        const current = nuovoPiatto.allergeni || [];
+                        if (e.target.checked) setNuovoPiatto({...nuovoPiatto, allergeni: [...current, all]});
+                        else setNuovoPiatto({...nuovoPiatto, allergeni: current.filter(x => x !== all)});
+                    }}
+                />
+                {all}
+            </label>
+        ))}
+    </div>
+</div>
+{/* ⬆️⬆️ FINE BLOCCO ALLERGENI ⬆️⬆️ */}
+
                       {/* --- NUOVA SEZIONE VARIANTI JSON --- */}
                       <div style={{background:'#fff3cd', padding:'10px', borderRadius:'5px', border:'1px dashed #f39c12'}}>
                           <label style={{fontWeight:'bold', fontSize:'12px', display:'block', marginBottom:'5px'}}>🧂 INGREDIENTI BASE (Separati da virgola)</label>
