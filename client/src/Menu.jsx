@@ -290,24 +290,19 @@ const cambiaUscita = (tempId, delta) => {
   return (
     <div style={{minHeight:'100vh', background: bg, color: text, fontFamily: font, paddingBottom:80}}>
       
-{/* --- HERO HEADER (REGOLE COVER PURE COME ADMIN) --- */}
+{/* --- HEADER COMPLETO (Hero + Login + Fix Checkout) --- */}
+      {/* Questa riga dice: MOSTRA SOLO SE IL CARRELLO È CHIUSO */}
+      {!showCheckout && (
       <div style={{
           width: '100%',
           boxSizing: 'border-box',
           minHeight: '260px', 
           
-          // --- QUI È LA CHIAVE ---
-          // 1. Usa l'immagine come sfondo
+          // --- REGOLE SFONDO (Cover Fill + Center) ---
           backgroundImage: style.cover ? `url(${style.cover})` : 'none',
-          backgroundColor: style.bg || '#333', // Colore se manca la foto
-          
-          // 2. "cover": Scala l'immagine finché non copre TUTTO lo spazio. 
-          // Se l'immagine è più larga del telefono, taglia i lati.
+          backgroundColor: style.bg || '#333', 
           backgroundSize: 'cover',     
-          
-          // 3. "center": FONDAMENTALE. Dice "Prendi il centro della foto", non l'angolo in alto a sinistra.
           backgroundPosition: 'center',  
-          
           backgroundRepeat: 'no-repeat',
           // ------------------------
           
@@ -329,7 +324,28 @@ const cambiaUscita = (tempId, delta) => {
               zIndex: 1
           }}></div>
 
-          {/* CONTENUTO */}
+          {/* --- 1. TASTO ACCEDI / USERNAME (RIPRISTINATO IN ALTO A DESTRA) --- */}
+          <div style={{position:'absolute', top:'20px', right:'20px', zIndex: 100}}>
+              {user ? (
+                  <div onClick={logout} style={{
+                      background: 'rgba(255,255,255,0.9)', padding:'6px 12px', borderRadius:'20px', 
+                      cursor:'pointer', display:'flex', alignItems:'center', gap:5, 
+                      boxShadow:'0 2px 5px rgba(0,0,0,0.3)', fontSize:'12px', fontWeight:'bold', color:'#333'
+                  }}>
+                      👤 {user.nome.split(' ')[0]}
+                  </div>
+              ) : (
+                  <button onClick={() => setShowAuthModal(true)} style={{
+                      background: priceColor, color:'white', border:'none', 
+                      padding:'8px 15px', borderRadius:'20px', fontWeight:'bold', 
+                      cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.3)', fontSize:'12px'
+                  }}>
+                      Accedi
+                  </button>
+              )}
+          </div>
+
+          {/* --- 2. CONTENUTO CENTRALE (Logo e Titoli) --- */}
           <div style={{position:'relative', zIndex: 2, display:'flex', flexDirection:'column', alignItems:'center', gap:'15px', width:'100%'}}>
               
               {/* LOGO */}
@@ -352,7 +368,7 @@ const cambiaUscita = (tempId, delta) => {
                   <div style={{fontSize:'40px', background:'white', padding:10, borderRadius:'50%'}}>🍽️</div>
               )}
 
-              {/* TITOLO */}
+              {/* TITOLO (Se manca il logo) */}
               {!style.logo && (
                   <h1 style={{
                       margin: 0, color: '#fff', 
@@ -377,6 +393,7 @@ const cambiaUscita = (tempId, delta) => {
 
           </div>
       </div>
+      )}
       {/* --- FINE DEL BLOCCO INCOLLATO --- */}
 
       {/* LISTA MENU A FISARMONICA */}
