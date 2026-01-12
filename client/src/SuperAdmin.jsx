@@ -211,7 +211,7 @@ function SuperAdmin() {
                 <div style={{padding:15, flex:1}}><p>📧 {r.email || '-'}</p><p>📞 {r.telefono || '-'}</p></div>
                 <div style={{padding:15, background:'#f9f9f9', borderTop:'1px solid #eee'}}>
                     <button onClick={() => toggleSospensione(r.id, r.account_attivo)} style={{width:'100%', padding:10, background: r.account_attivo !== false ? '#2c3e50':'#e67e22', color:'white', borderRadius:6, marginBottom:10}}>{r.account_attivo !== false ? "⏸️ PAUSA" : "▶️ ATTIVA"}</button>
-                    <button onClick={() => toggleMasterCucina(r.id, r.cucina_super_active)} style={{width:'100%', padding:10, background:'white', color: r.cucina_super_active !== false ? '#27ae60':'#c0392b', border:`2px solid ${r.cucina_super_active !== false ? '#27ae60':'#c0392b'}`, borderRadius:6, marginBottom:10}}>{r.cucina_super_active !== false ? "✅ CUCINA ON" : "⛔ CUCINA OFF"}</button>
+                    <button onClick={() => toggleMasterCucina(r.id, r.cucina_super_active)} style={{width:'100%', padding:10, background:'white', color: r.cucina_super_active !== false ? '#27ae60':'#c0392b', border:`2px solid ${r.cucina_super_active !== false ? '#27ae60':'#c0392b'}`, borderRadius:6, marginBottom:10}}>{r.cucina_super_active !== false ? "✅ ORDINI ON" : "⛔ ORDINI OFF"}</button>
                     <button onClick={() => entraNelPannello(r.slug)} style={{width:'100%', background:'#3498db', color:'white', border:'none', padding:12, borderRadius:6, fontWeight:'bold'}}>⚙️ GESTISCI ↗</button>
                 </div>
             </div>
