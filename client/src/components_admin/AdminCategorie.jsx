@@ -6,22 +6,61 @@ function AdminCategorie({ user, categorie, setCategorie, API_URL, ricaricaDati }
   const [nuovaCat, setNuovaCat] = useState({ nome: '', descrizione: '', is_bar: false, is_pizzeria: false, varianti_default: '' });
   const [editCatId, setEditCatId] = useState(null); 
 
-  const handleSalvaCategoria = async () => { 
-      if(!nuovaCat.nome) return; 
-      const payload = { ...nuovaCat, ristorante_id: user.id };
+  // client/src/components_admin/AdminCategorie.jsx
 
-      try {
-          if (editCatId) {
-              await fetch(`${API_URL}/api/categorie/${editCatId}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
-              alert("Categoria modificata!"); setEditCatId(null);
-          } else {
-              await fetch(`${API_URL}/api/categorie`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
-              alert("Categoria creata!");
-          }
-          setNuovaCat({ nome: '', descrizione: '', is_bar: false, is_pizzeria: false });
-          ricaricaDati(); 
-      } catch(e) { alert("Errore connessione"); }
-  };
+const handleSalvaCategoria = async () => { 
+    if(!nuovaCat.nome) return alert("Inserisci almeno il nome della categoria."); 
+
+    // --- FIX INIZIO: Trasformiamo la stringa "Bufala:2" in JSON ---
+    let variantiJson = [];
+    if (nuovaCat.varianti_default && typeof nuovaCat.varianti_default === 'string') {
+        variantiJson = nuovaCat.varianti_default.split(',').map(v => {
+            const parts = v.split(':');
+            if(parts.length >= 2) {
+                return { nome: parts[0].trim(), prezzo: parseFloat(parts[1]) };
+            }
+            return null;
+        }).filter(Boolean);
+    }
+    // --- FIX FINE ---
+
+    // Sovrascriviamo varianti_default con la versione JSON stringified
+    const payload = { 
+        ...nuovaCat, 
+        ristorante_id: user.id,
+        varianti_default: JSON.stringify(variantiJson) 
+    };
+
+    try {
+        if (editCatId) {
+            // MODIFICA
+            const res = await fetch(`${API_URL}/api/categorie/${editCatId}`, { 
+                method:'PUT', 
+                headers:{'Content-Type':'application/json'}, 
+                body:JSON.stringify(payload) 
+            });
+            if(!res.ok) throw new Error("Errore Server");
+            alert("✅ Categoria modificata!"); 
+            setEditCatId(null);
+        } else {
+            // CREAZIONE
+            const res = await fetch(`${API_URL}/api/categorie`, { 
+                method:'POST', 
+                headers:{'Content-Type':'application/json'}, 
+                body:JSON.stringify(payload) 
+            });
+            if(!res.ok) throw new Error("Errore Server");
+            alert("✅ Categoria creata!");
+        }
+        
+        // Reset form
+        setNuovaCat({ nome: '', descrizione: '', is_bar: false, is_pizzeria: false, varianti_default: '' });
+        ricaricaDati(); 
+    } catch(e) { 
+        console.error(e);
+        alert("❌ Errore durante il salvataggio. Controlla i dati."); 
+    }
+};
 
 const cancellaCategoria = async (id) => { 
     if (user.ruolo === 'editor') return alert("⛔ GLI EDITOR NON POSSONO CANCELLARE LE CATEGORIE.");
