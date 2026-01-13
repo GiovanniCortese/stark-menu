@@ -237,6 +237,18 @@ const onDragEnd = async (result) => {
               )}
         </div>
 
+        {/* --- SEZIONE EXCEL (SPOSTATA QUI) --- */}
+<div className="card" style={{background:'#f0f3f4', border:'1px solid #ddd', marginBottom:'20px', display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 20px'}}>
+    <h4 style={{margin:0}}>📊 Gestione Massiva Menu</h4>
+    <div style={{display:'flex', gap:'10px'}}>
+        <button onClick={() => window.open(`${API_URL}/api/export-excel/${user.id}`, '_blank')} style={{background:'#27ae60', color:'white', fontSize:'12px'}}>📤 ESPORTA</button>
+        <div style={{position:'relative'}}>
+            <button style={{background:'#2980b9', color:'white', fontSize:'12px'}}>📥 IMPORTA EXCEL</button>
+            <input type="file" accept=".xlsx, .xls" onChange={handleImportExcel} style={{position:'absolute', inset:0, opacity:0, cursor:'pointer'}} />
+        </div>
+    </div>
+</div>
+
         {/* --- SEZIONE EDITING (Disabilitata visivamente se sospeso) --- */}
         <div style={{
             opacity: isAbbonamentoAttivo ? 1 : 0.4, 
@@ -306,8 +318,22 @@ const onDragEnd = async (result) => {
 
                       <div style={{display:'flex', gap:'10px'}}>
                           <input type="number" placeholder="Prezzo Base" value={nuovoPiatto.prezzo} onChange={e => setNuovoPiatto({...nuovoPiatto, prezzo: e.target.value})} style={{flex:1}} step="0.10" required />
-                           <div style={{background:'white', padding:'5px', flex:1}}><input type="file" onChange={handleFileChange} />{uploading && "..."}{nuovoPiatto.immagine_url && "✅"}</div>
-                      </div>
+<div style={{
+        background: 'white', 
+        padding: '8px', 
+        flex: 1, 
+        border: '1px solid #ccc', 
+        borderRadius: '4px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px'
+    }}>
+        <label style={{fontSize:'12px', fontWeight:'bold', cursor:'pointer', display:'flex', alignItems:'center', gap:'5px', width: '100%'}}>
+            📷 {uploading ? "CARICAMENTO..." : (nuovoPiatto.immagine_url ? "FOTO CARICATA ✅" : "CARICA FOTO")}
+            <input type="file" onChange={handleFileChange} style={{display:'none'}} />
+        </label>
+        {uploading && <div className="spinner-mini"></div>} 
+    </div>                      </div>
                       <button type="submit" className="btn-invia" style={{background: editId ? '#2196f3' : '#333'}}>{editId ? "AGGIORNA" : "SALVA"}</button>
                   </form>
             </div>
@@ -392,6 +418,20 @@ const onDragEnd = async (result) => {
         </div>
     </DragDropContext>
   );
+  {/* --- POSIZIONE CORRETTA: DOPO LA LISTA PIATTI --- */}
+    <div className="card" style={{marginTop:'40px', background:'#fff3cd', border:'1px solid #ffeeba'}}>
+        <h4 style={{margin:'0 0 10px 0'}}>ℹ️ Info Legali & Note Footer</h4>
+        <p style={{fontSize:'12px', color:'#856404'}}>Queste informazioni appariranno in fondo al menu del cliente (es: costo coperto, info surgelati generale).</p>
+        <textarea 
+            value={config.info_footer || ''}
+            onChange={e => setConfig({...config, info_footer: e.target.value})}
+            placeholder="Esempio: Coperto 2.00€ - Per info allergeni rivolgersi allo staff."
+            style={{width:'100%', padding:'10px', borderRadius:'5px', border:'1px solid #ddd', minHeight:'80px'}}
+        />
+        <button onClick={handleSaveStyle} style={{marginTop:'10px', background:'#f39c12', color:'white', width:'100%', padding:'12px', borderRadius:'5px', border:'none', fontWeight:'bold', cursor:'pointer'}}>
+            AGGIORNA INFO FOOTER
+        </button>
+    </div>
 }
 
 export default AdminMenu;
