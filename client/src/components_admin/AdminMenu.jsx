@@ -1,4 +1,4 @@
-// client/src/components_admin/AdminMenu.jsx - V43 STABLE (Fix Schermata Grigia)
+// client/src/components_admin/AdminMenu.jsx - V44 FIXED (Responsive & No Overflow)
 import { useState, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
@@ -10,7 +10,7 @@ const LISTA_ALLERGENI = [
 ];
 
 function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL, ricaricaDati }) {
-  // --- FIX INIZIALIZZAZIONE STATO ---
+  // --- STATI ---
   const [nuovoPiatto, setNuovoPiatto] = useState({ 
       nome: '', prezzo: '', categoria: '', sottocategoria: '', descrizione: '', immagine_url: '',
       ingredienti_base: '', varianti_str: '', allergeni: [] 
@@ -18,18 +18,11 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const [editId, setEditId] = useState(null); 
   const [uploading, setUploading] = useState(false);
 
-  // --- 🛡️ SAFE MODE: EVITA LA SCHERMATA GRIGIA ---
-  // Se i dati fondamentali non sono ancora arrivati dal server, mostra un caricamento.
+  // --- SAFE MODE ---
   if (!config || !categorie || !menu) {
-      return (
-          <div style={{padding:'40px', textAlign:'center', color:'#666'}}>
-              <h3>🔄 Caricamento Menu...</h3>
-              <p>Attendi un istante.</p>
-          </div>
-      );
+      return <div style={{padding:'40px', textAlign:'center', color:'#666'}}>🔄 Caricamento Menu...</div>;
   }
 
-  // --- LOGICA STATI ---
   const isAbbonamentoAttivo = config.account_attivo !== false; 
   const isMasterBlock = config.cucina_super_active === false; 
   const isCucinaAperta = config.ordini_abilitati;
@@ -67,8 +60,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
           : [];
           
       const variantiFinali = { base: ingredientiBaseArr, aggiunte: variantiJson };
-      
-      // Fix: Se categorie è vuoto, usa stringa vuota per evitare crash
       const cat = nuovoPiatto.categoria || (categorie.length > 0 ? categorie[0].nome : "");
       
       const payload = { ...nuovoPiatto, categoria: cat, ristorante_id: user.id, varianti: JSON.stringify(variantiFinali) };
@@ -162,11 +153,34 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
     await fetch(`${API_URL}/api/prodotti/riordina`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prodotti: piattiDestinazioneFinali.map(p => ({ id: p.id, posizione: p.posizione, categoria: destCat })) }) });
   };
 
-  // --- STILI ---
+  // --- STILI (FIXED BOX-SIZING) ---
   const containerStyle = { maxWidth: '1200px', margin: '0 auto', fontFamily: "'Inter', sans-serif", color: '#333' };
-  const cardStyle = { background: 'white', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', padding: '25px', marginBottom: '30px', border: '1px solid #f0f0f0' };
-  const inputStyle = { width: '100%', padding: '12px 15px', borderRadius: '8px', border: '1px solid #e0e0e0', fontSize: '14px', background: '#f9f9f9', transition: 'all 0.3s' };
-  const labelStyle = { fontSize: '12px', fontWeight: '600', color: '#666', marginBottom: '8px', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' };
+  
+  const cardStyle = { 
+    background: 'white', 
+    borderRadius: '12px', 
+    boxShadow: '0 4px 20px rgba(0,0,0,0.05)', 
+    padding: '25px', 
+    marginBottom: '30px', 
+    border: '1px solid #f0f0f0',
+    boxSizing: 'border-box' // <--- IMPORTANTE
+  };
+  
+  const inputStyle = { 
+    width: '100%', 
+    padding: '12px 15px', 
+    borderRadius: '8px', 
+    border: '1px solid #e0e0e0', 
+    fontSize: '14px', 
+    background: '#f9f9f9', 
+    transition: 'all 0.3s',
+    boxSizing: 'border-box' // <--- IMPORTANTE
+  };
+  
+  const labelStyle = { 
+    fontSize: '12px', fontWeight: '600', color: '#666', marginBottom: '8px', 
+    display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' 
+  };
 
   return (
     <div style={containerStyle}>
@@ -179,7 +193,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             </div>
             {isAbbonamentoAttivo && !isMasterBlock && (
                 <button onClick={toggleCucina} style={{background:'white', color: isCucinaAperta ? '#27ae60' : '#c0392b', border:'none', padding:'12px 25px', borderRadius:'30px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 5px 15px rgba(0,0,0,0.2)'}}>
-                    {isCucinaAperta ? "CHIUDI CUCINA" : "APRI CUCINA"}
+                    {isCucinaAperta ? "CHIUDI ORDINI CLIENTI" : "APRI ORDINI CLIENTI"}
                 </button>
             )}
         </div>
@@ -236,7 +250,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                           </div>
                           <div>
                                 <label style={labelStyle}>📷 Foto Piatto</label>
-                                <div style={{background: '#f8f9fa', border: '2px dashed #ddd', borderRadius: '8px', padding: '15px', textAlign: 'center', cursor: 'pointer', position:'relative'}}>
+                                <div style={{background: '#f8f9fa', border: '2px dashed #ddd', borderRadius: '8px', padding: '15px', textAlign: 'center', cursor: 'pointer', position:'relative', boxSizing:'border-box'}}>
                                     <input type="file" onChange={handleFileChange} style={{position:'absolute', inset:0, opacity:0, cursor:'pointer'}} />
                                     {uploading ? <span style={{color:'#3498db'}}>⏳ Caricamento...</span> : (
                                         nuovoPiatto.immagine_url ? 
@@ -252,13 +266,13 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
                       {/* Colonna Destra */}
                       <div style={{display:'flex', flexDirection:'column', gap:'15px'}}>
-                          <div style={{background:'#fffcf0', padding:'15px', borderRadius:'8px', border:'1px solid #f9e79f'}}>
+                          <div style={{background:'#fffcf0', padding:'15px', borderRadius:'8px', border:'1px solid #f9e79f', boxSizing:'border-box'}}>
                               <label style={{...labelStyle, color:'#d4ac0d'}}>🧂 Varianti & Ingredienti</label>
                               <input placeholder="Ingredienti Base (es: Pomodoro, Mozzarella)" value={nuovoPiatto.ingredienti_base || ""} onChange={e => setNuovoPiatto({...nuovoPiatto, ingredienti_base: e.target.value})} style={{...inputStyle, marginBottom:'10px', background:'white'}} />
                               <textarea placeholder="Aggiunte Extra (es: Bufala:2.00, Salame:1.50)" value={nuovoPiatto.varianti_str || ""} onChange={e => setNuovoPiatto({...nuovoPiatto, varianti_str: e.target.value})} style={{...inputStyle, minHeight:'60px', background:'white'}} />
                           </div>
 
-                          <div style={{background:'#fcfcfc', padding:'15px', borderRadius:'8px', border:'1px solid #eee'}}>
+                          <div style={{background:'#fcfcfc', padding:'15px', borderRadius:'8px', border:'1px solid #eee', boxSizing:'border-box'}}>
                               <label style={labelStyle}>⚠️ Allergeni</label>
                               <div style={{display:'flex', flexWrap:'wrap', gap:'8px'}}>
                                   {LISTA_ALLERGENI.map(all => {
@@ -275,7 +289,8 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                                                   background: isSelected ? '#ffebee' : 'white',
                                                   color: isSelected ? '#c0392b' : '#555',
                                                   border: isSelected ? '1px solid #e74c3c' : '1px solid #ddd',
-                                                  transition: 'all 0.2s'
+                                                  transition: 'all 0.2s',
+                                                  boxSizing: 'border-box'
                                               }}
                                           >
                                               {isSelected ? '✅ ' : ''}{all}
@@ -305,7 +320,8 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                                 <div {...provided.droppableProps} ref={provided.innerRef} 
                                     style={{
                                         background: snapshot.isDraggingOver ? '#f0f9ff' : 'transparent', 
-                                        minHeight: '60px', borderRadius:'10px', padding: '10px', transition: 'background 0.3s'
+                                        minHeight: '60px', borderRadius:'10px', padding: '10px', transition: 'background 0.3s',
+                                        boxSizing: 'border-box'
                                     }}>
                                     {menu && menu.filter(p => p.categoria === cat.nome).sort((a,b) => (a.posizione || 0) - (b.posizione || 0)).map((p, index) => (
                                             <Draggable key={p.id} draggableId={String(p.id)} index={index}>
@@ -319,7 +335,8 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                                                             padding:'15px', 
                                                             display:'flex', justifyContent:'space-between', alignItems:'center',
                                                             boxShadow: snapshot.isDragging ? '0 10px 20px rgba(0,0,0,0.2)' : '0 2px 5px rgba(0,0,0,0.02)',
-                                                            transform: snapshot.isDragging ? 'scale(1.02)' : 'scale(1)'
+                                                            transform: snapshot.isDragging ? 'scale(1.02)' : 'scale(1)',
+                                                            boxSizing: 'border-box'
                                                         }}>
                                                         
                                                         <div style={{display:'flex', alignItems:'center', gap:'15px', flex:1}}>
@@ -361,14 +378,14 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
         <div style={{
             ...cardStyle, 
             borderLeft: '5px solid #8e44ad',
-            background: 'linear-gradient(to right, #ffffff 50%, #fdfbfd 50%)' // Split visuale sottile
+            background: 'linear-gradient(to right, #ffffff 50%, #fdfbfd 50%)' 
         }}>
             <div style={{display:'flex', alignItems:'center', gap:'10px', marginBottom:'25px', borderBottom:'1px solid #eee', paddingBottom:'15px'}}>
                 <span style={{fontSize:'24px'}}>⚖️</span>
                 <h3 style={{margin:0, color:'#2c3e50'}}>Configurazione Footer & Allergeni</h3>
             </div>
 
-            <div style={{display:'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap:'40px'}}>
+            <div style={{display:'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap:'40px'}}>
                 
                 {/* COLONNA SINISTRA: TESTO */}
                 <div>
@@ -381,7 +398,8 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                             style={{
                                 width:'100%', padding:'20px', borderRadius:'12px', border:'1px solid #dcdcdc', 
                                 minHeight:'180px', fontSize:'15px', lineHeight:'1.6', background:'white',
-                                boxShadow:'inset 0 2px 5px rgba(0,0,0,0.02)', resize:'none', fontFamily:'inherit'
+                                boxShadow:'inset 0 2px 5px rgba(0,0,0,0.02)', resize:'none', fontFamily:'inherit',
+                                boxSizing: 'border-box' // <--- IMPORTANTE
                             }}
                         />
                         <div style={{position:'absolute', bottom:15, right:15, fontSize:'12px', color:'#aaa'}}>Testo visibile in fondo al menu</div>
@@ -396,7 +414,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                         <div style={{
                             border:'2px solid #27ae60', background:'#f0fbf4', borderRadius:'12px', 
                             height:'180px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                            position:'relative', overflow:'hidden'
+                            position:'relative', overflow:'hidden', boxSizing:'border-box'
                         }}>
                             {config.url_allergeni.match(/\.(jpeg|jpg|gif|png|webp)$/i) ? (
                                  <img src={config.url_allergeni} style={{height:'100%', width:'100%', objectFit:'contain', opacity:0.8}} />
@@ -422,7 +440,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                         <div style={{
                             border:'2px dashed #bdc3c7', borderRadius:'12px', background:'#fdfdfd',
                             height:'180px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                            cursor:'pointer', position:'relative', transition:'all 0.3s'
+                            cursor:'pointer', position:'relative', transition:'all 0.3s', boxSizing:'border-box'
                         }} onMouseEnter={e => e.currentTarget.style.borderColor = '#3498db'} onMouseLeave={e => e.currentTarget.style.borderColor = '#bdc3c7'}>
                             
                             <span style={{fontSize:'40px', marginBottom:'10px', opacity:0.5}}>📤</span>
