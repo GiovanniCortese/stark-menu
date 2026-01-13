@@ -108,6 +108,11 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const cancellaPiatto = async (id) => { if(confirm("Eliminare?")) { await fetch(`${API_URL}/api/prodotti/${id}`, {method:'DELETE'}); ricaricaDati(); }};
   const avviaModifica = (piatto) => { 
       setEditId(piatto.id);
+     setNuovoPiatto({
+        ...piatto,
+        allergeni: piatto.allergeni || [], // CARICA GLI ALLERGENI ESISTENTI
+        // ... restanti campi ...
+    });
       
       // Recuperiamo il JSON dal DB
       let variantiObj = { base: [], aggiunte: [] };

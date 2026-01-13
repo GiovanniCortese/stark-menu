@@ -297,10 +297,70 @@ app.get('/api/polling/:ristorante_id', async (req, res) => {
 });
 
 // Prodotti
-app.post('/api/prodotti', async (req, res) => { try { const { nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, immagine_url, varianti } = req.body; const max = await pool.query('SELECT MAX(posizione) as max FROM prodotti WHERE ristorante_id = $1', [ristorante_id]); await pool.query('INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, immagine_url, posizione, varianti) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)', [nome, prezzo, categoria, sottocategoria || "", descrizione || "", ristorante_id, immagine_url || "", (max.rows[0].max || 0) + 1, varianti || '{}']); res.json({ success: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
+app.post('/api/prodotti', async (req, res) => {
+    try {
+        const { 
+            nome, 
+            prezzo, 
+            categoria, 
+            sottocategoria, 
+            descrizione, 
+            ristorante_id, 
+            immagine_url, 
+            varianti, 
+            allergeni // <-- Nuovo campo ricevuto dal frontend
+        } = req.body;
+
+        // Recupero l'ultima posizione per l'ordinamento
+        const max = await pool.query(
+            'SELECT MAX(posizione) as max FROM prodotti WHERE ristorante_id = $1', 
+            [ristorante_id]
+        );
+        const nuovaPosizione = (max.rows[0].max || 0) + 1;
+
+        // Query aggiornata con la colonna 'allergeni'
+        const queryText = `
+            INSERT INTO prodotti (
+                nome, prezzo, categoria, sottocategoria, descrizione, 
+                ristorante_id, immagine_url, posizione, varianti, allergeni
+            ) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        `;
+
+        const values = [
+            nome, 
+            prezzo, 
+            categoria, 
+            sottocategoria || "", 
+            descrizione || "", 
+            ristorante_id, 
+            immagine_url || "", 
+            nuovaPosizione, 
+            varianti || '{}',
+            JSON.stringify(allergeni || []) // <-- Salvataggio come stringa JSON (Array)
+        ];
+
+        await pool.query(queryText, values);
+        
+        res.json({ success: true });
+    } catch (e) {
+        console.error("Errore creazione prodotto:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
 app.put('/api/prodotti/riordina', async (req, res) => { const { prodotti } = req.body; try { for (const prod of prodotti) { if (prod.categoria) await pool.query('UPDATE prodotti SET posizione = $1, categoria = $2 WHERE id = $3', [prod.posizione, prod.categoria, prod.id]); else await pool.query('UPDATE prodotti SET posizione = $1 WHERE id = $2', [prod.posizione, prod.id]); } res.json({ success: true }); } catch (err) { res.status(500).json({ error: err.message }); } });
-app.put('/api/prodotti/:id', async (req, res) => { try { await pool.query('UPDATE prodotti SET nome=$1, prezzo=$2, categoria=$3, sottocategoria=$4, descrizione=$5, immagine_url=$6, varianti=$8 WHERE id=$7', [req.body.nome, req.body.prezzo, req.body.categoria, req.body.sottocategoria, req.body.descrizione, req.body.immagine_url, req.params.id, req.body.varianti]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
-app.delete('/api/prodotti/:id', async (req, res) => { try { await pool.query('DELETE FROM prodotti WHERE id=$1', [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
+app.put('/api/prodotti/:id', async (req, res) => {
+    try {
+        const { nome, prezzo, categoria, sottocategoria, descrizione, immagine_url, varianti, allergeni } = req.body;
+        await pool.query(
+            'UPDATE prodotti SET nome=$1, prezzo=$2, categoria=$3, sottocategoria=$4, descrizione=$5, immagine_url=$6, varianti=$8, allergeni=$9 WHERE id=$7', 
+            [nome, prezzo, categoria, sottocategoria, descrizione, immagine_url, req.params.id, varianti, JSON.stringify(allergeni || [])]
+        );
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: "Errore salvataggio prodotto" });
+    }
+});app.delete('/api/prodotti/:id', async (req, res) => { try { await pool.query('DELETE FROM prodotti WHERE id=$1', [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
 
 // Categorie
 app.post('/api/categorie', async (req, res) => { try { const { nome, ristorante_id, is_bar, is_pizzeria, descrizione, varianti_default } = req.body; const max = await pool.query('SELECT MAX(posizione) as max FROM categorie WHERE ristorante_id = $1', [ristorante_id]); await pool.query('INSERT INTO categorie (nome, posizione, ristorante_id, is_bar, is_pizzeria, descrizione, varianti_default) VALUES ($1, $2, $3, $4, $5, $6, $7)', [nome, (max.rows[0].max || 0) + 1, ristorante_id, is_bar || false, is_pizzeria || false, descrizione || "", varianti_default || '[]']); res.json({success:true}); } catch (e) { res.status(500).json({ error: e.message }); } });
