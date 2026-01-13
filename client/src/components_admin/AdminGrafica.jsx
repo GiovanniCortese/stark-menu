@@ -1,5 +1,5 @@
-// client/src/components_admin/AdminGrafica.jsx - VERSIONE V3 (Smart Color + Real Preview)
-import { useState, useEffect } from 'react';
+// client/src/components_admin/AdminGrafica.jsx - VERSIONE V4 (Full Custom Footer)
+import { useState } from 'react';
 
 function AdminGrafica({ user, config, setConfig, API_URL }) {
   const [loadingField, setLoadingField] = useState(null);
@@ -61,7 +61,7 @@ function AdminGrafica({ user, config, setConfig, API_URL }) {
       </div>
   );
 
-  // --- COMPONENTE COLORE SMART (Con Trasparenza) ---
+  // --- COMPONENTE COLORE SMART ---
   const SmartColorPicker = ({ label, value, field, def }) => {
       const val = value || def || '#000000';
       const isTransparent = val === 'transparent' || val === 'rgba(0,0,0,0)';
@@ -70,26 +70,20 @@ function AdminGrafica({ user, config, setConfig, API_URL }) {
         <div style={styles.colorWrapper}>
             <label style={styles.colorLabel}>{label}</label>
             <div style={{display:'flex', alignItems:'center', gap:'8px', marginTop:'5px'}}>
-                {/* 1. Picker Nativo (solo se non è trasparente) */}
                 <div style={{position:'relative', width:'40px', height:'40px', borderRadius:'50%', overflow:'hidden', border:'1px solid #ccc', background: val}}>
                     <input 
                         type="color" 
                         value={isTransparent ? '#ffffff' : val} 
-                        // Usiamo onInput per fluidità, o onChange se preferisci lo scatto alla fine
                         onChange={e => setConfig({...config, [field]: e.target.value})} 
                         style={{opacity:0, width:'100%', height:'100%', cursor:'pointer'}}
                     />
                 </div>
-
-                {/* 2. Input Testo (per RGB/RGBA o Hex manuale) */}
                 <input 
                     type="text" 
                     value={val} 
                     onChange={e => setConfig({...config, [field]: e.target.value})}
                     style={{flex:1, padding:'8px', borderRadius:'5px', border:'1px solid #ddd', fontSize:'12px', fontFamily:'monospace'}} 
                 />
-
-                {/* 3. Tasto Trasparente */}
                 <button 
                     onClick={() => setConfig({...config, [field]: 'transparent'})}
                     title="Rendi Trasparente"
@@ -117,7 +111,6 @@ function AdminGrafica({ user, config, setConfig, API_URL }) {
                   <div style={styles.row}>
                       <ImageUploader label="Logo (Quadrato)" type="logo_url" currentUrl={config.logo_url} icon="🖼️" />
                       <ImageUploader label="Cover (Orizzontale)" type="cover_url" currentUrl={config.cover_url} icon="🌄" />
-                      <ImageUploader label="Scheda Allergeni (Foto/PDF)" type="url_allergeni" currentUrl={config.url_allergeni} icon="📋" />
                   </div>
               </div>
 
@@ -163,9 +156,7 @@ function AdminGrafica({ user, config, setConfig, API_URL }) {
                   </div>
               </div>
 
-              {/* ⬇️ INCOLLA QUI IL NUOVO CODICE ⬇️ */}
-
-              {/* SEZIONE MODALE PRODOTTO */}
+              {/* 6. MODALE PRODOTTO */}
               <div style={styles.card}>
                   <h4 style={styles.sectionTitle}>⚙️ Configuratore (Tasto +)</h4>
                   <div style={styles.grid}>
@@ -174,22 +165,51 @@ function AdminGrafica({ user, config, setConfig, API_URL }) {
                   </div>
               </div>
 
-              {/* SEZIONE INFO EXTRA */}
+              {/* 7. INFO LEGALI & ALLERGENI (AGGIORNATO) */}
               <div style={styles.card}>
-                  <h4 style={styles.sectionTitle}>ℹ️ Info Legali & Allergeni</h4>
+                  <h4 style={styles.sectionTitle}>ℹ️ Info Legali & Footer</h4>
+                  
+                  {/* Testo */}
                   <div style={{marginBottom:15}}>
-                      <label style={styles.label}>Testo a fine pagina (es. Coperto, Surgelati)</label>
+                      <label style={styles.label}>Testo a fine pagina (es. Coperto, P.IVA)</label>
                       <textarea 
                           value={config.info_footer || ''}
                           onChange={e => setConfig({...config, info_footer: e.target.value})}
                           style={{width:'100%', padding:10, borderRadius:5, border:'1px solid #ddd', minHeight:60}}
                       />
                   </div>
-                  <ImageUploader label="Scheda Allergeni (Foto/PDF)" type="url_allergeni" currentUrl={config.url_allergeni} icon="📋" />
-              </div>
 
-              {/* ⬆️ FINE INCOLLA ⬆️ */}
-              
+                  {/* Controlli Stile Footer */}
+                  <div style={{...styles.grid, marginBottom:'15px', paddingBottom:'15px', borderBottom:'1px dashed #eee'}}>
+                      <SmartColorPicker label="Colore Testo Footer" value={config.colore_footer_text} field="colore_footer_text" def="#888888" />
+                      
+                      <div>
+                          <label style={styles.label}>Dimensione (px)</label>
+                          <input 
+                            type="number" 
+                            value={config.dimensione_footer || 12} 
+                            onChange={e => setConfig({...config, dimensione_footer: e.target.value})}
+                            style={{width:'100%', padding:'10px', borderRadius:'5px', border:'1px solid #ddd'}}
+                          />
+                      </div>
+
+                      <div>
+                          <label style={styles.label}>Allineamento</label>
+                          <select 
+                            value={config.allineamento_footer || 'center'} 
+                            onChange={e => setConfig({...config, allineamento_footer: e.target.value})}
+                            style={styles.select}
+                          >
+                              <option value="center">Centro</option>
+                              <option value="left">Sinistra</option>
+                              <option value="right">Destra</option>
+                              <option value="justify">Giustificato</option>
+                          </select>
+                      </div>
+                  </div>
+
+                  <ImageUploader label="Link/PDF Allergeni (Opzionale)" type="url_allergeni" currentUrl={config.url_allergeni} icon="📋" />
+              </div>
 
               {/* 8. FONT */}
               <div style={styles.card}>
@@ -212,7 +232,7 @@ function AdminGrafica({ user, config, setConfig, API_URL }) {
                   <div style={{
                       width: '100%', height: '100%', 
                       background: config.colore_sfondo || '#222', 
-                      borderRadius: '32px', overflow: 'hidden', position: 'relative',
+                      borderRadius: '32px', overflowY: 'auto', overflowX: 'hidden', position: 'relative',
                       fontFamily: config.font_style || 'sans-serif',
                       display: 'flex', flexDirection: 'column'
                   }}>
@@ -223,7 +243,7 @@ function AdminGrafica({ user, config, setConfig, API_URL }) {
                           background: config.cover_url ? `url(${config.cover_url})` : '#333',
                           backgroundSize:'cover', backgroundPosition:'center',
                           position:'relative', display:'flex', alignItems:'flex-end', justifyContent:'center',
-                          paddingBottom:'10px'
+                          paddingBottom:'10px', flexShrink: 0
                       }}>
                           {config.logo_url && (
                               <img src={config.logo_url} style={{
@@ -233,13 +253,8 @@ function AdminGrafica({ user, config, setConfig, API_URL }) {
                           )}
                       </div>
                       
-                      <div style={{marginTop:40, textAlign:'center', padding:'0 10px'}}>
+                      <div style={{marginTop:40, textAlign:'center', padding:'0 10px', flexShrink: 0}}>
                            <h3 style={{margin:'0 0 5px 0', color:config.colore_titolo || 'white'}}>Tuo Locale</h3>
-                           <span style={{
-                               background: config.colore_tavolo_bg||'green', 
-                               color:config.colore_tavolo_text||'white', 
-                               padding:'4px 10px', borderRadius:6, fontSize:12, fontWeight:'bold'
-                           }}>Tavolo 5</span>
                       </div>
 
                       {/* ESEMPIO CARD PRODOTTO */}
@@ -247,26 +262,53 @@ function AdminGrafica({ user, config, setConfig, API_URL }) {
                           background: config.colore_card || 'white', 
                           margin:'20px 15px', padding:15, borderRadius:0, 
                           borderBottom: `1px solid ${config.colore_border||'#eee'}`,
-                          display: 'flex', gap: '10px', alignItems: 'center'
+                          display: 'flex', gap: '10px', alignItems: 'center', flexShrink: 0
                       }}>
                           <div style={{width:60, height:60, background:'#ddd', borderRadius:5}}></div>
                           <div style={{flex:1}}>
                               <div style={{color: config.colore_testo||'#333', fontWeight:'bold', fontSize:'14px'}}>Pizza Margherita</div>
-                              <div style={{color:'#777', fontSize:'10px', margin:'2px 0'}}>Pomodoro, mozzarella...</div>
                               <div style={{color:config.colore_prezzo||'green', fontWeight:'bold', fontSize:'13px'}}>€ 8.00</div>
                           </div>
                           <button style={{
                               background:config.colore_btn||'green', 
                               color:config.colore_btn_text||'white', 
                               border:'none', borderRadius:'50%', 
-                              width:'35px', height:'35px', fontSize:'20px', 
+                              width:'30px', height:'30px', fontSize:'18px', 
                               display:'flex', alignItems:'center', justifyContent:'center'
                           }}>+</button>
                       </div>
 
-                      {/* ESEMPIO BARRA CARRELLO (Fixed Bottom) */}
+                      {/* SPACER PER SPINGERE IL FOOTER */}
+                      <div style={{flex:1}}></div>
+
+                      {/* FOOTER ANTEPRIMA */}
+                      <div style={{padding:'20px 15px', marginTop:'auto', opacity: 0.9}}>
+                          <p style={{
+                              margin:0,
+                              whiteSpace: 'pre-line',
+                              color: config.colore_footer_text || '#888',
+                              fontSize: `${config.dimensione_footer || 12}px`,
+                              textAlign: config.allineamento_footer || 'center'
+                          }}>
+                              {config.info_footer || "Coperto € 2.00\nP.IVA 123456789\nInfo allergeni allo staff"}
+                          </p>
+                          {config.url_allergeni && (
+                              <div style={{
+                                  marginTop:'10px', 
+                                  textAlign: config.allineamento_footer || 'center',
+                                  fontSize: '10px', 
+                                  color: config.colore_footer_text || '#888',
+                                  border: `1px solid ${config.colore_footer_text || '#888'}`,
+                                  padding: '5px', borderRadius: '15px'
+                              }}>
+                                  📋 LISTA ALLERGENI
+                              </div>
+                          )}
+                      </div>
+
+                      {/* BARRA CARRELLO */}
                       <div style={{
-                          marginTop: 'auto', padding: '15px', 
+                          padding: '10px 15px', flexShrink: 0,
                           background: config.colore_carrello_bg || '#333',
                           display: 'flex', justifyContent: 'space-between', alignItems: 'center'
                       }}>
@@ -274,12 +316,11 @@ function AdminGrafica({ user, config, setConfig, API_URL }) {
                            <button style={{
                                background: '#f1c40f', border:'none', borderRadius:'20px', 
                                padding:'5px 15px', fontSize:'10px', fontWeight:'bold'
-                           }}>VEDI ORDINE</button>
+                           }}>VEDI</button>
                       </div>
 
                   </div>
               </div>
-              <p style={{textAlign:'center', color:'#777', fontSize:'12px', marginTop:'10px'}}>L'anteprima è indicativa.<br/>Salva per vedere il risultato reale.</p>
           </div>
       </div>
   );
@@ -292,7 +333,7 @@ const styles = {
     header: { marginBottom: '30px', borderLeft: '5px solid #3498db', paddingLeft: '15px' },
     card: { background: 'white', borderRadius: '16px', padding: '20px', marginBottom: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.05)', border: '1px solid #f0f0f0' },
     sectionTitle: { margin: '0 0 15px 0', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '1px', color: '#95a5a6', fontWeight: '700', borderBottom: '1px solid #f5f5f5', paddingBottom: '10px' },
-    grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }, // Allargato per il nuovo picker
+    grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' },
     row: { display: 'flex', gap: '20px' },
     colorWrapper: { background: '#fff', borderRadius: '8px', padding: '5px 0', display:'flex', flexDirection:'column' },
     colorLabel: { fontSize: '12px', fontWeight: '600', color: '#333' },
@@ -302,7 +343,7 @@ const styles = {
     removeBtn: { position:'absolute', bottom:5, right:5, background:'red', color:'white', border:'none', borderRadius:'5px', padding:'5px', cursor:'pointer', fontSize:'10px', fontWeight:'bold' },
     select: { width: '100%', padding: '15px', borderRadius: '10px', border: '1px solid #ddd', background: '#fff', fontSize: '14px', cursor: 'pointer' },
     saveButton: { width: '100%', padding: '18px', background: 'linear-gradient(135deg, #27ae60 0%, #2ecc71 100%)', color: 'white', border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 5px 15px rgba(39, 174, 96, 0.3)', marginTop:'20px' },
-    phoneMockup: { width: '300px', height: '600px', background: '#111', borderRadius: '40px', padding: '12px', boxShadow: '0 20px 50px rgba(0,0,0,0.3)', boxSizing: 'border-box' },
+    phoneMockup: { width: '300px', height: '650px', background: '#111', borderRadius: '40px', padding: '12px', boxShadow: '0 20px 50px rgba(0,0,0,0.3)', boxSizing: 'border-box' },
 };
 
 export default AdminGrafica;

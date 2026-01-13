@@ -31,6 +31,7 @@ function Menu() {
   const [activeSubCategory, setActiveSubCategory] = useState(null); 
   const [selectedPiatto, setSelectedPiatto] = useState(null);
   const [showCheckout, setShowCheckout] = useState(false);
+  const [showAllergeni, setShowAllergeni] = useState(false);
 
   // Stato temporaneo per le varianti mentre il modale è aperto
   const [tempVarianti, setTempVarianti] = useState({ rimozioni: [], aggiunte: [] });
@@ -542,14 +543,27 @@ const modalText = style.text || '#000000';
 
 {/* FOOTER INFO & ALLERGENI */}
       <div style={{textAlign:'center', padding:'30px 20px', fontSize:'12px', color: style.text, opacity:0.7, marginBottom:'60px'}}>
-          {style.info_footer && <p style={{whiteSpace:'pre-line', marginBottom:'15px'}}>{style.info_footer}</p>}
-          {style.url_allergeni && (
-              <a href={style.url_allergeni} target="_blank" rel="noopener noreferrer" style={{ display:'inline-block', padding:'8px 15px', border:`1px solid ${style.text}`, borderRadius:'20px', color: style.text, textDecoration:'none', fontWeight:'bold' }}>
-                  📋 VEDI LISTA ALLERGENI COMPLETA
-              </a>
-          )}
-          <div style={{marginTop:15, fontSize:10}}>Powered by StarkMenu</div>
-      </div>
+    {style.info_footer && <p style={{whiteSpace:'pre-line', marginBottom:'15px'}}>{style.info_footer}</p>}
+    
+    {style.url_allergeni && (
+        <div 
+            onClick={() => setShowAllergeni(true)} // <--- ORA APRE IL MODALE
+            style={{ 
+                display:'inline-block', 
+                padding:'10px 20px', 
+                border:`1px solid ${style.text}`, 
+                borderRadius:'30px', 
+                color: style.text, 
+                cursor:'pointer',
+                fontWeight:'bold',
+                background: 'rgba(255,255,255,0.1)' 
+            }}
+        >
+            📋 VEDI LISTA ALLERGENI COMPLETA
+        </div>
+    )}
+    <div style={{marginTop:15, fontSize:10}}>Powered by StarkMenu</div>
+</div>
       {/* ⬆️⬆️ FINE INCOLLA ⬆️⬆️ */}
 
 {/* --- MODALE LOGIN / REGISTRAZIONE --- */}
@@ -926,7 +940,75 @@ const addList = addListPiatto.length > 0 ? addListPiatto : addListCategoria;
               </div>
           </div>
       )}
-    </div>
+
+      {/* ⬇️⬇️ INCOLLA IL CODICE QUI SOTTO ⬇️⬇️ */}
+
+      {/* --- MODALE LISTA ALLERGENI (NUOVO) --- */}
+      {showAllergeni && style.url_allergeni && (
+          <div style={{
+              position:'fixed', top:0, left:0, right:0, bottom:0, 
+              background: 'rgba(0,0,0,0.9)', 
+              zIndex: 5000, 
+              display:'flex', alignItems:'center', justifyContent:'center', 
+              padding:'20px'
+          }} onClick={() => setShowAllergeni(false)}>
+              
+              <div style={{
+                  background: modalBg, 
+                  color: modalText,
+                  width:'100%', maxWidth:'800px', height:'80vh', 
+                  borderRadius:'15px', 
+                  position:'relative', 
+                  display:'flex', flexDirection:'column',
+                  overflow:'hidden',
+                  boxShadow: '0 10px 40px rgba(0,0,0,0.5)'
+              }} onClick={e => e.stopPropagation()}>
+                  
+                  {/* Header del Modale */}
+                  <div style={{
+                      padding:'15px', borderBottom:'1px solid #ccc', 
+                      display:'flex', justifyContent:'space-between', alignItems:'center',
+                      background: 'rgba(0,0,0,0.05)'
+                  }}>
+                      <h3 style={{margin:0, fontSize:'18px'}}>📋 Lista Allergeni & Ingredienti</h3>
+                      <button 
+                          onClick={() => setShowAllergeni(false)}
+                          style={{
+                              background:'transparent', border:'none', fontSize:'24px', 
+                              cursor:'pointer', color: modalText
+                          }}
+                      >
+                          ✕
+                      </button>
+                  </div>
+
+                  {/* Contenuto (Immagine o PDF) */}
+                  <div style={{flex:1, overflowY:'auto', background:'#f0f0f0', display:'flex', justifyContent:'center'}}>
+                      {style.url_allergeni.match(/\.(jpeg|jpg|gif|png|webp)$/i) ? (
+                          <img 
+                              src={style.url_allergeni} 
+                              style={{maxWidth:'100%', height:'auto', objectFit:'contain', alignSelf:'flex-start'}} 
+                          />
+                      ) : (
+                          <iframe 
+                              src={style.url_allergeni} 
+                              style={{width:'100%', height:'100%', border:'none'}}
+                              title="Lista Allergeni"
+                          />
+                      )}
+                  </div>
+
+                  {/* Footer interno con Link Scarica */}
+                  <div style={{padding:'10px', textAlign:'center', fontSize:'12px', borderTop:'1px solid #ccc'}}>
+                      Se non riesci a visualizzare il file, <a href={style.url_allergeni} target="_blank" rel="noopener noreferrer" style={{color: priceColor, fontWeight:'bold'}}>clicca qui per scaricarlo</a>.
+                  </div>
+
+              </div>
+          </div>
+      )}
+      {/* ⬆️⬆️ FINE CODICE INCOLLATO ⬆️⬆️ */}
+
+    </div> // <--- Questa è la chiusura del DIV principale, deve stare SOTTO il codice incollato
   );
 }
 
