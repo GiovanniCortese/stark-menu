@@ -16,6 +16,8 @@ function Menu() {
   const [ristoranteId, setRistoranteId] = useState(null);
   const [style, setStyle] = useState({});
   const [tavoloStaff, setTavoloStaff] = useState("");
+  const [urlFileAttivo, setUrlFileAttivo] = useState("");
+  const [titoloFile, setTitoloFile] = useState("");
  
   
   // --- STATI LOGICI ---
@@ -420,163 +422,171 @@ const modalText = style.text || '#000000';
       )}
       {/* --- FINE DEL BLOCCO INCOLLATO --- */}
 
-      {/* LISTA MENU A FISARMONICA */}
-      <div style={{paddingBottom: '80px', marginTop: '10px', width: '100%', maxWidth: '600px', margin: '0 auto'}}> 
-        {categorieUniche.map(catNome => (
-            <div key={catNome} className="accordion-item" style={{marginBottom: '2px', borderRadius: '5px', overflow: 'hidden', width: '100%'}}>
-                <div onClick={() => toggleAccordion(catNome)} style={{ background: activeCategory === catNome ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.1)', color: titleColor, padding: '15px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: activeCategory === catNome ? `1px solid ${priceColor}` : 'none' }}>
-                    <h2 style={{margin:0, fontSize:'18px', color: titleColor, width:'100%'}}>{catNome}</h2>
-                    <span style={{color: titleColor}}>{activeCategory === catNome ? '▼' : '▶'}</span>
-                </div>
-
-                {activeCategory === catNome && (
-                    <div className="accordion-content" style={{padding: '0', background: 'rgba(0,0,0,0.2)', width: '100%'}}>
-                        {(() => {
-                            const piattiCat = menu.filter(p => (p.categoria_nome || p.categoria) === catNome);
-                            const sottoCats = piattiCat.reduce((acc, p) => {
-                                const sc = (p.sottocategoria && p.sottocategoria.trim().length > 0) ? p.sottocategoria : "Generale";
-                                if(!acc[sc]) acc[sc] = [];
-                                acc[sc].push(p); return acc;
-                            }, {});
-
-                            const subKeys = Object.keys(sottoCats).sort();
-                            const isSingleGroup = subKeys.length === 1 && subKeys[0] === "Generale";
-
-                            return subKeys.map(scKey => (
-                                <div key={scKey} style={{width: '100%'}}>
-                                    {!isSingleGroup && (
-                                        <div onClick={() => toggleSubAccordion(scKey)} style={{ background: 'rgba(255,255,255,0.05)', borderLeft: `4px solid ${priceColor}`, padding: '10px', margin: '1px 0', width: '100%', boxSizing: 'border-box', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <h3 style={{margin:0, fontSize:'16px', color: titleColor, textTransform:'uppercase'}}>{scKey === "Generale" ? "Altri Piatti" : scKey}</h3>
-                                            <span style={{color: titleColor, fontWeight:'bold'}}>{activeSubCategory === scKey ? '▼' : '▶'}</span>
-                                        </div>
-                                    )}
-
-                                    {(isSingleGroup || activeSubCategory === scKey) && (
-                                        <div className="menu-list" style={{padding: '0', width: '100%'}}>
-                                            {sottoCats[scKey].map((prodotto) => {
-                                            const variantiObj = typeof prodotto.varianti === 'string' ? JSON.parse(prodotto.varianti || '{}') : (prodotto.varianti || {});
-                                            const varPiatto = variantiObj.aggiunte || [];
-                                            const varCategoria = prodotto.categoria_varianti || [];
-                                            const activeVarianti = varPiatto.length > 0 ? varPiatto : varCategoria;
-                                            const ingredientiStr = (variantiObj.base || []).join(', ');
-                                            const hasVarianti = (variantiObj.base && variantiObj.base.length > 0) || (activeVarianti.length > 0);
-                                                return (
-                                                <div key={prodotto.id} className="card"
-                                                    // MODALE SEMPRE APRIBILE
-                                                    onClick={() => prodotto.immagine_url ? apriModale(prodotto) : null}
-                                                    style={{ 
-                                                        display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', 
-                                                        cursor: prodotto.immagine_url ? 'pointer' : 'default', 
-                                                        backgroundColor: cardBg,
-                                                        borderBottom: `1px solid ${cardBorder}`
-                                                    }}
-                                                >
-                                                    {prodotto.immagine_url && <img src={prodotto.immagine_url} style={{width:'70px', height:'70px', objectFit:'cover', borderRadius:'5px', flexShrink: 0}} />}
-                                                    
-                                                  <div className="info" style={{flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center'}}>
-    <h3 style={{margin:'0 0 2px 0', fontSize:'16px', color: style.text || '#222', lineHeight:'1.2'}}>{prodotto.nome}</h3>
-    
-    {/* Descrizione (margine ridotto) */}
-    {prodotto.descrizione && (<p style={{fontSize:'12px', color:'#666', margin:'0 0 2px 0', lineHeight:'1.1'}}>{prodotto.descrizione}</p>)}
-    
-    {/* Ingredienti (margine ridotto) */}
-    {ingredientiStr && (
-        <p style={{fontSize:'11px', color:'#555', fontStyle:'italic', margin:'0 0 2px 0', lineHeight:'1.1'}}>
-            <span style={{fontWeight:'bold'}}>Ingredienti:</span> {ingredientiStr}
-        </p>
-    )}
-
-    {/* SEZIONE ALLERGENI/SURGELATO: Spazio ridotto e appare solo se serve */}
-    {prodotto.allergeni && Array.isArray(prodotto.allergeni) && prodotto.allergeni.length > 0 && (
-        <div style={{ marginTop: '2px', marginBottom: '2px', display: 'flex', flexDirection: 'column', gap: '1px' }}>
-            {prodotto.allergeni.filter(a => !a.includes("❄️")).length > 0 && (
-                <div style={{ fontSize: '10px', color: '#e74c3c', fontWeight: 'bold', textTransform: 'uppercase' }}>
-                    ⚠️ ALLERGENI: {prodotto.allergeni.filter(a => !a.includes("❄️")).join(', ')}
-                </div>
-            )}
-            {prodotto.allergeni.some(a => a.includes("❄️")) && (
-                <div style={{ fontSize: '10px', color: '#3498db', fontWeight: 'bold', textTransform: 'uppercase' }}>
-                    ❄️ PRODOTTO SURGELATO/ABBATTUTO
-                </div>
-            )}
-        </div>
-    )}
-    
-    {/* Prezzo: Margine superiore minimo per restare attaccato all'ultima riga */}
-    <div style={{fontSize:'14px', fontWeight:'bold', color: priceColor, marginTop: '2px'}}>{Number(prodotto.prezzo).toFixed(2)} €</div>
-</div>                         
-                                                    {/* PULSANTI SEMPRE VISIBILI (Anche in Wish List) */}
-                                                    <div style={{display:'flex', gap:'5px', alignItems:'center'}}>
-                                                        {hasVarianti && (
-                                                            <button 
-                                                                onClick={(e) => { e.stopPropagation(); apriModale(prodotto); }}
-                                                                style={{
-                                                                    background:'transparent', border:'1px solid #ccc', color:'#555',
-                                                                    borderRadius:'5px', padding:'5px 8px', fontSize:'12px', cursor:'pointer', fontWeight:'bold'
-                                                                }}
-                                                            >
-                                                                Modifica ✏️
-                                                            </button>
-                                                        )}
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); aggiungiAlCarrello(prodotto); }} 
-                                                            style={{ 
-                                                                background: btnBg, color: btnText, borderRadius:'50%', width:'35px', height:'35px', 
-                                                                border:'none', fontSize:'22px', display:'flex', alignItems:'center', justifyContent:'center', cursor: 'pointer' 
-                                                            }}
-                                                        >
-                                                            +
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            )})}
-                                        </div>
-                                    )}
-                                </div>
-                            ));
-                        })()}
-                    </div>
-                )}
-            </div>
-        ))}
+  {/* --- 4. LISTA MENU A FISARMONICA --- */}
+<div style={{ paddingBottom: '10px', marginTop: '10px', width: '100%', maxWidth: '600px', margin: '0 auto' }}>
+  {categorieUniche.map(catNome => (
+    <div key={catNome} className="accordion-item" style={{ marginBottom: '2px', borderRadius: '5px', overflow: 'hidden', width: '100%' }}>
+      <div onClick={() => toggleAccordion(catNome)} style={{ background: activeCategory === catNome ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.1)', color: titleColor, padding: '15px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: activeCategory === catNome ? `1px solid ${priceColor}` : 'none' }}>
+        <h2 style={{ margin: 0, fontSize: '18px', color: titleColor, width: '100%' }}>{catNome}</h2>
+        <span style={{ color: titleColor }}>{activeCategory === catNome ? '▼' : '▶'}</span>
       </div>
 
-{/* FOOTER INFO & ALLERGENI - AGGIORNATO */}
-<div style={{
-    textAlign: style.allineamento_footer || 'center', // <--- ALLINEAMENTO DINAMICO
-    padding:'30px 20px', 
-    marginBottom:'60px',
-    opacity: 0.9
-}}>
-    {style.info_footer && (
-        <p style={{
-            whiteSpace:'pre-line', 
-            marginBottom:'15px',
-            color: style.colore_footer_text || style.text, // <--- COLORE DINAMICO
-            fontSize: `${style.dimensione_footer || 12}px`  // <--- DIMENSIONE DINAMICA
-        }}>
-            {style.info_footer}
-        </p>
-    )}
-    
-    {style.url_allergeni && (
-        <div 
-            onClick={() => setShowAllergeni(true)}
-            style={{ 
-                display:'inline-block', 
-                padding:'10px 20px', 
-                border:`1px solid ${style.colore_footer_text || style.text}`, 
-                borderRadius:'30px', 
-                color: style.colore_footer_text || style.text, 
-                cursor:'pointer', fontWeight:'bold', background: 'rgba(255,255,255,0.05)', fontSize:'12px'
-            }}
-        >
-            📋 VEDI LISTA ALLERGENI
+      {activeCategory === catNome && (
+        <div className="accordion-content" style={{ padding: '0', background: 'rgba(0,0,0,0.2)', width: '100%' }}>
+          {(() => {
+            const piattiCat = menu.filter(p => (p.categoria_nome || p.categoria) === catNome);
+            const sottoCats = piattiCat.reduce((acc, p) => {
+              const sc = (p.sottocategoria && p.sottocategoria.trim().length > 0) ? p.sottocategoria : "Generale";
+              if (!acc[sc]) acc[sc] = [];
+              acc[sc].push(p); return acc;
+            }, {});
+
+            const subKeys = Object.keys(sottoCats).sort();
+            const isSingleGroup = subKeys.length === 1 && subKeys[0] === "Generale";
+
+            return subKeys.map(scKey => (
+              <div key={scKey} style={{ width: '100%' }}>
+                {!isSingleGroup && (
+                  <div onClick={() => toggleSubAccordion(scKey)} style={{ background: 'rgba(255,255,255,0.05)', borderLeft: `4px solid ${priceColor}`, padding: '10px', margin: '1px 0', width: '100%', boxSizing: 'border-box', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3 style={{ margin: 0, fontSize: '16px', color: titleColor, textTransform: 'uppercase' }}>{scKey === "Generale" ? "Altri Piatti" : scKey}</h3>
+                    <span style={{ color: titleColor, fontWeight: 'bold' }}>{activeSubCategory === scKey ? '▼' : '▶'}</span>
+                  </div>
+                )}
+
+                {(isSingleGroup || activeSubCategory === scKey) && (
+                  <div className="menu-list" style={{ padding: '0', width: '100%' }}>
+                    {sottoCats[scKey].map((prodotto) => {
+                      const variantiObj = typeof prodotto.varianti === 'string' ? JSON.parse(prodotto.varianti || '{}') : (prodotto.varianti || {});
+                      const ingredientiStr = (variantiObj.base || []).join(', ');
+                      const varPiatto = variantiObj.aggiunte || [];
+                      const varCategoria = prodotto.categoria_varianti || [];
+                      const activeVarianti = varPiatto.length > 0 ? varPiatto : varCategoria;
+                      const hasVarianti = (variantiObj.base && variantiObj.base.length > 0) || (activeVarianti.length > 0);
+
+                      return (
+                        <div key={prodotto.id} className="card"
+                          onClick={() => prodotto.immagine_url ? apriModale(prodotto) : null}
+                          style={{
+                            display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box',
+                            cursor: prodotto.immagine_url ? 'pointer' : 'default',
+                            backgroundColor: cardBg,
+                            borderBottom: `1px solid ${cardBorder}`
+                          }}
+                        >
+                          {prodotto.immagine_url && <img src={prodotto.immagine_url} style={{ width: '70px', height: '70px', objectFit: 'cover', borderRadius: '5px', flexShrink: 0 }} />}
+
+                          <div className="info" style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                            <h3 style={{ margin: '0 0 2px 0', fontSize: '16px', color: style.text || '#222', lineHeight: '1.2' }}>{prodotto.nome}</h3>
+                            {prodotto.descrizione && (<p style={{ fontSize: '12px', color: '#666', margin: '0 0 2px 0', lineHeight: '1.1' }}>{prodotto.descrizione}</p>)}
+                            {ingredientiStr && (<p style={{ fontSize: '11px', color: '#555', fontStyle: 'italic', margin: '0 0 2px 0', lineHeight: '1.1' }}><span style={{ fontWeight: 'bold' }}>Ingredienti:</span> {ingredientiStr}</p>)}
+
+                            {prodotto.allergeni && Array.isArray(prodotto.allergeni) && prodotto.allergeni.length > 0 && (
+                              <div style={{ marginTop: '2px', marginBottom: '2px', display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                                {prodotto.allergeni.filter(a => !a.includes("❄️")).length > 0 && (
+                                  <div style={{ fontSize: '10px', color: '#e74c3c', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                                    ⚠️ ALLERGENI: {prodotto.allergeni.filter(a => !a.includes("❄️")).join(', ')}
+                                  </div>
+                                )}
+                                {prodotto.allergeni.some(a => a.includes("❄️")) && (
+                                  <div style={{ fontSize: '10px', color: '#3498db', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                                    ❄️ PRODOTTO SURGELATO/ABBATTUTO
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            <div style={{ fontSize: '14px', fontWeight: 'bold', color: priceColor, marginTop: '2px' }}>{Number(prodotto.prezzo).toFixed(2)} €</div>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+                            {hasVarianti && (
+                              <button onClick={(e) => { e.stopPropagation(); apriModale(prodotto); }} style={{ background: 'transparent', border: '1px solid #ccc', color: '#555', borderRadius: '5px', padding: '5px 8px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}>Modifica ✏️</button>
+                            )}
+                            <button onClick={(e) => { e.stopPropagation(); aggiungiAlCarrello(prodotto); }} style={{ background: btnBg, color: btnText, borderRadius: '50%', width: '35px', height: '35px', border: 'none', fontSize: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>+</button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            ));
+          })()}
         </div>
-    )}
-    <div style={{marginTop:15, fontSize:10, color: style.colore_footer_text || style.text, opacity:0.5}}>Powered by StarkMenu</div>
+      )}
+    </div>
+  ))}
 </div>
-      {/* ⬆️⬆️ FINE INCOLLA ⬆️⬆️ */}
+
+{/* --- 5. FOOTER INFO & FILES --- */}
+<div style={{
+  textAlign: style.allineamento_footer || 'center',
+  padding: '20px 20px 60px 20px',
+  opacity: 0.9,
+  marginTop: '0px'
+}}>
+  
+  {/* PULSANTI ALLEGATI (Sopra il testo) */}
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+    {/* MENU DEL GIORNO */}
+    {style.url_menu_giorno && (
+      <div 
+        onClick={() => { setUrlFileAttivo(style.url_menu_giorno); setTitoloFile("Menù del Giorno"); setShowAllergeni(true); }}
+        style={{ 
+          display: 'inline-block', padding: '12px 25px', 
+          border: `1px solid ${style.colore_footer_text || style.text}`, 
+          borderRadius: '30px', color: style.colore_footer_text || style.text, 
+          cursor: 'pointer', fontWeight: 'bold', background: 'rgba(255,255,255,0.05)', fontSize: '13px' 
+        }}
+      >
+        📅 MENÙ DEL GIORNO
+      </div>
+    )}
+
+    {/* MENU PDF */}
+    {style.url_menu_pdf && (
+      <div 
+        onClick={() => { setUrlFileAttivo(style.url_menu_pdf); setTitoloFile("Menù"); setShowAllergeni(true); }}
+        style={{ 
+          display: 'inline-block', padding: '12px 25px', 
+          border: `1px solid ${style.colore_footer_text || style.text}`, 
+          borderRadius: '30px', color: style.colore_footer_text || style.text, 
+          cursor: 'pointer', fontWeight: 'bold', background: 'rgba(255,255,255,0.05)', fontSize: '13px' 
+        }}
+      >
+        📄 MENÙ
+      </div>
+    )}
+
+    {/* LISTA ALLERGENI */}
+    {style.url_allergeni && (
+      <div 
+        onClick={() => { setUrlFileAttivo(style.url_allergeni); setTitoloFile("Lista Allergeni"); setShowAllergeni(true); }}
+        style={{ 
+          display: 'inline-block', padding: '10px 20px', 
+          border: `1px solid ${style.colore_footer_text || style.text}`, 
+          borderRadius: '30px', color: style.colore_footer_text || style.text, 
+          cursor: 'pointer', fontWeight: 'bold', background: 'rgba(255,255,255,0.05)', fontSize: '12px', opacity: 0.8 
+        }}
+      >
+        📋 VEDI LISTA ALLERGENI
+      </div>
+    )}
+  </div>
+
+  {/* TESTO COPERTO / INFO LEGALI (Sotto i pulsanti) */}
+  {style.info_footer && (
+    <p style={{
+      whiteSpace: 'pre-line',
+      marginBottom: '15px',
+      color: style.colore_footer_text || style.text,
+      fontSize: `${style.dimensione_footer || 12}px`
+    }}>
+      {style.info_footer}
+    </p>
+  )}
+  
+  <div style={{ marginTop: 15, fontSize: 10, color: style.colore_footer_text || style.text, opacity: 0.5 }}>Powered by StarkMenu</div>
+</div>
 
 {/* --- MODALE LOGIN / REGISTRAZIONE --- */}
       {showAuthModal && (

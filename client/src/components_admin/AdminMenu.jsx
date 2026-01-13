@@ -405,7 +405,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             </DragDropContext>
         </div>
 
-        {/* 5. INFO LEGALI & FOOTER (SPLIT DESIGN) */}
+{/* 5. INFO LEGALI & FILE ALLEGATI (V47 UPDATE) */}
         <div style={{
             ...cardStyle, 
             borderLeft: '5px solid #8e44ad',
@@ -413,87 +413,68 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
         }}>
             <div style={{display:'flex', alignItems:'center', gap:'10px', marginBottom:'25px', borderBottom:'1px solid #eee', paddingBottom:'15px'}}>
                 <span style={{fontSize:'24px'}}>⚖️</span>
-                <h3 style={{margin:0, color:'#2c3e50'}}>Configurazione Footer & Allergeni</h3>
+                <h3 style={{margin:0, color:'#2c3e50'}}>Configurazione Footer & Allegati</h3>
             </div>
 
-            <div style={{display:'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap:'40px'}}>
+            <div style={{display:'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap:'30px'}}>
                 
-                {/* COLONNA SINISTRA: TESTO */}
-                <div>
-                    <label style={{...labelStyle, fontSize:'14px', marginBottom:'15px'}}>📝 Testo a piè di pagina</label>
-                    <div style={{position:'relative'}}>
-                        <textarea 
-                            value={config.info_footer || ''}
-                            onChange={e => setConfig({...config, info_footer: e.target.value})}
-                            placeholder="Inserisci qui P.IVA, Coperto, Info di servizio..."
-                            style={{
-                                width:'100%', padding:'20px', borderRadius:'12px', border:'1px solid #dcdcdc', 
-                                minHeight:'180px', fontSize:'15px', lineHeight:'1.6', background:'white',
-                                boxShadow:'inset 0 2px 5px rgba(0,0,0,0.02)', resize:'none', fontFamily:'inherit',
-                                boxSizing: 'border-box' 
-                            }}
-                        />
-                        <div style={{position:'absolute', bottom:15, right:15, fontSize:'12px', color:'#aaa'}}>Testo visibile in fondo al menu</div>
-                    </div>
+                {/* 1. TESTO FOOTER */}
+                <div style={{gridColumn: '1 / -1'}}>
+                    <label style={{...labelStyle, fontSize:'14px', marginBottom:'10px'}}>📝 Testo a piè di pagina</label>
+                    <textarea 
+                        value={config.info_footer || ''}
+                        onChange={e => setConfig({...config, info_footer: e.target.value})}
+                        placeholder="Inserisci qui P.IVA, Coperto, Info di servizio..."
+                        style={{
+                            width:'100%', padding:'15px', borderRadius:'10px', border:'1px solid #dcdcdc', 
+                            minHeight:'100px', fontSize:'14px', lineHeight:'1.5', background:'white',
+                            boxSizing: 'border-box'
+                        }}
+                    />
                 </div>
 
-                {/* COLONNA DESTRA: UPLOAD FILE */}
+                {/* 2. UPLOAD: MENU DEL GIORNO */}
                 <div>
-                    <label style={{...labelStyle, fontSize:'14px', marginBottom:'15px'}}>📄 Allegato Allergeni (PDF/FOTO)</label>
-                    
-                    {config.url_allergeni ? (
-                        <div style={{
-                            border:'2px solid #27ae60', background:'#f0fbf4', borderRadius:'12px', 
-                            height:'180px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                            position:'relative', overflow:'hidden', boxSizing:'border-box'
-                        }}>
-                            {config.url_allergeni.match(/\.(jpeg|jpg|gif|png|webp)$/i) ? (
-                                 <img src={config.url_allergeni} style={{height:'100%', width:'100%', objectFit:'contain', opacity:0.8}} />
-                            ) : (
-                                 <div style={{textAlign:'center'}}>
-                                     <span style={{fontSize:'40px'}}>📄</span>
-                                     <div style={{fontWeight:'bold', color:'#27ae60', marginTop:10}}>PDF Caricato Correttamente</div>
-                                 </div>
-                            )}
-                            
-                            {/* Overlay azioni */}
-                            <div style={{position:'absolute', inset:0, background:'rgba(0,0,0,0.6)', display:'flex', alignItems:'center', justifyContent:'center', opacity:0, transition:'opacity 0.2s'}} 
-                                 onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0}>
-                                <button 
-                                    onClick={() => setConfig({...config, url_allergeni: ''})} 
-                                    style={{background:'#e74c3c', color:'white', border:'none', padding:'10px 20px', borderRadius:'30px', fontWeight:'bold', cursor:'pointer'}}
-                                >
-                                    🗑️ RIMUOVI FILE
-                                </button>
-                            </div>
+                    <label style={{...labelStyle, fontSize:'14px', marginBottom:'10px'}}>📅 Menu del Giorno (Foto/PDF)</label>
+                    {config.url_menu_giorno ? (
+                        <div style={{border:'2px solid #2ecc71', background:'#e8f8f5', borderRadius:'10px', padding:'15px', textAlign:'center', position:'relative'}}>
+                            <span style={{fontSize:'30px'}}>🥗</span>
+                            <div style={{fontWeight:'bold', color:'#27ae60', marginTop:5}}>Menu Giorno Caricato</div>
+                            <button onClick={() => setConfig({...config, url_menu_giorno: ''})} style={{marginTop:10, background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'5px', cursor:'pointer'}}>RIMUOVI</button>
                         </div>
                     ) : (
-                        <div style={{
-                            border:'2px dashed #bdc3c7', borderRadius:'12px', background:'#fdfdfd',
-                            height:'180px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                            cursor:'pointer', position:'relative', transition:'all 0.3s', boxSizing:'border-box'
-                        }} onMouseEnter={e => e.currentTarget.style.borderColor = '#3498db'} onMouseLeave={e => e.currentTarget.style.borderColor = '#bdc3c7'}>
-                            
-                            <span style={{fontSize:'40px', marginBottom:'10px', opacity:0.5}}>📤</span>
-                            <div style={{fontWeight:'bold', color:'#7f8c8d'}}>Clicca o Trascina qui il file</div>
-                            <div style={{fontSize:'12px', color:'#aaa', marginTop:5}}>Accetta PDF, JPG, PNG</div>
-                            
-                            <input 
-                                type="file" 
-                                onChange={async (e) => {
-                                    const f = e.target.files[0]; if(!f) return;
-                                    const fd = new FormData(); fd.append('photo', f);
-                                    try {
-                                        const r = await fetch(`${API_URL}/api/upload`, {method:'POST', body:fd});
-                                        const d = await r.json();
-                                        if(d.url) setConfig({...config, url_allergeni: d.url});
-                                    } catch(err) { alert("Errore Upload"); }
-                                }} 
-                                style={{position:'absolute', inset:0, opacity:0, cursor:'pointer'}} 
-                            />
+                        <div style={{border:'2px dashed #ccc', borderRadius:'10px', padding:'20px', textAlign:'center', position:'relative', cursor:'pointer', background:'#fafafa'}}>
+                            <span style={{fontSize:'24px', color:'#aaa'}}>📤</span>
+                            <div style={{fontSize:'12px', color:'#666'}}>Carica Menu del Giorno</div>
+                            <input type="file" onChange={async(e)=>{
+                                const f=e.target.files[0]; if(!f)return; const fd=new FormData(); fd.append('photo',f);
+                                try{ const r=await fetch(`${API_URL}/api/upload`,{method:'POST',body:fd}); const d=await r.json(); if(d.url) setConfig({...config, url_menu_giorno:d.url}); }catch(e){alert("Errore");}
+                            }} style={{position:'absolute', inset:0, opacity:0, cursor:'pointer'}} />
                         </div>
                     )}
                 </div>
+
+                {/* 3. UPLOAD: MENU COMPLETO / PDF */}
+                <div>
+                    <label style={{...labelStyle, fontSize:'14px', marginBottom:'10px'}}>📄 Menu Completo / PDF</label>
+                    {config.url_menu_pdf ? (
+                        <div style={{border:'2px solid #3498db', background:'#ebf5fb', borderRadius:'10px', padding:'15px', textAlign:'center', position:'relative'}}>
+                            <span style={{fontSize:'30px'}}>📖</span>
+                            <div style={{fontWeight:'bold', color:'#2980b9', marginTop:5}}>PDF Menu Caricato</div>
+                            <button onClick={() => setConfig({...config, url_menu_pdf: ''})} style={{marginTop:10, background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'5px', cursor:'pointer'}}>RIMUOVI</button>
+                        </div>
+                    ) : (
+                        <div style={{border:'2px dashed #ccc', borderRadius:'10px', padding:'20px', textAlign:'center', position:'relative', cursor:'pointer', background:'#fafafa'}}>
+                            <span style={{fontSize:'24px', color:'#aaa'}}>📤</span>
+                            <div style={{fontSize:'12px', color:'#666'}}>Carica Menu PDF</div>
+                            <input type="file" onChange={async(e)=>{
+                                const f=e.target.files[0]; if(!f)return; const fd=new FormData(); fd.append('photo',f);
+                                try{ const r=await fetch(`${API_URL}/api/upload`,{method:'POST',body:fd}); const d=await r.json(); if(d.url) setConfig({...config, url_menu_pdf:d.url}); }catch(e){alert("Errore");}
+                            }} style={{position:'absolute', inset:0, opacity:0, cursor:'pointer'}} />
+                        </div>
+                    )}
+                </div>
+
             </div>
 
             <button onClick={handleSaveStyle} style={{
@@ -502,7 +483,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                 border:'none', borderRadius:'8px', fontSize:'16px', fontWeight:'bold', 
                 cursor:'pointer', letterSpacing:'1px', boxShadow:'0 5px 15px rgba(142, 68, 173, 0.3)'
             }}>
-                💾 SALVA IMPOSTAZIONI FOOTER
+                💾 SALVA INFO FOOTER
             </button>
         </div>
     </div>

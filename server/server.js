@@ -272,6 +272,7 @@ app.post('/api/cassa/paga-tavolo', async (req, res) => {
 });
 
 // Menu
+// 3. GET MENU (Aggiorna anche la lettura)
 app.get('/api/menu/:slug', async (req, res) => {
     try {
         const rist = await pool.query('SELECT * FROM ristoranti WHERE slug = $1', [req.params.slug]);
@@ -283,7 +284,6 @@ app.get('/api/menu/:slug', async (req, res) => {
             id: data.id, 
             ristorante: data.nome,
             style: { 
-                // ... altri campi esistenti ...
                 logo: data.logo_url, cover: data.cover_url, bg: data.colore_sfondo, 
                 title: data.colore_titolo, text: data.colore_testo, price: data.colore_prezzo, 
                 font: data.font_style, card_bg: data.colore_card, card_border: data.colore_border,
@@ -293,12 +293,15 @@ app.get('/api/menu/:slug', async (req, res) => {
                 checkout_bg: data.colore_checkout_bg, checkout_text: data.colore_checkout_text,
                 colore_modal_bg: data.colore_modal_bg, colore_modal_text: data.colore_modal_text,
                 
-                // --- CAMPI AGGIUNTI PER IL FOOTER ---
                 info_footer: data.info_footer,
                 url_allergeni: data.url_allergeni,
                 colore_footer_text: data.colore_footer_text,
                 dimensione_footer: data.dimensione_footer,
-                allineamento_footer: data.allineamento_footer
+                allineamento_footer: data.allineamento_footer,
+                
+                // NUOVI
+                url_menu_giorno: data.url_menu_giorno,
+                url_menu_pdf: data.url_menu_pdf
             },
             subscription_active: data.account_attivo !== false, 
             kitchen_active: data.cucina_super_active !== false, 
@@ -426,22 +429,25 @@ app.get('/api/ristorante/config/:id', async (req, res) => { try { const r = awai
 // server/server.js - SEZIONE GRAFICA V2 (Nuovi campi + Fix DB)
 
 // 1. ROTTA DI FIX DATABASE (Lanciala visitando: /api/db-fix-grafica)
-app.get('/api/db-fix-grafica', async (req, res) => {
+// 1. ROTTA DI AUTO-FIX DATABASE (Visita /api/db-fix-menu per applicare)
+app.get('/api/db-fix-menu', async (req, res) => {
     try {
         const cols = [
-            "colore_card", "colore_btn", "colore_btn_text", "colore_border",
-            "colore_tavolo_bg", "colore_tavolo_text", // Nuovo: Tavolo
-            "colore_carrello_bg", "colore_carrello_text", // Nuovo: Barra Carrello
-            "colore_checkout_bg", "colore_checkout_text" // Nuovo: Riepilogo
+            "url_menu_giorno TEXT DEFAULT ''",
+            "url_menu_pdf TEXT DEFAULT ''",
+            // Assicuriamoci che ci siano anche quelli vecchi per sicurezza
+            "colore_footer_text TEXT DEFAULT '#888888'",
+            "dimensione_footer TEXT DEFAULT '12'",
+            "allineamento_footer TEXT DEFAULT 'center'"
         ];
         for (const c of cols) {
-            await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS ${c} TEXT DEFAULT ''`);
+            await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS ${c}`);
         }
-        res.send("✅ Database Grafica Aggiornato con TUTTI i nuovi campi!");
+        res.send("✅ DATABASE AGGIORNATO: Colonne Menu Giorno e PDF create!");
     } catch (e) { res.status(500).send("Errore DB: " + e.message); }
 });
 
-// AGGIORNA ROTTA STYLE
+// 2. AGGIORNA STILE (PUT)
 app.put('/api/ristorante/style/:id', async (req, res) => {
     try {
         const { 
@@ -452,8 +458,9 @@ app.put('/api/ristorante/style/:id', async (req, res) => {
             colore_checkout_bg, colore_checkout_text, 
             colore_modal_bg, colore_modal_text,
             font_style, info_footer, url_allergeni,
+            colore_footer_text, dimensione_footer, allineamento_footer,
             // NUOVI CAMPI
-            colore_footer_text, dimensione_footer, allineamento_footer
+            url_menu_giorno, url_menu_pdf 
         } = req.body;
 
         await pool.query(
@@ -464,8 +471,9 @@ app.put('/api/ristorante/style/:id', async (req, res) => {
             colore_checkout_bg=$15, colore_checkout_text=$16, 
             colore_modal_bg=$17, colore_modal_text=$18,
             font_style=$19, info_footer=$20, url_allergeni=$21,
-            colore_footer_text=$22, dimensione_footer=$23, allineamento_footer=$24
-            WHERE id=$25`,
+            colore_footer_text=$22, dimensione_footer=$23, allineamento_footer=$24,
+            url_menu_giorno=$25, url_menu_pdf=$26
+            WHERE id=$27`,
             [
                 logo_url, cover_url, colore_sfondo, colore_titolo, colore_testo, colore_prezzo, 
                 colore_card, colore_btn, colore_btn_text, colore_border,
@@ -473,7 +481,8 @@ app.put('/api/ristorante/style/:id', async (req, res) => {
                 colore_checkout_bg, colore_checkout_text,
                 colore_modal_bg, colore_modal_text,
                 font_style, info_footer, url_allergeni,
-                colore_footer_text, dimensione_footer, allineamento_footer, // <--- I NUOVI VALORI
+                colore_footer_text, dimensione_footer, allineamento_footer,
+                url_menu_giorno, url_menu_pdf, // Nuovi valori
                 req.params.id
             ]
         );
