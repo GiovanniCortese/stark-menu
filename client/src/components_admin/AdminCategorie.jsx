@@ -25,7 +25,9 @@ function AdminCategorie({ user, categorie, setCategorie, API_URL, ricaricaDati }
 
 const cancellaCategoria = async (id) => { 
     if (user.ruolo === 'editor') return alert("⛔ GLI EDITOR NON POSSONO CANCELLARE LE CATEGORIE.");
-    if(confirm("Eliminare?")) { 
+    
+    // MODIFICA QUI IL MESSAGGIO:
+    if(confirm("⚠️ ATTENZIONE: Eliminando questa categoria verranno cancellati anche TUTTI I PIATTI al suo interno.\n\nQuesta azione è irreversibile. Sei sicuro?")) { 
         await fetch(`${API_URL}/api/categorie/${id}`, {method:'DELETE'}); 
         ricaricaDati(); 
     }

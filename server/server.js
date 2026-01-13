@@ -367,7 +367,36 @@ app.post('/api/categorie', async (req, res) => { try { const { nome, ristorante_
 app.put('/api/categorie/riordina', async (req, res) => { const { categorie } = req.body; try { for (const cat of categorie) await pool.query('UPDATE categorie SET posizione = $1 WHERE id = $2', [cat.posizione, cat.id]); res.json({ success: true }); } catch (err) { res.status(500).json({ error: err.message }); } });
 app.get('/api/categorie/:ristorante_id', async (req, res) => { try { const r = await pool.query('SELECT * FROM categorie WHERE ristorante_id = $1 ORDER BY posizione ASC', [req.params.ristorante_id]); res.json(r.rows); } catch (e) { res.status(500).json({ error: "Err" }); } });
 app.put('/api/categorie/:id', async (req, res) => { try { await pool.query('UPDATE categorie SET nome=$1, is_bar=$2, is_pizzeria=$3, descrizione=$4, varianti_default=$5 WHERE id=$6', [req.body.nome, req.body.is_bar, req.body.is_pizzeria, req.body.descrizione, req.body.varianti_default, req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
-app.delete('/api/categorie/:id', async (req, res) => { try { await pool.query('DELETE FROM categorie WHERE id=$1', [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
+app.delete('/api/categorie/:id', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN'); // Inizia transazione atomica
+        const { id } = req.params;
+
+        // 1. Recuperiamo il nome e l'ID ristorante della categoria
+        const catRes = await client.query('SELECT nome, ristorante_id FROM categorie WHERE id = $1', [id]);
+
+        if (catRes.rows.length > 0) {
+            const { nome, ristorante_id } = catRes.rows[0];
+
+            // 2. Eliminiamo TUTTI i prodotti associati a questa categoria e ristorante
+            // (Nota: Il tuo DB usa il nome della categoria come link, non l'ID)
+            await client.query('DELETE FROM prodotti WHERE categoria = $1 AND ristorante_id = $2', [nome, ristorante_id]);
+        }
+
+        // 3. Eliminiamo la categoria stessa
+        await client.query('DELETE FROM categorie WHERE id = $1', [id]);
+
+        await client.query('COMMIT'); // Conferma tutto
+        res.json({ success: true });
+    } catch (e) {
+        await client.query('ROLLBACK'); // Annulla se c'è errore
+        console.error("Errore cancellazione categoria:", e);
+        res.status(500).json({ error: "Errore durante l'eliminazione" });
+    } finally {
+        client.release();
+    }
+});
 
 // Config Ristorante
 app.get('/api/ristorante/config/:id', async (req, res) => { try { const r = await pool.query('SELECT * FROM ristoranti WHERE id = $1', [req.params.id]); if (r.rows.length > 0) res.json(r.rows[0]); else res.status(404).json({ error: "Not Found" }); } catch (e) { res.status(500).json({ error: "Err" }); } });
