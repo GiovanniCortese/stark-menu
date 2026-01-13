@@ -1,4 +1,4 @@
-// client/src/components_admin/AdminMenu.jsx - VERSIONE V40 (FIX GERARCHIA PERMESSI) 🛡️
+// client/src/components_admin/AdminMenu.jsx - V41 FINAL (ALL FIXES)
 import { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
@@ -6,7 +6,7 @@ const LISTA_ALLERGENI = [
   "Glutine 🌾", "Crostacei 🦐", "Uova 🥚", "Pesce 🐟", "Arachidi 🥜", 
   "Soia 🫘", "Latte 🥛", "Frutta a guscio 🌰", "Sedano 🥬", 
   "Senape 🌭", "Sesamo 🍔", "Solfiti 🍷", "Lupini 🌼", "Molluschi 🐙",
-  "Prodotto Surgelato/Abbattuto ❄️" // <-- AGGIUNTO QUI
+  "Prodotto Surgelato/Abbattuto ❄️" 
 ];
 
 function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL, ricaricaDati }) {
@@ -14,27 +14,17 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const [editId, setEditId] = useState(null); 
   const [uploading, setUploading] = useState(false);
 
-  // --- LOGICA STATI (V40) ---
-  // account_attivo = ABBONAMENTO (Gestito da SuperAdmin, blocca tutto)
-  // cucina_super_active = MASTER SWITCH (Gestito da SuperAdmin, blocca solo cucina)
-  // ordini_abilitati = INTERRUTTORE RISTORATORE (Gestito qui)
-  
-  const isAbbonamentoAttivo = config.account_attivo !== false; // Default true
-  const isMasterBlock = config.cucina_super_active === false;  // Se false, è bloccato dagli admin
+  // --- LOGICA STATI ---
+  const isAbbonamentoAttivo = config.account_attivo !== false; 
+  const isMasterBlock = config.cucina_super_active === false; 
   const isCucinaAperta = config.ordini_abilitati;
 
   // --- FUNZIONI DI SERVIZIO ---
   const toggleCucina = async () => { 
-      // 1. BLOCCO SICUREZZA
       if (!isAbbonamentoAttivo) return alert("⛔ ABBONAMENTO SOSPESO."); 
       if (isMasterBlock) return alert("⛔ CUCINA BLOCCATA DAGLI ADMIN.");
-
-      // 2. TOGGLE CUCINA (ordini_abilitati)
       const nuovoStatoCucina = !isCucinaAperta; 
-      
-      // Aggiornamento Ottimistico
       setConfig({...config, ordini_abilitati: nuovoStatoCucina}); 
-      
       try {
           await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, {
               method:'PUT', 
@@ -43,7 +33,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
           }); 
       } catch (error) {
           alert("Errore di connessione.");
-          setConfig({...config, ordini_abilitati: !nuovoStatoCucina}); // Revert
+          setConfig({...config, ordini_abilitati: !nuovoStatoCucina});
       }
   };
 
@@ -51,7 +41,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       e.preventDefault(); 
       if(!nuovoPiatto.nome) return alert("Nome mancante"); 
       
-      // 1. Parsing Varianti (Da Testo a JSONB)
       let variantiJson = [];
       if (nuovoPiatto.varianti_str) {
           variantiJson = nuovoPiatto.varianti_str.split(',').map(v => {
@@ -61,28 +50,21 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
           }).filter(Boolean);
       }
 
-      // 2. Parsing Ingredienti Base (Da Testo a Array Semplice)
       let ingredientiBaseArr = [];
       if (nuovoPiatto.ingredienti_base) {
           ingredientiBaseArr = nuovoPiatto.ingredienti_base.split(',').map(i => i.trim()).filter(Boolean);
       }
 
-      // Struttura finale JSONB
-      const variantiFinali = {
-          base: ingredientiBaseArr,
-          aggiunte: variantiJson
-      };
-
+      const variantiFinali = { base: ingredientiBaseArr, aggiunte: variantiJson };
       const cat = nuovoPiatto.categoria || (categorie.length > 0 ? categorie[0].nome : "");
       
       const payload = {
           ...nuovoPiatto, 
           categoria: cat, 
           ristorante_id: user.id,
-          varianti: JSON.stringify(variantiFinali) // Salviamo il JSON nel DB
+          varianti: JSON.stringify(variantiFinali)
       };
       
-      // Rimuoviamo i campi temporanei usati per l'input text
       delete payload.varianti_str;
       delete payload.ingredienti_base;
 
@@ -110,328 +92,267 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       } catch(e) { console.error(e); } finally { setUploading(false); }
   };
 
+  // --- NUOVE FUNZIONI AGGIUNTE ---
+  const handleImportExcel = async (e) => {
+    const file = e.target.files[0];
+    if(!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('ristorante_id', user.id);
+
+    try {
+        const res = await fetch(`${API_URL}/api/import-excel`, { method: 'POST', body: formData });
+        const data = await res.json();
+        if(data.success) { alert(data.message); ricaricaDati(); } 
+        else alert("Errore Import: " + data.error);
+    } catch(err) { alert("Errore Connessione"); }
+  };
+
+  const handleSaveStyle = async () => {
+    try {
+        await fetch(`${API_URL}/api/ristorante/style/${user.id}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(config)
+        });
+        alert("✅ Info Footer Aggiornate!");
+    } catch(e) { alert("Errore salvataggio"); }
+  };
+
   const cancellaPiatto = async (id) => { if(confirm("Eliminare?")) { await fetch(`${API_URL}/api/prodotti/${id}`, {method:'DELETE'}); ricaricaDati(); }};
+  
   const avviaModifica = (piatto) => { 
       setEditId(piatto.id);
-     setNuovoPiatto({
-        ...piatto,
-        allergeni: piatto.allergeni || [], // CARICA GLI ALLERGENI ESISTENTI
-        // ... restanti campi ...
-    });
       
-      // Recuperiamo il JSON dal DB
       let variantiObj = { base: [], aggiunte: [] };
       try {
           if(piatto.varianti) {
-              // Se arriva come stringa dal server (molto probabile con pg), parse
               variantiObj = typeof piatto.varianti === 'string' ? JSON.parse(piatto.varianti) : piatto.varianti;
           }
       } catch(e) { console.error("Err parse varianti", e); }
 
-      // Convertiamo JSON in Testo per gli input
       const strBase = (variantiObj.base || []).join(', ');
       const strAggiunte = (variantiObj.aggiunte || []).map(v => `${v.nome}:${v.prezzo}`).join(', ');
 
       setNuovoPiatto({
           ...piatto, 
+          allergeni: piatto.allergeni || [],
           ingredienti_base: strBase,
           varianti_str: strAggiunte
       }); 
       window.scrollTo({ top: 0, behavior: 'smooth' }); 
   };
+  
   const annullaModifica = () => { setEditId(null); setNuovoPiatto({nome:'', prezzo:'', categoria:categorie[0]?.nome || '', sottocategoria: '', descrizione:'', immagine_url:''}); };
   const duplicaPiatto = async (piattoOriginale) => { if(!confirm(`Duplicare?`)) return; const copia = { ...piattoOriginale, nome: `${piattoOriginale.nome} (Copia)`, ristorante_id: user.id }; await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(copia) }); ricaricaDati(); };
 
-// --- LOGICA DRAG & DROP PIATTI (FIX DEFINITIVO) ---
-const onDragEnd = async (result) => {
+  // --- LOGICA DRAG & DROP ---
+  const onDragEnd = async (result) => {
     if (!result.destination) return;
-
-    // 1. Logica visiva (React)
     const sourceCat = result.source.droppableId.replace("cat-", "");
     const destCat = result.destination.droppableId.replace("cat-", "");
     const piattoId = parseInt(result.draggableId);
 
-    // Clona menu
     let nuovoMenu = [...menu];
     const piattoSpostato = nuovoMenu.find(p => p.id === piattoId);
     if (!piattoSpostato) return;
 
-    // Rimuovi dalla vecchia posizione
     nuovoMenu = nuovoMenu.filter(p => p.id !== piattoId);
-    
-    // Aggiorna dati piatto
     const piattoAggiornato = { ...piattoSpostato, categoria: destCat };
-
-    // Inserisci nella nuova posizione
+    
     const piattiDestinazione = nuovoMenu
         .filter(p => p.categoria === destCat)
-        .sort((a,b) => (a.posizione||0) - (b.posizione||0)); // Ordine essenziale!
+        .sort((a,b) => (a.posizione||0) - (b.posizione||0)); 
     
     piattiDestinazione.splice(result.destination.index, 0, piattoAggiornato);
-
-    // Ricostruisci menu globale
     const altriPiatti = nuovoMenu.filter(p => p.categoria !== destCat);
-    
-    // Assegna nuove posizioni (0, 1, 2...)
     const piattiDestinazioneFinali = piattiDestinazione.map((p, idx) => ({ ...p, posizione: idx }));
     
-    const menuFinale = [...altriPiatti, ...piattiDestinazioneFinali];
-    setMenu(menuFinale);
+    setMenu([...altriPiatti, ...piattiDestinazioneFinali]);
 
-    // 2. Chiamata Server (Payload pulito)
-    // Inviamo solo quelli che sono cambiati (la categoria di destinazione)
     await fetch(`${API_URL}/api/prodotti/riordina`, { 
-        method: 'PUT', 
-        headers:{'Content-Type':'application/json'}, 
-        body: JSON.stringify({ 
-            prodotti: piattiDestinazioneFinali.map(p => ({ 
-                id: p.id, 
-                posizione: p.posizione, 
-                categoria: destCat 
-            })) 
-        }) 
+        method: 'PUT', headers:{'Content-Type':'application/json'}, 
+        body: JSON.stringify({ prodotti: piattiDestinazioneFinali.map(p => ({ id: p.id, posizione: p.posizione, categoria: destCat })) }) 
     });
-};
+  };
 
-  // --- DEFINIZIONE STILI CARD STATO ---
-  let cardBg = '#fff3cd'; 
-  let cardBorder = '2px solid #333';
-  
-  if (!isAbbonamentoAttivo) {
-      cardBg = '#ffecec'; cardBorder = '2px solid red';
-  } else if (isMasterBlock) {
-      cardBg = '#fadbd8'; cardBorder = '2px solid #c0392b';
-  } else if (!isCucinaAperta) {
-      cardBg = '#f8d7da';
-  }
+  let cardBg = '#fff3cd'; let cardBorder = '2px solid #333';
+  if (!isAbbonamentoAttivo) { cardBg = '#ffecec'; cardBorder = '2px solid red'; } 
+  else if (isMasterBlock) { cardBg = '#fadbd8'; cardBorder = '2px solid #c0392b'; } 
+  else if (!isCucinaAperta) { cardBg = '#f8d7da'; }
 
   return (
-    <DragDropContext onDragEnd={onDragEnd}>
-        {/* Pulsante Servizio (CONTROLLO GERARCHICO) */}
-        <div className="card" style={{
-            border: cardBorder, 
-            background: cardBg, 
-            marginBottom:'20px', textAlign:'center', padding: '15px'
-        }}>
+    <div> {/* CONTENITORE PRINCIPALE UNICO */}
+        
+        {/* Pulsante Servizio */}
+        <div className="card" style={{border: cardBorder, background: cardBg, marginBottom:'20px', textAlign:'center', padding: '15px'}}>
               {!isAbbonamentoAttivo ? (
-                  /* CASO 1: ABBONAMENTO SCADUTO (Blocco Totale) */
-                  <div>
-                      <h2 style={{color:'red', margin:0, fontSize:'1.5rem'}}>⛔ ABBONAMENTO SOSPESO</h2>
-                      <p style={{color:'#c0392b', fontWeight:'bold', margin:'5px 0'}}>Contatta l'amministrazione per sbloccare il pannello.</p>
-                  </div>
+                  <div><h2 style={{color:'red', margin:0}}>⛔ ABBONAMENTO SOSPESO</h2></div>
               ) : isMasterBlock ? (
-                  /* CASO 2: BLOCCO SUPER ADMIN (Cucina Disabilitata Centralmente) */
-                  <div>
-                      <h2 style={{color:'#c0392b', margin:0, fontSize:'1.5rem'}}>👮 CUCINA BLOCCATA DAGLI ADMIN</h2>
-                      <p style={{color:'#c0392b', fontWeight:'bold', margin:'5px 0'}}>La gestione ordini è disabilitata temporaneamente.</p>
-                  </div>
+                  <div><h2 style={{color:'#c0392b', margin:0}}>👮 CUCINA BLOCCATA ADMIN</h2></div>
               ) : (
-                  /* CASO 3: NORMALE -> MOSTRA BOTTONE */
-                  <button onClick={toggleCucina} style={{
-                      background: isCucinaAperta ? '#2ecc71':'#e74c3c', 
-                      width:'100%', padding:'15px', color:'white', fontWeight:'bold', fontSize:'18px', 
-                      border:'none', borderRadius:'5px', cursor:'pointer'
-                  }}>
-                      {isCucinaAperta ? "✅ ORDINI APERTI (Clicca per Chiudere)" : "🛑 ORDINI CHIUSI (Clicca per Aprire)"}
+                  <button onClick={toggleCucina} style={{background: isCucinaAperta ? '#2ecc71':'#e74c3c', width:'100%', padding:'15px', color:'white', fontWeight:'bold', fontSize:'18px', border:'none', borderRadius:'5px', cursor:'pointer'}}>
+                      {isCucinaAperta ? "✅ ORDINI APERTI" : "🛑 ORDINI CHIUSI"}
                   </button>
               )}
         </div>
 
-        {/* --- SEZIONE EXCEL (SPOSTATA QUI) --- */}
-<div className="card" style={{background:'#f0f3f4', border:'1px solid #ddd', marginBottom:'20px', display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 20px'}}>
-    <h4 style={{margin:0}}>📊 Gestione Massiva Menu</h4>
-    <div style={{display:'flex', gap:'10px'}}>
-        <button onClick={() => window.open(`${API_URL}/api/export-excel/${user.id}`, '_blank')} style={{background:'#27ae60', color:'white', fontSize:'12px'}}>📤 ESPORTA</button>
-        <div style={{position:'relative'}}>
-            <button style={{background:'#2980b9', color:'white', fontSize:'12px'}}>📥 IMPORTA EXCEL</button>
-            <input type="file" accept=".xlsx, .xls" onChange={handleImportExcel} style={{position:'absolute', inset:0, opacity:0, cursor:'pointer'}} />
+        {/* --- SEZIONE EXCEL --- */}
+        <div className="card" style={{background:'#f0f3f4', border:'1px solid #ddd', marginBottom:'20px', display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 20px'}}>
+            <h4 style={{margin:0}}>📊 Gestione Massiva Menu</h4>
+            <div style={{display:'flex', gap:'10px'}}>
+                <button onClick={() => window.open(`${API_URL}/api/export-excel/${user.id}`, '_blank')} style={{background:'#27ae60', color:'white', fontSize:'12px', padding:'5px 10px', border:'none', borderRadius:'4px', cursor:'pointer'}}>📤 ESPORTA</button>
+                <div style={{position:'relative'}}>
+                    <button style={{background:'#2980b9', color:'white', fontSize:'12px', padding:'5px 10px', border:'none', borderRadius:'4px', cursor:'pointer'}}>📥 IMPORTA EXCEL</button>
+                    <input type="file" accept=".xlsx, .xls" onChange={handleImportExcel} style={{position:'absolute', inset:0, opacity:0, cursor:'pointer'}} />
+                </div>
+            </div>
         </div>
-    </div>
-</div>
 
-        {/* --- SEZIONE EDITING (Disabilitata visivamente se sospeso) --- */}
-        <div style={{
-            opacity: isAbbonamentoAttivo ? 1 : 0.4, 
-            pointerEvents: isAbbonamentoAttivo ? 'auto' : 'none', 
-            filter: isAbbonamentoAttivo ? 'none' : 'grayscale(100%)'
-        }}>
-            
-            {/* Form Aggiungi/Modifica */}
+        {/* --- SEZIONE EDITING --- */}
+        <div style={{opacity: isAbbonamentoAttivo ? 1 : 0.4, pointerEvents: isAbbonamentoAttivo ? 'auto' : 'none'}}>
             <div className="card" style={{background: editId ? '#e3f2fd' : '#f8f9fa', border: editId ? '2px solid #2196f3' : '2px dashed #ccc'}}>
                   <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                       <h3>{editId ? "✏️ Modifica Piatto" : "➕ Aggiungi Piatto"}</h3>
                       {editId && <button onClick={annullaModifica} style={{background:'#777', padding:'5px', fontSize:'12px', color:'white', border:'none', borderRadius:'3px'}}>Annulla</button>}
                   </div>
                  <form onSubmit={handleSalvaPiatto} style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
-                      <input placeholder="Nome Piatto" value={nuovoPiatto.nome} onChange={e => setNuovoPiatto({...nuovoPiatto, nome: e.target.value})} required />
+                      <input placeholder="Nome Piatto" value={nuovoPiatto.nome} onChange={e => setNuovoPiatto({...nuovoPiatto, nome: e.target.value})} required style={{padding:'10px'}} />
                       
                       <div style={{display:'flex', gap:'10px'}}>
                         <select value={nuovoPiatto.categoria} onChange={e => setNuovoPiatto({...nuovoPiatto, categoria: e.target.value})} style={{flex:1, padding:'10px'}}>
                             {categorie.map(cat => <option key={cat.id} value={cat.nome}>{cat.nome}</option>)}
                         </select>
-                        <input placeholder="Sottocategoria (es. Bianchi)" value={nuovoPiatto.sottocategoria} onChange={e => setNuovoPiatto({...nuovoPiatto, sottocategoria: e.target.value})} style={{flex:1}} />
+                        <input placeholder="Sottocategoria (es. Bianchi)" value={nuovoPiatto.sottocategoria} onChange={e => setNuovoPiatto({...nuovoPiatto, sottocategoria: e.target.value})} style={{flex:1, padding:'10px'}} />
                       </div>
                       
                       <textarea placeholder="Descrizione" value={nuovoPiatto.descrizione} onChange={e => setNuovoPiatto({...nuovoPiatto, descrizione: e.target.value})} style={{padding:'10px', minHeight:'60px'}}/>
                       
-{/* ⬇️⬇️ INCOLLA QUI IL BLOCCO ALLERGENI ⬇️⬇️ */}
-{/* SEZIONE ALLERGENI */}
-<div style={{background:'#f9f9f9', padding:'10px', borderRadius:'5px', marginBottom:'10px', border:'1px solid #eee'}}>
-    <label style={{fontWeight:'bold', fontSize:'12px', display:'block', marginBottom:'5px'}}>⚠️ ALLERGENI PRESENTI</label>
-    <div style={{display:'flex', flexWrap:'wrap', gap:'10px'}}>
-        {LISTA_ALLERGENI.map(all => (
-            <label key={all} style={{display:'flex', alignItems:'center', gap:'5px', fontSize:'11px', cursor:'pointer', background:'white', padding:'4px 8px', borderRadius:'15px', border: (nuovoPiatto.allergeni || []).includes(all) ? '1px solid #e74c3c' : '1px solid #ddd'}}>
-                <input 
-                    type="checkbox" 
-                    checked={(nuovoPiatto.allergeni || []).includes(all)}
-                    onChange={(e) => {
-                        const current = nuovoPiatto.allergeni || [];
-                        if (e.target.checked) setNuovoPiatto({...nuovoPiatto, allergeni: [...current, all]});
-                        else setNuovoPiatto({...nuovoPiatto, allergeni: current.filter(x => x !== all)});
-                    }}
-                />
-                {all}
-            </label>
-        ))}
-    </div>
-</div>
-{/* ⬆️⬆️ FINE BLOCCO ALLERGENI ⬆️⬆️ */}
-
-                      {/* --- NUOVA SEZIONE VARIANTI JSON --- */}
+                      {/* --- SEZIONE VARIANTI & INGREDIENTI --- */}
                       <div style={{background:'#fff3cd', padding:'10px', borderRadius:'5px', border:'1px dashed #f39c12'}}>
                           <label style={{fontWeight:'bold', fontSize:'12px', display:'block', marginBottom:'5px'}}>🧂 INGREDIENTI BASE (Separati da virgola)</label>
-                          <input 
-                              placeholder="Es: Pomodoro, Mozzarella, Basilico (Il cliente potrà toglierli)" 
-                              value={nuovoPiatto.ingredienti_base || ""} 
-                              onChange={e => setNuovoPiatto({...nuovoPiatto, ingredienti_base: e.target.value})} 
-                              style={{width:'100%', marginBottom:'10px'}}
-                          />
+                          <input placeholder="Es: Pomodoro, Mozzarella" value={nuovoPiatto.ingredienti_base || ""} onChange={e => setNuovoPiatto({...nuovoPiatto, ingredienti_base: e.target.value})} style={{width:'100%', marginBottom:'10px', padding:'8px'}} />
                           
-                          <label style={{fontWeight:'bold', fontSize:'12px', display:'block', marginBottom:'5px'}}>➕ AGGIUNTE A PAGAMENTO (Formato: Nome:Prezzo)</label>
-                          <textarea 
-                              placeholder="Es: Bufala:2.00, Salame Piccante:1.50, Patatine:1.00" 
-                              value={nuovoPiatto.varianti_str || ""} 
-                              onChange={e => setNuovoPiatto({...nuovoPiatto, varianti_str: e.target.value})} 
-                              style={{width:'100%', minHeight:'50px'}}
-                          />
+                          <label style={{fontWeight:'bold', fontSize:'12px', display:'block', marginBottom:'5px'}}>➕ AGGIUNTE A PAGAMENTO (Nome:Prezzo)</label>
+                          <textarea placeholder="Es: Bufala:2.00, Salame:1.50" value={nuovoPiatto.varianti_str || ""} onChange={e => setNuovoPiatto({...nuovoPiatto, varianti_str: e.target.value})} style={{width:'100%', minHeight:'50px', padding:'8px'}} />
+                      </div>
+
+                      {/* --- SEZIONE ALLERGENI (SPOSTATA SOTTO) --- */}
+                      <div style={{background:'#f9f9f9', padding:'10px', borderRadius:'5px', border:'1px solid #eee'}}>
+                          <label style={{fontWeight:'bold', fontSize:'12px', display:'block', marginBottom:'5px'}}>⚠️ ALLERGENI PRESENTI</label>
+                          <div style={{display:'flex', flexWrap:'wrap', gap:'10px'}}>
+                              {LISTA_ALLERGENI.map(all => (
+                                  <label key={all} style={{display:'flex', alignItems:'center', gap:'5px', fontSize:'11px', cursor:'pointer', background:'white', padding:'4px 8px', borderRadius:'15px', border: (nuovoPiatto.allergeni || []).includes(all) ? '1px solid #e74c3c' : '1px solid #ddd'}}>
+                                      <input 
+                                          type="checkbox" 
+                                          checked={(nuovoPiatto.allergeni || []).includes(all)}
+                                          onChange={(e) => {
+                                              const current = nuovoPiatto.allergeni || [];
+                                              if (e.target.checked) setNuovoPiatto({...nuovoPiatto, allergeni: [...current, all]});
+                                              else setNuovoPiatto({...nuovoPiatto, allergeni: current.filter(x => x !== all)});
+                                          }}
+                                      />
+                                      {all}
+                                  </label>
+                              ))}
+                          </div>
                       </div>
 
                       <div style={{display:'flex', gap:'10px'}}>
-                          <input type="number" placeholder="Prezzo Base" value={nuovoPiatto.prezzo} onChange={e => setNuovoPiatto({...nuovoPiatto, prezzo: e.target.value})} style={{flex:1}} step="0.10" required />
-<div style={{
-        background: 'white', 
-        padding: '8px', 
-        flex: 1, 
-        border: '1px solid #ccc', 
-        borderRadius: '4px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '10px'
-    }}>
-        <label style={{fontSize:'12px', fontWeight:'bold', cursor:'pointer', display:'flex', alignItems:'center', gap:'5px', width: '100%'}}>
-            📷 {uploading ? "CARICAMENTO..." : (nuovoPiatto.immagine_url ? "FOTO CARICATA ✅" : "CARICA FOTO")}
-            <input type="file" onChange={handleFileChange} style={{display:'none'}} />
-        </label>
-        {uploading && <div className="spinner-mini"></div>} 
-    </div>                      </div>
-                      <button type="submit" className="btn-invia" style={{background: editId ? '#2196f3' : '#333'}}>{editId ? "AGGIORNA" : "SALVA"}</button>
+                          <input type="number" placeholder="Prezzo" value={nuovoPiatto.prezzo} onChange={e => setNuovoPiatto({...nuovoPiatto, prezzo: e.target.value})} style={{flex:1, padding:'10px'}} step="0.10" required />
+                          <div style={{background: 'white', padding: '8px', flex: 1, border: '1px solid #ccc', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '10px'}}>
+                              <label style={{fontSize:'12px', fontWeight:'bold', cursor:'pointer', display:'flex', alignItems:'center', gap:'5px', width: '100%'}}>
+                                  📷 {uploading ? "CARICAMENTO..." : (nuovoPiatto.immagine_url ? "FOTO CARICATA ✅" : "CARICA FOTO")}
+                                  <input type="file" onChange={handleFileChange} style={{display:'none'}} />
+                              </label>
+                              {uploading && <div className="spinner-mini"></div>} 
+                          </div>
+                      </div>
+                      <button type="submit" className="btn-invia" style={{background: editId ? '#2196f3' : '#333', padding:'10px', color:'white', border:'none', borderRadius:'5px', cursor:'pointer', fontWeight:'bold'}}>{editId ? "AGGIORNA" : "SALVA"}</button>
                   </form>
             </div>
 
-            {/* Lista Piatti */}
-            {categorie.map(cat => (
-                <div key={cat.id} style={{marginBottom: '20px'}}>
-                    <h3 style={{marginTop:'30px', borderBottom:'2px solid #eee', paddingBottom:'5px', color:'#555'}}>{cat.nome} {cat.is_bar && "🍹"} {cat.is_pizzeria && "🍕"}</h3>
-                    <Droppable droppableId={`cat-${cat.nome}`} type="DISH">
-                        {(provided, snapshot) => (
-                            <div {...provided.droppableProps} ref={provided.innerRef} className="menu-list" style={{background: snapshot.isDraggingOver ? '#f0f0f0' : 'transparent', minHeight: '50px', padding: '5px'}}>
-                                {menu
-                                    .filter(p => p.categoria === cat.nome)
-                                    .sort((a,b) => (a.posizione || 0) - (b.posizione || 0)) 
-                                    .map((p, index) => (
-                                        <Draggable key={p.id} draggableId={String(p.id)} index={index}>
-                                            {(provided, snapshot) => (
-                                                <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className="card" style={{...provided.draggableProps.style, flexDirection:'row', justifyContent:'space-between', background: snapshot.isDragging ? '#e3f2fd' : 'white', border: editId === p.id ? '2px solid #2196f3' : '1px solid #eee'}}>
-                                                    <div style={{display:'flex', alignItems:'center', gap:'10px', flex:1}}>
-                                                        <span style={{color:'#ccc', cursor:'grab', fontSize:'20px'}}>☰</span>
-                                                        {p.immagine_url && <img src={p.immagine_url} style={{width:'40px', height:'40px', objectFit:'cover', borderRadius:'4px'}}/>}
-                                                      <div style={{flex:1}}>
-    <div><strong>{p.nome}</strong>{p.sottocategoria && <span style={{fontSize:'11px', background:'#eee', padding:'2px 5px', borderRadius:'4px', marginLeft:'5px'}}>{p.sottocategoria}</span>}</div>
-    
-    {/* DESCRIZIONE */}
-    {p.descrizione && (<div style={{fontSize:'12px', color:'#777', fontStyle:'italic', marginTop:'2px', lineHeight:'1.2'}}>{p.descrizione}</div>)}
-    
-    {/* INGREDIENTI BASE E AGGIUNTE */}
-    {(() => {
-        try {
-            const v = typeof p.varianti === 'string' ? JSON.parse(p.varianti || '{}') : (p.varianti || {});
-            const hasBase = v.base && v.base.length > 0;
-            const hasAdd = v.aggiunte && v.aggiunte.length > 0;
-            
-            if (!hasBase && !hasAdd) return null;
+            {/* Lista Piatti Drag&Drop */}
+            <DragDropContext onDragEnd={onDragEnd}>
+                {categorie.map(cat => (
+                    <div key={cat.id} style={{marginBottom: '20px'}}>
+                        <h3 style={{marginTop:'30px', borderBottom:'2px solid #eee', paddingBottom:'5px', color:'#555'}}>{cat.nome}</h3>
+                        <Droppable droppableId={`cat-${cat.nome}`} type="DISH">
+                            {(provided, snapshot) => (
+                                <div {...provided.droppableProps} ref={provided.innerRef} style={{background: snapshot.isDraggingOver ? '#f0f0f0' : 'transparent', minHeight: '50px', padding: '5px'}}>
+                                    {menu.filter(p => p.categoria === cat.nome).sort((a,b) => (a.posizione || 0) - (b.posizione || 0)).map((p, index) => (
+                                            <Draggable key={p.id} draggableId={String(p.id)} index={index}>
+                                                {(provided, snapshot) => (
+                                                    <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className="card" style={{...provided.draggableProps.style, marginBottom:'10px', background: snapshot.isDragging ? '#e3f2fd' : 'white', border: '1px solid #eee', padding:'10px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                                                        <div style={{display:'flex', alignItems:'center', gap:'10px', flex:1}}>
+                                                            <span style={{color:'#ccc', cursor:'grab', fontSize:'20px'}}>☰</span>
+                                                            {p.immagine_url && <img src={p.immagine_url} style={{width:'50px', height:'50px', objectFit:'cover', borderRadius:'4px'}}/>}
+                                                            <div style={{flex:1}}>
+                                                                <div><strong>{p.nome}</strong>{p.sottocategoria && <span style={{fontSize:'11px', background:'#eee', padding:'2px 5px', borderRadius:'4px', marginLeft:'5px'}}>{p.sottocategoria}</span>}</div>
+                                                                {p.descrizione && (<div style={{fontSize:'12px', color:'#777', fontStyle:'italic'}}>{p.descrizione}</div>)}
+                                                                
+                                                                {/* Ingredienti */}
+                                                                {(() => {
+                                                                    try {
+                                                                        const v = typeof p.varianti === 'string' ? JSON.parse(p.varianti || '{}') : (p.varianti || {});
+                                                                        const hasBase = v.base && v.base.length > 0;
+                                                                        const hasAdd = v.aggiunte && v.aggiunte.length > 0;
+                                                                        if (!hasBase && !hasAdd) return null;
+                                                                        return (
+                                                                            <div style={{fontSize:'11px', color:'#444', marginTop:'3px'}}>
+                                                                                {hasBase && <div>🧂 {v.base.join(', ')}</div>}
+                                                                                {hasAdd && <div style={{color:'#27ae60'}}>➕ {v.aggiunte.map(a => `${a.nome}`).join(', ')}</div>}
+                                                                            </div>
+                                                                        );
+                                                                    } catch(e) { return null; }
+                                                                })()}
 
-            return (
-                <div style={{fontSize:'11px', color:'#444', marginTop:'3px'}}>
-                    {hasBase && <div>🧂 Ingredienti: {v.base.join(', ')}</div>}
-                    {hasAdd && <div style={{color:'#27ae60'}}>➕ Aggiunte: {v.aggiunte.map(a => `${a.nome} (+${a.prezzo}€)`).join(', ')}</div>}
-                </div>
-            );
-        } catch(e) { return null; }
-    })()}
+                                                                {/* Allergeni */}
+                                                                {p.allergeni && Array.isArray(p.allergeni) && p.allergeni.length > 0 && (
+                                                                    <div style={{ marginTop: '4px' }}>
+                                                                        {p.allergeni.filter(a => !a.includes("❄️")).length > 0 && (
+                                                                            <div style={{ fontSize: '10px', color: '#e74c3c', fontWeight: 'bold', textTransform: 'uppercase' }}>⚠️ {p.allergeni.filter(a => !a.includes("❄️")).join(', ')}</div>
+                                                                        )}
+                                                                        {p.allergeni.some(a => a.includes("❄️")) && (
+                                                                            <div style={{ fontSize: '10px', color: '#3498db', fontWeight: 'bold', marginTop: '2px', textTransform: 'uppercase' }}>❄️ SURGELATO</div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                                <div style={{fontSize:'12px', fontWeight:'bold', marginTop:'3px'}}>{p.prezzo}€</div>
+                                                            </div>
+                                                        </div>
+                                                        <div style={{display:'flex', gap:'5px'}}>
+                                                            <button onClick={() => avviaModifica(p)} style={{background:'#f1c40f', padding:'5px', borderRadius:'4px', border:'none', cursor:'pointer'}}>✏️</button>
+                                                            <button onClick={() => duplicaPiatto(p)} style={{background:'#3498db', padding:'5px', borderRadius:'4px', border:'none', color:'white', cursor:'pointer'}}>❐</button>
+                                                            <button onClick={() => cancellaPiatto(p.id)} style={{background:'darkred', padding:'5px', borderRadius:'4px', border:'none', color:'white', cursor:'pointer'}}>🗑️</button>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </Draggable>
+                                    ))}
+                                    {provided.placeholder}
+                                </div>
+                            )}
+                        </Droppable>
+                    </div>
+                ))}
+            </DragDropContext>
+        </div>
 
-    {/* VISUALIZZAZIONE SDOPPIATA ALLERGENI / SURGELATO */}
-    {p.allergeni && Array.isArray(p.allergeni) && p.allergeni.length > 0 && (
-        <div style={{ marginTop: '4px' }}>
-            {/* Riga 1: Allergeni */}
-            {p.allergeni.filter(a => !a.includes("❄️")).length > 0 && (
-                <div style={{ fontSize: '10px', color: '#e74c3c', fontWeight: 'bold', textTransform: 'uppercase' }}>
-                    ⚠️ ALLERGENI: {p.allergeni.filter(a => !a.includes("❄️")).join(', ')}
-                </div>
-            )}
-            {/* Riga 2: Surgelato */}
-            {p.allergeni.some(a => a.includes("❄️")) && (
-                <div style={{ fontSize: '10px', color: '#3498db', fontWeight: 'bold', marginTop: '2px', textTransform: 'uppercase' }}>
-                    ❄️ PRODOTTO SURGELATO/ABBATTUTO
-                </div>
-            )}
+        {/* --- INFO LEGALI (IN FONDO) --- */}
+        <div className="card" style={{marginTop:'40px', background:'#fff3cd', border:'1px solid #ffeeba', padding:'15px'}}>
+            <h4 style={{margin:'0 0 10px 0'}}>ℹ️ Info Legali & Note Footer</h4>
+            <p style={{fontSize:'12px', color:'#856404'}}>Testo visualizzato a fine menu (es: coperto, note allergeni).</p>
+            <textarea 
+                value={config.info_footer || ''}
+                onChange={e => setConfig({...config, info_footer: e.target.value})}
+                placeholder="Esempio: Coperto 2.00€ - Per info allergeni rivolgersi allo staff."
+                style={{width:'100%', padding:'10px', borderRadius:'5px', border:'1px solid #ddd', minHeight:'80px'}}
+            />
+            <button onClick={handleSaveStyle} style={{marginTop:'10px', background:'#f39c12', color:'white', width:'100%', padding:'12px', borderRadius:'5px', border:'none', fontWeight:'bold', cursor:'pointer'}}>AGGIORNA INFO FOOTER</button>
         </div>
-    )}
-    
-    <div style={{fontSize:'12px', fontWeight:'bold', marginTop:'3px'}}>{p.prezzo}€</div>
-</div>
-                                                    </div>
-                                                    <div style={{display:'flex', gap:'5px', alignItems:'center'}}>
-                                                        <button onClick={() => avviaModifica(p)} style={{background:'#f1c40f', padding:'5px 10px', borderRadius:'4px', border:'none', cursor:'pointer'}}>✏️</button>
-                                                        <button onClick={() => duplicaPiatto(p)} style={{background:'#3498db', padding:'5px 10px', borderRadius:'4px', border:'none', color:'white', cursor:'pointer'}}>❐</button>
-                                                        <button onClick={() => cancellaPiatto(p.id)} style={{background:'darkred', padding:'5px 10px', borderRadius:'4px', border:'none', cursor:'pointer'}}>🗑️</button>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </Draggable>
-                                ))}
-                                {provided.placeholder}
-                            </div>
-                        )}
-                    </Droppable>
-                </div>
-            ))}
-        </div>
-    </DragDropContext>
-  );
-  {/* --- POSIZIONE CORRETTA: DOPO LA LISTA PIATTI --- */}
-    <div className="card" style={{marginTop:'40px', background:'#fff3cd', border:'1px solid #ffeeba'}}>
-        <h4 style={{margin:'0 0 10px 0'}}>ℹ️ Info Legali & Note Footer</h4>
-        <p style={{fontSize:'12px', color:'#856404'}}>Queste informazioni appariranno in fondo al menu del cliente (es: costo coperto, info surgelati generale).</p>
-        <textarea 
-            value={config.info_footer || ''}
-            onChange={e => setConfig({...config, info_footer: e.target.value})}
-            placeholder="Esempio: Coperto 2.00€ - Per info allergeni rivolgersi allo staff."
-            style={{width:'100%', padding:'10px', borderRadius:'5px', border:'1px solid #ddd', minHeight:'80px'}}
-        />
-        <button onClick={handleSaveStyle} style={{marginTop:'10px', background:'#f39c12', color:'white', width:'100%', padding:'12px', borderRadius:'5px', border:'none', fontWeight:'bold', cursor:'pointer'}}>
-            AGGIORNA INFO FOOTER
-        </button>
     </div>
+  );
 }
 
 export default AdminMenu;
