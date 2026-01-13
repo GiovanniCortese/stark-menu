@@ -472,63 +472,38 @@ const modalText = style.text || '#000000';
                                                 >
                                                     {prodotto.immagine_url && <img src={prodotto.immagine_url} style={{width:'70px', height:'70px', objectFit:'cover', borderRadius:'5px', flexShrink: 0}} />}
                                                     
-                                                   <div className="info" style={{flex: 1}}>
-    <h3 style={{margin:'0 0 4px 0', fontSize:'16px', color: style.text || '#222'}}>{prodotto.nome}</h3>
+                                                  <div className="info" style={{flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center'}}>
+    <h3 style={{margin:'0 0 2px 0', fontSize:'16px', color: style.text || '#222', lineHeight:'1.2'}}>{prodotto.nome}</h3>
     
-    {/* Descrizione e Ingredienti */}
-    {prodotto.descrizione && (<p style={{fontSize:'12px', color:'#666', margin:'0 0 4px 0'}}>{prodotto.descrizione}</p>)}
+    {/* Descrizione (margine ridotto) */}
+    {prodotto.descrizione && (<p style={{fontSize:'12px', color:'#666', margin:'0 0 2px 0', lineHeight:'1.1'}}>{prodotto.descrizione}</p>)}
+    
+    {/* Ingredienti (margine ridotto) */}
     {ingredientiStr && (
-        <p style={{fontSize:'11px', color:'#555', fontStyle:'italic', margin:'0 0 5px 0'}}>
+        <p style={{fontSize:'11px', color:'#555', fontStyle:'italic', margin:'0 0 2px 0', lineHeight:'1.1'}}>
             <span style={{fontWeight:'bold'}}>Ingredienti:</span> {ingredientiStr}
         </p>
     )}
 
-    {/* VISUALIZZAZIONE SDOPPIATA (ALLERGENI E SURGELATO) */}
-   <div style={{
-    marginTop: '15px',
-    padding: '12px',
-    background: 'rgba(255,255,255,0.05)', // Leggero sfondo per staccare
-    borderRadius: '10px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '8px'
-}}>
-    {/* 1. RIGA ALLERGENI (ROSSO) */}
-    {prodotto.allergeni?.filter(a => !a.includes("❄️")).length > 0 && (
-        <div style={{ 
-            fontSize: '11px', 
-            color: '#ff7675', // Rosso chiaro per fondo scuro
-            fontWeight: '900', 
-            textTransform: 'uppercase',
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: '5px'
-        }}>
-            <span>⚠️</span>
-            <span>ALLERGENI: {prodotto.allergeni.filter(a => !a.includes("❄️")).join(', ')}</span>
+    {/* SEZIONE ALLERGENI/SURGELATO: Spazio ridotto e appare solo se serve */}
+    {prodotto.allergeni && Array.isArray(prodotto.allergeni) && prodotto.allergeni.length > 0 && (
+        <div style={{ marginTop: '2px', marginBottom: '2px', display: 'flex', flexDirection: 'column', gap: '1px' }}>
+            {prodotto.allergeni.filter(a => !a.includes("❄️")).length > 0 && (
+                <div style={{ fontSize: '10px', color: '#e74c3c', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                    ⚠️ ALLERGENI: {prodotto.allergeni.filter(a => !a.includes("❄️")).join(', ')}
+                </div>
+            )}
+            {prodotto.allergeni.some(a => a.includes("❄️")) && (
+                <div style={{ fontSize: '10px', color: '#3498db', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                    ❄️ PRODOTTO SURGELATO/ABBATTUTO
+                </div>
+            )}
         </div>
     )}
-
-    {/* 2. RIGA SURGELATO (AZZURRO) */}
-    {prodotto.allergeni?.some(a => a.includes("❄️")) && (
-        <div style={{ 
-            fontSize: '11px', 
-            color: '#74b9ff', // Azzurro chiaro
-            fontWeight: '900', 
-            textTransform: 'uppercase',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '5px'
-        }}>
-            <span>❄️</span>
-            <span>PRODOTTO SURGELATO/ABBATTUTO</span>
-        </div>
-    )}
-</div>
     
-    <div style={{fontSize:'14px', fontWeight:'bold', color: priceColor}}>{Number(prodotto.prezzo).toFixed(2)} €</div>
-</div>
-                                                    
+    {/* Prezzo: Margine superiore minimo per restare attaccato all'ultima riga */}
+    <div style={{fontSize:'14px', fontWeight:'bold', color: priceColor, marginTop: '2px'}}>{Number(prodotto.prezzo).toFixed(2)} €</div>
+</div>                         
                                                     {/* PULSANTI SEMPRE VISIBILI (Anche in Wish List) */}
                                                     <div style={{display:'flex', gap:'5px', alignItems:'center'}}>
                                                         {hasVarianti && (
