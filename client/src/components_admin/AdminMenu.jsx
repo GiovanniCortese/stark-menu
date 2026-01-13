@@ -1,4 +1,4 @@
-// client/src/components_admin/AdminMenu.jsx - V41 FINAL (ALL FIXES)
+// client/src/components_admin/AdminMenu.jsx - V42 PREMIUM UI (Redesign Completo)
 import { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
@@ -19,7 +19,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const isMasterBlock = config.cucina_super_active === false; 
   const isCucinaAperta = config.ordini_abilitati;
 
-  // --- FUNZIONI DI SERVIZIO ---
+  // --- HANDLERS (Logica invariata, solo estetica modificata) ---
   const toggleCucina = async () => { 
       if (!isAbbonamentoAttivo) return alert("⛔ ABBONAMENTO SOSPESO."); 
       if (isMasterBlock) return alert("⛔ CUCINA BLOCCATA DAGLI ADMIN.");
@@ -27,13 +27,11 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       setConfig({...config, ordini_abilitati: nuovoStatoCucina}); 
       try {
           await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, {
-              method:'PUT', 
-              headers:{'Content-Type':'application/json'}, 
+              method:'PUT', headers:{'Content-Type':'application/json'}, 
               body:JSON.stringify({ ordini_abilitati: nuovoStatoCucina })
           }); 
       } catch (error) {
-          alert("Errore di connessione.");
-          setConfig({...config, ordini_abilitati: !nuovoStatoCucina});
+          alert("Errore connessione."); setConfig({...config, ordini_abilitati: !nuovoStatoCucina});
       }
   };
 
@@ -45,42 +43,27 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       if (nuovoPiatto.varianti_str) {
           variantiJson = nuovoPiatto.varianti_str.split(',').map(v => {
               const [nome, prezzo] = v.split(':');
-              if(nome && prezzo) return { nome: nome.trim(), prezzo: parseFloat(prezzo) };
-              return null;
+              return (nome && prezzo) ? { nome: nome.trim(), prezzo: parseFloat(prezzo) } : null;
           }).filter(Boolean);
       }
-
-      let ingredientiBaseArr = [];
-      if (nuovoPiatto.ingredienti_base) {
-          ingredientiBaseArr = nuovoPiatto.ingredienti_base.split(',').map(i => i.trim()).filter(Boolean);
-      }
-
+      const ingredientiBaseArr = nuovoPiatto.ingredienti_base ? nuovoPiatto.ingredienti_base.split(',').map(i => i.trim()).filter(Boolean) : [];
       const variantiFinali = { base: ingredientiBaseArr, aggiunte: variantiJson };
       const cat = nuovoPiatto.categoria || (categorie.length > 0 ? categorie[0].nome : "");
       
-      const payload = {
-          ...nuovoPiatto, 
-          categoria: cat, 
-          ristorante_id: user.id,
-          varianti: JSON.stringify(variantiFinali)
-      };
-      
-      delete payload.varianti_str;
-      delete payload.ingredienti_base;
+      const payload = { ...nuovoPiatto, categoria: cat, ristorante_id: user.id, varianti: JSON.stringify(variantiFinali) };
+      delete payload.varianti_str; delete payload.ingredienti_base;
 
       try {
-          if(editId) {
-              await fetch(`${API_URL}/api/prodotti/${editId}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }); 
-              alert("✅ Piatto modificato!");
-          } else {
-              if(categorie.length===0) return alert("Crea prima una categoria!"); 
-              await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }); 
-              alert("✅ Piatto aggiunto!");
-          }
+          const method = editId ? 'PUT' : 'POST';
+          const url = editId ? `${API_URL}/api/prodotti/${editId}` : `${API_URL}/api/prodotti`;
+          if(!editId && categorie.length===0) return alert("Crea prima una categoria!"); 
+
+          await fetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }); 
+          alert(editId ? "✅ Piatto aggiornato!" : "✅ Piatto creato!");
+          
           setNuovoPiatto({nome:'', prezzo:'', categoria:cat, sottocategoria: '', descrizione:'', immagine_url:'', varianti_str: '', ingredienti_base: ''}); 
-          setEditId(null);
-          ricaricaDati(); 
-      } catch(err) { alert("❌ Errore salvataggio: " + err.message); }
+          setEditId(null); ricaricaDati(); 
+      } catch(err) { alert("❌ Errore: " + err.message); }
   };
 
   const handleFileChange = async (e) => { 
@@ -92,239 +75,240 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       } catch(e) { console.error(e); } finally { setUploading(false); }
   };
 
-  // --- NUOVE FUNZIONI AGGIUNTE ---
   const handleImportExcel = async (e) => {
-    const file = e.target.files[0];
-    if(!file) return;
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('ristorante_id', user.id);
-
+    const file = e.target.files[0]; if(!file) return;
+    const formData = new FormData(); formData.append('file', file); formData.append('ristorante_id', user.id);
     try {
         const res = await fetch(`${API_URL}/api/import-excel`, { method: 'POST', body: formData });
         const data = await res.json();
-        if(data.success) { alert(data.message); ricaricaDati(); } 
-        else alert("Errore Import: " + data.error);
+        if(data.success) { alert(data.message); ricaricaDati(); } else alert("Errore: " + data.error);
     } catch(err) { alert("Errore Connessione"); }
   };
 
   const handleSaveStyle = async () => {
     try {
-        await fetch(`${API_URL}/api/ristorante/style/${user.id}`, {
-            method: 'PUT',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(config)
-        });
-        alert("✅ Info Footer Aggiornate!");
+        await fetch(`${API_URL}/api/ristorante/style/${user.id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config) });
+        alert("✨ Info Footer Salvate con Successo!");
     } catch(e) { alert("Errore salvataggio"); }
   };
 
-  const cancellaPiatto = async (id) => { if(confirm("Eliminare?")) { await fetch(`${API_URL}/api/prodotti/${id}`, {method:'DELETE'}); ricaricaDati(); }};
+  const cancellaPiatto = async (id) => { if(confirm("Sei sicuro di voler eliminare questo piatto?")) { await fetch(`${API_URL}/api/prodotti/${id}`, {method:'DELETE'}); ricaricaDati(); }};
   
   const avviaModifica = (piatto) => { 
       setEditId(piatto.id);
-      
       let variantiObj = { base: [], aggiunte: [] };
-      try {
-          if(piatto.varianti) {
-              variantiObj = typeof piatto.varianti === 'string' ? JSON.parse(piatto.varianti) : piatto.varianti;
-          }
-      } catch(e) { console.error("Err parse varianti", e); }
-
-      const strBase = (variantiObj.base || []).join(', ');
-      const strAggiunte = (variantiObj.aggiunte || []).map(v => `${v.nome}:${v.prezzo}`).join(', ');
+      try { variantiObj = typeof piatto.varianti === 'string' ? JSON.parse(piatto.varianti) : piatto.varianti || { base: [], aggiunte: [] }; } catch(e) {}
 
       setNuovoPiatto({
           ...piatto, 
           allergeni: piatto.allergeni || [],
-          ingredienti_base: strBase,
-          varianti_str: strAggiunte
+          ingredienti_base: (variantiObj.base || []).join(', '),
+          varianti_str: (variantiObj.aggiunte || []).map(v => `${v.nome}:${v.prezzo}`).join(', ')
       }); 
       window.scrollTo({ top: 0, behavior: 'smooth' }); 
   };
   
   const annullaModifica = () => { setEditId(null); setNuovoPiatto({nome:'', prezzo:'', categoria:categorie[0]?.nome || '', sottocategoria: '', descrizione:'', immagine_url:''}); };
-  const duplicaPiatto = async (piattoOriginale) => { if(!confirm(`Duplicare?`)) return; const copia = { ...piattoOriginale, nome: `${piattoOriginale.nome} (Copia)`, ristorante_id: user.id }; await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(copia) }); ricaricaDati(); };
+  const duplicaPiatto = async (piatto) => { if(!confirm(`Duplicare ${piatto.nome}?`)) return; const copia = { ...piatto, nome: `${piatto.nome} (Copia)`, ristorante_id: user.id }; await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(copia) }); ricaricaDati(); };
 
-  // --- LOGICA DRAG & DROP ---
   const onDragEnd = async (result) => {
     if (!result.destination) return;
-    const sourceCat = result.source.droppableId.replace("cat-", "");
     const destCat = result.destination.droppableId.replace("cat-", "");
     const piattoId = parseInt(result.draggableId);
-
     let nuovoMenu = [...menu];
     const piattoSpostato = nuovoMenu.find(p => p.id === piattoId);
     if (!piattoSpostato) return;
-
     nuovoMenu = nuovoMenu.filter(p => p.id !== piattoId);
     const piattoAggiornato = { ...piattoSpostato, categoria: destCat };
-    
-    const piattiDestinazione = nuovoMenu
-        .filter(p => p.categoria === destCat)
-        .sort((a,b) => (a.posizione||0) - (b.posizione||0)); 
-    
+    const piattiDestinazione = nuovoMenu.filter(p => p.categoria === destCat).sort((a,b) => (a.posizione||0) - (b.posizione||0)); 
     piattiDestinazione.splice(result.destination.index, 0, piattoAggiornato);
     const altriPiatti = nuovoMenu.filter(p => p.categoria !== destCat);
     const piattiDestinazioneFinali = piattiDestinazione.map((p, idx) => ({ ...p, posizione: idx }));
-    
     setMenu([...altriPiatti, ...piattiDestinazioneFinali]);
-
-    await fetch(`${API_URL}/api/prodotti/riordina`, { 
-        method: 'PUT', headers:{'Content-Type':'application/json'}, 
-        body: JSON.stringify({ prodotti: piattiDestinazioneFinali.map(p => ({ id: p.id, posizione: p.posizione, categoria: destCat })) }) 
-    });
+    await fetch(`${API_URL}/api/prodotti/riordina`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prodotti: piattiDestinazioneFinali.map(p => ({ id: p.id, posizione: p.posizione, categoria: destCat })) }) });
   };
 
-  let cardBg = '#fff3cd'; let cardBorder = '2px solid #333';
-  if (!isAbbonamentoAttivo) { cardBg = '#ffecec'; cardBorder = '2px solid red'; } 
-  else if (isMasterBlock) { cardBg = '#fadbd8'; cardBorder = '2px solid #c0392b'; } 
-  else if (!isCucinaAperta) { cardBg = '#f8d7da'; }
+  // --- STILI ---
+  const containerStyle = { maxWidth: '1200px', margin: '0 auto', fontFamily: "'Inter', sans-serif", color: '#333' };
+  const cardStyle = { background: 'white', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', padding: '25px', marginBottom: '30px', border: '1px solid #f0f0f0' };
+  const inputStyle = { width: '100%', padding: '12px 15px', borderRadius: '8px', border: '1px solid #e0e0e0', fontSize: '14px', background: '#f9f9f9', transition: 'all 0.3s' };
+  const labelStyle = { fontSize: '12px', fontWeight: '600', color: '#666', marginBottom: '8px', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' };
 
   return (
-    <div> {/* CONTENITORE PRINCIPALE UNICO */}
+    <div style={containerStyle}>
         
-        {/* Pulsante Servizio */}
-        <div className="card" style={{border: cardBorder, background: cardBg, marginBottom:'20px', textAlign:'center', padding: '15px'}}>
-              {!isAbbonamentoAttivo ? (
-                  <div><h2 style={{color:'red', margin:0}}>⛔ ABBONAMENTO SOSPESO</h2></div>
-              ) : isMasterBlock ? (
-                  <div><h2 style={{color:'#c0392b', margin:0}}>👮 CUCINA BLOCCATA ADMIN</h2></div>
-              ) : (
-                  <button onClick={toggleCucina} style={{background: isCucinaAperta ? '#2ecc71':'#e74c3c', width:'100%', padding:'15px', color:'white', fontWeight:'bold', fontSize:'18px', border:'none', borderRadius:'5px', cursor:'pointer'}}>
-                      {isCucinaAperta ? "✅ ORDINI APERTI" : "🛑 ORDINI CHIUSI"}
-                  </button>
-              )}
+        {/* 1. HEADER & STATUS */}
+        <div style={{...cardStyle, display:'flex', justifyContent:'space-between', alignItems:'center', background: isCucinaAperta ? 'linear-gradient(135deg, #2ecc71 0%, #27ae60 100%)' : 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)', color:'white', border:'none'}}>
+            <div>
+                <h2 style={{margin:0, fontSize:'24px'}}>{isCucinaAperta ? "✅ Servizio Attivo" : "🛑 Servizio Sospeso"}</h2>
+                <p style={{margin:0, opacity:0.9, fontSize:'14px'}}>{isCucinaAperta ? "I clienti possono inviare ordini." : "Gli ordini sono bloccati."}</p>
+            </div>
+            {isAbbonamentoAttivo && !isMasterBlock && (
+                <button onClick={toggleCucina} style={{background:'white', color: isCucinaAperta ? '#27ae60' : '#c0392b', border:'none', padding:'12px 25px', borderRadius:'30px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 5px 15px rgba(0,0,0,0.2)'}}>
+                    {isCucinaAperta ? "CHIUDI CUCINA" : "APRI CUCINA"}
+                </button>
+            )}
         </div>
 
-        {/* --- SEZIONE EXCEL --- */}
-        <div className="card" style={{background:'#f0f3f4', border:'1px solid #ddd', marginBottom:'20px', display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 20px'}}>
-            <h4 style={{margin:0}}>📊 Gestione Massiva Menu</h4>
+        {/* 2. EXCEL TOOLS */}
+        <div style={{...cardStyle, display:'flex', justifyContent:'space-between', alignItems:'center', padding:'15px 25px', background:'#f8f9fa'}}>
+            <div style={{display:'flex', alignItems:'center', gap:'15px'}}>
+                <span style={{fontSize:'24px'}}>📊</span>
+                <div>
+                    <h4 style={{margin:0, color:'#2c3e50'}}>Import/Export Excel</h4>
+                    <p style={{margin:0, fontSize:'12px', color:'#7f8c8d'}}>Gestisci il tuo menu massivamente.</p>
+                </div>
+            </div>
             <div style={{display:'flex', gap:'10px'}}>
-                <button onClick={() => window.open(`${API_URL}/api/export-excel/${user.id}`, '_blank')} style={{background:'#27ae60', color:'white', fontSize:'12px', padding:'5px 10px', border:'none', borderRadius:'4px', cursor:'pointer'}}>📤 ESPORTA</button>
+                <button onClick={() => window.open(`${API_URL}/api/export-excel/${user.id}`, '_blank')} style={{background:'white', border:'1px solid #ddd', padding:'8px 15px', borderRadius:'6px', cursor:'pointer', fontWeight:'600', color:'#333'}}>📤 Scarica Menu</button>
                 <div style={{position:'relative'}}>
-                    <button style={{background:'#2980b9', color:'white', fontSize:'12px', padding:'5px 10px', border:'none', borderRadius:'4px', cursor:'pointer'}}>📥 IMPORTA EXCEL</button>
+                    <button style={{background:'#3498db', color:'white', border:'none', padding:'8px 15px', borderRadius:'6px', cursor:'pointer', fontWeight:'600'}}>📥 Carica Excel</button>
                     <input type="file" accept=".xlsx, .xls" onChange={handleImportExcel} style={{position:'absolute', inset:0, opacity:0, cursor:'pointer'}} />
                 </div>
             </div>
         </div>
 
-        {/* --- SEZIONE EDITING --- */}
-        <div style={{opacity: isAbbonamentoAttivo ? 1 : 0.4, pointerEvents: isAbbonamentoAttivo ? 'auto' : 'none'}}>
-            <div className="card" style={{background: editId ? '#e3f2fd' : '#f8f9fa', border: editId ? '2px solid #2196f3' : '2px dashed #ccc'}}>
-                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                      <h3>{editId ? "✏️ Modifica Piatto" : "➕ Aggiungi Piatto"}</h3>
-                      {editId && <button onClick={annullaModifica} style={{background:'#777', padding:'5px', fontSize:'12px', color:'white', border:'none', borderRadius:'3px'}}>Annulla</button>}
+        {/* 3. EDITOR PIATTI */}
+        <div style={{opacity: isAbbonamentoAttivo ? 1 : 0.5, pointerEvents: isAbbonamentoAttivo ? 'auto' : 'none'}}>
+            <div style={{...cardStyle, borderLeft: editId ? '5px solid #3498db' : '5px solid #2ecc71'}}>
+                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px'}}>
+                      <h3 style={{margin:0, color:'#2c3e50'}}>{editId ? "✏️ Modifica Piatto" : "✨ Aggiungi Nuovo Piatto"}</h3>
+                      {editId && <button onClick={annullaModifica} style={{background:'#eee', color:'#333', border:'none', padding:'5px 15px', borderRadius:'20px', cursor:'pointer', fontWeight:'bold'}}>Annulla Modifica</button>}
                   </div>
-                 <form onSubmit={handleSalvaPiatto} style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
-                      <input placeholder="Nome Piatto" value={nuovoPiatto.nome} onChange={e => setNuovoPiatto({...nuovoPiatto, nome: e.target.value})} required style={{padding:'10px'}} />
+
+                 <form onSubmit={handleSalvaPiatto} style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '25px'}}>
                       
-                      <div style={{display:'flex', gap:'10px'}}>
-                        <select value={nuovoPiatto.categoria} onChange={e => setNuovoPiatto({...nuovoPiatto, categoria: e.target.value})} style={{flex:1, padding:'10px'}}>
-                            {categorie.map(cat => <option key={cat.id} value={cat.nome}>{cat.nome}</option>)}
-                        </select>
-                        <input placeholder="Sottocategoria (es. Bianchi)" value={nuovoPiatto.sottocategoria} onChange={e => setNuovoPiatto({...nuovoPiatto, sottocategoria: e.target.value})} style={{flex:1, padding:'10px'}} />
+                      {/* Colonna Sinistra */}
+                      <div style={{display:'flex', flexDirection:'column', gap:'15px'}}>
+                          <div>
+                              <label style={labelStyle}>Nome del Piatto *</label>
+                              <input placeholder="Es. Spaghetti alle Vongole" value={nuovoPiatto.nome} onChange={e => setNuovoPiatto({...nuovoPiatto, nome: e.target.value})} required style={inputStyle} />
+                          </div>
+                          <div style={{display:'flex', gap:'15px'}}>
+                              <div style={{flex:1}}>
+                                  <label style={labelStyle}>Categoria</label>
+                                  <select value={nuovoPiatto.categoria} onChange={e => setNuovoPiatto({...nuovoPiatto, categoria: e.target.value})} style={inputStyle}>
+                                      {categorie.map(cat => <option key={cat.id} value={cat.nome}>{cat.nome}</option>)}
+                                  </select>
+                              </div>
+                              <div style={{flex:1}}>
+                                  <label style={labelStyle}>Prezzo (€)</label>
+                                  <input type="number" placeholder="0.00" value={nuovoPiatto.prezzo} onChange={e => setNuovoPiatto({...nuovoPiatto, prezzo: e.target.value})} style={inputStyle} step="0.10" required />
+                              </div>
+                          </div>
+                          <div>
+                              <label style={labelStyle}>Descrizione</label>
+                              <textarea placeholder="Descrivi il piatto..." value={nuovoPiatto.descrizione} onChange={e => setNuovoPiatto({...nuovoPiatto, descrizione: e.target.value})} style={{...inputStyle, minHeight:'80px', resize:'vertical'}}/>
+                          </div>
+                          <div>
+                                <label style={labelStyle}>📷 Foto Piatto</label>
+                                <div style={{background: '#f8f9fa', border: '2px dashed #ddd', borderRadius: '8px', padding: '15px', textAlign: 'center', cursor: 'pointer', position:'relative'}}>
+                                    <input type="file" onChange={handleFileChange} style={{position:'absolute', inset:0, opacity:0, cursor:'pointer'}} />
+                                    {uploading ? <span style={{color:'#3498db'}}>⏳ Caricamento...</span> : (
+                                        nuovoPiatto.immagine_url ? 
+                                        <div style={{display:'flex', alignItems:'center', justifyContent:'center', gap:'10px'}}>
+                                            <img src={nuovoPiatto.immagine_url} style={{width:40, height:40, borderRadius:5, objectFit:'cover'}} />
+                                            <span style={{color:'#27ae60', fontWeight:'bold'}}>Foto Caricata! (Clicca per cambiare)</span>
+                                        </div> : 
+                                        <span style={{color:'#888'}}>Trascina qui o clicca per caricare</span>
+                                    )}
+                                </div>
+                          </div>
                       </div>
-                      
-                      <textarea placeholder="Descrizione" value={nuovoPiatto.descrizione} onChange={e => setNuovoPiatto({...nuovoPiatto, descrizione: e.target.value})} style={{padding:'10px', minHeight:'60px'}}/>
-                      
-                      {/* --- SEZIONE VARIANTI & INGREDIENTI --- */}
-                      <div style={{background:'#fff3cd', padding:'10px', borderRadius:'5px', border:'1px dashed #f39c12'}}>
-                          <label style={{fontWeight:'bold', fontSize:'12px', display:'block', marginBottom:'5px'}}>🧂 INGREDIENTI BASE (Separati da virgola)</label>
-                          <input placeholder="Es: Pomodoro, Mozzarella" value={nuovoPiatto.ingredienti_base || ""} onChange={e => setNuovoPiatto({...nuovoPiatto, ingredienti_base: e.target.value})} style={{width:'100%', marginBottom:'10px', padding:'8px'}} />
+
+                      {/* Colonna Destra */}
+                      <div style={{display:'flex', flexDirection:'column', gap:'15px'}}>
+                          <div style={{background:'#fffcf0', padding:'15px', borderRadius:'8px', border:'1px solid #f9e79f'}}>
+                              <label style={{...labelStyle, color:'#d4ac0d'}}>🧂 Varianti & Ingredienti</label>
+                              <input placeholder="Ingredienti Base (es: Pomodoro, Mozzarella)" value={nuovoPiatto.ingredienti_base || ""} onChange={e => setNuovoPiatto({...nuovoPiatto, ingredienti_base: e.target.value})} style={{...inputStyle, marginBottom:'10px', background:'white'}} />
+                              <textarea placeholder="Aggiunte Extra (es: Bufala:2.00, Salame:1.50)" value={nuovoPiatto.varianti_str || ""} onChange={e => setNuovoPiatto({...nuovoPiatto, varianti_str: e.target.value})} style={{...inputStyle, minHeight:'60px', background:'white'}} />
+                          </div>
+
+                          <div style={{background:'#fcfcfc', padding:'15px', borderRadius:'8px', border:'1px solid #eee'}}>
+                              <label style={labelStyle}>⚠️ Allergeni</label>
+                              <div style={{display:'flex', flexWrap:'wrap', gap:'8px'}}>
+                                  {LISTA_ALLERGENI.map(all => {
+                                      const isSelected = (nuovoPiatto.allergeni || []).includes(all);
+                                      return (
+                                          <div key={all} 
+                                              onClick={() => {
+                                                  const current = nuovoPiatto.allergeni || [];
+                                                  if (isSelected) setNuovoPiatto({...nuovoPiatto, allergeni: current.filter(x => x !== all)});
+                                                  else setNuovoPiatto({...nuovoPiatto, allergeni: [...current, all]});
+                                              }}
+                                              style={{
+                                                  padding:'6px 12px', borderRadius:'20px', fontSize:'11px', cursor:'pointer', fontWeight:'bold',
+                                                  background: isSelected ? '#ffebee' : 'white',
+                                                  color: isSelected ? '#c0392b' : '#555',
+                                                  border: isSelected ? '1px solid #e74c3c' : '1px solid #ddd',
+                                                  transition: 'all 0.2s'
+                                              }}
+                                          >
+                                              {isSelected ? '✅ ' : ''}{all}
+                                          </div>
+                                      )
+                                  })}
+                              </div>
+                          </div>
                           
-                          <label style={{fontWeight:'bold', fontSize:'12px', display:'block', marginBottom:'5px'}}>➕ AGGIUNTE A PAGAMENTO (Nome:Prezzo)</label>
-                          <textarea placeholder="Es: Bufala:2.00, Salame:1.50" value={nuovoPiatto.varianti_str || ""} onChange={e => setNuovoPiatto({...nuovoPiatto, varianti_str: e.target.value})} style={{width:'100%', minHeight:'50px', padding:'8px'}} />
+                          <button type="submit" style={{marginTop:'auto', background: editId ? '#3498db' : '#2ecc71', color:'white', padding:'15px', border:'none', borderRadius:'8px', fontSize:'16px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 4px 10px rgba(0,0,0,0.1)'}}>
+                              {editId ? "💾 AGGIORNA MODIFICHE" : "➕ SALVA PIATTO"}
+                          </button>
                       </div>
-
-                      {/* --- SEZIONE ALLERGENI (SPOSTATA SOTTO) --- */}
-                      <div style={{background:'#f9f9f9', padding:'10px', borderRadius:'5px', border:'1px solid #eee'}}>
-                          <label style={{fontWeight:'bold', fontSize:'12px', display:'block', marginBottom:'5px'}}>⚠️ ALLERGENI PRESENTI</label>
-                          <div style={{display:'flex', flexWrap:'wrap', gap:'10px'}}>
-                              {LISTA_ALLERGENI.map(all => (
-                                  <label key={all} style={{display:'flex', alignItems:'center', gap:'5px', fontSize:'11px', cursor:'pointer', background:'white', padding:'4px 8px', borderRadius:'15px', border: (nuovoPiatto.allergeni || []).includes(all) ? '1px solid #e74c3c' : '1px solid #ddd'}}>
-                                      <input 
-                                          type="checkbox" 
-                                          checked={(nuovoPiatto.allergeni || []).includes(all)}
-                                          onChange={(e) => {
-                                              const current = nuovoPiatto.allergeni || [];
-                                              if (e.target.checked) setNuovoPiatto({...nuovoPiatto, allergeni: [...current, all]});
-                                              else setNuovoPiatto({...nuovoPiatto, allergeni: current.filter(x => x !== all)});
-                                          }}
-                                      />
-                                      {all}
-                                  </label>
-                              ))}
-                          </div>
-                      </div>
-
-                      <div style={{display:'flex', gap:'10px'}}>
-                          <input type="number" placeholder="Prezzo" value={nuovoPiatto.prezzo} onChange={e => setNuovoPiatto({...nuovoPiatto, prezzo: e.target.value})} style={{flex:1, padding:'10px'}} step="0.10" required />
-                          <div style={{background: 'white', padding: '8px', flex: 1, border: '1px solid #ccc', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '10px'}}>
-                              <label style={{fontSize:'12px', fontWeight:'bold', cursor:'pointer', display:'flex', alignItems:'center', gap:'5px', width: '100%'}}>
-                                  📷 {uploading ? "CARICAMENTO..." : (nuovoPiatto.immagine_url ? "FOTO CARICATA ✅" : "CARICA FOTO")}
-                                  <input type="file" onChange={handleFileChange} style={{display:'none'}} />
-                              </label>
-                              {uploading && <div className="spinner-mini"></div>} 
-                          </div>
-                      </div>
-                      <button type="submit" className="btn-invia" style={{background: editId ? '#2196f3' : '#333', padding:'10px', color:'white', border:'none', borderRadius:'5px', cursor:'pointer', fontWeight:'bold'}}>{editId ? "AGGIORNA" : "SALVA"}</button>
                   </form>
             </div>
 
-            {/* Lista Piatti Drag&Drop */}
+            {/* 4. LISTA MENU DRAG & DROP */}
             <DragDropContext onDragEnd={onDragEnd}>
                 {categorie.map(cat => (
-                    <div key={cat.id} style={{marginBottom: '20px'}}>
-                        <h3 style={{marginTop:'30px', borderBottom:'2px solid #eee', paddingBottom:'5px', color:'#555'}}>{cat.nome}</h3>
+                    <div key={cat.id} style={{marginBottom: '40px'}}>
+                        <h3 style={{display:'flex', alignItems:'center', gap:'10px', color:'#2c3e50', borderBottom:'2px solid #eee', paddingBottom:'10px', marginBottom:'20px'}}>
+                            <span style={{background:'#eee', borderRadius:'50%', width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'14px'}}>📂</span> 
+                            {cat.nome}
+                        </h3>
                         <Droppable droppableId={`cat-${cat.nome}`} type="DISH">
                             {(provided, snapshot) => (
-                                <div {...provided.droppableProps} ref={provided.innerRef} style={{background: snapshot.isDraggingOver ? '#f0f0f0' : 'transparent', minHeight: '50px', padding: '5px'}}>
+                                <div {...provided.droppableProps} ref={provided.innerRef} 
+                                    style={{
+                                        background: snapshot.isDraggingOver ? '#f0f9ff' : 'transparent', 
+                                        minHeight: '60px', borderRadius:'10px', padding: '10px', transition: 'background 0.3s'
+                                    }}>
                                     {menu.filter(p => p.categoria === cat.nome).sort((a,b) => (a.posizione || 0) - (b.posizione || 0)).map((p, index) => (
                                             <Draggable key={p.id} draggableId={String(p.id)} index={index}>
                                                 {(provided, snapshot) => (
-                                                    <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className="card" style={{...provided.draggableProps.style, marginBottom:'10px', background: snapshot.isDragging ? '#e3f2fd' : 'white', border: '1px solid #eee', padding:'10px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                                                        <div style={{display:'flex', alignItems:'center', gap:'10px', flex:1}}>
-                                                            <span style={{color:'#ccc', cursor:'grab', fontSize:'20px'}}>☰</span>
-                                                            {p.immagine_url && <img src={p.immagine_url} style={{width:'50px', height:'50px', objectFit:'cover', borderRadius:'4px'}}/>}
-                                                            <div style={{flex:1}}>
-                                                                <div><strong>{p.nome}</strong>{p.sottocategoria && <span style={{fontSize:'11px', background:'#eee', padding:'2px 5px', borderRadius:'4px', marginLeft:'5px'}}>{p.sottocategoria}</span>}</div>
-                                                                {p.descrizione && (<div style={{fontSize:'12px', color:'#777', fontStyle:'italic'}}>{p.descrizione}</div>)}
+                                                    <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} 
+                                                        style={{
+                                                            ...provided.draggableProps.style, marginBottom:'12px', 
+                                                            background: 'white', 
+                                                            border: '1px solid #eee', 
+                                                            borderRadius: '10px',
+                                                            padding:'15px', 
+                                                            display:'flex', justifyContent:'space-between', alignItems:'center',
+                                                            boxShadow: snapshot.isDragging ? '0 10px 20px rgba(0,0,0,0.2)' : '0 2px 5px rgba(0,0,0,0.02)',
+                                                            transform: snapshot.isDragging ? 'scale(1.02)' : 'scale(1)'
+                                                        }}>
+                                                        
+                                                        <div style={{display:'flex', alignItems:'center', gap:'15px', flex:1}}>
+                                                            <div style={{cursor:'grab', color:'#ccc', fontSize:'20px'}}>⋮⋮</div>
+                                                            {p.immagine_url && <img src={p.immagine_url} style={{width:'50px', height:'50px', objectFit:'cover', borderRadius:'8px'}}/>}
+                                                            <div>
+                                                                <div style={{fontWeight:'bold', color:'#333', fontSize:'15px'}}>{p.nome} <span style={{fontWeight:'normal', fontSize:'12px', color:'#888'}}>({p.prezzo.toFixed(2)}€)</span></div>
+                                                                {p.descrizione && <div style={{fontSize:'12px', color:'#777'}}>{p.descrizione}</div>}
                                                                 
-                                                                {/* Ingredienti */}
-                                                                {(() => {
-                                                                    try {
-                                                                        const v = typeof p.varianti === 'string' ? JSON.parse(p.varianti || '{}') : (p.varianti || {});
-                                                                        const hasBase = v.base && v.base.length > 0;
-                                                                        const hasAdd = v.aggiunte && v.aggiunte.length > 0;
-                                                                        if (!hasBase && !hasAdd) return null;
-                                                                        return (
-                                                                            <div style={{fontSize:'11px', color:'#444', marginTop:'3px'}}>
-                                                                                {hasBase && <div>🧂 {v.base.join(', ')}</div>}
-                                                                                {hasAdd && <div style={{color:'#27ae60'}}>➕ {v.aggiunte.map(a => `${a.nome}`).join(', ')}</div>}
-                                                                            </div>
-                                                                        );
-                                                                    } catch(e) { return null; }
-                                                                })()}
-
-                                                                {/* Allergeni */}
-                                                                {p.allergeni && Array.isArray(p.allergeni) && p.allergeni.length > 0 && (
-                                                                    <div style={{ marginTop: '4px' }}>
-                                                                        {p.allergeni.filter(a => !a.includes("❄️")).length > 0 && (
-                                                                            <div style={{ fontSize: '10px', color: '#e74c3c', fontWeight: 'bold', textTransform: 'uppercase' }}>⚠️ {p.allergeni.filter(a => !a.includes("❄️")).join(', ')}</div>
-                                                                        )}
-                                                                        {p.allergeni.some(a => a.includes("❄️")) && (
-                                                                            <div style={{ fontSize: '10px', color: '#3498db', fontWeight: 'bold', marginTop: '2px', textTransform: 'uppercase' }}>❄️ SURGELATO</div>
-                                                                        )}
+                                                                {/* Chips Allergeni Mini */}
+                                                                {p.allergeni && p.allergeni.length > 0 && (
+                                                                    <div style={{display:'flex', gap:'5px', marginTop:'5px'}}>
+                                                                        {p.allergeni.slice(0, 3).map(a => <span key={a} style={{fontSize:'9px', background:'#fff0f0', color:'#c0392b', padding:'2px 6px', borderRadius:'10px'}}>{a.split(' ')[0]}</span>)}
+                                                                        {p.allergeni.length > 3 && <span style={{fontSize:'9px', color:'#888'}}>+{p.allergeni.length - 3}</span>}
                                                                     </div>
                                                                 )}
-                                                                <div style={{fontSize:'12px', fontWeight:'bold', marginTop:'3px'}}>{p.prezzo}€</div>
                                                             </div>
                                                         </div>
-                                                        <div style={{display:'flex', gap:'5px'}}>
-                                                            <button onClick={() => avviaModifica(p)} style={{background:'#f1c40f', padding:'5px', borderRadius:'4px', border:'none', cursor:'pointer'}}>✏️</button>
-                                                            <button onClick={() => duplicaPiatto(p)} style={{background:'#3498db', padding:'5px', borderRadius:'4px', border:'none', color:'white', cursor:'pointer'}}>❐</button>
-                                                            <button onClick={() => cancellaPiatto(p.id)} style={{background:'darkred', padding:'5px', borderRadius:'4px', border:'none', color:'white', cursor:'pointer'}}>🗑️</button>
+
+                                                        <div style={{display:'flex', gap:'8px'}}>
+                                                            <button onClick={() => avviaModifica(p)} style={{background:'#fff3e0', color:'#e67e22', border:'none', width:35, height:35, borderRadius:'50%', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center'}}>✏️</button>
+                                                            <button onClick={() => duplicaPiatto(p)} style={{background:'#e3f2fd', color:'#2980b9', border:'none', width:35, height:35, borderRadius:'50%', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center'}}>❐</button>
+                                                            <button onClick={() => cancellaPiatto(p.id)} style={{background:'#ffebee', color:'#c0392b', border:'none', width:35, height:35, borderRadius:'50%', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center'}}>🗑️</button>
                                                         </div>
                                                     </div>
                                                 )}
@@ -339,68 +323,105 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             </DragDropContext>
         </div>
 
-{/* --- INFO LEGALI & FILE (SOLO CONTENUTO) --- */}
-      <div className="card" style={{marginTop:'40px', background:'white', border:'1px solid #ddd', padding:'20px', borderRadius:'10px'}}>
-            <div style={{display:'flex', alignItems:'center', gap:'10px', marginBottom:'15px'}}>
-                <span style={{fontSize:'20px'}}>ℹ️</span>
-                <h4 style={{margin:0, textTransform:'uppercase', color:'#555', fontSize:'14px', letterSpacing:'1px'}}>Info Legali & Allegati</h4>
+        {/* 5. INFO LEGALI & FOOTER (SPLIT DESIGN) */}
+        <div style={{
+            ...cardStyle, 
+            borderLeft: '5px solid #8e44ad',
+            background: 'linear-gradient(to right, #ffffff 50%, #fdfbfd 50%)' // Split visuale sottile
+        }}>
+            <div style={{display:'flex', alignItems:'center', gap:'10px', marginBottom:'25px', borderBottom:'1px solid #eee', paddingBottom:'15px'}}>
+                <span style={{fontSize:'24px'}}>⚖️</span>
+                <h3 style={{margin:0, color:'#2c3e50'}}>Configurazione Footer & Allergeni</h3>
             </div>
 
-            {/* 1. TESTO */}
-            <label style={{fontSize:'12px', fontWeight:'bold', display:'block', marginBottom:'5px'}}>Testo a fine pagina (es. Coperto, P.IVA)</label>
-            <textarea 
-                value={config.info_footer || ''}
-                onChange={e => setConfig({...config, info_footer: e.target.value})}
-                placeholder="Scrivi qui: Coperto 2.00€ - P.IVA..."
-                style={{
-                    width:'100%', padding:'15px', borderRadius:'5px', border:'1px solid #ccc', 
-                    minHeight:'80px', marginBottom:'20px', fontSize:'14px'
-                }}
-            />
-
-            {/* 2. UPLOAD FILE ALLERGENI */}
-            <div style={{borderTop:'1px dashed #ddd', paddingTop:'20px'}}>
-                <label style={{fontSize:'12px', fontWeight:'bold', display:'block', marginBottom:'10px'}}>File Lista Allergeni (Opzionale)</label>
+            <div style={{display:'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap:'40px'}}>
                 
-                {config.url_allergeni ? (
-                    <div style={{position:'relative', border:'2px solid #27ae60', borderRadius:'10px', overflow:'hidden', height:'100px', background:'#f9f9f9', display:'flex', alignItems:'center', justifyContent:'center'}}>
-                        {config.url_allergeni.match(/\.(jpeg|jpg|gif|png|webp)$/i) ? (
-                             <img src={config.url_allergeni} style={{height:'100%', objectFit:'contain'}} />
-                        ) : (
-                             <span style={{fontSize:'16px', fontWeight:'bold'}}>📄 PDF CARICATO</span>
-                        )}
-                        <button 
-                            onClick={() => setConfig({...config, url_allergeni: ''})} 
-                            style={{position:'absolute', bottom:10, right:10, background:'red', color:'white', border:'none', padding:'5px 10px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold', fontSize:'11px'}}
-                        >
-                            🗑️ RIMUOVI
-                        </button>
-                    </div>
-                ) : (
-                    <div style={{border:'2px dashed #ccc', padding:'20px', textAlign:'center', borderRadius:'10px', cursor:'pointer', position:'relative', background:'#fafafa'}}>
-                        <span style={{fontSize:'24px', display:'block'}}>📤</span>
-                        <span style={{fontSize:'12px', color:'#666'}}>Clicca per caricare Foto o PDF</span>
-                        <input 
-                            type="file" 
-                            onChange={async (e) => {
-                                const f = e.target.files[0]; if(!f) return;
-                                const fd = new FormData(); fd.append('photo', f);
-                                try {
-                                    const r = await fetch(`${API_URL}/api/upload`, {method:'POST', body:fd});
-                                    const d = await r.json();
-                                    if(d.url) setConfig({...config, url_allergeni: d.url});
-                                } catch(err) { alert("Errore Upload"); }
-                            }} 
-                            style={{position:'absolute', top:0, left:0, width:'100%', height:'100%', opacity:0, cursor:'pointer'}} 
+                {/* COLONNA SINISTRA: TESTO */}
+                <div>
+                    <label style={{...labelStyle, fontSize:'14px', marginBottom:'15px'}}>📝 Testo a piè di pagina</label>
+                    <div style={{position:'relative'}}>
+                        <textarea 
+                            value={config.info_footer || ''}
+                            onChange={e => setConfig({...config, info_footer: e.target.value})}
+                            placeholder="Inserisci qui P.IVA, Coperto, Info di servizio..."
+                            style={{
+                                width:'100%', padding:'20px', borderRadius:'12px', border:'1px solid #dcdcdc', 
+                                minHeight:'180px', fontSize:'15px', lineHeight:'1.6', background:'white',
+                                boxShadow:'inset 0 2px 5px rgba(0,0,0,0.02)', resize:'none', fontFamily:'inherit'
+                            }}
                         />
+                        <div style={{position:'absolute', bottom:15, right:15, fontSize:'12px', color:'#aaa'}}>Testo visibile in fondo al menu</div>
                     </div>
-                )}
+                </div>
+
+                {/* COLONNA DESTRA: UPLOAD FILE */}
+                <div>
+                    <label style={{...labelStyle, fontSize:'14px', marginBottom:'15px'}}>📄 Allegato Allergeni (PDF/FOTO)</label>
+                    
+                    {config.url_allergeni ? (
+                        <div style={{
+                            border:'2px solid #27ae60', background:'#f0fbf4', borderRadius:'12px', 
+                            height:'180px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                            position:'relative', overflow:'hidden'
+                        }}>
+                            {config.url_allergeni.match(/\.(jpeg|jpg|gif|png|webp)$/i) ? (
+                                 <img src={config.url_allergeni} style={{height:'100%', width:'100%', objectFit:'contain', opacity:0.8}} />
+                            ) : (
+                                 <div style={{textAlign:'center'}}>
+                                     <span style={{fontSize:'40px'}}>📄</span>
+                                     <div style={{fontWeight:'bold', color:'#27ae60', marginTop:10}}>PDF Caricato Correttamente</div>
+                                 </div>
+                            )}
+                            
+                            {/* Overlay azioni */}
+                            <div style={{position:'absolute', inset:0, background:'rgba(0,0,0,0.6)', display:'flex', alignItems:'center', justifyContent:'center', opacity:0, transition:'opacity 0.2s'}} 
+                                 onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0}>
+                                <button 
+                                    onClick={() => setConfig({...config, url_allergeni: ''})} 
+                                    style={{background:'#e74c3c', color:'white', border:'none', padding:'10px 20px', borderRadius:'30px', fontWeight:'bold', cursor:'pointer'}}
+                                >
+                                    🗑️ RIMUOVI FILE
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        <div style={{
+                            border:'2px dashed #bdc3c7', borderRadius:'12px', background:'#fdfdfd',
+                            height:'180px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                            cursor:'pointer', position:'relative', transition:'all 0.3s'
+                        }} onMouseEnter={e => e.currentTarget.style.borderColor = '#3498db'} onMouseLeave={e => e.currentTarget.style.borderColor = '#bdc3c7'}>
+                            
+                            <span style={{fontSize:'40px', marginBottom:'10px', opacity:0.5}}>📤</span>
+                            <div style={{fontWeight:'bold', color:'#7f8c8d'}}>Clicca o Trascina qui il file</div>
+                            <div style={{fontSize:'12px', color:'#aaa', marginTop:5}}>Accetta PDF, JPG, PNG</div>
+                            
+                            <input 
+                                type="file" 
+                                onChange={async (e) => {
+                                    const f = e.target.files[0]; if(!f) return;
+                                    const fd = new FormData(); fd.append('photo', f);
+                                    try {
+                                        const r = await fetch(`${API_URL}/api/upload`, {method:'POST', body:fd});
+                                        const d = await r.json();
+                                        if(d.url) setConfig({...config, url_allergeni: d.url});
+                                    } catch(err) { alert("Errore Upload"); }
+                                }} 
+                                style={{position:'absolute', inset:0, opacity:0, cursor:'pointer'}} 
+                            />
+                        </div>
+                    )}
+                </div>
             </div>
 
-            <button onClick={handleSaveStyle} style={{marginTop:'20px', background:'#2ecc71', color:'white', width:'100%', padding:'15px', borderRadius:'5px', border:'none', fontWeight:'bold', fontSize:'14px', cursor:'pointer'}}>
-                💾 SALVA INFO FOOTER
+            <button onClick={handleSaveStyle} style={{
+                marginTop:'30px', width:'100%', padding:'18px', 
+                background:'linear-gradient(to right, #8e44ad, #9b59b6)', color:'white', 
+                border:'none', borderRadius:'8px', fontSize:'16px', fontWeight:'bold', 
+                cursor:'pointer', letterSpacing:'1px', boxShadow:'0 5px 15px rgba(142, 68, 173, 0.3)'
+            }}>
+                💾 SALVA IMPOSTAZIONI FOOTER
             </button>
-      </div>
+        </div>
     </div>
   );
 }
