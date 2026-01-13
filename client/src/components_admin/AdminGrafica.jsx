@@ -165,50 +165,56 @@ function AdminGrafica({ user, config, setConfig, API_URL }) {
                   </div>
               </div>
 
-              {/* 7. INFO LEGALI & ALLERGENI (AGGIORNATO) */}
+             {/* 7. STILE FOOTER (SOLO GRAFICA) */}
               <div style={styles.card}>
-                  <h4 style={styles.sectionTitle}>ℹ️ Info Legali & Footer</h4>
+                  <h4 style={styles.sectionTitle}>ℹ️ Stile Info Legali & Footer</h4>
                   
-                  {/* Testo */}
-                  <div style={{marginBottom:15}}>
-                      <label style={styles.label}>Testo a fine pagina (es. Coperto, P.IVA)</label>
-                      <textarea 
-                          value={config.info_footer || ''}
-                          onChange={e => setConfig({...config, info_footer: e.target.value})}
-                          style={{width:'100%', padding:10, borderRadius:5, border:'1px solid #ddd', minHeight:60}}
-                      />
-                  </div>
-
-                  {/* Controlli Stile Footer */}
-                  <div style={{...styles.grid, marginBottom:'15px', paddingBottom:'15px', borderBottom:'1px dashed #eee'}}>
-                      <SmartColorPicker label="Colore Testo Footer" value={config.colore_footer_text} field="colore_footer_text" def="#888888" />
+                  <div style={{display:'flex', flexDirection:'column', gap:'20px'}}>
                       
-                      <div>
-                          <label style={styles.label}>Dimensione (px)</label>
-                          <input 
-                            type="number" 
-                            value={config.dimensione_footer || 12} 
-                            onChange={e => setConfig({...config, dimensione_footer: e.target.value})}
-                            style={{width:'100%', padding:'10px', borderRadius:'5px', border:'1px solid #ddd'}}
-                          />
-                      </div>
+                      {/* COLORE */}
+                      <SmartColorPicker 
+                          label="Colore Testo Footer" 
+                          value={config.colore_footer_text} 
+                          field="colore_footer_text" 
+                          def="#888888" 
+                      />
 
-                      <div>
-                          <label style={styles.label}>Allineamento</label>
-                          <select 
-                            value={config.allineamento_footer || 'center'} 
-                            onChange={e => setConfig({...config, allineamento_footer: e.target.value})}
-                            style={styles.select}
-                          >
-                              <option value="center">Centro</option>
-                              <option value="left">Sinistra</option>
-                              <option value="right">Destra</option>
-                              <option value="justify">Giustificato</option>
-                          </select>
+                      {/* DIMENSIONE E ALLINEAMENTO (Affiancati) */}
+                      <div style={{display:'flex', gap:'15px'}}>
+                          <div style={{flex:1}}>
+                              <label style={styles.label}>Dimensione (px)</label>
+                              <input 
+                                type="number" 
+                                value={config.dimensione_footer || 12} 
+                                onChange={e => setConfig({...config, dimensione_footer: e.target.value})}
+                                style={{width:'100%', padding:'10px', borderRadius:'5px', border:'1px solid #ddd'}}
+                              />
+                          </div>
+
+                          <div style={{flex:1}}>
+                              <label style={styles.label}>Allineamento</label>
+                              <div style={{display:'flex', border:'1px solid #ddd', borderRadius:'5px', overflow:'hidden'}}>
+                                  {['left', 'center', 'right'].map(align => (
+                                      <button 
+                                          key={align}
+                                          onClick={() => setConfig({...config, allineamento_footer: align})}
+                                          style={{
+                                              flex:1, padding:'10px', border:'none', cursor:'pointer', fontSize:'14px',
+                                              background: (config.allineamento_footer === align || (!config.allineamento_footer && align === 'center')) ? '#333' : 'white',
+                                              color: (config.allineamento_footer === align || (!config.allineamento_footer && align === 'center')) ? 'white' : '#333'
+                                          }}
+                                      >
+                                          {align === 'left' ? '⬅️' : align === 'center' ? '⏺️' : '➡️'}
+                                      </button>
+                                  ))}
+                              </div>
+                          </div>
                       </div>
                   </div>
-
-                  <ImageUploader label="Link/PDF Allergeni (Opzionale)" type="url_allergeni" currentUrl={config.url_allergeni} icon="📋" />
+                  
+                  <p style={{fontSize:'11px', color:'#999', marginTop:'15px', fontStyle:'italic'}}>
+                      Nota: Per modificare il testo o caricare il PDF allergeni, vai nella sezione "Menu".
+                  </p>
               </div>
 
               {/* 8. FONT */}

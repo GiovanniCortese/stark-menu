@@ -339,101 +339,46 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             </DragDropContext>
         </div>
 
-{/* --- INFO LEGALI & FOOTER (NUOVO DESIGN) --- */}
-        <div className="card" style={{marginTop:'40px', background:'white', border:'1px solid #ddd', padding:'20px', borderRadius:'10px'}}>
+{/* --- INFO LEGALI & FILE (SOLO CONTENUTO) --- */}
+      <div className="card" style={{marginTop:'40px', background:'white', border:'1px solid #ddd', padding:'20px', borderRadius:'10px'}}>
             <div style={{display:'flex', alignItems:'center', gap:'10px', marginBottom:'15px'}}>
                 <span style={{fontSize:'20px'}}>ℹ️</span>
-                <h4 style={{margin:0, textTransform:'uppercase', color:'#999', fontSize:'14px', letterSpacing:'1px'}}>Info Legali & Footer</h4>
+                <h4 style={{margin:0, textTransform:'uppercase', color:'#555', fontSize:'14px', letterSpacing:'1px'}}>Info Legali & Allegati</h4>
             </div>
 
-            {/* AREA TESTO SCURA */}
+            {/* 1. TESTO */}
             <label style={{fontSize:'12px', fontWeight:'bold', display:'block', marginBottom:'5px'}}>Testo a fine pagina (es. Coperto, P.IVA)</label>
             <textarea 
                 value={config.info_footer || ''}
                 onChange={e => setConfig({...config, info_footer: e.target.value})}
-                placeholder="Esempio: Coperto 2.00€ - P.IVA 123456789"
+                placeholder="Scrivi qui: Coperto 2.00€ - P.IVA..."
                 style={{
-                    width:'100%', padding:'15px', borderRadius:'5px', border:'1px solid #333', 
-                    minHeight:'80px', marginBottom:'20px', 
-                    background:'#333', color:'white', fontFamily:'monospace'
+                    width:'100%', padding:'15px', borderRadius:'5px', border:'1px solid #ccc', 
+                    minHeight:'80px', marginBottom:'20px', fontSize:'14px'
                 }}
             />
 
-            {/* GRIGLIA CONTROLLI STILE (Colore, Dimensione, Allineamento) */}
-            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 2fr', gap:'20px', marginBottom:'25px', alignItems:'end'}}>
-                
-                {/* 1. Colore Testo */}
-                <div>
-                    <label style={{fontSize:'12px', fontWeight:'bold', marginBottom:'5px', display:'block'}}>Colore Testo Footer</label>
-                    <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-                        <input 
-                            type="color" 
-                            value={config.colore_footer_text || '#888888'}
-                            onChange={e => setConfig({...config, colore_footer_text: e.target.value})}
-                            style={{width:'40px', height:'40px', border:'none', cursor:'pointer', background:'transparent'}} 
-                        />
-                        <input 
-                            type="text" 
-                            value={config.colore_footer_text || '#888888'} 
-                            onChange={e => setConfig({...config, colore_footer_text: e.target.value})}
-                            style={{width:'100%', padding:'10px', background:'#333', color:'white', border:'none', borderRadius:'5px'}}
-                        />
-                    </div>
-                </div>
-
-                {/* 2. Dimensione */}
-                <div>
-                    <label style={{fontSize:'12px', fontWeight:'bold', marginBottom:'5px', display:'block'}}>Dimensione (px)</label>
-                    <input 
-                        type="number" 
-                        value={config.dimensione_footer || 12}
-                        onChange={e => setConfig({...config, dimensione_footer: e.target.value})}
-                        style={{width:'100%', padding:'10px', background:'#333', color:'white', border:'none', borderRadius:'5px'}}
-                    />
-                </div>
-
-                {/* 3. Allineamento */}
-                <div>
-                    <label style={{fontSize:'12px', fontWeight:'bold', marginBottom:'5px', display:'block'}}>Allineamento</label>
-                    <div style={{display:'flex', border:'1px solid #ddd', borderRadius:'5px', overflow:'hidden'}}>
-                        {['left', 'center', 'right'].map(align => (
-                            <button 
-                                key={align}
-                                onClick={() => setConfig({...config, allineamento_footer: align})}
-                                style={{
-                                    flex:1, padding:'10px', border:'none', cursor:'pointer',
-                                    background: (config.allineamento_footer === align || (!config.allineamento_footer && align === 'center')) ? '#333' : 'white',
-                                    color: (config.allineamento_footer === align || (!config.allineamento_footer && align === 'center')) ? 'white' : '#333'
-                                }}
-                            >
-                                {align === 'left' ? '⬅️' : align === 'center' ? '⏺️' : '➡️'}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            </div>
-
-            {/* UPLOAD IMMAGINE ALLERGENI */}
+            {/* 2. UPLOAD FILE ALLERGENI */}
             <div style={{borderTop:'1px dashed #ddd', paddingTop:'20px'}}>
-                <label style={{fontSize:'12px', fontWeight:'bold', display:'block', marginBottom:'10px'}}>Link/PDF Allergeni (Opzionale)</label>
+                <label style={{fontSize:'12px', fontWeight:'bold', display:'block', marginBottom:'10px'}}>File Lista Allergeni (Opzionale)</label>
                 
                 {config.url_allergeni ? (
-                    <div style={{position:'relative', border:'2px solid #27ae60', borderRadius:'10px', overflow:'hidden', height:'120px', background:'#f9f9f9', display:'flex', alignItems:'center', justifyContent:'center'}}>
+                    <div style={{position:'relative', border:'2px solid #27ae60', borderRadius:'10px', overflow:'hidden', height:'100px', background:'#f9f9f9', display:'flex', alignItems:'center', justifyContent:'center'}}>
                         {config.url_allergeni.match(/\.(jpeg|jpg|gif|png|webp)$/i) ? (
                              <img src={config.url_allergeni} style={{height:'100%', objectFit:'contain'}} />
                         ) : (
-                             <span style={{fontSize:'50px'}}>📄 PDF CARICATO</span>
+                             <span style={{fontSize:'16px', fontWeight:'bold'}}>📄 PDF CARICATO</span>
                         )}
                         <button 
                             onClick={() => setConfig({...config, url_allergeni: ''})} 
-                            style={{position:'absolute', bottom:10, right:10, background:'red', color:'white', border:'none', padding:'5px 10px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold'}}
+                            style={{position:'absolute', bottom:10, right:10, background:'red', color:'white', border:'none', padding:'5px 10px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold', fontSize:'11px'}}
                         >
                             🗑️ RIMUOVI
                         </button>
                     </div>
                 ) : (
-                    <div style={{border:'2px dashed #ccc', padding:'20px', textAlign:'center', borderRadius:'10px', cursor:'pointer', position:'relative'}}>
-                        <span style={{fontSize:'30px', display:'block'}}>📤</span>
+                    <div style={{border:'2px dashed #ccc', padding:'20px', textAlign:'center', borderRadius:'10px', cursor:'pointer', position:'relative', background:'#fafafa'}}>
+                        <span style={{fontSize:'24px', display:'block'}}>📤</span>
                         <span style={{fontSize:'12px', color:'#666'}}>Clicca per caricare Foto o PDF</span>
                         <input 
                             type="file" 
@@ -452,10 +397,10 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                 )}
             </div>
 
-            <button onClick={handleSaveStyle} style={{marginTop:'20px', background:'#f39c12', color:'white', width:'100%', padding:'15px', borderRadius:'5px', border:'none', fontWeight:'bold', fontSize:'16px', cursor:'pointer', boxShadow:'0 4px 6px rgba(0,0,0,0.1)'}}>
-                AGGIORNA INFO FOOTER
+            <button onClick={handleSaveStyle} style={{marginTop:'20px', background:'#2ecc71', color:'white', width:'100%', padding:'15px', borderRadius:'5px', border:'none', fontWeight:'bold', fontSize:'14px', cursor:'pointer'}}>
+                💾 SALVA INFO FOOTER
             </button>
-        </div>
+      </div>
     </div>
   );
 }
