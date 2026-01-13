@@ -256,13 +256,7 @@ const onDragEnd = async (result) => {
                       </div>
                       
                       <textarea placeholder="Descrizione" value={nuovoPiatto.descrizione} onChange={e => setNuovoPiatto({...nuovoPiatto, descrizione: e.target.value})} style={{padding:'10px', minHeight:'60px'}}/>
-                      <textarea 
-    placeholder="Descrizione" 
-    value={nuovoPiatto.descrizione} 
-    onChange={e => setNuovoPiatto({...nuovoPiatto, descrizione: e.target.value})} 
-    style={{padding:'10px', minHeight:'60px'}}
-/>
-
+                      
 {/* ⬇️⬇️ INCOLLA QUI IL BLOCCO ALLERGENI ⬇️⬇️ */}
 {/* SEZIONE ALLERGENI */}
 <div style={{background:'#f9f9f9', padding:'10px', borderRadius:'5px', marginBottom:'10px', border:'1px solid #eee'}}>
@@ -330,27 +324,32 @@ const onDragEnd = async (result) => {
                                                     <div style={{display:'flex', alignItems:'center', gap:'10px', flex:1}}>
                                                         <span style={{color:'#ccc', cursor:'grab', fontSize:'20px'}}>☰</span>
                                                         {p.immagine_url && <img src={p.immagine_url} style={{width:'40px', height:'40px', objectFit:'cover', borderRadius:'4px'}}/>}
-                                                        <div style={{flex:1}}>
-                                                            <div><strong>{p.nome}</strong>{p.sottocategoria && <span style={{fontSize:'11px', background:'#eee', padding:'2px 5px', borderRadius:'4px', marginLeft:'5px'}}>{p.sottocategoria}</span>}</div>
-                                                            {/* DESCRIZIONE */}
-                                                            {p.descrizione && (<div style={{fontSize:'12px', color:'#777', fontStyle:'italic', marginTop:'2px', lineHeight:'1.2'}}>{p.descrizione.length > 60 ? p.descrizione.substring(0,60) + "..." : p.descrizione}</div>)}
-                                                            
-                                                            {/* VISUALIZZAZIONE INGREDIENTI BASE (NUOVO) */}
-                                                            {(() => {
-                                                                try {
-                                                                    const v = typeof p.varianti === 'string' ? JSON.parse(p.varianti || '{}') : (p.varianti || {});
-                                                                    if (v.base && v.base.length > 0) {
-                                                                        return (
-                                                                            <div style={{fontSize:'11px', color:'#000000ff', marginTop:'3px', fontWeight:'500'}}>
-                                                                                🧂 {v.base.join(', ')}
-                                                                            </div>
-                                                                        );
-                                                                    }
-                                                                } catch(e) {}
-                                                                return null;
-                                                            })()}
-                                                            <div style={{fontSize:'12px', fontWeight:'bold', marginTop:'3px'}}>{p.prezzo}€</div>
-                                                        </div>
+                                                      <div style={{flex:1}}>
+    <div><strong>{p.nome}</strong>{p.sottocategoria && <span style={{fontSize:'11px', background:'#eee', padding:'2px 5px', borderRadius:'4px', marginLeft:'5px'}}>{p.sottocategoria}</span>}</div>
+    
+    {/* DESCRIZIONE (Singola) */}
+    {p.descrizione && (<div style={{fontSize:'12px', color:'#777', fontStyle:'italic', marginTop:'2px', lineHeight:'1.2'}}>{p.descrizione}</div>)}
+    
+    {/* INGREDIENTI BASE */}
+    {(() => {
+        try {
+            const v = typeof p.varianti === 'string' ? JSON.parse(p.varianti || '{}') : (p.varianti || {});
+            if (v.base && v.base.length > 0) {
+                return <div style={{fontSize:'11px', color:'#444', marginTop:'3px'}}>🧂 {v.base.join(', ')}</div>;
+            }
+        } catch(e) {}
+        return null;
+    })()}
+
+    {/* NUOVO: LISTA ALLERGENI IN ADMIN */}
+    {p.allergeni && Array.isArray(p.allergeni) && p.allergeni.length > 0 && (
+        <div style={{fontSize:'10px', color:'#e74c3c', marginTop:'4px', fontWeight:'bold'}}>
+            ⚠️ {p.allergeni.join(', ')}
+        </div>
+    )}
+    
+    <div style={{fontSize:'12px', fontWeight:'bold', marginTop:'3px'}}>{p.prezzo}€</div>
+</div>
                                                     </div>
                                                     <div style={{display:'flex', gap:'5px', alignItems:'center'}}>
                                                         <button onClick={() => avviaModifica(p)} style={{background:'#f1c40f', padding:'5px 10px', borderRadius:'4px', border:'none', cursor:'pointer'}}>✏️</button>

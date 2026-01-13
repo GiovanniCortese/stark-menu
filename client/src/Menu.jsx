@@ -479,20 +479,18 @@ const modalText = style.text || '#000000';
     )}
 
     {/* SEZIONE ALLERGENI: Aggiungi o correggi questo blocco qui sotto */}
-    {prodotto.allergeni && Array.isArray(prodotto.allergeni) && prodotto.allergeni.length > 0 && (
-        <div style={{
-            fontSize:'10px', 
-            color: '#e74c3c', // Colore rosso per evidenziarli
-            fontWeight: 'bold',
-            marginTop:'4px',
-            background: 'rgba(231, 76, 60, 0.1)',
-            padding: '2px 6px',
-            borderRadius: '4px',
-            display: 'inline-block'
-        }}>
-            ⚠️ Allergeni: {prodotto.allergeni.map(a => a.split(' ')[1] || a).join(' ')} 
-        </div>
-    )}
+{prodotto.allergeni && Array.isArray(prodotto.allergeni) && prodotto.allergeni.length > 0 && (
+    <div style={{
+        fontSize:'10px', 
+        color: '#e74c3c', 
+        fontWeight: 'bold',
+        marginTop:'4px',
+        padding: '2px 0',
+        display: 'block'
+    }}>
+        ⚠️ Allergeni: {prodotto.allergeni.join(', ')} 
+    </div>
+)}
     
     <div style={{fontSize:'14px', fontWeight:'bold', color: priceColor}}>{Number(prodotto.prezzo).toFixed(2)} €</div>
 </div>
@@ -777,60 +775,70 @@ const addList = addListPiatto.length > 0 ? addListPiatto : addListCategoria;
                                   const ingredientiStr = (variantiObj.base || []).join(', ');
 
                                   return (
-<div key={item.tempId} style={{background:'rgba(255,255,255,0.1)', borderRadius:10, padding:15, marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-    <div style={{flex: 1}}>
-        <div style={{fontWeight:'bold', fontSize:'1.1rem', color: titleColor}}>{item.nome}</div>
-        
-        {/* 1. DESCRIZIONE DEL PIATTO */}
-        {item.descrizione && (
-            <div style={{fontSize:'12px', color:'#ccc', fontStyle:'italic', marginTop:'4px', lineHeight:'1.2'}}>
-                {item.descrizione}
+    <div key={item.tempId} style={{background:'rgba(255,255,255,0.1)', borderRadius:10, padding:15, marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+        <div style={{flex: 1}}>
+            <div style={{fontWeight:'bold', fontSize:'1.1rem', color: titleColor}}>{item.nome}</div>
+            
+            {/* 1. DESCRIZIONE DEL PIATTO */}
+            {item.descrizione && (
+                <div style={{fontSize:'12px', color:'#ccc', fontStyle:'italic', marginTop:'4px', lineHeight:'1.2'}}>
+                    {item.descrizione}
+                </div>
+            )}
+
+            {/* 2. INGREDIENTI BASE (RECUPERATI DAL JSON) */}
+            {(() => {
+                try {
+                    const v = typeof item.varianti === 'string' ? JSON.parse(item.varianti || '{}') : (item.varianti || {});
+                    if (v.base && v.base.length > 0) {
+                        return (
+                            <div style={{fontSize:'11px', color:'#999', marginTop:'4px'}}>
+                                🧂 Ingredienti: {v.base.join(', ')}
+                            </div>
+                        );
+                    }
+                } catch (e) { console.error("Errore parse varianti", e); }
+                return null;
+            })()}
+
+            {/* 3. AGGIUNTA ALLERGENI NEL RIEPILOGO */}
+            {item.allergeni && item.allergeni.length > 0 && (
+                <div style={{fontSize:'10px', color:'#ff7675', marginTop:'4px', fontWeight:'bold'}}>
+                    ⚠️ Allergeni: {item.allergeni.join(', ')}
+                </div>
+            )}
+
+            {/* 4. MODIFICHE SPECIFICHE (RIMOZIONI E AGGIUNTE) */}
+            {item.varianti_scelte && (
+                <div style={{marginTop:'8px', display:'flex', flexWrap:'wrap', gap:'5px'}}>
+                    {item.varianti_scelte.rimozioni?.map((ing, i) => (
+                        <span key={i} style={{background:'#c0392b', color:'white', fontSize:'10px', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold'}}>
+                            NO {ing}
+                        </span>
+                    ))}
+                    {item.varianti_scelte.aggiunte?.map((ing, i) => (
+                        <span key={i} style={{background:'#27ae60', color:'white', fontSize:'10px', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold'}}>
+                            + {ing.nome}
+                        </span>
+                    ))}
+                </div>
+            )}
+
+            <div style={{color: priceColor, fontSize:'0.9rem', marginTop: '8px', fontWeight: 'bold'}}>
+                {Number(item.prezzo).toFixed(2)} € • {item.categoria_is_pizzeria ? '🍕 Pizza' : '🍳 Cucina'}
             </div>
-        )}
+        </div>
 
-        {/* 2. INGREDIENTI BASE (RECUPERATI DAL JSON) */}
-        {(() => {
-            const v = typeof item.varianti === 'string' ? JSON.parse(item.varianti || '{}') : (item.varianti || {});
-            if (v.base && v.base.length > 0) {
-                return (
-                    <div style={{fontSize:'11px', color:'#999', marginTop:'4px'}}>
-                        🧂 Ingredienti: {v.base.join(', ')}
-                    </div>
-                );
-            }
-        })()}
-
-        {/* 3. MODIFICHE SPECIFICHE (RIMOZIONI E AGGIUNTE) */}
-        {item.varianti_scelte && (
-            <div style={{marginTop:'8px', display:'flex', flexWrap:'wrap', gap:'5px'}}>
-                {item.varianti_scelte.rimozioni?.map((ing, i) => (
-                    <span key={i} style={{background:'#c0392b', color:'white', fontSize:'10px', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold'}}>
-                        NO {ing}
-                    </span>
-                ))}
-                {item.varianti_scelte.aggiunte?.map((ing, i) => (
-                    <span key={i} style={{background:'#27ae60', color:'white', fontSize:'10px', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold'}}>
-                        + {ing.nome}
-                    </span>
-                ))}
+        {/* Bottoni laterali per cambio uscita e rimozione */}
+        <div style={{display:'flex', flexDirection:'column', gap:5, marginLeft: '10px'}}>
+            <div style={{display:'flex', gap:5, marginBottom: 5}}>
+                <button onClick={() => cambiaUscita(item.tempId, -1)} style={{background:'#ecf0f1', color:'#333', border: 'none', fontSize:'0.8rem', padding:'5px 8px', borderRadius:'4px', cursor: 'pointer'}}>⬆️</button>
+                <button onClick={() => cambiaUscita(item.tempId, 1)} style={{background:'#ecf0f1', color:'#333', border: 'none', fontSize:'0.8rem', padding:'5px 8px', borderRadius:'4px', cursor: 'pointer'}}>⬇️</button>
             </div>
-        )}
-
-        <div style={{color: priceColor, fontSize:'0.9rem', marginTop: '8px', fontWeight: 'bold'}}>
-            {Number(item.prezzo).toFixed(2)} € • {item.categoria_is_pizzeria ? '🍕 Pizza' : '🍳 Cucina'}
+            <button onClick={() => rimuoviDalCarrello(item.tempId)} style={{background:'#e74c3c', color:'white', fontSize:'0.8rem', padding:'5px 10px', borderRadius:'4px', border:'none', cursor: 'pointer', fontWeight: 'bold'}}>ELIMINA</button>
         </div>
     </div>
-
-    {/* Bottoni laterali per cambio uscita e rimozione rimangono invariati */}
-    <div style={{display:'flex', flexDirection:'column', gap:5, marginLeft: '10px'}}>
-        <div style={{display:'flex', gap:5}}>
-            <button onClick={() => cambiaUscita(item.tempId, -1)} style={{background:'#ecf0f1', color:'#333', fontSize:'0.8rem', padding:'5px 8px', borderRadius:'4px'}}>⬆️</button>
-            <button onClick={() => cambiaUscita(item.tempId, 1)} style={{background:'#ecf0f1', color:'#333', fontSize:'0.8rem', padding:'5px 8px', borderRadius:'4px'}}>⬇️</button>
-        </div>
-        <button onClick={() => rimuoviDalCarrello(item.tempId)} style={{background:'#e74c3c', color:'white', fontSize:'0.8rem', padding:'5px 10px', borderRadius:'4px', border:'none'}}>ELIMINA</button>
-    </div>
-</div>
-                                  )
+);
                               })}
                           </div>
                       ));
