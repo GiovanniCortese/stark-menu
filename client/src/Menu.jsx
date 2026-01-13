@@ -484,20 +484,47 @@ const modalText = style.text || '#000000';
     )}
 
     {/* VISUALIZZAZIONE SDOPPIATA (ALLERGENI E SURGELATO) */}
-    {prodotto.allergeni && Array.isArray(prodotto.allergeni) && prodotto.allergeni.length > 0 && (
-        <div style={{ marginTop: '6px' }}>
-            {prodotto.allergeni.filter(a => !a.includes("❄️")).length > 0 && (
-                <div style={{ fontSize: '10px', color: '#e74c3c', fontWeight: 'bold', textTransform: 'uppercase' }}>
-                    ⚠️ ALLERGENI: {prodotto.allergeni.filter(a => !a.includes("❄️")).join(', ')}
-                </div>
-            )}
-            {prodotto.allergeni.some(a => a.includes("❄️")) && (
-                <div style={{ fontSize: '10px', color: '#3498db', fontWeight: 'bold', marginTop: '2px', textTransform: 'uppercase' }}>
-                    ❄️ PRODOTTO SURGELATO/ABBATTUTO
-                </div>
-            )}
+   <div style={{
+    marginTop: '15px',
+    padding: '12px',
+    background: 'rgba(255,255,255,0.05)', // Leggero sfondo per staccare
+    borderRadius: '10px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px'
+}}>
+    {/* 1. RIGA ALLERGENI (ROSSO) */}
+    {prodotto.allergeni?.filter(a => !a.includes("❄️")).length > 0 && (
+        <div style={{ 
+            fontSize: '11px', 
+            color: '#ff7675', // Rosso chiaro per fondo scuro
+            fontWeight: '900', 
+            textTransform: 'uppercase',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '5px'
+        }}>
+            <span>⚠️</span>
+            <span>ALLERGENI: {prodotto.allergeni.filter(a => !a.includes("❄️")).join(', ')}</span>
         </div>
     )}
+
+    {/* 2. RIGA SURGELATO (AZZURRO) */}
+    {prodotto.allergeni?.some(a => a.includes("❄️")) && (
+        <div style={{ 
+            fontSize: '11px', 
+            color: '#74b9ff', // Azzurro chiaro
+            fontWeight: '900', 
+            textTransform: 'uppercase',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px'
+        }}>
+            <span>❄️</span>
+            <span>PRODOTTO SURGELATO/ABBATTUTO</span>
+        </div>
+    )}
+</div>
     
     <div style={{fontSize:'14px', fontWeight:'bold', color: priceColor}}>{Number(prodotto.prezzo).toFixed(2)} €</div>
 </div>
