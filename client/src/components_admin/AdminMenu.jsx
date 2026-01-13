@@ -1,5 +1,5 @@
-// client/src/components_admin/AdminMenu.jsx - V45 (FIX SURGELATO LABEL)
-import { useState, useEffect } from 'react';
+// client/src/components_admin/AdminMenu.jsx - V46 (FIX VISIBILITA' COMPLETA)
+import { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 const LISTA_ALLERGENI = [
@@ -10,7 +10,6 @@ const LISTA_ALLERGENI = [
 ];
 
 function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL, ricaricaDati }) {
-  // --- STATI ---
   const [nuovoPiatto, setNuovoPiatto] = useState({ 
       nome: '', prezzo: '', categoria: '', sottocategoria: '', descrizione: '', immagine_url: '',
       ingredienti_base: '', varianti_str: '', allergeni: [] 
@@ -26,6 +25,13 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const isAbbonamentoAttivo = config.account_attivo !== false; 
   const isMasterBlock = config.cucina_super_active === false; 
   const isCucinaAperta = config.ordini_abilitati;
+
+  // --- FUNZIONI UTILI ---
+  const isSurgelato = (str) => {
+      if(!str) return false;
+      const s = str.toLowerCase();
+      return s.includes('surgelato') || s.includes('abbattuto') || s.includes('❄️');
+  };
 
   // --- HANDLERS ---
   const toggleCucina = async () => { 
@@ -332,32 +338,48 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                                                                 <div style={{fontWeight:'bold', color:'#333', fontSize:'15px'}}>{p.nome} <span style={{fontWeight:'normal', fontSize:'12px', color:'#888'}}>({Number(p.prezzo).toFixed(2)}€)</span></div>
                                                                 {p.descrizione && <div style={{fontSize:'12px', color:'#777'}}>{p.descrizione}</div>}
                                                                 
+                                                                {/* --- FIX VISIBILITÀ INGREDIENTI & AGGIUNTE --- */}
+                                                                {(() => {
+                                                                    try {
+                                                                        const v = typeof p.varianti === 'string' ? JSON.parse(p.varianti || '{}') : (p.varianti || {});
+                                                                        const hasBase = v.base && v.base.length > 0;
+                                                                        const hasAdd = v.aggiunte && v.aggiunte.length > 0;
+                                                                        if (!hasBase && !hasAdd) return null;
+                                                                        return (
+                                                                            <div style={{fontSize:'11px', color:'#555', marginTop:'3px', display:'flex', flexDirection:'column', gap:'2px'}}>
+                                                                                {hasBase && <div>🧂 <span style={{fontStyle:'italic'}}>{v.base.join(', ')}</span></div>}
+                                                                                {hasAdd && <div style={{color:'#27ae60', fontWeight:'500'}}>➕ {v.aggiunte.map(a => a.nome).join(', ')}</div>}
+                                                                            </div>
+                                                                        );
+                                                                    } catch(e) { return null; }
+                                                                })()}
+
                                                                 {/* --- FIX VISIBILITÀ SURGELATO E ALLERGENI --- */}
                                                                 {p.allergeni && p.allergeni.length > 0 && (
-                                                                    <div style={{display:'flex', flexWrap:'wrap', gap:'5px', marginTop:'5px'}}>
+                                                                    <div style={{display:'flex', flexWrap:'wrap', gap:'5px', marginTop:'6px'}}>
                                                                         
                                                                         {/* 1. SE È SURGELATO LO MOSTRIAMO DIVERSO (BLU) */}
-                                                                        {p.allergeni.some(a => a.includes('❄️')) && (
+                                                                        {p.allergeni.some(a => isSurgelato(a)) && (
                                                                             <span style={{fontSize:'10px', background:'#e1f5fe', color:'#0277bd', padding:'2px 8px', borderRadius:'10px', fontWeight:'bold', border:'1px solid #81d4fa'}}>
                                                                                 ❄️ SURGELATO
                                                                             </span>
                                                                         )}
 
-                                                                        {/* 2. GLI ALTRI ALLERGENI SONO ROSSI */}
+                                                                        {/* 2. GLI ALTRI ALLERGENI SONO ROSSI - ORA CON NOME COMPLETO E ICONE */}
                                                                         {p.allergeni
-                                                                            .filter(a => !a.includes('❄️'))
+                                                                            .filter(a => !isSurgelato(a))
                                                                             .slice(0, 3)
                                                                             .map(a => (
-                                                                                <span key={a} style={{fontSize:'10px', background:'#ffebee', color:'#c62828', padding:'2px 8px', borderRadius:'10px', border:'1px solid #ffcdd2'}}>
-                                                                                    {a.split(' ')[0]}
+                                                                                <span key={a} style={{fontSize:'10px', background:'#ffebee', color:'#c62828', padding:'2px 8px', borderRadius:'10px', border:'1px solid #ffcdd2', fontWeight:'500'}}>
+                                                                                    {a} {/* Mostra l'intera stringa, inclusa l'emoji */}
                                                                                 </span>
                                                                             ))
                                                                         }
                                                                         
                                                                         {/* 3. CONTATORE SE SONO TROPPI */}
-                                                                        {p.allergeni.filter(a => !a.includes('❄️')).length > 3 && (
+                                                                        {p.allergeni.filter(a => !isSurgelato(a)).length > 3 && (
                                                                             <span style={{fontSize:'9px', color:'#888', alignSelf:'center'}}>
-                                                                                +{p.allergeni.filter(a => !a.includes('❄️')).length - 3}
+                                                                                +{p.allergeni.filter(a => !isSurgelato(a)).length - 3}
                                                                             </span>
                                                                         )}
                                                                     </div>
