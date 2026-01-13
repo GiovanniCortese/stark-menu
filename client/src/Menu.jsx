@@ -657,12 +657,29 @@ const addList = addListPiatto.length > 0 ? addListPiatto : addListCategoria;
                         <h2 style={{margin:'0 0 5px 0', fontSize:'1.8rem', color: '#000', fontWeight:'800'}}>{selectedPiatto.nome}</h2>
                         <p style={{color:'#666', fontSize:'1rem', lineHeight:'1.4'}}>{selectedPiatto.descrizione}</p>
 
-{/* ALLERGENI NEL MODALE */}
-    {selectedPiatto.allergeni && selectedPiatto.allergeni.length > 0 && (
-        <div style={{marginTop: '10px', fontSize: '0.8rem', color: '#c0392b', fontWeight: 'bold'}}>
-            Allergeni: {selectedPiatto.allergeni.join(', ')}
-        </div>
-    )}
+{/* VISUALIZZAZIONE SDOPPIATA ALLERGENI / SURGELATO NEL MODALE */}
+{selectedPiatto.allergeni && Array.isArray(selectedPiatto.allergeni) && selectedPiatto.allergeni.length > 0 && (
+    <div style={{ 
+        marginTop: '15px', 
+        padding: '10px', 
+        background: 'rgba(0,0,0,0.03)', 
+        borderRadius: '8px' 
+    }}>
+        {/* Riga 1: ALLERGENI (ROSSO) */}
+        {selectedPiatto.allergeni.filter(a => !a.includes("❄️")).length > 0 && (
+            <div style={{ fontSize: '11px', color: '#e74c3c', fontWeight: '900', textTransform: 'uppercase', marginBottom: '4px' }}>
+                ⚠️ ALLERGENI: {selectedPiatto.allergeni.filter(a => !a.includes("❄️")).join(', ')}
+            </div>
+        )}
+
+        {/* Riga 2: SURGELATO (AZZURRO) */}
+        {selectedPiatto.allergeni.some(a => a.includes("❄️")) && (
+            <div style={{ fontSize: '11px', color: '#3498db', fontWeight: '900', textTransform: 'uppercase' }}>
+                ❄️ PRODOTTO SURGELATO/ABBATTUTO
+            </div>
+        )}
+    </div>
+)}
 
                         <div style={{marginTop:'20px', borderTop:'1px solid #eee', paddingTop:'15px'}}>
                             {/* RIMOZIONI */}
