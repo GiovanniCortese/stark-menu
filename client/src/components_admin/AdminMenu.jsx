@@ -339,30 +339,123 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             </DragDropContext>
         </div>
 
-{/* --- INFO LEGALI (IN FONDO A AdminMenu.jsx) --- */}
-<div className="card" style={{marginTop:'40px', background:'#fff3cd', border:'1px solid #ffeeba', padding:'15px'}}>
-    <h4 style={{margin:'0 0 10px 0'}}>ℹ️ Info Legali & Note Footer</h4>
-    
-    <label style={{fontSize:'12px', fontWeight:'bold', display:'block', marginBottom:'5px'}}>Testo a piè di pagina (P.IVA, Coperto, ecc.)</label>
-    <textarea 
-        value={config.info_footer || ''}
-        onChange={e => setConfig({...config, info_footer: e.target.value})}
-        placeholder="Esempio: Coperto 2.00€ - Per info allergeni rivolgersi allo staff."
-        style={{width:'100%', padding:'10px', borderRadius:'5px', border:'1px solid #ddd', minHeight:'60px', marginBottom:'15px'}}
-    />
+{/* --- INFO LEGALI & FOOTER (NUOVO DESIGN) --- */}
+        <div className="card" style={{marginTop:'40px', background:'white', border:'1px solid #ddd', padding:'20px', borderRadius:'10px'}}>
+            <div style={{display:'flex', alignItems:'center', gap:'10px', marginBottom:'15px'}}>
+                <span style={{fontSize:'20px'}}>ℹ️</span>
+                <h4 style={{margin:0, textTransform:'uppercase', color:'#999', fontSize:'14px', letterSpacing:'1px'}}>Info Legali & Footer</h4>
+            </div>
 
-    <label style={{fontSize:'12px', fontWeight:'bold', display:'block', marginBottom:'5px'}}>Link Lista Allergeni (Opzionale)</label>
-    <input 
-        type="text"
-        placeholder="https://iltuosito.com/allergeni.pdf"
-        value={config.url_allergeni || ''}
-        onChange={e => setConfig({...config, url_allergeni: e.target.value})}
-        style={{width:'100%', padding:'10px', borderRadius:'5px', border:'1px solid #ddd', marginBottom:'10px'}}
-    />
-    <p style={{fontSize:'11px', color:'#666', marginTop:'-5px'}}>Se inserisci un link, nel menu apparirà un pulsante "📋 VEDI LISTA ALLERGENI COMPLETA".</p>
+            {/* AREA TESTO SCURA */}
+            <label style={{fontSize:'12px', fontWeight:'bold', display:'block', marginBottom:'5px'}}>Testo a fine pagina (es. Coperto, P.IVA)</label>
+            <textarea 
+                value={config.info_footer || ''}
+                onChange={e => setConfig({...config, info_footer: e.target.value})}
+                placeholder="Esempio: Coperto 2.00€ - P.IVA 123456789"
+                style={{
+                    width:'100%', padding:'15px', borderRadius:'5px', border:'1px solid #333', 
+                    minHeight:'80px', marginBottom:'20px', 
+                    background:'#333', color:'white', fontFamily:'monospace'
+                }}
+            />
 
-    <button onClick={handleSaveStyle} style={{marginTop:'10px', background:'#f39c12', color:'white', width:'100%', padding:'12px', borderRadius:'5px', border:'none', fontWeight:'bold', cursor:'pointer'}}>AGGIORNA INFO FOOTER</button>
-</div>
+            {/* GRIGLIA CONTROLLI STILE (Colore, Dimensione, Allineamento) */}
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 2fr', gap:'20px', marginBottom:'25px', alignItems:'end'}}>
+                
+                {/* 1. Colore Testo */}
+                <div>
+                    <label style={{fontSize:'12px', fontWeight:'bold', marginBottom:'5px', display:'block'}}>Colore Testo Footer</label>
+                    <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+                        <input 
+                            type="color" 
+                            value={config.colore_footer_text || '#888888'}
+                            onChange={e => setConfig({...config, colore_footer_text: e.target.value})}
+                            style={{width:'40px', height:'40px', border:'none', cursor:'pointer', background:'transparent'}} 
+                        />
+                        <input 
+                            type="text" 
+                            value={config.colore_footer_text || '#888888'} 
+                            onChange={e => setConfig({...config, colore_footer_text: e.target.value})}
+                            style={{width:'100%', padding:'10px', background:'#333', color:'white', border:'none', borderRadius:'5px'}}
+                        />
+                    </div>
+                </div>
+
+                {/* 2. Dimensione */}
+                <div>
+                    <label style={{fontSize:'12px', fontWeight:'bold', marginBottom:'5px', display:'block'}}>Dimensione (px)</label>
+                    <input 
+                        type="number" 
+                        value={config.dimensione_footer || 12}
+                        onChange={e => setConfig({...config, dimensione_footer: e.target.value})}
+                        style={{width:'100%', padding:'10px', background:'#333', color:'white', border:'none', borderRadius:'5px'}}
+                    />
+                </div>
+
+                {/* 3. Allineamento */}
+                <div>
+                    <label style={{fontSize:'12px', fontWeight:'bold', marginBottom:'5px', display:'block'}}>Allineamento</label>
+                    <div style={{display:'flex', border:'1px solid #ddd', borderRadius:'5px', overflow:'hidden'}}>
+                        {['left', 'center', 'right'].map(align => (
+                            <button 
+                                key={align}
+                                onClick={() => setConfig({...config, allineamento_footer: align})}
+                                style={{
+                                    flex:1, padding:'10px', border:'none', cursor:'pointer',
+                                    background: (config.allineamento_footer === align || (!config.allineamento_footer && align === 'center')) ? '#333' : 'white',
+                                    color: (config.allineamento_footer === align || (!config.allineamento_footer && align === 'center')) ? 'white' : '#333'
+                                }}
+                            >
+                                {align === 'left' ? '⬅️' : align === 'center' ? '⏺️' : '➡️'}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            {/* UPLOAD IMMAGINE ALLERGENI */}
+            <div style={{borderTop:'1px dashed #ddd', paddingTop:'20px'}}>
+                <label style={{fontSize:'12px', fontWeight:'bold', display:'block', marginBottom:'10px'}}>Link/PDF Allergeni (Opzionale)</label>
+                
+                {config.url_allergeni ? (
+                    <div style={{position:'relative', border:'2px solid #27ae60', borderRadius:'10px', overflow:'hidden', height:'120px', background:'#f9f9f9', display:'flex', alignItems:'center', justifyContent:'center'}}>
+                        {config.url_allergeni.match(/\.(jpeg|jpg|gif|png|webp)$/i) ? (
+                             <img src={config.url_allergeni} style={{height:'100%', objectFit:'contain'}} />
+                        ) : (
+                             <span style={{fontSize:'50px'}}>📄 PDF CARICATO</span>
+                        )}
+                        <button 
+                            onClick={() => setConfig({...config, url_allergeni: ''})} 
+                            style={{position:'absolute', bottom:10, right:10, background:'red', color:'white', border:'none', padding:'5px 10px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold'}}
+                        >
+                            🗑️ RIMUOVI
+                        </button>
+                    </div>
+                ) : (
+                    <div style={{border:'2px dashed #ccc', padding:'20px', textAlign:'center', borderRadius:'10px', cursor:'pointer', position:'relative'}}>
+                        <span style={{fontSize:'30px', display:'block'}}>📤</span>
+                        <span style={{fontSize:'12px', color:'#666'}}>Clicca per caricare Foto o PDF</span>
+                        <input 
+                            type="file" 
+                            onChange={async (e) => {
+                                const f = e.target.files[0]; if(!f) return;
+                                const fd = new FormData(); fd.append('photo', f);
+                                try {
+                                    const r = await fetch(`${API_URL}/api/upload`, {method:'POST', body:fd});
+                                    const d = await r.json();
+                                    if(d.url) setConfig({...config, url_allergeni: d.url});
+                                } catch(err) { alert("Errore Upload"); }
+                            }} 
+                            style={{position:'absolute', top:0, left:0, width:'100%', height:'100%', opacity:0, cursor:'pointer'}} 
+                        />
+                    </div>
+                )}
+            </div>
+
+            <button onClick={handleSaveStyle} style={{marginTop:'20px', background:'#f39c12', color:'white', width:'100%', padding:'15px', borderRadius:'5px', border:'none', fontWeight:'bold', fontSize:'16px', cursor:'pointer', boxShadow:'0 4px 6px rgba(0,0,0,0.1)'}}>
+                AGGIORNA INFO FOOTER
+            </button>
+        </div>
     </div>
   );
 }

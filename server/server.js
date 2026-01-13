@@ -283,37 +283,27 @@ app.get('/api/menu/:slug', async (req, res) => {
             id: data.id, 
             ristorante: data.nome,
             style: { 
-                logo: data.logo_url, 
-                cover: data.cover_url, 
-                bg: data.colore_sfondo, 
-                title: data.colore_titolo, 
-                text: data.colore_testo, 
-                price: data.colore_prezzo, 
-                font: data.font_style,
-                card_bg: data.colore_card,
-                card_border: data.colore_border,
-                btn_bg: data.colore_btn,
-                btn_text: data.colore_btn_text,
-                tavolo_bg: data.colore_tavolo_bg,
-                tavolo_text: data.colore_tavolo_text,
-                carrello_bg: data.colore_carrello_bg,
-                carrello_text: data.colore_carrello_text,
-                checkout_bg: data.colore_checkout_bg,
-                checkout_text: data.colore_checkout_text,
+                // ... altri campi esistenti ...
+                logo: data.logo_url, cover: data.cover_url, bg: data.colore_sfondo, 
+                title: data.colore_titolo, text: data.colore_testo, price: data.colore_prezzo, 
+                font: data.font_style, card_bg: data.colore_card, card_border: data.colore_border,
+                btn_bg: data.colore_btn, btn_text: data.colore_btn_text,
+                tavolo_bg: data.colore_tavolo_bg, tavolo_text: data.colore_tavolo_text,
+                carrello_bg: data.colore_carrello_bg, carrello_text: data.colore_carrello_text,
+                checkout_bg: data.colore_checkout_bg, checkout_text: data.colore_checkout_text,
+                colore_modal_bg: data.colore_modal_bg, colore_modal_text: data.colore_modal_text,
                 
-                // --- AGGIUNTE PER FOOTER E MODALI ---
+                // --- CAMPI AGGIUNTI PER IL FOOTER ---
                 info_footer: data.info_footer,
                 url_allergeni: data.url_allergeni,
-                colore_modal_bg: data.colore_modal_bg,
-                colore_modal_text: data.colore_modal_text
+                colore_footer_text: data.colore_footer_text,
+                dimensione_footer: data.dimensione_footer,
+                allineamento_footer: data.allineamento_footer
             },
             subscription_active: data.account_attivo !== false, 
             kitchen_active: data.cucina_super_active !== false, 
             ordini_abilitati: data.ordini_abilitati, 
-            pw_cassa: data.pw_cassa, 
-            pw_cucina: data.pw_cucina, 
-            pw_pizzeria: data.pw_pizzeria, 
-            pw_bar: data.pw_bar,
+            pw_cassa: data.pw_cassa, pw_cucina: data.pw_cucina, pw_pizzeria: data.pw_pizzeria, pw_bar: data.pw_bar,
             menu: menu.rows
         });
     } catch (e) { res.status(500).json({ error: "Err" }); }
@@ -459,9 +449,11 @@ app.put('/api/ristorante/style/:id', async (req, res) => {
             colore_card, colore_btn, colore_btn_text, colore_border,
             colore_tavolo_bg, colore_tavolo_text,
             colore_carrello_bg, colore_carrello_text,
-            colore_checkout_bg, colore_checkout_text, // Aggiunti
-            colore_modal_bg, colore_modal_text,       // Aggiunti
-            font_style, info_footer, url_allergeni
+            colore_checkout_bg, colore_checkout_text, 
+            colore_modal_bg, colore_modal_text,
+            font_style, info_footer, url_allergeni,
+            // NUOVI CAMPI
+            colore_footer_text, dimensione_footer, allineamento_footer
         } = req.body;
 
         await pool.query(
@@ -471,19 +463,25 @@ app.put('/api/ristorante/style/:id', async (req, res) => {
             colore_tavolo_bg=$11, colore_tavolo_text=$12, colore_carrello_bg=$13, colore_carrello_text=$14,
             colore_checkout_bg=$15, colore_checkout_text=$16, 
             colore_modal_bg=$17, colore_modal_text=$18,
-            font_style=$19, info_footer=$20, url_allergeni=$21
-            WHERE id=$22`,
+            font_style=$19, info_footer=$20, url_allergeni=$21,
+            colore_footer_text=$22, dimensione_footer=$23, allineamento_footer=$24
+            WHERE id=$25`,
             [
                 logo_url, cover_url, colore_sfondo, colore_titolo, colore_testo, colore_prezzo, 
                 colore_card, colore_btn, colore_btn_text, colore_border,
                 colore_tavolo_bg, colore_tavolo_text, colore_carrello_bg, colore_carrello_text,
                 colore_checkout_bg, colore_checkout_text,
                 colore_modal_bg, colore_modal_text,
-                font_style, info_footer, url_allergeni, req.params.id
+                font_style, info_footer, url_allergeni,
+                colore_footer_text, dimensione_footer, allineamento_footer, // <--- I NUOVI VALORI
+                req.params.id
             ]
         );
         res.json({ success: true });
-    } catch (err) { res.status(500).json({ error: "Errore salvataggio" }); }
+    } catch (err) { 
+        console.error(err);
+        res.status(500).json({ error: "Errore salvataggio" }); 
+    }
 });
 
 // AGGIORNA ROTTA PRODOTTI (Aggiungi 'allergeni' nel body e nella query)
