@@ -339,18 +339,30 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             </DragDropContext>
         </div>
 
-        {/* --- INFO LEGALI (IN FONDO) --- */}
-        <div className="card" style={{marginTop:'40px', background:'#fff3cd', border:'1px solid #ffeeba', padding:'15px'}}>
-            <h4 style={{margin:'0 0 10px 0'}}>ℹ️ Info Legali & Note Footer</h4>
-            <p style={{fontSize:'12px', color:'#856404'}}>Testo visualizzato a fine menu (es: coperto, note allergeni).</p>
-            <textarea 
-                value={config.info_footer || ''}
-                onChange={e => setConfig({...config, info_footer: e.target.value})}
-                placeholder="Esempio: Coperto 2.00€ - Per info allergeni rivolgersi allo staff."
-                style={{width:'100%', padding:'10px', borderRadius:'5px', border:'1px solid #ddd', minHeight:'80px'}}
-            />
-            <button onClick={handleSaveStyle} style={{marginTop:'10px', background:'#f39c12', color:'white', width:'100%', padding:'12px', borderRadius:'5px', border:'none', fontWeight:'bold', cursor:'pointer'}}>AGGIORNA INFO FOOTER</button>
-        </div>
+{/* --- INFO LEGALI (IN FONDO A AdminMenu.jsx) --- */}
+<div className="card" style={{marginTop:'40px', background:'#fff3cd', border:'1px solid #ffeeba', padding:'15px'}}>
+    <h4 style={{margin:'0 0 10px 0'}}>ℹ️ Info Legali & Note Footer</h4>
+    
+    <label style={{fontSize:'12px', fontWeight:'bold', display:'block', marginBottom:'5px'}}>Testo a piè di pagina (P.IVA, Coperto, ecc.)</label>
+    <textarea 
+        value={config.info_footer || ''}
+        onChange={e => setConfig({...config, info_footer: e.target.value})}
+        placeholder="Esempio: Coperto 2.00€ - Per info allergeni rivolgersi allo staff."
+        style={{width:'100%', padding:'10px', borderRadius:'5px', border:'1px solid #ddd', minHeight:'60px', marginBottom:'15px'}}
+    />
+
+    <label style={{fontSize:'12px', fontWeight:'bold', display:'block', marginBottom:'5px'}}>Link Lista Allergeni (Opzionale)</label>
+    <input 
+        type="text"
+        placeholder="https://iltuosito.com/allergeni.pdf"
+        value={config.url_allergeni || ''}
+        onChange={e => setConfig({...config, url_allergeni: e.target.value})}
+        style={{width:'100%', padding:'10px', borderRadius:'5px', border:'1px solid #ddd', marginBottom:'10px'}}
+    />
+    <p style={{fontSize:'11px', color:'#666', marginTop:'-5px'}}>Se inserisci un link, nel menu apparirà un pulsante "📋 VEDI LISTA ALLERGENI COMPLETA".</p>
+
+    <button onClick={handleSaveStyle} style={{marginTop:'10px', background:'#f39c12', color:'white', width:'100%', padding:'12px', borderRadius:'5px', border:'none', fontWeight:'bold', cursor:'pointer'}}>AGGIORNA INFO FOOTER</button>
+</div>
     </div>
   );
 }

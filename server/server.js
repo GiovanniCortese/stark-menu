@@ -278,10 +278,42 @@ app.get('/api/menu/:slug', async (req, res) => {
         if (rist.rows.length === 0) return res.status(404).json({ error: "Non trovato" });
         const data = rist.rows[0];
         const menu = await pool.query(`SELECT p.*, c.is_bar as categoria_is_bar, c.is_pizzeria as categoria_is_pizzeria, c.posizione as categoria_posizione, c.nome as categoria_nome, c.varianti_default as categoria_varianti FROM prodotti p LEFT JOIN categorie c ON p.categoria = c.nome AND p.ristorante_id = c.ristorante_id WHERE p.ristorante_id = $1 ORDER BY c.posizione ASC, p.posizione ASC`, [data.id]);
+        
         res.json({
-            id: data.id, ristorante: data.nome,
-           style: { logo: data.logo_url, cover: data.cover_url, bg: data.colore_sfondo, title: data.colore_titolo, text: data.colore_testo, price: data.colore_prezzo, font: data.font_style,card_bg: data.colore_card,card_border: data.colore_border,btn_bg: data.colore_btn,btn_text: data.colore_btn_text,tavolo_bg: data.colore_tavolo_bg,tavolo_text: data.colore_tavolo_text,carrello_bg: data.colore_carrello_bg,carrello_text: data.colore_carrello_text,checkout_bg: data.colore_checkout_bg,checkout_text: data.colore_checkout_text},
-            subscription_active: data.account_attivo !== false, kitchen_active: data.cucina_super_active !== false, ordini_abilitati: data.ordini_abilitati, pw_cassa: data.pw_cassa, pw_cucina: data.pw_cucina, pw_pizzeria: data.pw_pizzeria, pw_bar: data.pw_bar,
+            id: data.id, 
+            ristorante: data.nome,
+            style: { 
+                logo: data.logo_url, 
+                cover: data.cover_url, 
+                bg: data.colore_sfondo, 
+                title: data.colore_titolo, 
+                text: data.colore_testo, 
+                price: data.colore_prezzo, 
+                font: data.font_style,
+                card_bg: data.colore_card,
+                card_border: data.colore_border,
+                btn_bg: data.colore_btn,
+                btn_text: data.colore_btn_text,
+                tavolo_bg: data.colore_tavolo_bg,
+                tavolo_text: data.colore_tavolo_text,
+                carrello_bg: data.colore_carrello_bg,
+                carrello_text: data.colore_carrello_text,
+                checkout_bg: data.colore_checkout_bg,
+                checkout_text: data.colore_checkout_text,
+                
+                // --- AGGIUNTE PER FOOTER E MODALI ---
+                info_footer: data.info_footer,
+                url_allergeni: data.url_allergeni,
+                colore_modal_bg: data.colore_modal_bg,
+                colore_modal_text: data.colore_modal_text
+            },
+            subscription_active: data.account_attivo !== false, 
+            kitchen_active: data.cucina_super_active !== false, 
+            ordini_abilitati: data.ordini_abilitati, 
+            pw_cassa: data.pw_cassa, 
+            pw_cucina: data.pw_cucina, 
+            pw_pizzeria: data.pw_pizzeria, 
+            pw_bar: data.pw_bar,
             menu: menu.rows
         });
     } catch (e) { res.status(500).json({ error: "Err" }); }
