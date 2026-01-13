@@ -1,5 +1,5 @@
-// client/src/components_admin/AdminMenu.jsx - V42 PREMIUM UI (Redesign Completo)
-import { useState } from 'react';
+// client/src/components_admin/AdminMenu.jsx - V43 STABLE (Fix Schermata Grigia)
+import { useState, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 const LISTA_ALLERGENI = [
@@ -10,16 +10,31 @@ const LISTA_ALLERGENI = [
 ];
 
 function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL, ricaricaDati }) {
-  const [nuovoPiatto, setNuovoPiatto] = useState({ nome: '', prezzo: '', categoria: '', sottocategoria: '', descrizione: '', immagine_url: '' });
+  // --- FIX INIZIALIZZAZIONE STATO ---
+  const [nuovoPiatto, setNuovoPiatto] = useState({ 
+      nome: '', prezzo: '', categoria: '', sottocategoria: '', descrizione: '', immagine_url: '',
+      ingredienti_base: '', varianti_str: '', allergeni: [] 
+  });
   const [editId, setEditId] = useState(null); 
   const [uploading, setUploading] = useState(false);
+
+  // --- 🛡️ SAFE MODE: EVITA LA SCHERMATA GRIGIA ---
+  // Se i dati fondamentali non sono ancora arrivati dal server, mostra un caricamento.
+  if (!config || !categorie || !menu) {
+      return (
+          <div style={{padding:'40px', textAlign:'center', color:'#666'}}>
+              <h3>🔄 Caricamento Menu...</h3>
+              <p>Attendi un istante.</p>
+          </div>
+      );
+  }
 
   // --- LOGICA STATI ---
   const isAbbonamentoAttivo = config.account_attivo !== false; 
   const isMasterBlock = config.cucina_super_active === false; 
   const isCucinaAperta = config.ordini_abilitati;
 
-  // --- HANDLERS (Logica invariata, solo estetica modificata) ---
+  // --- HANDLERS ---
   const toggleCucina = async () => { 
       if (!isAbbonamentoAttivo) return alert("⛔ ABBONAMENTO SOSPESO."); 
       if (isMasterBlock) return alert("⛔ CUCINA BLOCCATA DAGLI ADMIN.");
@@ -46,29 +61,41 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
               return (nome && prezzo) ? { nome: nome.trim(), prezzo: parseFloat(prezzo) } : null;
           }).filter(Boolean);
       }
-      const ingredientiBaseArr = nuovoPiatto.ingredienti_base ? nuovoPiatto.ingredienti_base.split(',').map(i => i.trim()).filter(Boolean) : [];
+      
+      const ingredientiBaseArr = nuovoPiatto.ingredienti_base 
+          ? nuovoPiatto.ingredienti_base.split(',').map(i => i.trim()).filter(Boolean) 
+          : [];
+          
       const variantiFinali = { base: ingredientiBaseArr, aggiunte: variantiJson };
+      
+      // Fix: Se categorie è vuoto, usa stringa vuota per evitare crash
       const cat = nuovoPiatto.categoria || (categorie.length > 0 ? categorie[0].nome : "");
       
       const payload = { ...nuovoPiatto, categoria: cat, ristorante_id: user.id, varianti: JSON.stringify(variantiFinali) };
-      delete payload.varianti_str; delete payload.ingredienti_base;
+      delete payload.varianti_str; 
+      delete payload.ingredienti_base;
 
       try {
           const method = editId ? 'PUT' : 'POST';
           const url = editId ? `${API_URL}/api/prodotti/${editId}` : `${API_URL}/api/prodotti`;
-          if(!editId && categorie.length===0) return alert("Crea prima una categoria!"); 
+          
+          if(!editId && categorie.length === 0) return alert("Crea prima una categoria!"); 
 
           await fetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }); 
           alert(editId ? "✅ Piatto aggiornato!" : "✅ Piatto creato!");
           
-          setNuovoPiatto({nome:'', prezzo:'', categoria:cat, sottocategoria: '', descrizione:'', immagine_url:'', varianti_str: '', ingredienti_base: ''}); 
-          setEditId(null); ricaricaDati(); 
+          setNuovoPiatto({
+              nome:'', prezzo:'', categoria:cat, sottocategoria: '', descrizione:'', immagine_url:'', 
+              varianti_str: '', ingredienti_base: '', allergeni: []
+          }); 
+          setEditId(null); 
+          ricaricaDati(); 
       } catch(err) { alert("❌ Errore: " + err.message); }
   };
 
   const handleFileChange = async (e) => { 
       const f=e.target.files[0]; if(!f)return; setUploading(true); 
-      const fd=new FormData(); fd.append('photo',f); 
+      const fd=new FormData(); fd.append('photo', f); 
       try {
         const r=await fetch(`${API_URL}/api/upload`,{method:'POST',body:fd}); const d=await r.json(); 
         if(d.url) setNuovoPiatto(p=>({...p, immagine_url:d.url})); 
@@ -108,7 +135,14 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       window.scrollTo({ top: 0, behavior: 'smooth' }); 
   };
   
-  const annullaModifica = () => { setEditId(null); setNuovoPiatto({nome:'', prezzo:'', categoria:categorie[0]?.nome || '', sottocategoria: '', descrizione:'', immagine_url:''}); };
+  const annullaModifica = () => { 
+      setEditId(null); 
+      setNuovoPiatto({
+          nome:'', prezzo:'', categoria:categorie.length > 0 ? categorie[0].nome : '', 
+          sottocategoria: '', descrizione:'', immagine_url:'', varianti_str: '', ingredienti_base: '', allergeni: []
+      }); 
+  };
+
   const duplicaPiatto = async (piatto) => { if(!confirm(`Duplicare ${piatto.nome}?`)) return; const copia = { ...piatto, nome: `${piatto.nome} (Copia)`, ristorante_id: user.id }; await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(copia) }); ricaricaDati(); };
 
   const onDragEnd = async (result) => {
@@ -188,7 +222,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                               <div style={{flex:1}}>
                                   <label style={labelStyle}>Categoria</label>
                                   <select value={nuovoPiatto.categoria} onChange={e => setNuovoPiatto({...nuovoPiatto, categoria: e.target.value})} style={inputStyle}>
-                                      {categorie.map(cat => <option key={cat.id} value={cat.nome}>{cat.nome}</option>)}
+                                      {categorie && categorie.map(cat => <option key={cat.id} value={cat.nome}>{cat.nome}</option>)}
                                   </select>
                               </div>
                               <div style={{flex:1}}>
@@ -260,7 +294,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
             {/* 4. LISTA MENU DRAG & DROP */}
             <DragDropContext onDragEnd={onDragEnd}>
-                {categorie.map(cat => (
+                {categorie && categorie.map(cat => (
                     <div key={cat.id} style={{marginBottom: '40px'}}>
                         <h3 style={{display:'flex', alignItems:'center', gap:'10px', color:'#2c3e50', borderBottom:'2px solid #eee', paddingBottom:'10px', marginBottom:'20px'}}>
                             <span style={{background:'#eee', borderRadius:'50%', width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'14px'}}>📂</span> 
@@ -273,7 +307,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                                         background: snapshot.isDraggingOver ? '#f0f9ff' : 'transparent', 
                                         minHeight: '60px', borderRadius:'10px', padding: '10px', transition: 'background 0.3s'
                                     }}>
-                                    {menu.filter(p => p.categoria === cat.nome).sort((a,b) => (a.posizione || 0) - (b.posizione || 0)).map((p, index) => (
+                                    {menu && menu.filter(p => p.categoria === cat.nome).sort((a,b) => (a.posizione || 0) - (b.posizione || 0)).map((p, index) => (
                                             <Draggable key={p.id} draggableId={String(p.id)} index={index}>
                                                 {(provided, snapshot) => (
                                                     <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} 
@@ -292,7 +326,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                                                             <div style={{cursor:'grab', color:'#ccc', fontSize:'20px'}}>⋮⋮</div>
                                                             {p.immagine_url && <img src={p.immagine_url} style={{width:'50px', height:'50px', objectFit:'cover', borderRadius:'8px'}}/>}
                                                             <div>
-                                                                <div style={{fontWeight:'bold', color:'#333', fontSize:'15px'}}>{p.nome} <span style={{fontWeight:'normal', fontSize:'12px', color:'#888'}}>({p.prezzo.toFixed(2)}€)</span></div>
+                                                                <div style={{fontWeight:'bold', color:'#333', fontSize:'15px'}}>{p.nome} <span style={{fontWeight:'normal', fontSize:'12px', color:'#888'}}>({Number(p.prezzo).toFixed(2)}€)</span></div>
                                                                 {p.descrizione && <div style={{fontSize:'12px', color:'#777'}}>{p.descrizione}</div>}
                                                                 
                                                                 {/* Chips Allergeni Mini */}
