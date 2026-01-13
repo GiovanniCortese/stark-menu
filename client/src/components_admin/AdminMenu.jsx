@@ -2,7 +2,12 @@
 import { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
-const LISTA_ALLERGENI = ["Glutine 🌾", "Crostacei 🦐", "Uova 🥚", "Pesce 🐟", "Arachidi 🥜", "Soia 🫘", "Latte 🥛", "Frutta a guscio 🌰", "Sedano 🥬", "Senape 🌭", "Sesamo 🍔", "Solfiti 🍷", "Lupini 🌼", "Molluschi 🐙"];
+const LISTA_ALLERGENI = [
+  "Glutine 🌾", "Crostacei 🦐", "Uova 🥚", "Pesce 🐟", "Arachidi 🥜", 
+  "Soia 🫘", "Latte 🥛", "Frutta a guscio 🌰", "Sedano 🥬", 
+  "Senape 🌭", "Sesamo 🍔", "Solfiti 🍷", "Lupini 🌼", "Molluschi 🐙",
+  "Prodotto Surgelato/Abbattuto ❄️" // <-- AGGIUNTO QUI
+];
 
 function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL, ricaricaDati }) {
   const [nuovoPiatto, setNuovoPiatto] = useState({ nome: '', prezzo: '', categoria: '', sottocategoria: '', descrizione: '', immagine_url: '' });
@@ -343,10 +348,22 @@ const onDragEnd = async (result) => {
 
     {/* NUOVO: LISTA ALLERGENI IN ADMIN */}
     {p.allergeni && Array.isArray(p.allergeni) && p.allergeni.length > 0 && (
-        <div style={{fontSize:'10px', color:'#e74c3c', marginTop:'4px', fontWeight:'bold'}}>
-            ⚠️ ALLERGENI: {p.allergeni.join(', ')}
-        </div>
-    )}
+    <div style={{fontSize:'10px', marginTop:'4px', fontWeight:'bold', display:'flex', flexWrap:'wrap', gap:'4px'}}>
+        {p.allergeni.map((all, idx) => {
+            const isSurgelato = all.includes("❄️");
+            return (
+                <span key={idx} style={{
+                    color: isSurgelato ? '#3498db' : '#e74c3c', 
+                    background: isSurgelato ? '#ecf0f1' : 'transparent',
+                    padding: isSurgelato ? '1px 4px' : '0',
+                    borderRadius: '3px'
+                }}>
+                    {isSurgelato ? '❄️' : '⚠️'} {all}
+                </span>
+            );
+        })}
+    </div>
+)}
     
     <div style={{fontSize:'12px', fontWeight:'bold', marginTop:'3px'}}>{p.prezzo}€</div>
 </div>

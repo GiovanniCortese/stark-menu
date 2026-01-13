@@ -2,7 +2,12 @@
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 
-const LISTA_ALLERGENI = ["Glutine 🌾", "Crostacei 🦐", "Uova 🥚", "Pesce 🐟", "Arachidi 🥜", "Soia 🫘", "Latte 🥛", "Frutta a guscio 🌰", "Sedano 🥬", "Senape 🌭", "Sesamo 🍔", "Solfiti 🍷", "Lupini 🌼", "Molluschi 🐙"];
+const LISTA_ALLERGENI = [
+  "Glutine 🌾", "Crostacei 🦐", "Uova 🥚", "Pesce 🐟", "Arachidi 🥜", 
+  "Soia 🫘", "Latte 🥛", "Frutta a guscio 🌰", "Sedano 🥬", 
+  "Senape 🌭", "Sesamo 🍔", "Solfiti 🍷", "Lupini 🌼", "Molluschi 🐙",
+  "Prodotto Surgelato/Abbattuto ❄️" // <-- AGGIUNTO QUI
+];
 
 function Menu() {
   // --- STATI DATI ---
@@ -479,16 +484,17 @@ const modalText = style.text || '#000000';
     )}
 
     {/* SEZIONE ALLERGENI: Aggiungi o correggi questo blocco qui sotto */}
-{prodotto.allergeni && Array.isArray(prodotto.allergeni) && prodotto.allergeni.length > 0 && (
-    <div style={{
-        fontSize:'10px', 
-        color: '#e74c3c', 
-        fontWeight: 'bold',
-        marginTop:'4px',
-        padding: '2px 0',
-        display: 'block'
-    }}>
-        ⚠️ Allergeni: {prodotto.allergeni.join(', ')} 
+{prodotto.allergeni && prodotto.allergeni.length > 0 && (
+    <div style={{marginTop:'5px'}}>
+        {prodotto.allergeni.map((all, idx) => (
+            <div key={idx} style={{
+                fontSize:'10px', 
+                fontWeight:'bold',
+                color: all.includes("❄️") ? '#3498db' : '#e74c3c'
+            }}>
+                {all.includes("❄️") ? '' : '⚠️'} {all}
+            </div>
+        ))}
     </div>
 )}
     
@@ -802,11 +808,19 @@ const addList = addListPiatto.length > 0 ? addListPiatto : addListCategoria;
             })()}
 
             {/* 3. AGGIUNTA ALLERGENI NEL RIEPILOGO */}
-            {item.allergeni && item.allergeni.length > 0 && (
-                <div style={{fontSize:'10px', color:'#ff7675', marginTop:'4px', fontWeight:'bold'}}>
-                    ⚠️ Allergeni: {item.allergeni.join(', ')}
-                </div>
-            )}
+           {item.allergeni && item.allergeni.length > 0 && (
+    <div style={{marginTop:'4px'}}>
+        {item.allergeni.map((all, idx) => (
+            <div key={idx} style={{
+                fontSize:'10px', 
+                fontWeight:'bold',
+                color: all.includes("❄️") ? '#74b9ff' : '#ff7675' 
+            }}>
+                {all.includes("❄️") ? '❄️' : '⚠️'} {all}
+            </div>
+        ))}
+    </div>
+)}
 
             {/* 4. MODIFICHE SPECIFICHE (RIMOZIONI E AGGIUNTE) */}
             {item.varianti_scelte && (
