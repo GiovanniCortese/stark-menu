@@ -348,20 +348,20 @@ const onDragEnd = async (result) => {
 
     {/* NUOVO: LISTA ALLERGENI IN ADMIN */}
     {p.allergeni && Array.isArray(p.allergeni) && p.allergeni.length > 0 && (
-    <div style={{fontSize:'10px', marginTop:'4px', fontWeight:'bold', display:'flex', flexWrap:'wrap', gap:'4px'}}>
-        {p.allergeni.map((all, idx) => {
-            const isSurgelato = all.includes("❄️");
-            return (
-                <span key={idx} style={{
-                    color: isSurgelato ? '#3498db' : '#e74c3c', 
-                    background: isSurgelato ? '#ecf0f1' : 'transparent',
-                    padding: isSurgelato ? '1px 4px' : '0',
-                    borderRadius: '3px'
-                }}>
-                    {isSurgelato ? '❄️' : '⚠️'} {all}
-                </span>
-            );
-        })}
+    <div style={{ marginTop: '4px', borderLeft: '2px solid #eee', paddingLeft: '5px' }}>
+        {/* Riga Allergeni */}
+        {p.allergeni.filter(a => !a.includes("❄️")).length > 0 && (
+            <div style={{ fontSize: '10px', color: '#e74c3c', fontWeight: 'bold' }}>
+                ⚠️ ALLERGENI: {p.allergeni.filter(a => !a.includes("❄️")).join(', ')}
+            </div>
+        )}
+        
+        {/* Riga Surgelato */}
+        {p.allergeni.some(a => a.includes("❄️")) && (
+            <div style={{ fontSize: '10px', color: '#3498db', fontWeight: 'bold' }}>
+                ❄️ PRODOTTO SURGELATO/ABBATTUTO
+            </div>
+        )}
     </div>
 )}
     

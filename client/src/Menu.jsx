@@ -808,17 +808,21 @@ const addList = addListPiatto.length > 0 ? addListPiatto : addListCategoria;
             })()}
 
             {/* 3. AGGIUNTA ALLERGENI NEL RIEPILOGO */}
-           {item.allergeni && item.allergeni.length > 0 && (
-    <div style={{marginTop:'4px'}}>
-        {item.allergeni.map((all, idx) => (
-            <div key={idx} style={{
-                fontSize:'10px', 
-                fontWeight:'bold',
-                color: all.includes("❄️") ? '#74b9ff' : '#ff7675' 
-            }}>
-                {all.includes("❄️") ? '❄️' : '⚠️'} {all}
+          {item.allergeni && item.allergeni.length > 0 && (
+    <div style={{ marginTop: '6px' }}>
+        {/* FILTRO PER ALLERGENI (Escludendo il surgelato) */}
+        {item.allergeni.filter(a => !a.includes("❄️")).length > 0 && (
+            <div style={{ fontSize: '10px', color: '#ff7675', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                ⚠️ ALLERGENI: {item.allergeni.filter(a => !a.includes("❄️")).join(', ')}
             </div>
-        ))}
+        )}
+
+        {/* FILTRO SOLO PER SURGELATO */}
+        {item.allergeni.some(a => a.includes("❄️")) && (
+            <div style={{ fontSize: '10px', color: '#74b9ff', fontWeight: 'bold', marginTop: '2px', textTransform: 'uppercase' }}>
+                ❄️ PRODOTTO SURGELATO/ABBATTUTO
+            </div>
+        )}
     </div>
 )}
 
