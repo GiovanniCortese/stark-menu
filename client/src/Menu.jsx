@@ -525,53 +525,24 @@ const modalText = style.text || '#000000';
   marginTop: '0px'
 }}>
   
-  {/* PULSANTI ALLEGATI (Sopra il testo) */}
-  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
-    {/* MENU DEL GIORNO */}
+  {/* PULSANTI ALLEGATI NEL FOOTER */}
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+    
     {style.url_menu_giorno && (
-      <div 
-        onClick={() => { setUrlFileAttivo(style.url_menu_giorno); setTitoloFile("Menù del Giorno"); setShowAllergeni(true); }}
-        style={{ 
-          display: 'inline-block', padding: '12px 25px', 
-          border: `1px solid ${style.colore_footer_text || style.text}`, 
-          borderRadius: '30px', color: style.colore_footer_text || style.text, 
-          cursor: 'pointer', fontWeight: 'bold', background: 'rgba(255,255,255,0.05)', fontSize: '13px' 
-        }}
-      >
-        📅 MENÙ DEL GIORNO
-      </div>
+        <button onClick={() => { setUrlFileAttivo(style.url_menu_giorno); setTitoloFile("Menù del Giorno"); setShowAllergeni(true); }}
+                style={footerBtnStyle}>📅 MENÙ DEL GIORNO</button>
     )}
 
-    {/* MENU PDF */}
     {style.url_menu_pdf && (
-      <div 
-        onClick={() => { setUrlFileAttivo(style.url_menu_pdf); setTitoloFile("Menù"); setShowAllergeni(true); }}
-        style={{ 
-          display: 'inline-block', padding: '12px 25px', 
-          border: `1px solid ${style.colore_footer_text || style.text}`, 
-          borderRadius: '30px', color: style.colore_footer_text || style.text, 
-          cursor: 'pointer', fontWeight: 'bold', background: 'rgba(255,255,255,0.05)', fontSize: '13px' 
-        }}
-      >
-        📄 MENÙ
-      </div>
+        <button onClick={() => { setUrlFileAttivo(style.url_menu_pdf); setTitoloFile("Menù Completo"); setShowAllergeni(true); }}
+                style={footerBtnStyle}>📄 MENÙ PDF</button>
     )}
 
-    {/* LISTA ALLERGENI */}
     {style.url_allergeni && (
-      <div 
-        onClick={() => { setUrlFileAttivo(style.url_allergeni); setTitoloFile("Lista Allergeni"); setShowAllergeni(true); }}
-        style={{ 
-          display: 'inline-block', padding: '10px 20px', 
-          border: `1px solid ${style.colore_footer_text || style.text}`, 
-          borderRadius: '30px', color: style.colore_footer_text || style.text, 
-          cursor: 'pointer', fontWeight: 'bold', background: 'rgba(255,255,255,0.05)', fontSize: '12px', opacity: 0.8 
-        }}
-      >
-        📋 VEDI LISTA ALLERGENI
-      </div>
+        <button onClick={() => { setUrlFileAttivo(style.url_allergeni); setTitoloFile("Lista Allergeni"); setShowAllergeni(true); }}
+                style={{ ...footerBtnStyle, opacity: 0.7 }}>📋 VEDI LISTA ALLERGENI</button>
     )}
-  </div>
+</div>
 
   {/* TESTO COPERTO / INFO LEGALI (Sotto i pulsanti) */}
   {style.info_footer && (
