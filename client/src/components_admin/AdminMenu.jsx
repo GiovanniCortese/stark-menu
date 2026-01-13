@@ -1,4 +1,4 @@
-// client/src/components_admin/AdminMenu.jsx - V46 (FIX VISIBILITA' COMPLETA)
+// client/src/components_admin/AdminMenu.jsx - V49 FINAL (FIX CRASH & UPLOADS)
 import { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
@@ -26,27 +26,67 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const isMasterBlock = config.cucina_super_active === false; 
   const isCucinaAperta = config.ordini_abilitati;
 
-  // --- FUNZIONI UTILI ---
-  const isSurgelato = (str) => {
-      if(!str) return false;
-      const s = str.toLowerCase();
-      return s.includes('surgelato') || s.includes('abbattuto') || s.includes('❄️');
-  };
+  // --- COMPONENTE INTERNO PER UPLOAD FILE (CORREZIONE ERRORE) ---
+  const ImageUploader = ({ type, currentUrl, icon }) => (
+    <div style={{marginTop:'5px'}}>
+        {currentUrl ? (
+            <div style={{
+                position:'relative', border:'1px solid #27ae60', borderRadius:'8px', padding:'10px', 
+                background:'#f0fff4', textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center'
+            }}>
+                <span style={{fontSize:'24px', marginBottom:'5px'}}>{icon}</span>
+                <span style={{fontSize:'12px', fontWeight:'bold', color:'#27ae60'}}>File Caricato!</span>
+                <button 
+                    onClick={() => setConfig({...config, [type]: ''})} 
+                    style={{
+                        marginTop:'8px', background:'#e74c3c', color:'white', border:'none', 
+                        padding:'5px 10px', borderRadius:'5px', cursor:'pointer', fontSize:'11px', fontWeight:'bold'
+                    }}
+                >
+                    🗑️ RIMUOVI
+                </button>
+            </div>
+        ) : (
+            <div style={{
+                border:'2px dashed #ccc', borderRadius:'8px', padding:'15px', textAlign:'center', 
+                position:'relative', cursor:'pointer', background:'#fafafa', transition:'all 0.3s'
+            }}>
+                <span style={{fontSize:'24px', opacity:0.5}}>{icon}</span>
+                <div style={{fontSize:'11px', color:'#666', marginTop:'5px'}}>Clicca per caricare</div>
+                <input 
+                    type="file" 
+                    onChange={async (e) => {
+                        const f = e.target.files[0]; if(!f) return;
+                        const fd = new FormData(); fd.append('photo', f);
+                        try {
+                            const r = await fetch(`${API_URL}/api/upload`, {method:'POST', body:fd});
+                            const d = await r.json();
+                            if(d.url) setConfig({...config, [type]: d.url});
+                        } catch(err) { alert("Errore caricamento"); }
+                    }} 
+                    style={{position:'absolute', inset:0, opacity:0, cursor:'pointer'}} 
+                />
+            </div>
+        )}
+    </div>
+  );
 
   // --- HANDLERS ---
+  const handleSaveStyle = async () => {
+    try {
+        await fetch(`${API_URL}/api/ristorante/style/${user.id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config) });
+        alert("✨ Info Footer e Allegati Salvati!");
+    } catch(e) { alert("Errore salvataggio"); }
+  };
+
   const toggleCucina = async () => { 
       if (!isAbbonamentoAttivo) return alert("⛔ ABBONAMENTO SOSPESO."); 
       if (isMasterBlock) return alert("⛔ CUCINA BLOCCATA DAGLI ADMIN.");
       const nuovoStatoCucina = !isCucinaAperta; 
       setConfig({...config, ordini_abilitati: nuovoStatoCucina}); 
       try {
-          await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, {
-              method:'PUT', headers:{'Content-Type':'application/json'}, 
-              body:JSON.stringify({ ordini_abilitati: nuovoStatoCucina })
-          }); 
-      } catch (error) {
-          alert("Errore connessione."); setConfig({...config, ordini_abilitati: !nuovoStatoCucina});
-      }
+          await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ ordini_abilitati: nuovoStatoCucina }) }); 
+      } catch (error) { alert("Errore connessione."); setConfig({...config, ordini_abilitati: !nuovoStatoCucina}); }
   };
 
   const handleSalvaPiatto = async (e) => { 
@@ -60,86 +100,39 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
               return (nome && prezzo) ? { nome: nome.trim(), prezzo: parseFloat(prezzo) } : null;
           }).filter(Boolean);
       }
-      
-      const ingredientiBaseArr = nuovoPiatto.ingredienti_base 
-          ? nuovoPiatto.ingredienti_base.split(',').map(i => i.trim()).filter(Boolean) 
-          : [];
-          
+      const ingredientiBaseArr = nuovoPiatto.ingredienti_base ? nuovoPiatto.ingredienti_base.split(',').map(i => i.trim()).filter(Boolean) : [];
       const variantiFinali = { base: ingredientiBaseArr, aggiunte: variantiJson };
       const cat = nuovoPiatto.categoria || (categorie.length > 0 ? categorie[0].nome : "");
       
       const payload = { ...nuovoPiatto, categoria: cat, ristorante_id: user.id, varianti: JSON.stringify(variantiFinali) };
-      delete payload.varianti_str; 
-      delete payload.ingredienti_base;
+      delete payload.varianti_str; delete payload.ingredienti_base;
 
       try {
           const method = editId ? 'PUT' : 'POST';
           const url = editId ? `${API_URL}/api/prodotti/${editId}` : `${API_URL}/api/prodotti`;
-          
           if(!editId && categorie.length === 0) return alert("Crea prima una categoria!"); 
-
           await fetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }); 
           alert(editId ? "✅ Piatto aggiornato!" : "✅ Piatto creato!");
-          
-          setNuovoPiatto({
-              nome:'', prezzo:'', categoria:cat, sottocategoria: '', descrizione:'', immagine_url:'', 
-              varianti_str: '', ingredienti_base: '', allergeni: []
-          }); 
-          setEditId(null); 
-          ricaricaDati(); 
+          setNuovoPiatto({ nome:'', prezzo:'', categoria:cat, sottocategoria: '', descrizione:'', immagine_url:'', varianti_str: '', ingredienti_base: '', allergeni: [] }); 
+          setEditId(null); ricaricaDati(); 
       } catch(err) { alert("❌ Errore: " + err.message); }
   };
 
   const handleFileChange = async (e) => { 
       const f=e.target.files[0]; if(!f)return; setUploading(true); 
       const fd=new FormData(); fd.append('photo', f); 
-      try {
-        const r=await fetch(`${API_URL}/api/upload`,{method:'POST',body:fd}); const d=await r.json(); 
-        if(d.url) setNuovoPiatto(p=>({...p, immagine_url:d.url})); 
-      } catch(e) { console.error(e); } finally { setUploading(false); }
+      try { const r=await fetch(`${API_URL}/api/upload`,{method:'POST',body:fd}); const d=await r.json(); if(d.url) setNuovoPiatto(p=>({...p, immagine_url:d.url})); } catch(e) { console.error(e); } finally { setUploading(false); }
   };
 
   const handleImportExcel = async (e) => {
     const file = e.target.files[0]; if(!file) return;
     const formData = new FormData(); formData.append('file', file); formData.append('ristorante_id', user.id);
-    try {
-        const res = await fetch(`${API_URL}/api/import-excel`, { method: 'POST', body: formData });
-        const data = await res.json();
-        if(data.success) { alert(data.message); ricaricaDati(); } else alert("Errore: " + data.error);
-    } catch(err) { alert("Errore Connessione"); }
-  };
-
-  const handleSaveStyle = async () => {
-    try {
-        await fetch(`${API_URL}/api/ristorante/style/${user.id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config) });
-        alert("✨ Info Footer Salvate con Successo!");
-    } catch(e) { alert("Errore salvataggio"); }
+    try { const res = await fetch(`${API_URL}/api/import-excel`, { method: 'POST', body: formData }); const data = await res.json(); if(data.success) { alert(data.message); ricaricaDati(); } else alert("Errore: " + data.error); } catch(err) { alert("Errore Connessione"); }
   };
 
   const cancellaPiatto = async (id) => { if(confirm("Sei sicuro di voler eliminare questo piatto?")) { await fetch(`${API_URL}/api/prodotti/${id}`, {method:'DELETE'}); ricaricaDati(); }};
-  
-  const avviaModifica = (piatto) => { 
-      setEditId(piatto.id);
-      let variantiObj = { base: [], aggiunte: [] };
-      try { variantiObj = typeof piatto.varianti === 'string' ? JSON.parse(piatto.varianti) : piatto.varianti || { base: [], aggiunte: [] }; } catch(e) {}
-
-      setNuovoPiatto({
-          ...piatto, 
-          allergeni: piatto.allergeni || [],
-          ingredienti_base: (variantiObj.base || []).join(', '),
-          varianti_str: (variantiObj.aggiunte || []).map(v => `${v.nome}:${v.prezzo}`).join(', ')
-      }); 
-      window.scrollTo({ top: 0, behavior: 'smooth' }); 
-  };
-  
-  const annullaModifica = () => { 
-      setEditId(null); 
-      setNuovoPiatto({
-          nome:'', prezzo:'', categoria:categorie.length > 0 ? categorie[0].nome : '', 
-          sottocategoria: '', descrizione:'', immagine_url:'', varianti_str: '', ingredienti_base: '', allergeni: []
-      }); 
-  };
-
+  const avviaModifica = (piatto) => { setEditId(piatto.id); let variantiObj = { base: [], aggiunte: [] }; try { variantiObj = typeof piatto.varianti === 'string' ? JSON.parse(piatto.varianti) : piatto.varianti || { base: [], aggiunte: [] }; } catch(e) {} setNuovoPiatto({ ...piatto, allergeni: piatto.allergeni || [], ingredienti_base: (variantiObj.base || []).join(', '), varianti_str: (variantiObj.aggiunte || []).map(v => `${v.nome}:${v.prezzo}`).join(', ') }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const annullaModifica = () => { setEditId(null); setNuovoPiatto({ nome:'', prezzo:'', categoria:categorie.length > 0 ? categorie[0].nome : '', sottocategoria: '', descrizione:'', immagine_url:'', varianti_str: '', ingredienti_base: '', allergeni: [] }); };
   const duplicaPiatto = async (piatto) => { if(!confirm(`Duplicare ${piatto.nome}?`)) return; const copia = { ...piatto, nome: `${piatto.nome} (Copia)`, ristorante_id: user.id }; await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(copia) }); ricaricaDati(); };
 
   const onDragEnd = async (result) => {
@@ -161,18 +154,9 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
   // --- STILI ---
   const containerStyle = { maxWidth: '1200px', margin: '0 auto', fontFamily: "'Inter', sans-serif", color: '#333' };
-  const cardStyle = { 
-    background: 'white', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', 
-    padding: '25px', marginBottom: '30px', border: '1px solid #f0f0f0', boxSizing: 'border-box'
-  };
-  const inputStyle = { 
-    width: '100%', padding: '12px 15px', borderRadius: '8px', border: '1px solid #e0e0e0', 
-    fontSize: '14px', background: '#f9f9f9', transition: 'all 0.3s', boxSizing: 'border-box'
-  };
-  const labelStyle = { 
-    fontSize: '12px', fontWeight: '600', color: '#666', marginBottom: '8px', 
-    display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' 
-  };
+  const cardStyle = { background: 'white', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', padding: '25px', marginBottom: '30px', border: '1px solid #f0f0f0', boxSizing: 'border-box' };
+  const inputStyle = { width: '100%', padding: '12px 15px', borderRadius: '8px', border: '1px solid #e0e0e0', fontSize: '14px', background: '#f9f9f9', transition: 'all 0.3s', boxSizing: 'border-box' };
+  const labelStyle = { fontSize: '12px', fontWeight: '600', color: '#666', marginBottom: '8px', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' };
 
   return (
     <div style={containerStyle}>
@@ -357,26 +341,20 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                                                                 {/* --- FIX VISIBILITÀ SURGELATO E ALLERGENI --- */}
                                                                 {p.allergeni && p.allergeni.length > 0 && (
                                                                     <div style={{display:'flex', flexWrap:'wrap', gap:'5px', marginTop:'6px'}}>
-                                                                        
-                                                                        {/* 1. SE È SURGELATO LO MOSTRIAMO DIVERSO (BLU) */}
                                                                         {p.allergeni.some(a => isSurgelato(a)) && (
                                                                             <span style={{fontSize:'10px', background:'#e1f5fe', color:'#0277bd', padding:'2px 8px', borderRadius:'10px', fontWeight:'bold', border:'1px solid #81d4fa'}}>
                                                                                 ❄️ SURGELATO
                                                                             </span>
                                                                         )}
-
-                                                                        {/* 2. GLI ALTRI ALLERGENI SONO ROSSI - ORA CON NOME COMPLETO E ICONE */}
                                                                         {p.allergeni
                                                                             .filter(a => !isSurgelato(a))
                                                                             .slice(0, 3)
                                                                             .map(a => (
                                                                                 <span key={a} style={{fontSize:'10px', background:'#ffebee', color:'#c62828', padding:'2px 8px', borderRadius:'10px', border:'1px solid #ffcdd2', fontWeight:'500'}}>
-                                                                                    {a} {/* Mostra l'intera stringa, inclusa l'emoji */}
+                                                                                    {a}
                                                                                 </span>
                                                                             ))
                                                                         }
-                                                                        
-                                                                        {/* 3. CONTATORE SE SONO TROPPI */}
                                                                         {p.allergeni.filter(a => !isSurgelato(a)).length > 3 && (
                                                                             <span style={{fontSize:'9px', color:'#888', alignSelf:'center'}}>
                                                                                 +{p.allergeni.filter(a => !isSurgelato(a)).length - 3}
@@ -441,7 +419,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
         </div>
     </div>
 
-    <button onClick={handleSaveStyle} style={{ ...saveButtonStyle, marginTop: '30px', width: '100%' }}>
+    <button onClick={handleSaveStyle} style={{ marginTop: '30px', width: '100%', padding:'15px', background:'#8e44ad', color:'white', border:'none', borderRadius:'10px', fontWeight:'bold', cursor:'pointer' }}>
         💾 SALVA IMPOSTAZIONI FOOTER
     </button>
 </div>
