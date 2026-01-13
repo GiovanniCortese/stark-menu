@@ -1,4 +1,4 @@
-// client/src/components_admin/AdminMenu.jsx - V49 FINAL (FIX CRASH & UPLOADS)
+// client/src/components_admin/AdminMenu.jsx - V50 FIX UPLOAD
 import { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
@@ -9,25 +9,8 @@ const LISTA_ALLERGENI = [
   "Prodotto Surgelato/Abbattuto ❄️" 
 ];
 
-function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL, ricaricaDati }) {
-  const [nuovoPiatto, setNuovoPiatto] = useState({ 
-      nome: '', prezzo: '', categoria: '', sottocategoria: '', descrizione: '', immagine_url: '',
-      ingredienti_base: '', varianti_str: '', allergeni: [] 
-  });
-  const [editId, setEditId] = useState(null); 
-  const [uploading, setUploading] = useState(false);
-
-  // --- SAFE MODE ---
-  if (!config || !categorie || !menu) {
-      return <div style={{padding:'40px', textAlign:'center', color:'#666'}}>🔄 Caricamento Menu...</div>;
-  }
-
-  const isAbbonamentoAttivo = config.account_attivo !== false; 
-  const isMasterBlock = config.cucina_super_active === false; 
-  const isCucinaAperta = config.ordini_abilitati;
-
-  // --- COMPONENTE INTERNO PER UPLOAD FILE (CORREZIONE ERRORE) ---
-  const ImageUploader = ({ type, currentUrl, icon }) => (
+// --- SPOSTATO FUORI PER EVITARE RERENDER E PERDITA FOCUS ---
+const ImageUploader = ({ type, currentUrl, icon, config, setConfig, API_URL }) => (
     <div style={{marginTop:'5px'}}>
         {currentUrl ? (
             <div style={{
@@ -61,7 +44,10 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                         try {
                             const r = await fetch(`${API_URL}/api/upload`, {method:'POST', body:fd});
                             const d = await r.json();
-                            if(d.url) setConfig({...config, [type]: d.url});
+                            if(d.url) {
+                                // Aggiornamento sicuro dello stato
+                                setConfig(prev => ({...prev, [type]: d.url}));
+                            }
                         } catch(err) { alert("Errore caricamento"); }
                     }} 
                     style={{position:'absolute', inset:0, opacity:0, cursor:'pointer'}} 
@@ -69,7 +55,24 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             </div>
         )}
     </div>
-  );
+);
+
+function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL, ricaricaDati }) {
+  const [nuovoPiatto, setNuovoPiatto] = useState({ 
+      nome: '', prezzo: '', categoria: '', sottocategoria: '', descrizione: '', immagine_url: '',
+      ingredienti_base: '', varianti_str: '', allergeni: [] 
+  });
+  const [editId, setEditId] = useState(null); 
+  const [uploading, setUploading] = useState(false);
+
+  // --- SAFE MODE ---
+  if (!config || !categorie || !menu) {
+      return <div style={{padding:'40px', textAlign:'center', color:'#666'}}>🔄 Caricamento Menu...</div>;
+  }
+
+  const isAbbonamentoAttivo = config.account_attivo !== false; 
+  const isMasterBlock = config.cucina_super_active === false; 
+  const isCucinaAperta = config.ordini_abilitati;
 
   // --- HANDLERS ---
   const handleSaveStyle = async () => {
@@ -322,7 +325,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                                                                 <div style={{fontWeight:'bold', color:'#333', fontSize:'15px'}}>{p.nome} <span style={{fontWeight:'normal', fontSize:'12px', color:'#888'}}>({Number(p.prezzo).toFixed(2)}€)</span></div>
                                                                 {p.descrizione && <div style={{fontSize:'12px', color:'#777'}}>{p.descrizione}</div>}
                                                                 
-                                                                {/* --- FIX VISIBILITÀ INGREDIENTI & AGGIUNTE --- */}
+                                                                {/* --- VISIBILITÀ INGREDIENTI & AGGIUNTE --- */}
                                                                 {(() => {
                                                                     try {
                                                                         const v = typeof p.varianti === 'string' ? JSON.parse(p.varianti || '{}') : (p.varianti || {});
@@ -338,26 +341,22 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                                                                     } catch(e) { return null; }
                                                                 })()}
 
-                                                                {/* --- FIX VISIBILITÀ SURGELATO E ALLERGENI --- */}
+                                                                {/* --- VISIBILITÀ SURGELATO E ALLERGENI --- */}
                                                                 {p.allergeni && p.allergeni.length > 0 && (
                                                                     <div style={{display:'flex', flexWrap:'wrap', gap:'5px', marginTop:'6px'}}>
-                                                                        {p.allergeni.some(a => isSurgelato(a)) && (
+                                                                        {p.allergeni.some(a => a.includes("❄️")) && (
                                                                             <span style={{fontSize:'10px', background:'#e1f5fe', color:'#0277bd', padding:'2px 8px', borderRadius:'10px', fontWeight:'bold', border:'1px solid #81d4fa'}}>
                                                                                 ❄️ SURGELATO
                                                                             </span>
                                                                         )}
-                                                                        {p.allergeni
-                                                                            .filter(a => !isSurgelato(a))
-                                                                            .slice(0, 3)
-                                                                            .map(a => (
-                                                                                <span key={a} style={{fontSize:'10px', background:'#ffebee', color:'#c62828', padding:'2px 8px', borderRadius:'10px', border:'1px solid #ffcdd2', fontWeight:'500'}}>
-                                                                                    {a}
-                                                                                </span>
-                                                                            ))
-                                                                        }
-                                                                        {p.allergeni.filter(a => !isSurgelato(a)).length > 3 && (
+                                                                        {p.allergeni.filter(a => !a.includes("❄️")).slice(0, 3).map(a => (
+                                                                            <span key={a} style={{fontSize:'10px', background:'#ffebee', color:'#c62828', padding:'2px 8px', borderRadius:'10px', border:'1px solid #ffcdd2', fontWeight:'500'}}>
+                                                                                {a}
+                                                                            </span>
+                                                                        ))}
+                                                                        {p.allergeni.filter(a => !a.includes("❄️")).length > 3 && (
                                                                             <span style={{fontSize:'9px', color:'#888', alignSelf:'center'}}>
-                                                                                +{p.allergeni.filter(a => !isSurgelato(a)).length - 3}
+                                                                                +{p.allergeni.filter(a => !a.includes("❄️")).length - 3}
                                                                             </span>
                                                                         )}
                                                                     </div>
@@ -383,7 +382,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             </DragDropContext>
         </div>
 
-{/* 5. INFO LEGALI & FILE ALLEGATI - VERSIONE COMPLETA A 3 BOX */}
+{/* 5. INFO LEGALI & FILE ALLEGATI */}
 <div style={{ ...cardStyle, borderLeft: '5px solid #8e44ad' }}>
     <h3 style={{ marginBottom: '25px', color: '#2c3e50' }}>⚖️ Configurazione Footer & Allegati</h3>
 
@@ -403,19 +402,34 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
         {/* 1. MENU DEL GIORNO */}
         <div style={{ border: '1px solid #eee', padding: '15px', borderRadius: '10px' }}>
             <label style={labelStyle}>📅 Menù del Giorno</label>
-            <ImageUploader type="url_menu_giorno" currentUrl={config.url_menu_giorno} icon="🥗" />
+            <ImageUploader 
+                type="url_menu_giorno" 
+                currentUrl={config.url_menu_giorno} 
+                icon="🥗" 
+                config={config} setConfig={setConfig} API_URL={API_URL} 
+            />
         </div>
 
         {/* 2. MENU COMPLETO */}
         <div style={{ border: '1px solid #eee', padding: '15px', borderRadius: '10px' }}>
             <label style={labelStyle}>📄 Menù PDF</label>
-            <ImageUploader type="url_menu_pdf" currentUrl={config.url_menu_pdf} icon="📖" />
+            <ImageUploader 
+                type="url_menu_pdf" 
+                currentUrl={config.url_menu_pdf} 
+                icon="📖" 
+                config={config} setConfig={setConfig} API_URL={API_URL} 
+            />
         </div>
 
-        {/* 3. ALLERGENI (RIPRISTINATO) */}
+        {/* 3. ALLERGENI */}
         <div style={{ border: '1px solid #eee', padding: '15px', borderRadius: '10px' }}>
             <label style={labelStyle}>📋 Lista Allergeni</label>
-            <ImageUploader type="url_allergeni" currentUrl={config.url_allergeni} icon="⚠️" />
+            <ImageUploader 
+                type="url_allergeni" 
+                currentUrl={config.url_allergeni} 
+                icon="⚠️" 
+                config={config} setConfig={setConfig} API_URL={API_URL} 
+            />
         </div>
     </div>
 
