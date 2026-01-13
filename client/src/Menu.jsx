@@ -259,24 +259,28 @@ const cambiaUscita = (tempId, delta) => {
   };
 
   // --- STYLE HELPERS (Menu.jsx riga ~225) ---
-  const bg = style.bg || '#222';
-  const text = style.text || '#fff';
-  const titleColor = style.title || '#fff';
-  const priceColor = style.price || '#27ae60';
-  const font = style.font || 'sans-serif';
+// Recupero stili dal server con fallback (valori di default)
+const bg = style.bg || '#222';
+const text = style.text || '#fff';
+const titleColor = style.title || '#fff';
+const priceColor = style.price || '#27ae60';
+const font = style.font || 'sans-serif';
 
-  // NUOVE VARIABILI COLLEGATE AL SERVER
-  const cardBg = style.card_bg || 'white';
-  const cardBorder = style.card_border || '#eee';
-  
-  const btnBg = style.btn_bg || '#27ae60';         // Colore bottone +
-  const btnText = style.btn_text || 'white';       // Colore testo bottone +
-  
-  const tavoloBg = style.tavolo_bg || priceColor;  // Sfondo etichetta tavolo
-  const tavoloText = style.tavolo_text || 'white'; 
+// FIX: Mappatura corretta per i nuovi campi salvati da AdminGrafica
+const cardBg = style.card_bg || 'white';
+const cardBorder = style.card_border || '#eee';
+const btnBg = style.btn_bg || '#27ae60';
+const btnText = style.btn_text || 'white';
+const tavoloBg = style.tavolo_bg || priceColor;
+const tavoloText = style.tavolo_text || 'white';
 
-  const modalBg = style.colore_modal_bg || '#ffffff';
-  const modalText = style.colore_modal_text || '#000000';
+// Campi per il checkout/riepilogo
+const checkoutBg = style.checkout_bg || bg; 
+const checkoutText = style.checkout_text || text;
+
+// Campi per il modale configuratore
+const modalBg = style.card_bg || '#ffffff'; // usa card_bg come base o style.colore_modal_bg
+const modalText = style.text || '#000000';
   
   // Nota: Carrello e Checkout li gestiamo direttamente negli stili inline sotto
 
