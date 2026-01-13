@@ -332,38 +332,44 @@ const onDragEnd = async (result) => {
                                                       <div style={{flex:1}}>
     <div><strong>{p.nome}</strong>{p.sottocategoria && <span style={{fontSize:'11px', background:'#eee', padding:'2px 5px', borderRadius:'4px', marginLeft:'5px'}}>{p.sottocategoria}</span>}</div>
     
-    {/* DESCRIZIONE (Singola) */}
+    {/* DESCRIZIONE */}
     {p.descrizione && (<div style={{fontSize:'12px', color:'#777', fontStyle:'italic', marginTop:'2px', lineHeight:'1.2'}}>{p.descrizione}</div>)}
     
-    {/* INGREDIENTI BASE */}
+    {/* INGREDIENTI BASE E AGGIUNTE */}
     {(() => {
         try {
             const v = typeof p.varianti === 'string' ? JSON.parse(p.varianti || '{}') : (p.varianti || {});
-            if (v.base && v.base.length > 0) {
-                return <div style={{fontSize:'11px', color:'#444', marginTop:'3px'}}>🧂 {v.base.join(', ')}</div>;
-            }
-        } catch(e) {}
-        return null;
+            const hasBase = v.base && v.base.length > 0;
+            const hasAdd = v.aggiunte && v.aggiunte.length > 0;
+            
+            if (!hasBase && !hasAdd) return null;
+
+            return (
+                <div style={{fontSize:'11px', color:'#444', marginTop:'3px'}}>
+                    {hasBase && <div>🧂 Ingredienti: {v.base.join(', ')}</div>}
+                    {hasAdd && <div style={{color:'#27ae60'}}>➕ Aggiunte: {v.aggiunte.map(a => `${a.nome} (+${a.prezzo}€)`).join(', ')}</div>}
+                </div>
+            );
+        } catch(e) { return null; }
     })()}
 
-    {/* NUOVO: LISTA ALLERGENI IN ADMIN */}
+    {/* VISUALIZZAZIONE SDOPPIATA ALLERGENI / SURGELATO */}
     {p.allergeni && Array.isArray(p.allergeni) && p.allergeni.length > 0 && (
-    <div style={{ marginTop: '4px', borderLeft: '2px solid #eee', paddingLeft: '5px' }}>
-        {/* Riga Allergeni */}
-        {p.allergeni.filter(a => !a.includes("❄️")).length > 0 && (
-            <div style={{ fontSize: '10px', color: '#e74c3c', fontWeight: 'bold' }}>
-                ⚠️ ALLERGENI: {p.allergeni.filter(a => !a.includes("❄️")).join(', ')}
-            </div>
-        )}
-        
-        {/* Riga Surgelato */}
-        {p.allergeni.some(a => a.includes("❄️")) && (
-            <div style={{ fontSize: '10px', color: '#3498db', fontWeight: 'bold' }}>
-                ❄️ PRODOTTO SURGELATO/ABBATTUTO
-            </div>
-        )}
-    </div>
-)}
+        <div style={{ marginTop: '4px' }}>
+            {/* Riga 1: Allergeni */}
+            {p.allergeni.filter(a => !a.includes("❄️")).length > 0 && (
+                <div style={{ fontSize: '10px', color: '#e74c3c', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                    ⚠️ ALLERGENI: {p.allergeni.filter(a => !a.includes("❄️")).join(', ')}
+                </div>
+            )}
+            {/* Riga 2: Surgelato */}
+            {p.allergeni.some(a => a.includes("❄️")) && (
+                <div style={{ fontSize: '10px', color: '#3498db', fontWeight: 'bold', marginTop: '2px', textTransform: 'uppercase' }}>
+                    ❄️ PRODOTTO SURGELATO/ABBATTUTO
+                </div>
+            )}
+        </div>
+    )}
     
     <div style={{fontSize:'12px', fontWeight:'bold', marginTop:'3px'}}>{p.prezzo}€</div>
 </div>
