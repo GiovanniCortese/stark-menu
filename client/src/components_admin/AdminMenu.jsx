@@ -344,7 +344,7 @@ const onDragEnd = async (result) => {
     {/* NUOVO: LISTA ALLERGENI IN ADMIN */}
     {p.allergeni && Array.isArray(p.allergeni) && p.allergeni.length > 0 && (
         <div style={{fontSize:'10px', color:'#e74c3c', marginTop:'4px', fontWeight:'bold'}}>
-            ⚠️ {p.allergeni.join(', ')}
+            ⚠️ ALLERGENI: {p.allergeni.join(', ')}
         </div>
     )}
     
