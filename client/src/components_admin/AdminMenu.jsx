@@ -1,4 +1,4 @@
-// client/src/components_admin/AdminMenu.jsx - V44 FIXED (Responsive & No Overflow)
+// client/src/components_admin/AdminMenu.jsx - V45 (FIX SURGELATO LABEL)
 import { useState, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
@@ -153,30 +153,16 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
     await fetch(`${API_URL}/api/prodotti/riordina`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prodotti: piattiDestinazioneFinali.map(p => ({ id: p.id, posizione: p.posizione, categoria: destCat })) }) });
   };
 
-  // --- STILI (FIXED BOX-SIZING) ---
+  // --- STILI ---
   const containerStyle = { maxWidth: '1200px', margin: '0 auto', fontFamily: "'Inter', sans-serif", color: '#333' };
-  
   const cardStyle = { 
-    background: 'white', 
-    borderRadius: '12px', 
-    boxShadow: '0 4px 20px rgba(0,0,0,0.05)', 
-    padding: '25px', 
-    marginBottom: '30px', 
-    border: '1px solid #f0f0f0',
-    boxSizing: 'border-box' // <--- IMPORTANTE
+    background: 'white', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', 
+    padding: '25px', marginBottom: '30px', border: '1px solid #f0f0f0', boxSizing: 'border-box'
   };
-  
   const inputStyle = { 
-    width: '100%', 
-    padding: '12px 15px', 
-    borderRadius: '8px', 
-    border: '1px solid #e0e0e0', 
-    fontSize: '14px', 
-    background: '#f9f9f9', 
-    transition: 'all 0.3s',
-    boxSizing: 'border-box' // <--- IMPORTANTE
+    width: '100%', padding: '12px 15px', borderRadius: '8px', border: '1px solid #e0e0e0', 
+    fontSize: '14px', background: '#f9f9f9', transition: 'all 0.3s', boxSizing: 'border-box'
   };
-  
   const labelStyle = { 
     fontSize: '12px', fontWeight: '600', color: '#666', marginBottom: '8px', 
     display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' 
@@ -193,7 +179,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             </div>
             {isAbbonamentoAttivo && !isMasterBlock && (
                 <button onClick={toggleCucina} style={{background:'white', color: isCucinaAperta ? '#27ae60' : '#c0392b', border:'none', padding:'12px 25px', borderRadius:'30px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 5px 15px rgba(0,0,0,0.2)'}}>
-                    {isCucinaAperta ? "CHIUDI ORDINI CLIENTI" : "APRI ORDINI CLIENTI"}
+                    {isCucinaAperta ? "CHIUDI CUCINA" : "APRI CUCINA"}
                 </button>
             )}
         </div>
@@ -346,11 +332,34 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                                                                 <div style={{fontWeight:'bold', color:'#333', fontSize:'15px'}}>{p.nome} <span style={{fontWeight:'normal', fontSize:'12px', color:'#888'}}>({Number(p.prezzo).toFixed(2)}€)</span></div>
                                                                 {p.descrizione && <div style={{fontSize:'12px', color:'#777'}}>{p.descrizione}</div>}
                                                                 
-                                                                {/* Chips Allergeni Mini */}
+                                                                {/* --- FIX VISIBILITÀ SURGELATO E ALLERGENI --- */}
                                                                 {p.allergeni && p.allergeni.length > 0 && (
-                                                                    <div style={{display:'flex', gap:'5px', marginTop:'5px'}}>
-                                                                        {p.allergeni.slice(0, 3).map(a => <span key={a} style={{fontSize:'9px', background:'#fff0f0', color:'#c0392b', padding:'2px 6px', borderRadius:'10px'}}>{a.split(' ')[0]}</span>)}
-                                                                        {p.allergeni.length > 3 && <span style={{fontSize:'9px', color:'#888'}}>+{p.allergeni.length - 3}</span>}
+                                                                    <div style={{display:'flex', flexWrap:'wrap', gap:'5px', marginTop:'5px'}}>
+                                                                        
+                                                                        {/* 1. SE È SURGELATO LO MOSTRIAMO DIVERSO (BLU) */}
+                                                                        {p.allergeni.some(a => a.includes('❄️')) && (
+                                                                            <span style={{fontSize:'10px', background:'#e1f5fe', color:'#0277bd', padding:'2px 8px', borderRadius:'10px', fontWeight:'bold', border:'1px solid #81d4fa'}}>
+                                                                                ❄️ SURGELATO
+                                                                            </span>
+                                                                        )}
+
+                                                                        {/* 2. GLI ALTRI ALLERGENI SONO ROSSI */}
+                                                                        {p.allergeni
+                                                                            .filter(a => !a.includes('❄️'))
+                                                                            .slice(0, 3)
+                                                                            .map(a => (
+                                                                                <span key={a} style={{fontSize:'10px', background:'#ffebee', color:'#c62828', padding:'2px 8px', borderRadius:'10px', border:'1px solid #ffcdd2'}}>
+                                                                                    {a.split(' ')[0]}
+                                                                                </span>
+                                                                            ))
+                                                                        }
+                                                                        
+                                                                        {/* 3. CONTATORE SE SONO TROPPI */}
+                                                                        {p.allergeni.filter(a => !a.includes('❄️')).length > 3 && (
+                                                                            <span style={{fontSize:'9px', color:'#888', alignSelf:'center'}}>
+                                                                                +{p.allergeni.filter(a => !a.includes('❄️')).length - 3}
+                                                                            </span>
+                                                                        )}
                                                                     </div>
                                                                 )}
                                                             </div>
@@ -399,7 +408,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                                 width:'100%', padding:'20px', borderRadius:'12px', border:'1px solid #dcdcdc', 
                                 minHeight:'180px', fontSize:'15px', lineHeight:'1.6', background:'white',
                                 boxShadow:'inset 0 2px 5px rgba(0,0,0,0.02)', resize:'none', fontFamily:'inherit',
-                                boxSizing: 'border-box' // <--- IMPORTANTE
+                                boxSizing: 'border-box' 
                             }}
                         />
                         <div style={{position:'absolute', bottom:15, right:15, fontSize:'12px', color:'#aaa'}}>Testo visibile in fondo al menu</div>
