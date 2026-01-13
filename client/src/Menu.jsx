@@ -467,25 +467,35 @@ const modalText = style.text || '#000000';
                                                 >
                                                     {prodotto.immagine_url && <img src={prodotto.immagine_url} style={{width:'70px', height:'70px', objectFit:'cover', borderRadius:'5px', flexShrink: 0}} />}
                                                     
-                                                    <div className="info" style={{flex: 1}}>
-                                                        <h3 style={{margin:'0 0 4px 0', fontSize:'16px', color: style.text || '#222'}}>{prodotto.nome}</h3>
-                                                        {prodotto.descrizione && (<p style={{fontSize:'12px', color:'#666', margin:'0 0 4px 0', lineHeight:'1.2'}}>{prodotto.descrizione}</p>)}
-                                                        {ingredientiStr && (
-                                                            <p style={{fontSize:'11px', color:'#555', fontStyle:'italic', margin:'0 0 5px 0'}}>
-                                                                <span style={{fontWeight:'bold'}}>Ingredienti:</span> {ingredientiStr}
-                                                            </p>
-                                                        )}
-                                                        
-                                                        {/* ⬇️⬇️ INCOLLA QUI IL CODICE ALLERGENI ⬇️⬇️ */}
+                                                   <div className="info" style={{flex: 1}}>
+    <h3 style={{margin:'0 0 4px 0', fontSize:'16px', color: style.text || '#222'}}>{prodotto.nome}</h3>
+    
+    {/* Descrizione e Ingredienti */}
+    {prodotto.descrizione && (<p style={{fontSize:'12px', color:'#666', margin:'0 0 4px 0'}}>{prodotto.descrizione}</p>)}
+    {ingredientiStr && (
+        <p style={{fontSize:'11px', color:'#555', fontStyle:'italic', margin:'0 0 5px 0'}}>
+            <span style={{fontWeight:'bold'}}>Ingredienti:</span> {ingredientiStr}
+        </p>
+    )}
+
+    {/* SEZIONE ALLERGENI: Aggiungi o correggi questo blocco qui sotto */}
     {prodotto.allergeni && Array.isArray(prodotto.allergeni) && prodotto.allergeni.length > 0 && (
-        <div style={{fontSize:'10px', color: style.text, opacity:0.8, marginTop:'4px'}}>
-            ⚠️ {prodotto.allergeni.map(a => a.split(' ')[1]).join(' ')} 
+        <div style={{
+            fontSize:'10px', 
+            color: '#e74c3c', // Colore rosso per evidenziarli
+            fontWeight: 'bold',
+            marginTop:'4px',
+            background: 'rgba(231, 76, 60, 0.1)',
+            padding: '2px 6px',
+            borderRadius: '4px',
+            display: 'inline-block'
+        }}>
+            ⚠️ Allergeni: {prodotto.allergeni.map(a => a.split(' ')[1] || a).join(' ')} 
         </div>
     )}
-    {/* ⬆️⬆️ FINE INCOLLA ⬆️⬆️ */}
-
-                                                        <div style={{fontSize:'14px', fontWeight:'bold', color: priceColor}}>{Number(prodotto.prezzo).toFixed(2)} €</div>
-                                                    </div>
+    
+    <div style={{fontSize:'14px', fontWeight:'bold', color: priceColor}}>{Number(prodotto.prezzo).toFixed(2)} €</div>
+</div>
                                                     
                                                     {/* PULSANTI SEMPRE VISIBILI (Anche in Wish List) */}
                                                     <div style={{display:'flex', gap:'5px', alignItems:'center'}}>
@@ -614,6 +624,13 @@ const addList = addListPiatto.length > 0 ? addListPiatto : addListCategoria;
                     <div style={{padding:'20px'}}>
                         <h2 style={{margin:'0 0 5px 0', fontSize:'1.8rem', color: '#000', fontWeight:'800'}}>{selectedPiatto.nome}</h2>
                         <p style={{color:'#666', fontSize:'1rem', lineHeight:'1.4'}}>{selectedPiatto.descrizione}</p>
+
+{/* ALLERGENI NEL MODALE */}
+    {selectedPiatto.allergeni && selectedPiatto.allergeni.length > 0 && (
+        <div style={{marginTop: '10px', fontSize: '0.8rem', color: '#c0392b', fontWeight: 'bold'}}>
+            Allergeni: {selectedPiatto.allergeni.join(', ')}
+        </div>
+    )}
 
                         <div style={{marginTop:'20px', borderTop:'1px solid #eee', paddingTop:'15px'}}>
                             {/* RIMOZIONI */}
