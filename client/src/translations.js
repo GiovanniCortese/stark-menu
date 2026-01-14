@@ -15,7 +15,8 @@ export const dictionary = {
         course_1: "1ª PORTATA",
         course_2: "2ª PORTATA",
         course_3: "3ª PORTATA",
-        course_4: "DESSERT"
+        course_4: "DESSERT",
+        others: "Altri Piatti"
     },
     en: {
         ingredients: "Ingredients",
@@ -32,34 +33,17 @@ export const dictionary = {
         course_1: "STARTERS / 1ST COURSE",
         course_2: "MAIN COURSE",
         course_3: "SECOND COURSE",
-        course_4: "DESSERT"
-    },
-    de: {
-        ingredients: "Zutaten",
-        allergens: "Allergene",
-        add: "HINZUFÜGEN",
-        modify: "BEARBEITEN",
-        total: "Gesamt",
-        cart: "Warenkorb",
-        empty_cart: "Warenkorb ist leer",
-        see_order: "BESTELLUNG ANSEHEN",
-        confirm: "BESTÄTIGEN",
-        back: "Zurück zum Menü",
-        frozen: "Tiefkühlprodukt",
-        course_1: "VORSPEISEN",
-        course_2: "HAUPTSPEISEN",
-        course_3: "ZWEITER GANG",
-        course_4: "DESSERT"
+        course_4: "DESSERT",
+        others: "Other Dishes"
     }
 };
 
 // Funzione Helper per ottenere il testo dinamico (DB)
-// Se esiste la traduzione usa quella, altrimenti usa l'italiano (default)
 export const getContent = (item, field, lang) => {
     if (!item) return "";
-    if (lang === 'it') return item[field]; // Default veloce
+    if (lang === 'it') return item[field]; // Default
     
-    // Controlla se esiste item.traduzioni.en.nome
+    // Controlla traduzione DB
     if (item.traduzioni && item.traduzioni[lang] && item.traduzioni[lang][field]) {
         return item.traduzioni[lang][field];
     }

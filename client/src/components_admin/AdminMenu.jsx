@@ -275,24 +275,19 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                               <textarea placeholder="Descrivi il piatto..." value={nuovoPiatto.descrizione} onChange={e => setNuovoPiatto({...nuovoPiatto, descrizione: e.target.value})} style={{...inputStyle, minHeight:'80px', resize:'vertical'}}/>
                           </div>
 
-                          {/* 4. SEZIONE INPUT TRADUZIONI (INSERITA QUI) */}
-                          <div style={{background:'#fdfefe', border:'1px solid #e1f5fe', padding:'10px', borderRadius:'8px'}}>
-                                <label style={{...labelStyle, color:'#0277bd', marginBottom:'10px'}}>🌍 Traduzioni (Opzionale)</label>
-                                
-                                {/* Inglese */}
-                                <div style={{marginBottom:'10px'}}>
-                                    <div style={{fontSize:'12px', fontWeight:'bold', marginBottom:'5px', color:'#555'}}>🇬🇧 Inglese</div>
-                                    <input placeholder="Name EN" value={traduzioniInput.en.nome} onChange={e=>setTraduzioniInput({...traduzioniInput, en: {...traduzioniInput.en, nome: e.target.value}})} style={{...inputStyle, marginBottom:'5px', fontSize:'13px'}} />
-                                    <textarea placeholder="Description EN" value={traduzioniInput.en.descrizione} onChange={e=>setTraduzioniInput({...traduzioniInput, en: {...traduzioniInput.en, descrizione: e.target.value}})} style={{...inputStyle, minHeight:'50px', fontSize:'13px'}} />
-                                </div>
+                                {/* 4. SEZIONE INPUT TRADUZIONI (SOLO EN) */}
+<div style={{background:'#fdfefe', border:'1px solid #e1f5fe', padding:'10px', borderRadius:'8px'}}>
+    <label style={{...labelStyle, color:'#0277bd', marginBottom:'10px'}}>🌍 Traduzioni (Opzionale)</label>
+    
+    {/* Inglese */}
+    <div style={{marginBottom:'10px'}}>
+        <div style={{fontSize:'12px', fontWeight:'bold', marginBottom:'5px', color:'#555'}}>🇬🇧 Inglese</div>
+        <input placeholder="Name EN" value={traduzioniInput.en.nome} onChange={e=>setTraduzioniInput({...traduzioniInput, en: {...traduzioniInput.en, nome: e.target.value}})} style={{...inputStyle, marginBottom:'5px', fontSize:'13px'}} />
+        <textarea placeholder="Description EN" value={traduzioniInput.en.descrizione} onChange={e=>setTraduzioniInput({...traduzioniInput, en: {...traduzioniInput.en, descrizione: e.target.value}})} style={{...inputStyle, minHeight:'50px', fontSize:'13px'}} />
+    </div>
 
-                                {/* Tedesco */}
-                                <div>
-                                    <div style={{fontSize:'12px', fontWeight:'bold', marginBottom:'5px', color:'#555'}}>🇩🇪 Tedesco</div>
-                                    <input placeholder="Name DE" value={traduzioniInput.de.nome} onChange={e=>setTraduzioniInput({...traduzioniInput, de: {...traduzioniInput.de, nome: e.target.value}})} style={{...inputStyle, marginBottom:'5px', fontSize:'13px'}} />
-                                    <textarea placeholder="Description DE" value={traduzioniInput.de.descrizione} onChange={e=>setTraduzioniInput({...traduzioniInput, de: {...traduzioniInput.de, descrizione: e.target.value}})} style={{...inputStyle, minHeight:'50px', fontSize:'13px'}} />
-                                </div>
-                          </div>
+    {/* TEDESCO RIMOSSO */}
+</div>
 
                           <div>
                                 <label style={labelStyle}>📷 Foto Piatto</label>

@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - VERSIONE V97 (FIX BARRA CARRELLO STABILE & COLORE TESTO)
+// client/src/Menu.jsx - VERSIONE FIX LINGUA (NO BARRA, NO TEDESCO)
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { dictionary, getContent } from './translations'; 
@@ -11,22 +11,24 @@ function Menu() {
   const [tavoloStaff, setTavoloStaff] = useState("");
   
   // --- LINGUA & GOOGLE TRANSLATE ---
+  // Default: Italiano. Opzioni: it, en.
   const [lang, setLang] = useState('it'); 
   const t = dictionary[lang] || dictionary['it']; 
 
-  // Inizializzazione Google Translate
   useEffect(() => {
+    // Funzione di Init esposta globalmente
     window.googleTranslateElementInit = () => {
       if (window.google && window.google.translate) {
           new window.google.translate.TranslateElement({
             pageLanguage: 'it',
-            includedLanguages: 'it,en,de,fr,es',
+            includedLanguages: 'it,en', // SOLO IT e EN
             autoDisplay: false,
             layout: window.google.translate.TranslateElement.InlineLayout.HORIZONTAL
           }, 'google_translate_element');
       }
     };
 
+    // Caricamento script Google se non presente
     if (!document.getElementById('google-translate-script')) {
       const script = document.createElement('script');
       script.id = 'google-translate-script';
@@ -38,12 +40,15 @@ function Menu() {
 
   const cambiaLingua = (selectedLang) => {
       setLang(selectedLang); 
+      
+      // Pilotiamo il widget nascosto di Google
       const changeGoogle = () => {
           const googleCombo = document.querySelector('.goog-te-combo');
           if (googleCombo) {
               googleCombo.value = selectedLang;
               googleCombo.dispatchEvent(new Event('change'));
           } else {
+              // Riprova se il widget non è ancora pronto
               setTimeout(changeGoogle, 500); 
           }
       };
@@ -197,9 +202,9 @@ function Menu() {
 
   return (
     <div style={{minHeight:'100vh', background: bg, color: text, fontFamily: font, paddingBottom:80}}>
-        <style>{`:root { color-scheme: light; } * { box-sizing: border-box; margin: 0; padding: 0; } body, html { background-color: ${bg} !important; color: ${text} !important; overflow-x: hidden; width: 100%; top: 0 !important; }`}</style>
+      <style>{`:root { color-scheme: light; } * { box-sizing: border-box; margin: 0; padding: 0; } body, html { background-color: ${bg} !important; color: ${text} !important; overflow-x: hidden; width: 100%; top: 0 !important; }`}</style>
       
-      {/* WIDGET GOOGLE - Rimosso 'display:none' per compatibilità */}
+      {/* WIDGET GOOGLE INVISIBILE */}
       <div id="google_translate_element"></div>
 
       {!showCheckout && (
@@ -214,11 +219,11 @@ function Menu() {
               {!style.logo && ( <h1 style={{ margin: 0, color: '#fff', fontSize:'26px', fontWeight:'800', textShadow: '0 2px 4px rgba(0,0,0,0.8)', textAlign: 'center', lineHeight: '1.2' }}>{ristorante}</h1> )}
               <div className="notranslate" style={{ background: tavoloBg, color: tavoloText, padding: '6px 18px', borderRadius: '50px', fontSize: '14px', fontWeight: 'bold', boxShadow: '0 3px 10px rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.3)' }}>📍 Tavolo {numeroTavolo}</div>
               
-              {/* --- BANDIERINE DI COMANDO --- */}
+              {/* --- BANDIERINE DI COMANDO (SOLO IT/EN) --- */}
               <div className="notranslate" style={{display:'flex', gap:'10px', justifyContent:'center', marginTop:'10px'}}>
                 <button onClick={()=>cambiaLingua('it')} style={{opacity: lang==='it'?1:0.5, border:'none', background:'none', fontSize:'24px', cursor:'pointer', padding:0}}>🇮🇹</button>
                 <button onClick={()=>cambiaLingua('en')} style={{opacity: lang==='en'?1:0.5, border:'none', background:'none', fontSize:'24px', cursor:'pointer', padding:0}}>🇬🇧</button>
-                <button onClick={()=>cambiaLingua('de')} style={{opacity: lang==='de'?1:0.5, border:'none', background:'none', fontSize:'24px', cursor:'pointer', padding:0}}>🇩🇪</button>
+                {/* RIMOSSO TEDESCO */}
             </div>
           </div>
       </div>
@@ -260,12 +265,16 @@ function Menu() {
                       const ingStr = (v.base || []).join(', ');
                       const hasVar = (v.base?.length > 0) || (v.aggiunte?.length > 0) || (prodotto.categoria_varianti?.length > 0);
 
+                      // MULTILINGUA STATICO PRIMA DI GOOGLE
+                      const nomeProdotto = getContent(prodotto, 'nome', lang);
+                      const descProdotto = getContent(prodotto, 'descrizione', lang);
+
                       return (
                         <div key={prodotto.id} className="card" onClick={() => prodotto.immagine_url ? apriModale(prodotto) : null} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', cursor: prodotto.immagine_url ? 'pointer' : 'default', backgroundColor: cardBg, borderBottom: `1px solid ${cardBorder}` }}>
                           {prodotto.immagine_url && <img src={prodotto.immagine_url} style={{ width: '70px', height: '70px', objectFit: 'cover', borderRadius: '5px', flexShrink: 0 }} />}
                           <div className="info" style={{ flex: 1 }}>
-                            <h3 style={{ margin: '0 0 2px 0', fontSize: '16px', color: style.text || '#222', lineHeight: '1.2' }}>{prodotto.nome}</h3>
-                            {prodotto.descrizione && (<p style={{ fontSize: '12px', color: '#666', margin: '0 0 2px 0', lineHeight: '1.1' }}>{prodotto.descrizione}</p>)}
+                            <h3 style={{ margin: '0 0 2px 0', fontSize: '16px', color: style.text || '#222', lineHeight: '1.2' }}>{nomeProdotto}</h3>
+                            {descProdotto && (<p style={{ fontSize: '12px', color: '#666', margin: '0 0 2px 0', lineHeight: '1.1' }}>{descProdotto}</p>)}
                             {ingStr && (<p style={{ fontSize: '11px', color: '#555', fontStyle: 'italic', margin: '0 0 2px 0', lineHeight: '1.1' }}><span className="notranslate" style={{ fontWeight: 'bold' }}>{t?.ingredients || "Ingredienti"}:</span> {ingStr}</p>)}
                             {prodotto.allergeni && prodotto.allergeni.length > 0 && (
                               <div style={{ marginTop: '2px', display: 'flex', flexDirection: 'column', gap: '1px' }}>
@@ -304,7 +313,7 @@ function Menu() {
         <div style={{ marginTop: 15, fontSize: 10, color: style.colore_footer_text || style.text, opacity: 0.5 }}>Powered by StarkMenu</div>
       </div>
 
-      {/* --- MODALE FILE --- */}
+      {/* --- MODALI (FILE, LOGIN, DETTAGLIO PIATTO, CARRELLO) --- */}
       {showFileModal && urlFileAttivo && (
         <div style={{ position:'fixed', top:0, left:0, right:0, bottom:0, background: 'rgba(0,0,0,0.95)', zIndex: 5000, display:'flex', alignItems:'center', justifyContent:'center', padding:'10px' }} onClick={() => setShowFileModal(false)}>
             <div style={{ background: modalBg, color: modalText, width:'100%', maxWidth:'800px', maxHeight:'90vh', borderRadius:'15px', position:'relative', display:'flex', flexDirection:'column', overflow:'hidden', boxShadow: '0 10px 40px rgba(0,0,0,0.5)' }} onClick={e => e.stopPropagation()}>
@@ -344,13 +353,15 @@ function Menu() {
                 const addList = v.aggiunte?.length > 0 ? v.aggiunte : (selectedPiatto.categoria_varianti || []);
                 const extraPrezzo = (tempVarianti?.aggiunte || []).reduce((acc, item) => acc + item.prezzo, 0);
                 const prezzoFinale = Number(selectedPiatto.prezzo) + extraPrezzo;
+                const nomePiattoModal = getContent(selectedPiatto, 'nome', lang);
+                const descPiattoModal = getContent(selectedPiatto, 'descrizione', lang);
                 
                 return (
                 <div style={{ background: modalBg, color: modalText, borderRadius: '10px', overflow: 'hidden', maxWidth: '600px', width: '100%', maxHeight:'95vh', overflowY:'auto', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', position:'relative', display:'flex', flexDirection:'column' }} onClick={e => e.stopPropagation()}>
                     {selectedPiatto.immagine_url && ( <div style={{width:'100%', maxHeight:'250px', overflow:'hidden'}}><img src={selectedPiatto.immagine_url} style={{width:'100%', objectFit:'cover'}} /></div> )}
                     <div style={{padding:'20px'}}>
-                        <h2 style={{margin:'0 0 5px 0', fontSize:'1.8rem', color: '#000', fontWeight:'800'}}>{selectedPiatto.nome}</h2>
-                        <p style={{color:'#666', fontSize:'1rem', lineHeight:'1.4'}}>{selectedPiatto.descrizione}</p>
+                        <h2 style={{margin:'0 0 5px 0', fontSize:'1.8rem', color: '#000', fontWeight:'800'}}>{nomePiattoModal}</h2>
+                        <p style={{color:'#666', fontSize:'1rem', lineHeight:'1.4'}}>{descPiattoModal}</p>
                         {selectedPiatto.allergeni && selectedPiatto.allergeni.length > 0 && ( <div className="notranslate" style={{ marginTop: '15px', padding: '10px', background: 'rgba(0,0,0,0.03)', borderRadius: '8px' }}> {selectedPiatto.allergeni.filter(a => !a.includes("❄️")).length > 0 && ( <div style={{ fontSize: '11px', color: '#e74c3c', fontWeight: '900', textTransform: 'uppercase', marginBottom: '4px' }}>⚠️ {t?.allergens || "Allergeni"}: {selectedPiatto.allergeni.filter(a => !a.includes("❄️")).join(', ')}</div> )} {selectedPiatto.allergeni.some(a => a.includes("❄️")) && ( <div style={{ fontSize: '11px', color: '#3498db', fontWeight: '900', textTransform: 'uppercase' }}>❄️ {t?.frozen || "Surgelato"}</div> )} </div> )}
                         <div style={{marginTop:'20px', borderTop:'1px solid #eee', paddingTop:'15px'}}>
                             {baseList.length > 0 && ( <div style={{marginBottom:'20px'}}><h4 className="notranslate" style={{margin:'0 0 10px 0', color:'#333'}}>{t?.ingredients || "Ingredienti"} (Togli)</h4><div style={{display:'flex', flexWrap:'wrap', gap:'10px'}}>{baseList.map(ing => { const isRemoved = tempVarianti.rimozioni.includes(ing); return ( <div key={ing} onClick={() => { const newRimozioni = isRemoved ? tempVarianti.rimozioni.filter(i => i !== ing) : [...tempVarianti.rimozioni, ing]; setTempVarianti({...tempVarianti, rimozioni: newRimozioni}); }} style={{ padding:'8px 12px', borderRadius:'20px', fontSize:'0.9rem', cursor:'pointer', background: isRemoved ? '#ffebee' : '#e8f5e9', color: isRemoved ? '#c62828' : '#2e7d32', border: isRemoved ? '1px solid #ef9a9a' : '1px solid #a5d6a7', textDecoration: isRemoved ? 'line-through' : 'none' }}>{isRemoved ? `No ${ing}` : ing}</div> ) })}</div></div> )}
@@ -359,7 +370,7 @@ function Menu() {
                     </div>
                     <div style={{padding:'20px', background:'#f9f9f9', borderTop:'1px solid #ddd', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                         <div className="notranslate" style={{fontSize:'1.5rem', fontWeight:'bold', color: '#000'}}>{prezzoFinale.toFixed(2)} €</div>
-                        <button className="notranslate" onClick={() => { aggiungiAlCarrello({ ...selectedPiatto, nome: selectedPiatto.nome, prezzo: prezzoFinale, varianti_scelte: tempVarianti }); }} style={{ background: priceColor, color: 'white', padding: '12px 25px', borderRadius: '30px', fontWeight: 'bold', border: 'none', cursor: 'pointer', fontSize: '1rem' }}>{canOrder ? (t?.add || "AGGIUNGI") : "LISTA"}</button>
+                        <button className="notranslate" onClick={() => { aggiungiAlCarrello({ ...selectedPiatto, nome: nomePiattoModal, prezzo: prezzoFinale, varianti_scelte: tempVarianti }); }} style={{ background: priceColor, color: 'white', padding: '12px 25px', borderRadius: '30px', fontWeight: 'bold', border: 'none', cursor: 'pointer', fontSize: '1rem' }}>{canOrder ? (t?.add || "AGGIUNGI") : "LISTA"}</button>
                     </div>
                     <button onClick={() => setSelectedPiatto(null)} style={{position:'absolute', top:'15px', right:'15px', background:'white', color:'black', border:'none', borderRadius:'50%', width:'35px', height:'35px', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.2)'}}>✕</button>
                 </div>
@@ -367,18 +378,16 @@ function Menu() {
         </div>
       )}
 
-      {/* --- CARRELLO BAR FIX --- */}
       {carrello.length > 0 && !showCheckout && (
         <div className="carrello-bar notranslate" style={{
             background: style.carrello_bg || 'white', 
             color: style.carrello_text || '#000',
             position: 'fixed', bottom: 0, left: 0, width: '100%', zIndex: 10000,
             boxShadow: '0 -2px 10px rgba(0,0,0,0.1)',
-            transform: 'translateZ(0)', // Fix jitter mobile
+            transform: 'translateZ(0)', 
             willChange: 'transform'
         }}>
           <div className="totale" style={{display:'flex', flexDirection:'column'}}>
-              {/* TESTO A SINISTRA: FORZATO A ESSERE VISIBILE E COLORATO */}
               <span style={{fontWeight: 'bold', fontSize: '1.1rem', color: style.carrello_text || '#222'}}>
                   {carrello.length} prodotti
               </span>
@@ -390,7 +399,6 @@ function Menu() {
       {showCheckout && (
           <div style={{ position:'fixed', top:0, left:0, right:0, bottom:0, background: style.checkout_bg || style.bg || '#222', color: style.checkout_text || style.text || 'white', display:'flex', flexDirection:'column', padding:'20px', overflowY:'auto' }}>
               <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px', borderBottom:`1px solid ${style?.text||'#ccc'}`, paddingBottom:'10px'}}>
-                  {/* FIX 2: TITOLO MODALE */}
                   <h2 className="notranslate" style={{color: titleColor, margin:0}}>
                       {canOrder ? (t?.summary || "Riepilogo Ordine") : (t?.order_list || "Lista Cameriere")} 📝
                   </h2>
@@ -440,7 +448,6 @@ function Menu() {
                       </div>
                   )}
                   <div className="notranslate" style={{marginTop:'20px', borderTop:`1px solid ${style?.text||'#ccc'}`, paddingTop:'20px'}}>
-                      {/* FIX 3: TASTO VERDE CON SCRITTA CAMERIERE FORZATA */}
                       {carrello.length > 0 && (canOrder || isStaffQui) && ( 
                           <button onClick={inviaOrdine} style={{ width:'100%', padding:'15px', fontSize:'18px', background: '#159709ff', color:'white', border:`1px solid ${style?.text||'#ccc'}`, borderRadius:'30px', fontWeight:'bold', cursor:'pointer' }}>
                               {isStaffQui ? "INVIA ORDINE STAFF 🚀" : (t?.confirm || "CONFERMA E INVIA") + " 🚀"}
