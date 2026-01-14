@@ -62,7 +62,7 @@ const handleLogin = async (e) => {
       fetch(`${API_URL}/api/polling/${infoRistorante.id}`)
         .then(r=>r.json())
         .then(data => {
-            const nuoviOrdini = data.nuovi_ordini || [];
+            const nuoviOrdini = (data.nuovi_ordini || []).filter(o => o.stato !== 'in_arrivo');
             const gruppiTavolo = {}; 
 
             nuoviOrdini.forEach(ord => {

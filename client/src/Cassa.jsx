@@ -1,11 +1,11 @@
-// client/src/Cassa.jsx - VERSIONE V35 (SECURE AUTH + GESTIONE CASSA) 💶
+// client/src/Cassa.jsx - VERSIONE V36 (INVIA ORDINE + LOG FIX + UI NOME) 💶
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
 function Cassa() {
   const { slug } = useParams();
-  const [selectedUserData, setSelectedUserData] = useState(null); // NUOVO: Per il modale utente
-const [loadingUser, setLoadingUser] = useState(false);
+  const [selectedUserData, setSelectedUserData] = useState(null);
+  const [loadingUser, setLoadingUser] = useState(false);
   
   // STATI DATI
   const [tab, setTab] = useState('attivi'); 
@@ -28,53 +28,24 @@ const [loadingUser, setLoadingUser] = useState(false);
     if (localStorage.getItem(sessionKey) === "true") setIsAuthorized(true);
   }, [slug]);
 
-  // --- NUOVA FUNZIONE LOGIN SICURO (API) ---
+  // --- LOGIN ---
   const handleLogin = async (e) => {
     e.preventDefault();
     if(!infoRistorante?.id) return;
-    
     setLoadingLogin(true);
     setLoginError(false);
-
     try {
         const res = await fetch(`${API_URL}/api/auth/station`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ 
-                ristorante_id: infoRistorante.id, 
-                role: 'cassa', // Ruolo specifico per la Cassa
-                password: passwordInput 
-            })
+            body: JSON.stringify({ ristorante_id: infoRistorante.id, role: 'cassa', password: passwordInput })
         });
         const data = await res.json();
-
         if(data.success) {
             setIsAuthorized(true);
             localStorage.setItem(`cassa_session_${slug}`, "true");
-        } else {
-            setLoginError(true);
-        }
-    } catch(err) { 
-        alert("Errore connessione al server"); 
-    } finally { 
-        setLoadingLogin(false); 
-    }
-  };
-
-  const apriDettagliUtente = async (id) => {
-    if(!id) return;
-    setLoadingUser(true);
-    setSelectedUserData(null);
-    try {
-        // Usiamo la stessa API della dashboard che restituisce anche il livello!
-        const res = await fetch(`${API_URL}/api/cliente/stats/${id}`);
-        const data = await res.json();
-        setSelectedUserData(data);
-    } catch(e) {
-        alert("Errore caricamento dati utente");
-    } finally {
-        setLoadingUser(false);
-    }
+        } else { setLoginError(true); }
+    } catch(err) { alert("Errore connessione al server"); } finally { setLoadingLogin(false); }
   };
 
   const handleLogout = () => {
@@ -83,6 +54,34 @@ const [loadingUser, setLoadingUser] = useState(false);
           setIsAuthorized(false);
           setPasswordInput("");
       }
+  };
+
+  const apriDettagliUtente = async (id) => {
+    if(!id) return;
+    setLoadingUser(true);
+    setSelectedUserData(null);
+    try {
+        const res = await fetch(`${API_URL}/api/cliente/stats/${id}`);
+        const data = await res.json();
+        setSelectedUserData(data);
+    } catch(e) { alert("Errore caricamento dati utente"); } finally { setLoadingUser(false); }
+  };
+
+  // --- NUOVA FUNZIONE: INVIA ORDINE AI REPARTI ---
+  const inviaInProduzione = async (ordiniDaInviare) => {
+      if(!confirm(`Inviare ${ordiniDaInviare.length} ordini ai reparti (Cucina/Bar/Pizzeria)?`)) return;
+      
+      try {
+          // Eseguiamo le chiamate in parallelo per velocità
+          await Promise.all(ordiniDaInviare.map(ord => 
+              fetch(`${API_URL}/api/ordine/invia-produzione`, {
+                  method: 'POST',
+                  headers: {'Content-Type': 'application/json'},
+                  body: JSON.stringify({ id_ordine: ord.id })
+              })
+          ));
+          aggiornaDati(); // Ricarica subito
+      } catch(e) { alert("Errore invio ordine"); }
   };
 
   const aggiornaDati = () => {
@@ -102,14 +101,21 @@ const [loadingUser, setLoadingUser] = useState(false);
                 cameriere: ord.cameriere,
                 cliente: ord.cliente,
                 storico_ordini: ord.storico_ordini || 0,
-                utente_id: ord.utente_id // <--- FONDAMENTALE: AGGIUNGI QUESTO
+                utente_id: ord.utente_id,
+                hasPending: false // Flag per capire se c'è roba da inviare (arancione)
             };
+            
+            // SE L'ORDINE E' IN ARRIVO, IL TAVOLO DIVENTA ARANCIONE
+            if (ord.stato === 'in_arrivo') {
+                raggruppati[t].hasPending = true;
+            }
+
             raggruppati[t].ordini.push(ord);
             raggruppati[t].totale += Number(ord.totale || 0);
             
-            // LOG LIVE: Concatena i dettagli
+            // LOG LIVE: LINEA CONTINUA
             if(ord.dettagli && ord.dettagli.trim() !== "") {
-                raggruppati[t].fullLog += ord.dettagli + "\n";
+                raggruppati[t].fullLog += "━━━━━━━━━━━━━━━━━━━━━━━━━━\n" + ord.dettagli + "\n";
             }
         });
         setTavoliAttivi(raggruppati);
@@ -137,58 +143,33 @@ const [loadingUser, setLoadingUser] = useState(false);
     }
   }, [isAuthorized, infoRistorante, tab]);
 
-  // --- AZIONI ---
-
+  // --- AZIONI SUI PRODOTTI ---
   const modificaStatoProdotto = async (ord, indexDaModificare) => {
     const nuoviProdotti = [...ord.prodotti];
     const item = nuoviProdotti[indexDaModificare];
     const nuovoStato = item.stato === 'servito' ? 'in_attesa' : 'servito';
-    
     item.stato = nuovoStato;
-
-    if (nuovoStato === 'in_attesa') {
-        item.riaperto = true; 
-        delete item.ora_servizio;
-    } else {
-        item.ora_servizio = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-        item.chiuso_da_cassa = true; 
-    }
+    if (nuovoStato === 'in_attesa') { item.riaperto = true; delete item.ora_servizio; } 
+    else { item.ora_servizio = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}); item.chiuso_da_cassa = true; }
     
-    const logMsg = nuovoStato === 'in_attesa' 
-        ? `[CASSA 💶] ⚠️ RIAPERTO DALLA CASSA: ${item.nome}`
-        : `[CASSA 💶] ✅ FATTO DALLA CASSA: ${item.nome}`;
-
-    await fetch(`${API_URL}/api/ordine/${ord.id}/update-items`, {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ prodotti: nuoviProdotti, logMsg })
-    });
+    const logMsg = nuovoStato === 'in_attesa' ? `[CASSA 💶] ⚠️ RIAPERTO: ${item.nome}` : `[CASSA 💶] ✅ FATTO: ${item.nome}`;
+    await fetch(`${API_URL}/api/ordine/${ord.id}/update-items`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ prodotti: nuoviProdotti, logMsg }) });
     aggiornaDati();
-};
+  };
 
   const eliminaProdotto = async (ord, indexDaEliminare) => {
       if(!confirm("Eliminare questo piatto?")) return;
-      
       const itemEliminato = ord.prodotti[indexDaEliminare];
       const nuoviProdotti = ord.prodotti.filter((_, idx) => idx !== indexDaEliminare);
       const nuovoTotale = Number(ord.totale) - Number(itemEliminato.prezzo || 0);
-      
       const logMsg = `[CASSA 💶] HA ELIMINATO: ${itemEliminato.nome} (${itemEliminato.prezzo}€). Nuovo Totale: ${nuovoTotale.toFixed(2)}€`;
-
-      await fetch(`${API_URL}/api/ordine/${ord.id}/update-items`, {
-          method: 'PUT',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ prodotti: nuoviProdotti, totale: nuovoTotale, logMsg })
-      });
+      await fetch(`${API_URL}/api/ordine/${ord.id}/update-items`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ prodotti: nuoviProdotti, totale: nuovoTotale, logMsg }) });
       aggiornaDati();
   };
 
   const chiudiTavolo = async (t) => {
       if(!confirm(`Incassare Tavolo ${t}?`)) return;
-      await fetch(`${API_URL}/api/cassa/paga-tavolo`, {
-          method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ ristorante_id: infoRistorante.id, tavolo: t })
-      });
+      await fetch(`${API_URL}/api/cassa/paga-tavolo`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ ristorante_id: infoRistorante.id, tavolo: t }) });
       aggiornaDati();
   };
 
@@ -200,23 +181,10 @@ const [loadingUser, setLoadingUser] = useState(false);
               <h1 style={{margin:0, fontSize:'3rem'}}>💶</h1>
               <h2 style={{margin:'10px 0', color:'#2c3e50'}}>Accesso Cassa</h2>
               <h3 style={{margin:'0 0 20px 0', color:'#7f8c8d', fontWeight:'normal'}}>{infoRistorante.ristorante}</h3>
-              
               <form onSubmit={handleLogin}>
-                  <input 
-                    type="password" 
-                    placeholder="Password Cassa" 
-                    value={passwordInput} 
-                    onChange={e=>setPasswordInput(e.target.value)} 
-                    style={{
-                        width:'100%', padding:15, marginBottom:15, fontSize:'18px',
-                        boxSizing:'border-box', border: loginError ? '2px solid red' : '1px solid #ccc', borderRadius:5, textAlign:'center'
-                    }}
-                  />
+                  <input type="password" placeholder="Password Cassa" value={passwordInput} onChange={e=>setPasswordInput(e.target.value)} style={{width:'100%', padding:15, marginBottom:15, fontSize:'18px', boxSizing:'border-box', border: loginError ? '2px solid red' : '1px solid #ccc', borderRadius:5, textAlign:'center'}} />
                   {loginError && <div style={{color:'red', marginBottom:'10px', fontWeight:'bold'}}>Password Errata! ⛔</div>}
-                  
-                  <button className="btn-invia" style={{width:'100%', padding:15, background:'#27ae60', color:'white', border:'none', borderRadius:5, fontWeight:'bold', cursor:'pointer', fontSize:'18px'}}>
-                      {loadingLogin ? "Verifica..." : "ENTRA"}
-                  </button>
+                  <button className="btn-invia" style={{width:'100%', padding:15, background:'#27ae60', color:'white', border:'none', borderRadius:5, fontWeight:'bold', cursor:'pointer', fontSize:'18px'}}>{loadingLogin ? "Verifica..." : "ENTRA"}</button>
               </form>
           </div>
       </div>
@@ -233,193 +201,88 @@ const [loadingUser, setLoadingUser] = useState(false);
           </div>
       </header>
 
-      {/* --- VISTA TAVOLI ATTIVI --- */}
-    {tab === 'attivi' && (
+      {tab === 'attivi' && (
           <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(350px, 1fr))', gap:20}}>
-    {Object.keys(tavoliAttivi).length === 0 && <p style={{gridColumn:'1/-1', textAlign:'center', fontSize:20, color:'#888'}}>Nessun tavolo attivo.</p>}
-    
-    {Object.keys(tavoliAttivi).map(tavolo => {
-        const info = tavoliAttivi[tavolo];
-        
-        // --- NUOVA LOGICA LIVELLI & ICONE ---
-        const isApp = !info.cameriere; // Se non c'è cameriere, è un ordine App
-        let badgeLivello = null;
+            {Object.keys(tavoliAttivi).length === 0 && <p style={{gridColumn:'1/-1', textAlign:'center', fontSize:20, color:'#888'}}>Nessun tavolo attivo.</p>}
+            
+            {Object.keys(tavoliAttivi).map(tavolo => {
+                const info = tavoliAttivi[tavolo];
+                const isApp = !info.cameriere;
+                let badgeLivello = null;
 
-        if (isApp) {
-             const n = info.storico_ordini || 0;
-             // Definisco i livelli di affidabilità
-             let liv = { label: "🌱 NOVIZIO", color: "#7f8c8d", bg: "#f0f3f4" }; // 0-4 ordini (Grigio)
-             if (n >= 5) liv = { label: "🥉 BRONZE", color: "#d35400", bg: "#fce6c9" }; // 5+ (Arancione)
-             if (n >= 15) liv = { label: "🥈 SILVER", color: "#34495e", bg: "#eaeded" }; // 15+ (Argento/Blu scuro)
-             if (n >= 30) liv = { label: "🥇 GOLD", color: "#f39c12", bg: "#f9e79f" }; // 30+ (Oro)
-             if (n >= 100) liv = { label: "💎 LEGEND", color: "#8e44ad", bg: "#e8daef" }; // 100+ (Viola)
-             
-             badgeLivello = (
-                 <span style={{
-                     marginLeft:'8px', fontSize:'0.7rem', 
-                     background: liv.bg, color: liv.color, 
-                     padding:'2px 6px', borderRadius:'6px', 
-                     border: `1px solid ${liv.color}`, fontWeight:'bold',
-                     verticalAlign: 'middle', textTransform:'uppercase'
-                 }}>
-                    {liv.label}
-                 </span>
-             );
-        }
+                if (isApp) {
+                     const n = info.storico_ordini || 0;
+                     let liv = { label: "🌱 NOVIZIO", color: "#7f8c8d", bg: "#f0f3f4" };
+                     if (n >= 5) liv = { label: "🥉 BRONZE", color: "#d35400", bg: "#fce6c9" };
+                     if (n >= 15) liv = { label: "🥈 SILVER", color: "#34495e", bg: "#eaeded" };
+                     if (n >= 30) liv = { label: "🥇 GOLD", color: "#f39c12", bg: "#f9e79f" };
+                     if (n >= 100) liv = { label: "💎 LEGEND", color: "#8e44ad", bg: "#e8daef" };
+                     badgeLivello = <span style={{marginLeft:'8px', fontSize:'0.7rem', background: liv.bg, color: liv.color, padding:'2px 6px', borderRadius:'6px', border: `1px solid ${liv.color}`, fontWeight:'bold', verticalAlign: 'middle', textTransform:'uppercase'}}>{liv.label}</span>;
+                }
 
-        const icona = isApp ? "📱" : "👤";
-        const nomeChi = isApp ? (info.cliente || "Cliente App") : info.cameriere;
-        const etichettaRuolo = isApp ? "Cliente App" : "Staff";
-        // ------------------------------------
-
-        return (
-            <div key={tavolo} style={{background:'white', padding:20, borderRadius:10, boxShadow:'0 4px 10px rgba(0,0,0,0.1)'}}>
+                const icona = isApp ? "📱" : "👤";
+                const nomeChi = isApp ? (info.cliente || "Cliente App") : info.cameriere;
                 
-                {/* HEADER AGGIORNATO */}
-                <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', borderBottom:'2px solid #ddd', paddingBottom:10, marginBottom:10}}>
-                    <div>
-                        <h2 style={{margin:0, color:'#000', fontSize:'1.6rem'}}>Tavolo {tavolo}</h2>
+                // --- COLORE HEADER (Verde = ok, Arancione = da inviare) ---
+                const headerColor = info.hasPending ? '#e67e22' : '#27ae60';
+
+                // Filtro ordini 'in_arrivo'
+                const ordiniDaInviare = info.ordini.filter(o => o.stato === 'in_arrivo');
+
+                return (
+                    <div key={tavolo} style={{background:'white', padding:20, borderRadius:10, boxShadow:'0 4px 10px rgba(0,0,0,0.1)', borderTop:`5px solid ${headerColor}`}}>
                         
-                        <div style={{marginTop:'8px', display:'flex', alignItems:'center', background:'#f8f9fa', padding:'5px 10px', borderRadius:'6px'}}>
-                            <span style={{fontSize:'1.4rem', marginRight:'8px'}}>{icona}</span>
-                            <div style={{display:'flex', flexDirection:'column'}}>
-                                <span style={{fontSize:'0.7rem', color:'#888', fontWeight:'bold', textTransform:'uppercase', lineHeight:1}}>
-                                    {etichettaRuolo}
-                                </span>
-                               <span 
-    style={{
-        fontSize:'1.05rem', 
-        fontWeight:'bold', 
-        color:'#2c3e50', 
-        lineHeight:1.2,
-        cursor: isApp ? 'pointer' : 'default', // Cursore manina se è app
-        textDecoration: isApp ? 'underline' : 'none' // Sottolineato per far capire che è cliccabile
-    }}
-    onClick={() => isApp && info.utente_id && apriDettagliUtente(info.utente_id)} // <--- CLICK
->
-    {nomeChi} {badgeLivello}
-</span>
+                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', borderBottom:'2px solid #ddd', paddingBottom:10, marginBottom:10}}>
+                            <div>
+                                <h2 style={{margin:0, color:'#000', fontSize:'1.6rem'}}>Tavolo {tavolo}</h2>
+                                <div style={{marginTop:'8px', display:'flex', alignItems:'center', background:'#f8f9fa', padding:'5px 10px', borderRadius:'6px'}}>
+                                    <span style={{fontSize:'1.4rem', marginRight:'8px'}}>{icona}</span>
+                                    <div style={{display:'flex', flexDirection:'column'}}>
+                                        {/* NOME CLIENTE IN GRANDE E CLICCABILE */}
+                                        <span 
+                                            style={{fontSize:'1.1rem', fontWeight:'bold', color:'#2c3e50', cursor: isApp ? 'pointer' : 'default', textDecoration: isApp ? 'underline' : 'none'}}
+                                            onClick={() => isApp && info.utente_id && apriDettagliUtente(info.utente_id)}
+                                        >
+                                            {nomeChi}
+                                        </span>
+                                        <div style={{marginTop:2}}>{badgeLivello}</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style={{textAlign:'right'}}>
+                                <h2 style={{margin:0, color: headerColor, marginBottom:'5px'}}>{info.totale.toFixed(2)}€</h2>
+                                <button onClick={() => setSelectedLog({ id: `Tavolo ${tavolo} (LIVE)`, dettagli: info.fullLog })} style={{background:'#27ae60', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:11, fontWeight:'bold'}}>🟢 LOG LIVE</button>
                             </div>
                         </div>
+
+                        {info.ordini.map(ord => (
+                            <div key={ord.id} style={{marginBottom:20, borderLeft:`4px solid ${ord.stato === 'in_arrivo' ? '#e67e22' : '#eee'}`, paddingLeft:10}}>
+                                {ord.stato === 'in_arrivo' && <div style={{color:'#e67e22', fontWeight:'bold', fontSize:'0.8rem', marginBottom:5}}>⚠️ DA INVIARE</div>}
+                                <div style={{fontSize:12, color:'#888', marginBottom:10}}>Ord #{ord.id} - {new Date(ord.data_ora).toLocaleTimeString()}</div>
+                                {renderProdotti(ord, modificaStatoProdotto, eliminaProdotto)}
+                            </div>
+                        ))}
+
+                        {/* --- PULSANTE INVIA ORDINE (SOLO SE C'E' ROBA IN ARRIVO) --- */}
+                        {ordiniDaInviare.length > 0 && (
+                            <button onClick={() => inviaInProduzione(ordiniDaInviare)} style={{width:'100%', padding:15, background:'#e67e22', color:'white', border:'none', fontSize:18, marginBottom:10, cursor:'pointer', borderRadius:5, fontWeight:'bold', animation:'pulse 2s infinite'}}>
+                                🚀 INVIA ORDINE AI REPARTI
+                            </button>
+                        )}
+
+                        <button onClick={() => chiudiTavolo(tavolo)} style={{width:'100%', padding:15, background:'#2c3e50', color:'white', border:'none', fontSize:18, marginTop:5, cursor:'pointer', borderRadius:5, fontWeight:'bold'}}>💰 CHIUDI CONTO</button>
                     </div>
-                    <div style={{textAlign:'right'}}>
-                        <h2 style={{margin:0, color:'#27ae60', marginBottom:'5px'}}>{info.totale.toFixed(2)}€</h2>
-                        <button 
-                        onClick={() => setSelectedLog({ id: `Tavolo ${tavolo} (LIVE)`, dettagli: info.fullLog })}
-                        style={{background:'#27ae60', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:11, fontWeight:'bold'}}
-                        >
-                            🟢 LOG LIVE
-                        </button>
-                    </div>
-                </div>
-
-                {/* LOGICA ESISTENTE DEI PRODOTTI (NON TOCCATA) */}
-                {info.ordini.map(ord => (
-                    <div key={ord.id} style={{marginBottom:20, borderLeft:'4px solid #eee', paddingLeft:10}}>
-                        <div style={{fontSize:12, color:'#888', marginBottom:10}}>Ord #{ord.id} - {new Date(ord.data_ora).toLocaleTimeString()}</div>
-                        
-                        {(() => {
-                            const prods = ord.prodotti.map((p, i) => ({...p, originalIdx: i}));
-                            
-                            const getCourse = (p) => {
-                                if (p.course !== undefined) return p.course === 0 ? 5 : p.course; 
-                                if (p.is_bar) return 5; 
-                                if (p.is_pizzeria) return 3; 
-                                return 2; 
-                            };
-
-                            const courses = [...new Set(prods.map(p => getCourse(p)))].sort((a,b)=>a-b);
-
-                            const styles = {
-                                1: { label: '🟢 1ª PORTATA (Antipasti)', bg: '#eafaf1', border: '#27ae60', color: '#27ae60' },
-                                2: { label: '🟡 2ª PORTATA (Primi)', bg: '#fef5e7', border: '#f1c40f', color: '#d35400' },
-                                3: { label: '🔴 3ª PORTATA (Secondi/Pizze)', bg: '#fdf2e9', border: '#e67e22', color: '#c0392b' },
-                                4: { label: '🍰 DESSERT', bg: '#fceceb', border: '#c0392b', color: '#c0392b' },
-                                5: { label: '🍹 BAR', bg: '#eef6fb', border: '#3498db', color: '#2980b9' }
-                            };
-
-                            return courses.map(course => {
-                                const st = styles[course] || { label: 'ALTRO', bg: '#f9f9f9', border: '#ccc', color:'#666' };
-                                const items = prods.filter(p => getCourse(p) === course);
-
-                                return (
-                                    <div key={course} style={{marginBottom: 8, background: st.bg, borderRadius: 6, border: `1px solid ${st.border}`, overflow:'hidden'}}>
-                                        <div style={{padding:'4px 8px', background: st.border, color:'white', fontSize:11, fontWeight:'bold'}}>
-                                            {st.label}
-                                        </div>
-                                        <div style={{padding:'0 8px'}}>
-                                            {items.map(p => (
-                                                <div key={p.originalIdx} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px dashed #ddd'}}>
-                                                    <div style={{flex:1}}>
-                                                        <div style={{
-                                                            fontWeight: p.stato === 'servito'?'normal':'bold', 
-                                                            textDecoration: p.stato==='servito'?'line-through':'none', 
-                                                            color: p.stato==='servito'?'#aaa':'#000', fontSize:14
-                                                        }}>
-                                                            {p.nome}
-                                                        </div>
-
-                                                        {/* VISUALIZZAZIONE VARIANTI */}
-                                                        {p.varianti_scelte && (
-                                                            <div style={{marginTop:'2px', display:'flex', flexWrap:'wrap', gap:'4px'}}>
-                                                                {p.varianti_scelte.rimozioni?.map((ing, i) => (
-                                                                    <span key={i} style={{background:'#fceaea', color:'#c0392b', fontSize:'10px', padding:'1px 5px', borderRadius:'3px', border:'1px solid #fadbd8'}}>
-                                                                        NO {ing}
-                                                                    </span>
-                                                                ))}
-                                                                {p.varianti_scelte.aggiunte?.map((ing, i) => (
-                                                                    <span key={i} style={{background:'#e8f5e9', color:'#27ae60', fontSize:'10px', padding:'1px 5px', borderRadius:'3px', border:'1px solid #c8e6c9'}}>
-                                                                        + {ing.nome}
-                                                                    </span>
-                                                                ))}
-                                                            </div>
-                                                        )}
-                                                        
-                                                        <div style={{fontSize:'0.75rem', color:'#666', fontStyle:'italic', marginTop:'2px'}}>
-                                                            {p.is_bar ? '🍹 Bar' : (p.is_pizzeria ? '🍕 Pizzeria' : '👨‍🍳 Cucina')} 
-                                                            <span style={{marginLeft:'5px', fontWeight:'bold', color:'#333'}}>
-                                                                • {Number(p.prezzo).toFixed(2)}€
-                                                            </span>
-                                                        </div>
-                                                        
-                                                        {p.ora_servizio && <div style={{fontSize:'0.7rem', color:'#27ae60', fontWeight:'bold'}}>✅ Servito: {p.ora_servizio}</div>}
-                                                    </div>
-                                                    <div style={{display:'flex', gap:5}}>
-                                                        <button onClick={() => modificaStatoProdotto(ord, p.originalIdx)} style={{background: p.stato==='servito'?'#27ae60':'#f39c12', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:11, fontWeight:'bold'}}>
-                                                            {p.stato === 'servito' ? 'FATTO' : 'ATTESA'}
-                                                        </button>
-                                                        <button onClick={() => eliminaProdotto(ord, p.originalIdx)} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:12}}>🗑️</button>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                );
-                            });
-                        })()}
-
-                    </div>
-                ))}
-                <button onClick={() => chiudiTavolo(tavolo)} style={{width:'100%', padding:15, background:'#2c3e50', color:'white', border:'none', fontSize:18, marginTop:20, cursor:'pointer', borderRadius:5, fontWeight:'bold'}}>💰 CHIUDI CONTO</button>
-            </div>
-        );
-    })}
-</div>
+                );
+            })}
+          </div>
       )}
 
-      {/* --- VISTA STORICO --- */}
       {tab === 'storico' && (
           <div style={{background:'white', color:'#0b0b0bff', padding:20, borderRadius:10}}>
               <h2 style={{color:'#191e22ff', marginTop:0}}>📜 Storico Ordini Conclusi</h2>
               <table style={{width:'100%', borderCollapse:'collapse'}}>
                   <thead>
-                      <tr style={{background:'#f9f9f9', textAlign:'left'}}>
-                          <th style={{padding:10}}>Data</th>
-                          <th style={{padding:10}}>Tavolo</th>
-                          <th style={{padding:10}}>Prodotti</th>
-                          <th style={{padding:10}}>Totale</th>
-                          <th style={{padding:10}}>Log</th>
-                      </tr>
+                      <tr style={{background:'#f9f9f9', textAlign:'left'}}><th style={{padding:10}}>Data</th><th style={{padding:10}}>Tavolo</th><th style={{padding:10}}>Prodotti</th><th style={{padding:10}}>Totale</th><th style={{padding:10}}>Log</th></tr>
                   </thead>
                   <tbody>
                       {storico.map(ord => (
@@ -428,9 +291,7 @@ const [loadingUser, setLoadingUser] = useState(false);
                               <td style={{padding:10}}>Tavolo {ord.tavolo}</td>
                               <td style={{padding:10, fontSize:13}}>{ord.prodotti.map(p=>p.nome).join(', ')}</td>
                               <td style={{padding:10, fontWeight:'bold'}}>{ord.totale}€</td>
-                              <td style={{padding:10}}>
-                                  <button onClick={() => setSelectedLog(ord)} style={{padding:'5px 10px', background:'#3498db', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>📝 LOG</button>
-                              </td>
+                              <td style={{padding:10}}><button onClick={() => setSelectedLog(ord)} style={{padding:'5px 10px', background:'#3498db', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>📝 LOG</button></td>
                           </tr>
                       ))}
                   </tbody>
@@ -438,69 +299,69 @@ const [loadingUser, setLoadingUser] = useState(false);
           </div>
       )}
 
-{/* --- MODAL LOG AGGIORNATO (IDENTICO AL LIVE) --- */}
-{selectedLog && (
-    <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999}}>
-        <div style={{background:'white', padding:30, borderRadius:10, maxWidth:600, width:'90%', maxHeight:'80vh', overflowY:'auto', boxShadow:'0 20px 50px rgba(0,0,0,0.5)'}}>
-            <h2 style={{color:'#000', marginTop:0, borderBottom:'2px solid #eee', paddingBottom:'10px'}}>
-                📋 LOG DETTAGLIATO {selectedLog.tavolo ? `TAVOLO ${selectedLog.tavolo}` : `ORDINE #${selectedLog.id}`}
-            </h2>
-            
-            <div style={{
-                background:'#1a1a1a', 
-                color:'#2ecc71', 
-                padding:20, 
-                borderRadius:8, 
-                fontFamily:'"Courier New", monospace', 
-                whiteSpace:'pre-wrap', // Mantiene la formattazione originale
-                fontSize:13,
-                lineHeight:'1.5',
-                border:'1px solid #333',
-                marginTop:'15px'
-            }}>
-                {selectedLog.dettagli || "Nessun log disponibile."}
-            </div>
-            
-            <button 
-                onClick={() => setSelectedLog(null)} 
-                style={{
-                    width:'100%', marginTop:25, padding:'15px', 
-                    background:'#2c3e50', color:'white', border:'none', 
-                    borderRadius:8, fontWeight:'bold', cursor:'pointer', fontSize:'16px'
-                }}
-            >
-                CHIUDI SCHERMATA
-            </button>
-        </div>
-    </div>
-)}
-
-{/* --- MODALE DETTAGLI UTENTE --- */}
-{selectedUserData && (
-    <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.8)', zIndex:10000, display:'flex', alignItems:'center', justifyContent:'center'}} onClick={() => setSelectedUserData(null)}>
-        <div style={{background:'white', padding:30, borderRadius:15, width:'90%', maxWidth:400, textAlign:'center', position:'relative'}} onClick={e=>e.stopPropagation()}>
-            <button onClick={() => setSelectedUserData(null)} style={{position:'absolute', top:10, right:10, border:'none', background:'transparent', fontSize:20, cursor:'pointer'}}>✕</button>
-            
-            <div style={{width:80, height:80, background: selectedUserData.livello.colore, borderRadius:'50%', margin:'0 auto 15px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:30, color:'white', boxShadow:`0 5px 15px ${selectedUserData.livello.colore}66`}}>
-                {selectedUserData.livello.nome.split(' ')[1] || '👤'}
-            </div>
-            
-            <h2 style={{margin:0, color:'#2c3e50'}}>{selectedUserData.nome}</h2>
-            <div style={{background: selectedUserData.livello.bg, color: selectedUserData.livello.colore, padding:'5px 10px', borderRadius:20, display:'inline-block', fontWeight:'bold', marginTop:5, border:`1px solid ${selectedUserData.livello.colore}`}}>
-                {selectedUserData.livello.nome} • Affidabilità: {selectedUserData.livello.affidabilita}
-            </div>
-
-            <div style={{marginTop:25, textAlign:'left', background:'#f8f9fa', padding:15, borderRadius:10}}>
-                <p style={{margin:'5px 0'}}><strong>📧 Email:</strong> {selectedUserData.email}</p>
-                <p style={{margin:'5px 0'}}><strong>📞 Telefono:</strong> {selectedUserData.telefono || 'Non inserito'}</p>
-                <p style={{margin:'5px 0'}}><strong>📍 Indirizzo:</strong> {selectedUserData.indirizzo || 'Non inserito'}</p>
-                <p style={{margin:'5px 0'}}><strong>📊 Ordini Totali:</strong> {selectedUserData.num_ordini}</p>
+      {selectedLog && (
+        <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999}} onClick={()=>setSelectedLog(null)}>
+            <div style={{background:'white', padding:30, borderRadius:10, maxWidth:600, width:'90%', maxHeight:'80vh', overflowY:'auto', boxShadow:'0 20px 50px rgba(0,0,0,0.5)'}} onClick={e=>e.stopPropagation()}>
+                <h2 style={{color:'#000', marginTop:0, borderBottom:'2px solid #eee', paddingBottom:'10px'}}>📋 LOG DETTAGLIATO</h2>
+                {/* LOGICA PER SOSTITUIRE NEWLINE CON LINEA CONTINUA */}
+                <div style={{background:'#1a1a1a', color:'#2ecc71', padding:20, borderRadius:8, fontFamily:'"Courier New", monospace', whiteSpace:'pre-wrap', fontSize:13, lineHeight:'1.5', border:'1px solid #333', marginTop:'15px'}}>
+                    {(selectedLog.dettagli || "").replace(/\n/g, "\n").split("----------------------------------").join("\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n")}
+                </div>
+                <button onClick={() => setSelectedLog(null)} style={{width:'100%', marginTop:25, padding:'15px', background:'#2c3e50', color:'white', border:'none', borderRadius:8, fontWeight:'bold', cursor:'pointer', fontSize:'16px'}}>CHIUDI SCHERMATA</button>
             </div>
         </div>
-    </div>
-)}
+      )}
+
+      {selectedUserData && (
+          <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.8)', zIndex:10000, display:'flex', alignItems:'center', justifyContent:'center'}} onClick={() => setSelectedUserData(null)}>
+              <div style={{background:'white', padding:30, borderRadius:15, width:'90%', maxWidth:400, textAlign:'center', position:'relative'}} onClick={e=>e.stopPropagation()}>
+                  <button onClick={() => setSelectedUserData(null)} style={{position:'absolute', top:10, right:10, border:'none', background:'transparent', fontSize:20, cursor:'pointer'}}>✕</button>
+                  <div style={{width:80, height:80, background: selectedUserData.livello.colore, borderRadius:'50%', margin:'0 auto 15px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:30, color:'white', boxShadow:`0 5px 15px ${selectedUserData.livello.colore}66`}}>{selectedUserData.livello.nome.split(' ')[1] || '👤'}</div>
+                  <h2 style={{margin:0, color:'#2c3e50'}}>{selectedUserData.nome}</h2>
+                  <div style={{background: selectedUserData.livello.bg, color: selectedUserData.livello.colore, padding:'5px 10px', borderRadius:20, display:'inline-block', fontWeight:'bold', marginTop:5, border:`1px solid ${selectedUserData.livello.colore}`}}>{selectedUserData.livello.nome} • Affidabilità: {selectedUserData.livello.affidabilita}</div>
+                  <div style={{marginTop:25, textAlign:'left', background:'#f8f9fa', padding:15, borderRadius:10}}>
+                      <p style={{margin:'5px 0'}}><strong>📧 Email:</strong> {selectedUserData.email}</p>
+                      <p style={{margin:'5px 0'}}><strong>📞 Telefono:</strong> {selectedUserData.telefono || 'Non inserito'}</p>
+                      <p style={{margin:'5px 0'}}><strong>📍 Indirizzo:</strong> {selectedUserData.indirizzo || 'Non inserito'}</p>
+                      <p style={{margin:'5px 0'}}><strong>📊 Ordini Totali:</strong> {selectedUserData.num_ordini}</p>
+                  </div>
+              </div>
+          </div>
+      )}
     </div>
   );
 }
+
+const renderProdotti = (ord, modificaStatoProdotto, eliminaProdotto) => {
+    const prods = ord.prodotti.map((p, i) => ({...p, originalIdx: i}));
+    const getCourse = (p) => { if (p.course !== undefined) return p.course === 0 ? 5 : p.course; if (p.is_bar) return 5; if (p.is_pizzeria) return 3; return 2; };
+    const courses = [...new Set(prods.map(p => getCourse(p)))].sort((a,b)=>a-b);
+    const styles = { 1: { label: '🟢 1ª PORTATA (Antipasti)', bg: '#eafaf1', border: '#27ae60' }, 2: { label: '🟡 2ª PORTATA (Primi)', bg: '#fef5e7', border: '#f1c40f' }, 3: { label: '🔴 3ª PORTATA (Secondi/Pizze)', bg: '#fdf2e9', border: '#e67e22' }, 4: { label: '🍰 DESSERT', bg: '#fceceb', border: '#c0392b' }, 5: { label: '🍹 BAR', bg: '#eef6fb', border: '#3498db' } };
+
+    return courses.map(course => {
+        const st = styles[course] || { label: 'ALTRO', bg: '#f9f9f9', border: '#ccc' };
+        const items = prods.filter(p => getCourse(p) === course);
+        return (
+            <div key={course} style={{marginBottom: 8, background: st.bg, borderRadius: 6, border: `1px solid ${st.border}`, overflow:'hidden'}}>
+                <div style={{padding:'4px 8px', background: st.border, color:'white', fontSize:11, fontWeight:'bold'}}>{st.label}</div>
+                <div style={{padding:'0 8px'}}>
+                    {items.map(p => (
+                        <div key={p.originalIdx} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px dashed #ddd'}}>
+                            <div style={{flex:1}}>
+                                <div style={{fontWeight: p.stato === 'servito'?'normal':'bold', textDecoration: p.stato==='servito'?'line-through':'none', color: p.stato==='servito'?'#aaa':'#000', fontSize:14}}>{p.nome}</div>
+                                {p.varianti_scelte && (<div style={{marginTop:'2px', display:'flex', flexWrap:'wrap', gap:'4px'}}>{p.varianti_scelte.rimozioni?.map((ing, i)=><span key={i} style={{background:'#fceaea', color:'#c0392b', fontSize:'10px', padding:'1px 5px', borderRadius:'3px'}}>NO {ing}</span>)}{p.varianti_scelte.aggiunte?.map((ing, i)=><span key={i} style={{background:'#e8f5e9', color:'#27ae60', fontSize:'10px', padding:'1px 5px', borderRadius:'3px'}}>+ {ing.nome}</span>)}</div>)}
+                                <div style={{fontSize:'0.75rem', color:'#666', fontStyle:'italic', marginTop:'2px'}}>{p.is_bar ? '🍹 Bar' : (p.is_pizzeria ? '🍕 Pizzeria' : '👨‍🍳 Cucina')} • {Number(p.prezzo).toFixed(2)}€</div>
+                            </div>
+                            <div style={{display:'flex', gap:5}}>
+                                <button onClick={() => modificaStatoProdotto(ord, p.originalIdx)} style={{background: p.stato==='servito'?'#27ae60':'#f39c12', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:11, fontWeight:'bold'}}>{p.stato === 'servito' ? 'FATTO' : 'ATTESA'}</button>
+                                <button onClick={() => eliminaProdotto(ord, p.originalIdx)} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:12}}>🗑️</button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    });
+};
 
 export default Cassa;

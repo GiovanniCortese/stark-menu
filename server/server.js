@@ -71,7 +71,7 @@ app.post('/api/ordine', async (req, res) => {
         await pool.query(
             `INSERT INTO ordini 
             (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id, data_ora, data_ordine) 
-            VALUES ($1, $2, $3, $4, 'in_attesa', $5, $6, $7, NOW(), $8)`, 
+            VALUES ($1, $2, $3, $4, 'in_arrivo', $5, $6, $7, NOW(), $8)`,
             [
                 ristorante_id, 
                 String(tavolo), 
@@ -787,6 +787,18 @@ app.post('/api/super/login', (req, res) => {
     } catch (e) {
         console.error("Errore Super Login:", e);
         res.status(500).json({ success: false, error: "Errore interno server" });
+    }
+});
+
+app.post('/api/ordine/invia-produzione', async (req, res) => {
+    try {
+        const { id_ordine } = req.body;
+        // Passa lo stato da 'in_arrivo' a 'in_attesa' (visibile ai reparti)
+        await pool.query("UPDATE ordini SET stato = 'in_attesa' WHERE id = $1 AND stato = 'in_arrivo'", [id_ordine]);
+        res.json({ success: true });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: "Errore invio produzione" });
     }
 });
 
