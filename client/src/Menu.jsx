@@ -167,8 +167,25 @@ const cardBg = style.card_bg || 'white'; const cardBorder = style.card_border ||
 const btnBg = style.btn_bg || '#27ae60'; const btnText = style.btn_text || 'white';
 const tavoloBg = style.tavolo_bg || priceColor; const tavoloText = style.tavolo_text || 'white';
 const modalBg = style.colore_modal_bg || cardBg; const modalText = style.colore_modal_text || '#000';
-const footerBtnStyle = { background: 'transparent', border: `1px solid ${style.colore_footer_text || '#888'}`, color: style.colore_footer_text || '#888', padding:'10px 20px', borderRadius:'30px', cursor:'pointer', fontSize:'12px', fontWeight:'bold', width:'100%', maxWidth:'300px' };
-
+const footerBtnStyle = { 
+    background: 'transparent', 
+    border: `1px solid ${style.colore_footer_text || '#888'}`, 
+    color: style.colore_footer_text || '#888', 
+    padding:'12px 20px', 
+    borderRadius:'30px', 
+    cursor:'pointer', 
+    fontSize:'13px', 
+    fontWeight:'bold', 
+    width:'100%', 
+    maxWidth:'280px', // Leggermente più stretto per eleganza
+    
+    // --- QUESTE RIGHE CENTRANO IL TESTO E L'ICONA PERFETTAMENTE ---
+    display: 'flex', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    gap: '8px',       // Spazio tra icona e testo
+    margin: '0 auto'  // Centra il bottone stesso nel contenitore
+};
   const categorieUniche = [...new Set(menu.map(p => p.categoria_nome || p.categoria))];
   const toggleAccordion = (catNome) => { if (activeCategory === catNome) { setActiveCategory(null); setActiveSubCategory(null); } else { setActiveCategory(catNome); setActiveSubCategory(null); }};
   const toggleSubAccordion = (subName) => setActiveSubCategory(activeSubCategory === subName ? null : subName);
