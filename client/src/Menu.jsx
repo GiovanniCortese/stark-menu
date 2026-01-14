@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - VERSIONE V96 (SPAZIO ALLERGENI FIX)
+// client/src/Menu.jsx - VERSIONE V97 (FIX BARRA CARRELLO STABILE & COLORE TESTO)
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { dictionary, getContent } from './translations'; 
@@ -12,7 +12,6 @@ function Menu() {
   
   // --- LINGUA & GOOGLE TRANSLATE ---
   const [lang, setLang] = useState('it'); 
-  // FIX: Se la lingua non esiste o manca la chiave, usa l'italiano come base
   const t = dictionary[lang] || dictionary['it']; 
 
   // Inizializzazione Google Translate
@@ -198,7 +197,6 @@ function Menu() {
 
   return (
     <div style={{minHeight:'100vh', background: bg, color: text, fontFamily: font, paddingBottom:80}}>
-        {/* CSS INLINE DI SICUREZZA */}
         <style>{`:root { color-scheme: light; } * { box-sizing: border-box; margin: 0; padding: 0; } body, html { background-color: ${bg} !important; color: ${text} !important; overflow-x: hidden; width: 100%; top: 0 !important; }`}</style>
       
       {/* WIDGET GOOGLE - Rimosso 'display:none' per compatibilità */}
@@ -369,9 +367,22 @@ function Menu() {
         </div>
       )}
 
+      {/* --- CARRELLO BAR FIX --- */}
       {carrello.length > 0 && !showCheckout && (
-        <div className="carrello-bar notranslate" style={{background: style.carrello_bg || 'white', color: style.carrello_text || 'black'}}>
-          <div className="totale"><span>{carrello.length} prodotti</span></div>
+        <div className="carrello-bar notranslate" style={{
+            background: style.carrello_bg || 'white', 
+            color: style.carrello_text || '#000',
+            position: 'fixed', bottom: 0, left: 0, width: '100%', zIndex: 10000,
+            boxShadow: '0 -2px 10px rgba(0,0,0,0.1)',
+            transform: 'translateZ(0)', // Fix jitter mobile
+            willChange: 'transform'
+        }}>
+          <div className="totale" style={{display:'flex', flexDirection:'column'}}>
+              {/* TESTO A SINISTRA: FORZATO A ESSERE VISIBILE E COLORATO */}
+              <span style={{fontWeight: 'bold', fontSize: '1.1rem', color: style.carrello_text || '#222'}}>
+                  {carrello.length} prodotti
+              </span>
+          </div>
           <button onClick={() => setShowCheckout(true)} className="btn-invia" style={{background: canOrder ? '#f1c40f' : '#3498db', color: canOrder ? 'black' : 'white'}}>{canOrder ? `${t?.see_order || "VEDI ORDINE"} 📝` : `${t?.see_order || "VEDI ORDINE"} 👀`}</button>
         </div>
       )}
