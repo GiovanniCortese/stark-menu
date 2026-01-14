@@ -52,8 +52,15 @@ app.post('/api/ordine', async (req, res) => {
     try {
         const { ristorante_id, tavolo, prodotti, totale, cliente, cameriere, utente_id } = req.body;
         
+        // 1. Otteniamo la data leggibile (tua funzione)
         const dataOrdineLeggibile = getNowItaly(); 
 
+        // 2. LOGICA DI STATO (La parte nuova)
+        // Se c'è "cameriere", va in 'in_attesa' (Produzione).
+        // Se è App, va in 'in_arrivo' (Cassa).
+        const statoIniziale = cameriere ? 'in_attesa' : 'in_arrivo';
+
+        // 3. Creazione del LOG (Il tuo codice originale, che è ottimo)
         let logIniziale = `[${dataOrdineLeggibile}] 🆕 ORDINE DA: ${cameriere ? cameriere : 'Cliente (' + cliente + ')'}\n`;
         
         if (Array.isArray(prodotti)) {
@@ -68,16 +75,18 @@ app.post('/api/ordine', async (req, res) => {
         }
         logIniziale += `TOTALE PARZIALE: ${Number(totale).toFixed(2)}€\n----------------------------------\n`;
 
+        // 4. Inserimento nel DB (Con statoIniziale dinamico al posto di 'in_arrivo')
         await pool.query(
             `INSERT INTO ordini 
             (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id, data_ora, data_ordine) 
-            VALUES ($1, $2, $3, $4, 'in_arrivo', $5, $6, $7, NOW(), $8)`,
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9)`,
             [
                 ristorante_id, 
                 String(tavolo), 
                 JSON.stringify(prodotti), 
                 totale, 
-                logIniziale, 
+                statoIniziale,      // <--- QUI CAMBIA (Ora è dinamico)
+                logIniziale,        // dettagli
                 cameriere || null, 
                 utente_id || null,
                 dataOrdineLeggibile
@@ -377,21 +386,36 @@ app.get('/api/menu/:slug', async (req, res) => {
 // Polling
 app.get('/api/polling/:ristorante_id', async (req, res) => {
     try {
-        // Query aggiornata: Recupera anche lo storico_ordini (conteggio ordini pagati) dell'utente
+        // --- FIX NOME CLIENTE ---
+        // Usiamo COALESCE: Se u.nome (tabella utenti) esiste, usa quello. Altrimenti usa o.cliente (tabella ordini).
         const sql = `
             SELECT o.*, 
+            COALESCE(u.nome, o.cliente) as nome_vero_cliente, 
             (SELECT COUNT(*) FROM ordini o2 WHERE o2.utente_id = o.utente_id AND o2.stato = 'pagato') as storico_ordini
             FROM ordini o 
+            LEFT JOIN utenti u ON o.utente_id = u.id 
             WHERE o.ristorante_id = $1 AND o.stato != 'pagato' 
             ORDER BY o.data_ora ASC
         `;
+        
         const r = await pool.query(sql, [req.params.ristorante_id]);
+        
         const ordini = r.rows.map(o => { 
-            try { return { ...o, prodotti: JSON.parse(o.prodotti) }; } 
+            try { 
+                return { 
+                    ...o, 
+                    cliente: o.nome_vero_cliente, // Sovrascriviamo il campo cliente con il nome vero trovato
+                    prodotti: typeof o.prodotti === 'string' ? JSON.parse(o.prodotti) : o.prodotti 
+                }; 
+            } 
             catch { return { ...o, prodotti: [] }; }
         });
+        
         res.json({ nuovi_ordini: ordini });
-    } catch (e) { res.status(500).json({ error: "Err" }); }
+    } catch (e) { 
+        console.error("Polling error:", e);
+        res.status(500).json({ error: "Err" }); 
+    }
 });
 
 // ==========================================
