@@ -384,9 +384,12 @@ app.get('/api/menu/:slug', async (req, res) => {
 // Polling
 app.get('/api/polling/:ristorante_id', async (req, res) => {
     try {
+        // Query corretta:
+        // 1. NON chiamiamo più o.cliente (che non esiste).
+        // 2. Prendiamo u.nome dalla tabella utenti (join tramite utente_id).
         const sql = `
             SELECT o.*, 
-            COALESCE(u.nome, o.cliente) as nome_vero_cliente, 
+            u.nome as nome_da_utente,
             (SELECT COUNT(*) FROM ordini o2 WHERE o2.utente_id = o.utente_id AND o2.stato = 'pagato') as storico_ordini
             FROM ordini o 
             LEFT JOIN utenti u ON o.utente_id = u.id 
@@ -400,9 +403,10 @@ app.get('/api/polling/:ristorante_id', async (req, res) => {
             try { 
                 return { 
                     ...o, 
-                    // Assicuriamoci che storico_ordini sia un numero intero
-                    storico_ordini: parseInt(o.storico_ordini || 0),
-                    cliente: o.nome_vero_cliente || "Ospite", 
+                    // MAPPING SICURO:
+                    // Se la JOIN ha trovato un nome (utente registrato), usa quello.
+                    // Altrimenti scrive "Ospite" (perché la colonna manuale non esiste).
+                    cliente: o.nome_da_utente || "Ospite", 
                     prodotti: typeof o.prodotti === 'string' ? JSON.parse(o.prodotti) : o.prodotti 
                 }; 
             } 
