@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - VERSIONE V90 (ROBUST GOOGLE FIX)
+// client/src/Menu.jsx - VERSIONE V95 (FIX UNDEFINED & TASTO STAFF)
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { dictionary, getContent } from './translations'; 
@@ -12,23 +12,22 @@ function Menu() {
   
   // --- LINGUA & GOOGLE TRANSLATE ---
   const [lang, setLang] = useState('it'); 
-  const t = dictionary[lang]; 
+  // FIX 1: Se la lingua non esiste o manca la chiave, usa l'italiano come base
+  const t = dictionary[lang] || dictionary['it']; 
 
   // Inizializzazione Google Translate
   useEffect(() => {
-    // 1. Definiamo la funzione di init
     window.googleTranslateElementInit = () => {
       if (window.google && window.google.translate) {
           new window.google.translate.TranslateElement({
             pageLanguage: 'it',
             includedLanguages: 'it,en,de,fr,es',
             autoDisplay: false,
-            layout: window.google.translate.TranslateElement.InlineLayout.HORIZONTAL // Layout più semplice da gestire
+            layout: window.google.translate.TranslateElement.InlineLayout.HORIZONTAL
           }, 'google_translate_element');
       }
     };
 
-    // 2. Iniettiamo lo script solo se non c'è
     if (!document.getElementById('google-translate-script')) {
       const script = document.createElement('script');
       script.id = 'google-translate-script';
@@ -38,24 +37,17 @@ function Menu() {
     }
   }, []);
 
-  // Funzione Cambia Lingua (CON RETRY E LOG)
   const cambiaLingua = (selectedLang) => {
-      console.log("🔄 Tentativo cambio lingua a:", selectedLang);
-      setLang(selectedLang); // Aggiorna i testi statici
-
+      setLang(selectedLang); 
       const changeGoogle = () => {
           const googleCombo = document.querySelector('.goog-te-combo');
           if (googleCombo) {
-              console.log("✅ Menu Google Trovato! Cambio valore...");
               googleCombo.value = selectedLang;
               googleCombo.dispatchEvent(new Event('change'));
           } else {
-              console.warn("⚠️ Menu Google NON trovato. Riprovo tra 500ms...");
-              // Se non lo trova (es. caricamento lento), riprova dopo mezzo secondo
               setTimeout(changeGoogle, 500); 
           }
       };
-
       changeGoogle();
   };
 
@@ -163,7 +155,7 @@ function Menu() {
           tavoloFinale = t;
           setTavoloStaff(t); 
       }
-      if(!confirm(`${t.confirm}?`)) return;
+      if(!confirm(`${t?.confirm || "CONFERMA E INVIA"}?`)) return;
 
       const stepPresenti = [...new Set(carrello.filter(c => !c.categoria_is_bar).map(c => c.course))].sort((a,b)=>a-b);
       const mapNuoviCorsi = {};
@@ -259,7 +251,7 @@ function Menu() {
               <div key={scKey} style={{ width: '100%' }}>
                 {!isSingleGroup && (
                   <div onClick={() => toggleSubAccordion(scKey)} style={{ background: 'rgba(255,255,255,0.05)', borderLeft: `4px solid ${priceColor}`, padding: '10px', margin: '1px 0', width: '100%', boxSizing: 'border-box', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h3 className="notranslate" style={{ margin: 0, fontSize: '16px', color: titleColor, textTransform: 'uppercase' }}>{scKey === "Generale" ? t.others : scKey}</h3>
+                    <h3 className="notranslate" style={{ margin: 0, fontSize: '16px', color: titleColor, textTransform: 'uppercase' }}>{scKey === "Generale" ? (t?.others || "Altri Piatti") : scKey}</h3>
                     <span style={{ color: titleColor, fontWeight: 'bold' }}>{activeSubCategory === scKey ? '▼' : '▶'}</span>
                   </div>
                 )}
@@ -276,17 +268,17 @@ function Menu() {
                           <div className="info" style={{ flex: 1 }}>
                             <h3 style={{ margin: '0 0 2px 0', fontSize: '16px', color: style.text || '#222', lineHeight: '1.2' }}>{prodotto.nome}</h3>
                             {prodotto.descrizione && (<p style={{ fontSize: '12px', color: '#666', margin: '0 0 2px 0', lineHeight: '1.1' }}>{prodotto.descrizione}</p>)}
-                            {ingStr && (<p style={{ fontSize: '11px', color: '#555', fontStyle: 'italic', margin: '0 0 2px 0', lineHeight: '1.1' }}><span className="notranslate" style={{ fontWeight: 'bold' }}>{t.ingredients}:</span> {ingStr}</p>)}
+                            {ingStr && (<p style={{ fontSize: '11px', color: '#555', fontStyle: 'italic', margin: '0 0 2px 0', lineHeight: '1.1' }}><span className="notranslate" style={{ fontWeight: 'bold' }}>{t?.ingredients || "Ingredienti"}:</span> {ingStr}</p>)}
                             {prodotto.allergeni && prodotto.allergeni.length > 0 && (
                               <div style={{ marginTop: '2px', display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                                {prodotto.allergeni.filter(a => !a.includes("❄️")).length > 0 && ( <div className="notranslate" style={{ fontSize: '10px', color: '#e74c3c', fontWeight: 'bold', textTransform: 'uppercase' }}>⚠️ {t.allergens}: {prodotto.allergeni.filter(a => !a.includes("❄️")).join(', ')}</div> )}
-                                {prodotto.allergeni.some(a => a.includes("❄️")) && ( <div className="notranslate" style={{ fontSize: '10px', color: '#3498db', fontWeight: 'bold', textTransform: 'uppercase' }}>❄️ {t.frozen}</div> )}
+                                {prodotto.allergeni.filter(a => !a.includes("❄️")).length > 0 && ( <div className="notranslate" style={{ fontSize: '10px', color: '#e74c3c', fontWeight: 'bold', textTransform: 'uppercase' }}>⚠️ {t?.allergens || "Allergeni"}: {prodotto.allergeni.filter(a => !a.includes("❄️")).join(', ')}</div> )}
+                                {prodotto.allergeni.some(a => a.includes("❄️")) && ( <div className="notranslate" style={{ fontSize: '10px', color: '#3498db', fontWeight: 'bold', textTransform: 'uppercase' }}>❄️ {t?.frozen || "Surgelato"}</div> )}
                               </div>
                             )}
                             <div className="notranslate" style={{ fontSize: '14px', fontWeight: 'bold', color: priceColor, marginTop: '2px' }}>{Number(prodotto.prezzo).toFixed(2)} €</div>
                           </div>
                           <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
-                            {hasVar && ( <button className="notranslate" onClick={(e) => { e.stopPropagation(); apriModale(prodotto); }} style={{ background: 'transparent', border: '1px solid #ccc', color: '#555', borderRadius: '5px', padding: '5px 8px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}>{t.modify}✏️</button> )}
+                            {hasVar && ( <button className="notranslate" onClick={(e) => { e.stopPropagation(); apriModale(prodotto); }} style={{ background: 'transparent', border: '1px solid #ccc', color: '#555', borderRadius: '5px', padding: '5px 8px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}>{t?.modify || "MODIFICA"}✏️</button> )}
                             <button className="notranslate" onClick={(e) => { e.stopPropagation(); aggiungiAlCarrello(prodotto); }} style={{ background: btnBg, color: btnText, borderRadius: '50%', width: '35px', height: '35px', border: 'none', fontSize: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>+</button>
                           </div>
                         </div>
@@ -361,15 +353,15 @@ function Menu() {
                     <div style={{padding:'20px'}}>
                         <h2 style={{margin:'0 0 5px 0', fontSize:'1.8rem', color: '#000', fontWeight:'800'}}>{selectedPiatto.nome}</h2>
                         <p style={{color:'#666', fontSize:'1rem', lineHeight:'1.4'}}>{selectedPiatto.descrizione}</p>
-                        {selectedPiatto.allergeni && selectedPiatto.allergeni.length > 0 && ( <div className="notranslate" style={{ marginTop: '15px', padding: '10px', background: 'rgba(0,0,0,0.03)', borderRadius: '8px' }}> {selectedPiatto.allergeni.filter(a => !a.includes("❄️")).length > 0 && ( <div style={{ fontSize: '11px', color: '#e74c3c', fontWeight: '900', textTransform: 'uppercase', marginBottom: '4px' }}>⚠️ {t.allergens}: {selectedPiatto.allergeni.filter(a => !a.includes("❄️")).join(', ')}</div> )} {selectedPiatto.allergeni.some(a => a.includes("❄️")) && ( <div style={{ fontSize: '11px', color: '#3498db', fontWeight: '900', textTransform: 'uppercase' }}>❄️ {t.frozen}</div> )} </div> )}
+                        {selectedPiatto.allergeni && selectedPiatto.allergeni.length > 0 && ( <div className="notranslate" style={{ marginTop: '15px', padding: '10px', background: 'rgba(0,0,0,0.03)', borderRadius: '8px' }}> {selectedPiatto.allergeni.filter(a => !a.includes("❄️")).length > 0 && ( <div style={{ fontSize: '11px', color: '#e74c3c', fontWeight: '900', textTransform: 'uppercase', marginBottom: '4px' }}>⚠️ {t?.allergens || "Allergeni"}: {selectedPiatto.allergeni.filter(a => !a.includes("❄️")).join(', ')}</div> )} {selectedPiatto.allergeni.some(a => a.includes("❄️")) && ( <div style={{ fontSize: '11px', color: '#3498db', fontWeight: '900', textTransform: 'uppercase' }}>❄️ {t?.frozen || "Surgelato"}</div> )} </div> )}
                         <div style={{marginTop:'20px', borderTop:'1px solid #eee', paddingTop:'15px'}}>
-                            {baseList.length > 0 && ( <div style={{marginBottom:'20px'}}><h4 className="notranslate" style={{margin:'0 0 10px 0', color:'#333'}}>{t.ingredients} (Togli)</h4><div style={{display:'flex', flexWrap:'wrap', gap:'10px'}}>{baseList.map(ing => { const isRemoved = tempVarianti.rimozioni.includes(ing); return ( <div key={ing} onClick={() => { const newRimozioni = isRemoved ? tempVarianti.rimozioni.filter(i => i !== ing) : [...tempVarianti.rimozioni, ing]; setTempVarianti({...tempVarianti, rimozioni: newRimozioni}); }} style={{ padding:'8px 12px', borderRadius:'20px', fontSize:'0.9rem', cursor:'pointer', background: isRemoved ? '#ffebee' : '#e8f5e9', color: isRemoved ? '#c62828' : '#2e7d32', border: isRemoved ? '1px solid #ef9a9a' : '1px solid #a5d6a7', textDecoration: isRemoved ? 'line-through' : 'none' }}>{isRemoved ? `No ${ing}` : ing}</div> ) })}</div></div> )}
+                            {baseList.length > 0 && ( <div style={{marginBottom:'20px'}}><h4 className="notranslate" style={{margin:'0 0 10px 0', color:'#333'}}>{t?.ingredients || "Ingredienti"} (Togli)</h4><div style={{display:'flex', flexWrap:'wrap', gap:'10px'}}>{baseList.map(ing => { const isRemoved = tempVarianti.rimozioni.includes(ing); return ( <div key={ing} onClick={() => { const newRimozioni = isRemoved ? tempVarianti.rimozioni.filter(i => i !== ing) : [...tempVarianti.rimozioni, ing]; setTempVarianti({...tempVarianti, rimozioni: newRimozioni}); }} style={{ padding:'8px 12px', borderRadius:'20px', fontSize:'0.9rem', cursor:'pointer', background: isRemoved ? '#ffebee' : '#e8f5e9', color: isRemoved ? '#c62828' : '#2e7d32', border: isRemoved ? '1px solid #ef9a9a' : '1px solid #a5d6a7', textDecoration: isRemoved ? 'line-through' : 'none' }}>{isRemoved ? `No ${ing}` : ing}</div> ) })}</div></div> )}
                             {addList.length > 0 && ( <div><h4 className="notranslate" style={{margin:'0 0 10px 0', color:'#333'}}>Extra 😋</h4>{addList.map((extra, idx) => { const isAdded = tempVarianti.aggiunte.some(a => a.nome === extra.nome); return ( <div key={idx} onClick={() => { const newAggiunte = isAdded ? tempVarianti.aggiunte.filter(a => a.nome !== extra.nome) : [...tempVarianti.aggiunte, extra]; setTempVarianti({...tempVarianti, aggiunte: newAggiunte}); }} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px', marginBottom:'8px', borderRadius:'8px', cursor:'pointer', background: isAdded ? '#e3f2fd' : '#f9f9f9', border: isAdded ? '1px solid #2196f3' : '1px solid #eee' }}><span style={{fontWeight: isAdded ? 'bold' : 'normal'}}>{isAdded ? '✅' : '⬜'} {extra.nome}</span><span className="notranslate" style={{fontWeight:'bold'}}>+{extra.prezzo.toFixed(2)}€</span></div> ) })}</div> )}
                         </div>
                     </div>
                     <div style={{padding:'20px', background:'#f9f9f9', borderTop:'1px solid #ddd', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                         <div className="notranslate" style={{fontSize:'1.5rem', fontWeight:'bold', color: '#000'}}>{prezzoFinale.toFixed(2)} €</div>
-                        <button className="notranslate" onClick={() => { aggiungiAlCarrello({ ...selectedPiatto, nome: selectedPiatto.nome, prezzo: prezzoFinale, varianti_scelte: tempVarianti }); }} style={{ background: priceColor, color: 'white', padding: '12px 25px', borderRadius: '30px', fontWeight: 'bold', border: 'none', cursor: 'pointer', fontSize: '1rem' }}>{canOrder ? t.add : "LISTA"}</button>
+                        <button className="notranslate" onClick={() => { aggiungiAlCarrello({ ...selectedPiatto, nome: selectedPiatto.nome, prezzo: prezzoFinale, varianti_scelte: tempVarianti }); }} style={{ background: priceColor, color: 'white', padding: '12px 25px', borderRadius: '30px', fontWeight: 'bold', border: 'none', cursor: 'pointer', fontSize: '1rem' }}>{canOrder ? (t?.add || "AGGIUNGI") : "LISTA"}</button>
                     </div>
                     <button onClick={() => setSelectedPiatto(null)} style={{position:'absolute', top:'15px', right:'15px', background:'white', color:'black', border:'none', borderRadius:'50%', width:'35px', height:'35px', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.2)'}}>✕</button>
                 </div>
@@ -380,23 +372,26 @@ function Menu() {
       {carrello.length > 0 && !showCheckout && (
         <div className="carrello-bar notranslate" style={{background: style.carrello_bg || 'white', color: style.carrello_text || 'black'}}>
           <div className="totale"><span>{carrello.length} prodotti</span></div>
-          <button onClick={() => setShowCheckout(true)} className="btn-invia" style={{background: canOrder ? '#f1c40f' : '#3498db', color: canOrder ? 'black' : 'white'}}>{canOrder ? `${t.see_order} 📝` : `${t.see_order} 👀`}</button>
+          <button onClick={() => setShowCheckout(true)} className="btn-invia" style={{background: canOrder ? '#f1c40f' : '#3498db', color: canOrder ? 'black' : 'white'}}>{canOrder ? `${t?.see_order || "VEDI ORDINE"} 📝` : `${t?.see_order || "VEDI ORDINE"} 👀`}</button>
         </div>
       )}
 
       {showCheckout && (
           <div style={{ position:'fixed', top:0, left:0, right:0, bottom:0, background: style.checkout_bg || style.bg || '#222', color: style.checkout_text || style.text || 'white', display:'flex', flexDirection:'column', padding:'20px', overflowY:'auto' }}>
               <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px', borderBottom:`1px solid ${style?.text||'#ccc'}`, paddingBottom:'10px'}}>
-                  <h2 className="notranslate" style={{color: titleColor, margin:0}}>{canOrder ? `${t.summary} 📝` : `${t.order_list} 📝`}</h2>
+                  {/* FIX 2: TITOLO MODALE */}
+                  <h2 className="notranslate" style={{color: titleColor, margin:0}}>
+                      {canOrder ? (t?.summary || "Riepilogo Ordine") : (t?.order_list || "Lista Cameriere")} 📝
+                  </h2>
                   <button onClick={() => setShowCheckout(false)} style={{background:'transparent', border:'none', color: titleColor, fontSize:'24px', cursor:'pointer'}}>✕</button>
               </div>
               <div style={{flex:1, overflowY:'auto', maxWidth:'600px', margin:'0 auto', width:'100%'}}>
-                  {carrello.length === 0 && <p className="notranslate" style={{color: style?.text || '#fff', textAlign:'center'}}>{t.empty_cart}</p>}
+                  {carrello.length === 0 && <p className="notranslate" style={{color: style?.text || '#fff', textAlign:'center'}}>{t?.empty_cart || "Il carrello è vuoto"}</p>}
                   {(() => {
                       const itemsCucina = carrello.filter(i => !i.categoria_is_bar);
                       const coursePresenti = [...new Set(itemsCucina.map(i => i.course))].sort();
                       const coloriPortata = ['#27ae60', '#f1c40f', '#e67e22', '#c0392b'];
-                      const nomePortata = [null, t.course_1, t.course_2, t.course_3, t.course_4];
+                      const nomePortata = [null, t?.course_1 || "1ª PORTATA", t?.course_2 || "2ª PORTATA", t?.course_3 || "3ª PORTATA", t?.course_4 || "DESSERT"];
                       return coursePresenti.map((courseNum, index) => (
                           <div key={courseNum} style={{marginBottom:'25px'}}>
                               <h3 className="notranslate" style={{ margin:'0 0 10px 0', color: coloriPortata[index] || '#ccc', borderBottom:`2px solid ${coloriPortata[index] || '#ccc'}`, display:'inline-block', paddingRight:20 }}>{nomePortata[courseNum] || `PORTATA ${courseNum}`}</h3>
@@ -407,8 +402,8 @@ function Menu() {
                                         <div style={{flex: 1}}>
                                             <div style={{fontWeight:'bold', fontSize:'1.1rem', color: titleColor}}>{item.nome}</div>
                                             {item.descrizione && ( <div style={{fontSize:'12px', color:'#ccc', fontStyle:'italic', marginTop:'4px', lineHeight:'1.2'}}>{item.descrizione}</div> )}
-                                            {v.base && v.base.length > 0 && ( <div style={{fontSize:'11px', color:'#999', marginTop:'4px'}}><span className="notranslate">🧂 {t.ingredients}:</span> {v.base.join(', ')}</div> )}
-                                            {item.allergeni && item.allergeni.length > 0 && ( <div className="notranslate" style={{ marginTop: '6px' }}>{item.allergeni.filter(a => !a.includes("❄️")).length > 0 && (<div style={{ fontSize: '10px', color: '#ff7675', fontWeight: 'bold', textTransform: 'uppercase' }}>⚠️ {item.allergeni.filter(a => !a.includes("❄️")).join(', ')}</div>)}{item.allergeni.some(a => a.includes("❄️")) && (<div style={{ fontSize: '10px', color: '#74b9ff', fontWeight: 'bold', marginTop: '2px', textTransform: 'uppercase' }}>❄️ {t.frozen}</div>)}</div>)}
+                                            {v.base && v.base.length > 0 && ( <div style={{fontSize:'11px', color:'#999', marginTop:'4px'}}><span className="notranslate">🧂 {t?.ingredients || "Ingredienti"}:</span> {v.base.join(', ')}</div> )}
+                                            {item.allergeni && item.allergeni.length > 0 && ( <div className="notranslate" style={{ marginTop: '6px' }}>{item.allergeni.filter(a => !a.includes("❄️")).length > 0 && (<div style={{ fontSize: '10px', color: '#ff7675', fontWeight: 'bold', textTransform: 'uppercase' }}>⚠️ {item.allergeni.filter(a => !a.includes("❄️")).join(', ')}</div>)}{item.allergeni.some(a => a.includes("❄️")) && (<div style={{ fontSize: '10px', color: '#74b9ff', fontWeight: 'bold', marginTop: '2px', textTransform: 'uppercase' }}>❄️ {t?.frozen || "Surgelato"}</div>)}</div>)}
                                             {item.varianti_scelte && ( <div style={{marginTop:'8px', display:'flex', flexWrap:'wrap', gap:'5px'}}>{item.varianti_scelte.rimozioni?.map((ing, i) => ( <span key={i} style={{background:'#c0392b', color:'white', fontSize:'10px', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold'}}>NO {ing}</span> ))}{item.varianti_scelte.aggiunte?.map((ing, i) => ( <span key={i} style={{background:'#27ae60', color:'white', fontSize:'10px', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold'}}>+ {ing.nome}</span> ))}</div> )}
                                             <div className="notranslate" style={{color: priceColor, fontSize:'0.9rem', marginTop: '8px', fontWeight: 'bold'}}>{Number(item.prezzo).toFixed(2)} €</div>
                                         </div>
@@ -434,8 +429,13 @@ function Menu() {
                       </div>
                   )}
                   <div className="notranslate" style={{marginTop:'20px', borderTop:`1px solid ${style?.text||'#ccc'}`, paddingTop:'20px'}}>
-                      {carrello.length > 0 && (canOrder || isStaffQui) && ( <button onClick={inviaOrdine} style={{ width:'100%', padding:'15px', fontSize:'18px', background: '#159709ff', color:'white', border:`1px solid ${style?.text||'#ccc'}`, borderRadius:'30px', fontWeight:'bold', cursor:'pointer' }}>{isStaffQui ? t.staff_order : t.confirm} 🚀</button> )}
-                      <button onClick={() => setShowCheckout(false)} style={{width:'100%', padding:'15px', marginTop:'10px', background:'transparent', border:`1px solid ${style?.text||'#ccc'}`, color: style?.text||'#ccc', borderRadius:'30px', cursor:'pointer'}}>{t.back}</button>
+                      {/* FIX 3: TASTO VERDE CON SCRITTA CAMERIERE FORZATA */}
+                      {carrello.length > 0 && (canOrder || isStaffQui) && ( 
+                          <button onClick={inviaOrdine} style={{ width:'100%', padding:'15px', fontSize:'18px', background: '#159709ff', color:'white', border:`1px solid ${style?.text||'#ccc'}`, borderRadius:'30px', fontWeight:'bold', cursor:'pointer' }}>
+                              {isStaffQui ? "INVIA ORDINE STAFF 🚀" : (t?.confirm || "CONFERMA E INVIA") + " 🚀"}
+                          </button> 
+                      )}
+                      <button onClick={() => setShowCheckout(false)} style={{width:'100%', padding:'15px', marginTop:'10px', background:'transparent', border:`1px solid ${style?.text||'#ccc'}`, color: style?.text||'#ccc', borderRadius:'30px', cursor:'pointer'}}>{t?.back || "Torna al Menu"}</button>
                   </div>
               </div>
           </div>
