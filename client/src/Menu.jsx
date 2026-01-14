@@ -171,20 +171,25 @@ const footerBtnStyle = {
     background: 'transparent', 
     border: `1px solid ${style.colore_footer_text || '#888'}`, 
     color: style.colore_footer_text || '#888', 
-    padding:'12px 20px', 
+    
+    // --- IL FIX PER LO SFARFALLIO È QUI SOTTO ---
+    boxSizing: 'border-box', // Obbliga il padding a stare dentro la larghezza
+    width: '100%',           // Occupa tutto lo spazio disponibile...
+    maxWidth: '280px',       // ...ma fermati a 280px
+    padding: '12px 15px',    // Spaziatura interna
+    // ---------------------------------------------
+
     borderRadius:'30px', 
     cursor:'pointer', 
     fontSize:'13px', 
     fontWeight:'bold', 
-    width:'100%', 
-    maxWidth:'280px', // Leggermente più stretto per eleganza
     
-    // --- QUESTE RIGHE CENTRANO IL TESTO E L'ICONA PERFETTAMENTE ---
+    // Allineamento perfetto
     display: 'flex', 
     justifyContent: 'center', 
     alignItems: 'center', 
-    gap: '8px',       // Spazio tra icona e testo
-    margin: '0 auto'  // Centra il bottone stesso nel contenitore
+    gap: '8px',
+    margin: '0 auto' // Centra il blocco
 };
   const categorieUniche = [...new Set(menu.map(p => p.categoria_nome || p.categoria))];
   const toggleAccordion = (catNome) => { if (activeCategory === catNome) { setActiveCategory(null); setActiveSubCategory(null); } else { setActiveCategory(catNome); setActiveSubCategory(null); }};
@@ -195,8 +200,19 @@ const footerBtnStyle = {
 
   return (
     <div style={{minHeight:'100vh', background: bg, color: text, fontFamily: font, paddingBottom:80}}>
-      <style>{`:root { color-scheme: light; } body, html { background-color: ${bg} !important; color: ${text} !important; }`}</style>
+        <style>{`
+    :root { color-scheme: light; }
+    
+    /* QUESTA RIGA È LA MAGIA CHE BLOCCA GLI SFARFALLII */
+    * { box-sizing: border-box; margin: 0; padding: 0; } 
 
+    body, html { 
+        background-color: ${bg} !important; 
+        color: ${text} !important; 
+        overflow-x: hidden; /* Blocca definitivamente lo scorrimento laterale */
+        width: 100%;
+    }
+`}</style>
       {!showCheckout && (
       <div style={{ width: '100%', minHeight: '260px', backgroundImage: style.cover ? `url(${style.cover})` : 'none', backgroundColor: '#333', backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', padding: '30px 20px', overflow: 'hidden' }}>
           <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0.1))', zIndex: 1 }}></div>
