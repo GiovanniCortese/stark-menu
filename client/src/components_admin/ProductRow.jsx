@@ -76,7 +76,7 @@ const ProductRow = memo(({ prodotto, avviaModifica, eliminaProdotto, isDragging 
                     {/* RIGA 3: INGREDIENTI BASE (se ci sono) */}
                     {ingredientiStr && (
                         <div style={{fontSize:'11px', color:'#555', marginTop:'2px'}}>
-                            <span style={{fontWeight:'bold'}}>🧂 Ingr:</span> {ingredientiStr}
+                            <span style={{fontWeight:'bold'}}>🧂 Ingredienti:</span> {ingredientiStr}
                         </div>
                     )}
 
@@ -112,7 +112,7 @@ const ProductRow = memo(({ prodotto, avviaModifica, eliminaProdotto, isDragging 
                                  borderRadius:'4px', 
                                  fontWeight:'bold'
                              }}>
-                                ⚠️ {allergeniReali.join(', ')}
+                                ⚠️ ALLERGENI: {allergeniReali.join(', ')}
                              </span>
                         )}
                     </div>
