@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - VERSIONE V80 (GOOGLE INVISIBILE)
+// client/src/Menu.jsx - VERSIONE V90 (ROBUST GOOGLE FIX)
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { dictionary, getContent } from './translations'; 
@@ -12,41 +12,51 @@ function Menu() {
   
   // --- LINGUA & GOOGLE TRANSLATE ---
   const [lang, setLang] = useState('it'); 
-  const t = dictionary[lang]; // Testi statici dal tuo file translations.js
+  const t = dictionary[lang]; 
 
-  // Inizializzazione Script Google (Modalità Invisibile)
+  // Inizializzazione Google Translate
   useEffect(() => {
-    // Definizione globale init
+    // 1. Definiamo la funzione di init
     window.googleTranslateElementInit = () => {
       if (window.google && window.google.translate) {
           new window.google.translate.TranslateElement({
             pageLanguage: 'it',
             includedLanguages: 'it,en,de,fr,es',
-            autoDisplay: false, // IMPORTANTE: Evita il banner automatico
-            layout: window.google.translate.TranslateElement.InlineLayout.SIMPLE
+            autoDisplay: false,
+            layout: window.google.translate.TranslateElement.InlineLayout.HORIZONTAL // Layout più semplice da gestire
           }, 'google_translate_element');
       }
     };
 
-    // Iniezione Script se non esiste
+    // 2. Iniettiamo lo script solo se non c'è
     if (!document.getElementById('google-translate-script')) {
       const script = document.createElement('script');
       script.id = 'google-translate-script';
       script.src = "//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit";
+      script.async = true;
       document.body.appendChild(script);
     }
   }, []);
 
-  // Cambio Lingua "Live"
+  // Funzione Cambia Lingua (CON RETRY E LOG)
   const cambiaLingua = (selectedLang) => {
+      console.log("🔄 Tentativo cambio lingua a:", selectedLang);
       setLang(selectedLang); // Aggiorna i testi statici
 
-      // Hack per pilotare la select nascosta di Google
-      const googleCombo = document.querySelector('.goog-te-combo');
-      if (googleCombo) {
-          googleCombo.value = selectedLang;
-          googleCombo.dispatchEvent(new Event('change'));
-      }
+      const changeGoogle = () => {
+          const googleCombo = document.querySelector('.goog-te-combo');
+          if (googleCombo) {
+              console.log("✅ Menu Google Trovato! Cambio valore...");
+              googleCombo.value = selectedLang;
+              googleCombo.dispatchEvent(new Event('change'));
+          } else {
+              console.warn("⚠️ Menu Google NON trovato. Riprovo tra 500ms...");
+              // Se non lo trova (es. caricamento lento), riprova dopo mezzo secondo
+              setTimeout(changeGoogle, 500); 
+          }
+      };
+
+      changeGoogle();
   };
 
   // --- STATI FILE & CARRELLO ---
@@ -196,11 +206,12 @@ function Menu() {
 
   return (
     <div style={{minHeight:'100vh', background: bg, color: text, fontFamily: font, paddingBottom:80}}>
-        {/* CSS INLINE DI SICUREZZA + QUELLO GLOBALE */}
+        {/* CSS INLINE DI SICUREZZA */}
         <style>{`:root { color-scheme: light; } * { box-sizing: border-box; margin: 0; padding: 0; } body, html { background-color: ${bg} !important; color: ${text} !important; overflow-x: hidden; width: 100%; top: 0 !important; }`}</style>
       
-      {/* WIDGET GOOGLE NASCOSTO */}
-<div id="google_translate_element"></div>
+      {/* WIDGET GOOGLE - Rimosso 'display:none' per compatibilità */}
+      <div id="google_translate_element"></div>
+
       {!showCheckout && (
       <div style={{ width: '100%', minHeight: '260px', backgroundImage: style.cover ? `url(${style.cover})` : 'none', backgroundColor: '#333', backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', padding: '30px 20px', overflow: 'hidden' }}>
           <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0.1))', zIndex: 1 }}></div>

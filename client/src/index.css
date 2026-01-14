@@ -1,15 +1,10 @@
-/* client/src/index.css - VERSIONE DEFINITIVA */
-
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-
-  /* --- FIX URGENTE: FORZATURA MODALITÀ CHIARA --- */
-  color-scheme: light;         /* Impedisce al browser di usare la dark mode di sistema */
-  color: #213547;              /* Testo scuro di default */
-  background-color: #ffffff;   /* Sfondo bianco di default */
-
+  color-scheme: light;
+  color: #213547;
+  background-color: #ffffff;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -17,107 +12,41 @@
 }
 
 /* --- RESET BASE --- */
-* { 
-  box-sizing: border-box; 
-  margin: 0; 
-  padding: 0; 
-}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { margin: 0; min-width: 320px; min-height: 100vh; top: 0px !important; position: static !important; }
 
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
-  /* 2. Ripristina la posizione del sito (altrimenti Google lo spinge giù) */
-  top: 0px !important;
-  position: static !important;
-}
-
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #f9f9f9; /* Sfondo bottone chiaro */
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
+h1 { font-size: 3.2em; line-height: 1.1; }
+a { font-weight: 500; color: #646cff; text-decoration: inherit; }
+a:hover { color: #535bf2; }
+button { border-radius: 8px; border: 1px solid transparent; padding: 0.6em 1.2em; font-size: 1em; font-weight: 500; font-family: inherit; background-color: #f9f9f9; cursor: pointer; transition: border-color 0.25s; }
+button:hover { border-color: #646cff; }
+button:focus, button:focus-visible { outline: 4px auto -webkit-focus-ring-color; }
 
 /* ========================================================== */
-/* GOOGLE TRANSLATE HIDDEN STYLE (MOTORE NASCOSTO)          */
+/* GOOGLE TRANSLATE HIDDEN STYLE (CORRETTO E TESTATO)       */
 /* ========================================================== */
 
-/* 1. Nasconde la barra superiore (Desktop e Mobile) */
-.goog-te-banner-frame.skiptranslate {
-    display: none !important;
-}
-.goog-te-banner-frame {
+/* 1. Nasconde la barra superiore */
+.goog-te-banner-frame.skiptranslate, .goog-te-banner-frame {
     display: none !important;
 }
 
-/* 3. Nasconde il widget originale MA LO TIENE ATTIVO */
+/* 2. Nasconde il widget MA lo lascia attivo per i comandi JS */
 #google_translate_element {
-    display: block !important;       /* FONDAMENTALE: Se metti 'none' smette di funzionare! */
+    display: block !important;    /* DEVE ESSERE BLOCK */
     position: absolute !important;
-    top: -9999px !important;         /* Lo spediamo fuori dallo schermo in alto */
-    left: -9999px !important;        /* Lo spediamo fuori a sinistra */
+    top: -9999px !important;      /* Spostato lontano */
+    left: -9999px !important;
     width: 1px !important;
     height: 1px !important;
-    opacity: 0 !important;           /* Lo rendiamo trasparente */
-    pointer-events: none !important; /* Non cliccabile per errore */
+    opacity: 0 !important;        /* Trasparente */
     overflow: hidden !important;
+    /* RIMOSSO pointer-events: none per permettere l'interazione via script */
 }
 
-/* 4. Nasconde i Tooltip (i popup fastidiosi sui testi tradotti) */
-.goog-tooltip {
-    display: none !important;
-}
-.goog-tooltip:hover {
-    display: none !important;
-}
-
-/* 5. Rimuove l'evidenziazione blu/gialla dai testi tradotti */
-.goog-text-highlight {
-    background-color: transparent !important;
-    border: none !important; 
-    box-shadow: none !important;
-    color: inherit !important;
-}
-
-/* 6. Nasconde logo Google nei menu a tendina se presenti */
-.goog-logo-link {
-    display: none !important;
-}
-.goog-te-gadget {
-    color: transparent !important;
-}
-
-/* 7. Blocca interazioni indesiderate */
-#goog-gt-tt {
-    display: none !important;
-    visibility: hidden !important;
-}
+/* 3. Pulisce tooltip e popups */
+.goog-tooltip, .goog-tooltip:hover { display: none !important; }
+.goog-text-highlight { background-color: transparent !important; border: none !important; box-shadow: none !important; color: inherit !important; }
+.goog-logo-link { display: none !important; }
+.goog-te-gadget { color: transparent !important; }
+#goog-gt-tt { display: none !important; visibility: hidden !important; }
