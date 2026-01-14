@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE V11 MULTILINGUA (Secure & Atomic Updates)
+// server/server.js - VERSIONE FIX DEFINITIVO (NO COLONNA CLIENTE)
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -33,7 +33,7 @@ cloudinary.config({
 });
 const storage = new CloudinaryStorage({ cloudinary: cloudinary, params: { folder: 'menu-app' } });
 const upload = multer({ storage: storage });
-const uploadFile = multer({ storage: multer.memoryStorage() }); // FIX CRITICO EXCEL
+const uploadFile = multer({ storage: multer.memoryStorage() }); 
 
 const getNowItaly = () => {
     return new Date().toLocaleString('it-IT', { 
@@ -44,10 +44,10 @@ const getNowItaly = () => {
 };
 
 // ==========================================
-//          API GESTIONE ORDINI (ATOMIC FIX)
+//          API GESTIONE ORDINI (FIXED)
 // ==========================================
 
-// 1. Crea Ordine
+// 1. Crea Ordine (CORRETTO: Rimosso campo 'cliente' dalla INSERT)
 app.post('/api/ordine', async (req, res) => {
     try {
         const { ristorante_id, tavolo, prodotti, totale, cliente, cameriere, utente_id } = req.body;
@@ -57,7 +57,7 @@ app.post('/api/ordine', async (req, res) => {
         // STATO: Se c'è cameriere va in 'in_attesa' (Verde), se è App va in 'in_arrivo' (Arancione)
         const statoIniziale = cameriere ? 'in_attesa' : 'in_arrivo';
 
-        // LOGICA NOME
+        // LOGICA NOME PER IL LOG (NON PER IL DB)
         const nomeClienteDisplay = cliente || "Ospite";
         let logIniziale = `[${dataOrdineLeggibile}] 🆕 ORDINE DA: ${cameriere ? cameriere : nomeClienteDisplay}\n`;
         
@@ -73,21 +73,20 @@ app.post('/api/ordine', async (req, res) => {
         }
         logIniziale += `TOTALE PARZIALE: ${Number(totale).toFixed(2)}€\n----------------------------------\n`;
 
-        // INSERT: Corretto ordine parametri e rimosso hardcode 'in_attesa'
+        // INSERT CORRETTA: Usiamo SOLO le colonne esistenti (utente_id SI, cliente NO)
         await pool.query(
             `INSERT INTO ordini 
-            (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id, cliente, data_ora) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+            (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id, data_ora) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
             [
                 ristorante_id,              // $1
                 String(tavolo),             // $2
                 JSON.stringify(prodotti),   // $3
                 totale,                     // $4
-                statoIniziale,              // $5 <--- QUI ORA PRENDE LA VARIABILE (in_arrivo/in_attesa)
+                statoIniziale,              // $5
                 logIniziale,                // $6
                 cameriere || null,          // $7
-                utente_id || null,          // $8
-                nomeClienteDisplay          // $9
+                utente_id || null           // $8
             ]
         );
         res.json({ success: true });
@@ -101,7 +100,7 @@ app.post('/api/ordine', async (req, res) => {
 app.put('/api/ordine/:id/patch-item', async (req, res) => {
     const client = await pool.connect();
     try {
-        await client.query('BEGIN'); // Inizio Transazione Sicura
+        await client.query('BEGIN'); 
         const { id } = req.params;
         const { index, stato, operatore } = req.body; 
 
@@ -222,13 +221,14 @@ app.get('/api/utenti', async (req, res) => {
         res.status(500).json({ error: e.message }); 
     }
 });
-// --- NUOVO: API STORICO & LIVE TRACKER CLIENTE ---
+
+// --- API STORICO & LIVE TRACKER CLIENTE ---
 app.get('/api/ordini/cliente/:utente_id', async (req, res) => {
     try {
         const { utente_id } = req.params;
         const { tavolo } = req.query;
 
-        // --- MODIFICA QUI: Aggiunta JOIN per prendere il nome del ristorante ---
+        // JOIN per prendere il nome del ristorante
         const query = `
             SELECT o.*, r.nome as nome_ristorante 
             FROM ordini o 
@@ -236,7 +236,6 @@ app.get('/api/ordini/cliente/:utente_id', async (req, res) => {
             WHERE o.utente_id = $1 
             ORDER BY o.data_ora DESC
         `;
-        // ---------------------------------------------------------------------
 
         let ordiniTavolo = [];
         if (tavolo && tavolo !== 'undefined') {
@@ -256,7 +255,7 @@ app.get('/api/ordini/cliente/:utente_id', async (req, res) => {
     } catch (e) { console.error(e); res.status(500).json({ error: "Errore storico" }); }
 });
 
-// --- NUOVO: CALCOLO LIVELLO CLIENTE (API UTENTE ARRICCHITA) ---
+// --- CALCOLO LIVELLO CLIENTE (API UTENTE ARRICCHITA) ---
 app.get('/api/cliente/stats/:id', async (req, res) => {
     try {
         const r = await pool.query(`
@@ -283,6 +282,7 @@ app.get('/api/cliente/stats/:id', async (req, res) => {
         res.json({ ...user, livello });
     } catch (e) { res.status(500).json({ error: "Err" }); }
 });
+
 app.put('/api/utenti/:id', async (req, res) => { try { const { nome, email, password, telefono, indirizzo, ruolo } = req.body; await pool.query(`UPDATE utenti SET nome=$1, email=$2, password=$3, telefono=$4, indirizzo=$5, ruolo=$6 WHERE id=$7`, [nome, email, password, telefono, indirizzo, ruolo, req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
 app.delete('/api/utenti/:id', async (req, res) => { try { await pool.query('DELETE FROM utenti WHERE id=$1', [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
 
@@ -335,7 +335,6 @@ app.get('/api/menu/:slug', async (req, res) => {
         if (rist.rows.length === 0) return res.status(404).json({ error: "Non trovato" });
         const data = rist.rows[0];
         
-        // --- MODIFICA QUERY: Aggiunto p.traduzioni e c.traduzioni ---
         const menu = await pool.query(`
             SELECT 
                 p.*, 
@@ -381,12 +380,9 @@ app.get('/api/menu/:slug', async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Err" }); }
 });
 
-// Polling
+// Polling (CORRETTO: NO COLONNA CLIENTE NELLA QUERY)
 app.get('/api/polling/:ristorante_id', async (req, res) => {
     try {
-        // Query corretta:
-        // 1. NON chiamiamo più o.cliente (che non esiste).
-        // 2. Prendiamo u.nome dalla tabella utenti (join tramite utente_id).
         const sql = `
             SELECT o.*, 
             u.nome as nome_da_utente,
@@ -406,6 +402,7 @@ app.get('/api/polling/:ristorante_id', async (req, res) => {
                     // MAPPING SICURO:
                     // Se la JOIN ha trovato un nome (utente registrato), usa quello.
                     // Altrimenti scrive "Ospite" (perché la colonna manuale non esiste).
+                    storico_ordini: parseInt(o.storico_ordini || 0), // Fix numerico per livello
                     cliente: o.nome_da_utente || "Ospite", 
                     prodotti: typeof o.prodotti === 'string' ? JSON.parse(o.prodotti) : o.prodotti 
                 }; 
@@ -426,26 +423,11 @@ app.get('/api/polling/:ristorante_id', async (req, res) => {
 
 app.post('/api/prodotti', async (req, res) => {
     try {
-        const { 
-            nome, 
-            prezzo, 
-            categoria, 
-            sottocategoria, 
-            descrizione, 
-            ristorante_id, 
-            immagine_url, 
-            varianti, 
-            allergeni,
-            traduzioni // <--- NUOVO CAMPO
-        } = req.body;
+        const { nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, immagine_url, varianti, allergeni, traduzioni } = req.body;
 
-        const max = await pool.query(
-            'SELECT MAX(posizione) as max FROM prodotti WHERE ristorante_id = $1', 
-            [ristorante_id]
-        );
+        const max = await pool.query('SELECT MAX(posizione) as max FROM prodotti WHERE ristorante_id = $1', [ristorante_id]);
         const nuovaPosizione = (max.rows[0].max || 0) + 1;
 
-        // QUERY AGGIORNATA CON TRADUZIONI
         const queryText = `
             INSERT INTO prodotti (
                 nome, prezzo, categoria, sottocategoria, descrizione, 
@@ -455,17 +437,9 @@ app.post('/api/prodotti', async (req, res) => {
         `;
 
         const values = [
-            nome, 
-            prezzo, 
-            categoria, 
-            sottocategoria || "", 
-            descrizione || "", 
-            ristorante_id, 
-            immagine_url || "", 
-            nuovaPosizione, 
-            varianti || '{}',
-            JSON.stringify(allergeni || []), 
-            JSON.stringify(traduzioni || {}) // Salvataggio traduzioni
+            nome, prezzo, categoria, sottocategoria || "", descrizione || "", 
+            ristorante_id, immagine_url || "", nuovaPosizione, 
+            varianti || '{}', JSON.stringify(allergeni || []), JSON.stringify(traduzioni || {})
         ];
 
         await pool.query(queryText, values);
@@ -481,16 +455,12 @@ app.put('/api/prodotti/riordina', async (req, res) => { const { prodotti } = req
 app.put('/api/prodotti/:id', async (req, res) => {
     try {
         const { nome, prezzo, categoria, sottocategoria, descrizione, immagine_url, varianti, allergeni, traduzioni } = req.body;
-        
-        // QUERY AGGIORNATA CON TRADUZIONI
         await pool.query(
             'UPDATE prodotti SET nome=$1, prezzo=$2, categoria=$3, sottocategoria=$4, descrizione=$5, immagine_url=$6, varianti=$8, allergeni=$9, traduzioni=$10 WHERE id=$7', 
             [nome, prezzo, categoria, sottocategoria, descrizione, immagine_url, req.params.id, varianti, JSON.stringify(allergeni || []), JSON.stringify(traduzioni || {})]
         );
         res.json({ success: true });
-    } catch (e) {
-        res.status(500).json({ error: "Errore salvataggio prodotto" });
-    }
+    } catch (e) { res.status(500).json({ error: "Errore salvataggio prodotto" }); }
 });
 
 app.delete('/api/prodotti/:id', async (req, res) => { try { await pool.query('DELETE FROM prodotti WHERE id=$1', [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
@@ -503,8 +473,6 @@ app.post('/api/categorie', async (req, res) => {
     try { 
         const { nome, ristorante_id, is_bar, is_pizzeria, descrizione, varianti_default, traduzioni } = req.body; 
         const max = await pool.query('SELECT MAX(posizione) as max FROM categorie WHERE ristorante_id = $1', [ristorante_id]); 
-        
-        // QUERY AGGIORNATA CON TRADUZIONI
         await pool.query(
             'INSERT INTO categorie (nome, posizione, ristorante_id, is_bar, is_pizzeria, descrizione, varianti_default, traduzioni) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', 
             [nome, (max.rows[0].max || 0) + 1, ristorante_id, is_bar || false, is_pizzeria || false, descrizione || "", varianti_default || '[]', JSON.stringify(traduzioni || {})]
@@ -519,8 +487,6 @@ app.get('/api/categorie/:ristorante_id', async (req, res) => { try { const r = a
 app.put('/api/categorie/:id', async (req, res) => { 
     try { 
         const { nome, is_bar, is_pizzeria, descrizione, varianti_default, traduzioni } = req.body;
-        
-        // QUERY AGGIORNATA CON TRADUZIONI
         await pool.query(
             'UPDATE categorie SET nome=$1, is_bar=$2, is_pizzeria=$3, descrizione=$4, varianti_default=$5, traduzioni=$6 WHERE id=$7', 
             [nome, is_bar, is_pizzeria, descrizione, varianti_default, JSON.stringify(traduzioni || {}), req.params.id]
@@ -544,11 +510,8 @@ app.delete('/api/categorie/:id', async (req, res) => {
         res.json({ success: true });
     } catch (e) {
         await client.query('ROLLBACK');
-        console.error("Errore cancellazione categoria:", e);
         res.status(500).json({ error: "Errore durante l'eliminazione" });
-    } finally {
-        client.release();
-    }
+    } finally { client.release(); }
 });
 
 // Config Ristorante
@@ -574,32 +537,10 @@ app.get('/api/db-fix-menu', async (req, res) => {
 // 2. AGGIORNA STILE (PUT)
 app.put('/api/ristorante/style/:id', async (req, res) => {
     try {
-        const { 
-            logo_url, cover_url, colore_sfondo, colore_titolo, colore_testo, colore_prezzo, 
-            colore_card, colore_btn, colore_btn_text, colore_border,
-            colore_tavolo_bg, colore_tavolo_text, colore_carrello_bg, colore_carrello_text,
-            colore_checkout_bg, colore_checkout_text, colore_modal_bg, colore_modal_text,
-            font_style, info_footer, url_allergeni,
-            url_menu_giorno, url_menu_pdf 
-        } = req.body;
-
+        const { logo_url, cover_url, colore_sfondo, colore_titolo, colore_testo, colore_prezzo, colore_card, colore_btn, colore_btn_text, colore_border, colore_tavolo_bg, colore_tavolo_text, colore_carrello_bg, colore_carrello_text, colore_checkout_bg, colore_checkout_text, colore_modal_bg, colore_modal_text, font_style, info_footer, url_allergeni, url_menu_giorno, url_menu_pdf } = req.body;
         await pool.query(
-            `UPDATE ristoranti SET 
-            logo_url=$1, cover_url=$2, colore_sfondo=$3, colore_titolo=$4, colore_testo=$5, colore_prezzo=$6, 
-            colore_card=$7, colore_btn=$8, colore_btn_text=$9, colore_border=$10,
-            colore_tavolo_bg=$11, colore_tavolo_text=$12, colore_carrello_bg=$13, colore_carrello_text=$14,
-            colore_checkout_bg=$15, colore_checkout_text=$16, colore_modal_bg=$17, colore_modal_text=$18,
-            font_style=$19, info_footer=$20, url_allergeni=$21,
-            url_menu_giorno=$22, url_menu_pdf=$23
-            WHERE id=$24`,
-            [
-                logo_url, cover_url, colore_sfondo, colore_titolo, colore_testo, colore_prezzo, 
-                colore_card, colore_btn, colore_btn_text, colore_border,
-                colore_tavolo_bg, colore_tavolo_text, colore_carrello_bg, colore_carrello_text,
-                colore_checkout_bg, colore_checkout_text, colore_modal_bg, colore_modal_text,
-                font_style, info_footer, url_allergeni, 
-                url_menu_giorno, url_menu_pdf, req.params.id 
-            ]
+            `UPDATE ristoranti SET logo_url=$1, cover_url=$2, colore_sfondo=$3, colore_titolo=$4, colore_testo=$5, colore_prezzo=$6, colore_card=$7, colore_btn=$8, colore_btn_text=$9, colore_border=$10, colore_tavolo_bg=$11, colore_tavolo_text=$12, colore_carrello_bg=$13, colore_carrello_text=$14, colore_checkout_bg=$15, colore_checkout_text=$16, colore_modal_bg=$17, colore_modal_text=$18, font_style=$19, info_footer=$20, url_allergeni=$21, url_menu_giorno=$22, url_menu_pdf=$23 WHERE id=$24`,
+            [logo_url, cover_url, colore_sfondo, colore_titolo, colore_testo, colore_prezzo, colore_card, colore_btn, colore_btn_text, colore_border, colore_tavolo_bg, colore_tavolo_text, colore_carrello_bg, colore_carrello_text, colore_checkout_bg, colore_checkout_text, colore_modal_bg, colore_modal_text, font_style, info_footer, url_allergeni, url_menu_giorno, url_menu_pdf, req.params.id]
         );
         res.json({ success: true });
     } catch (err) { res.status(500).json({ error: "Errore salvataggio" }); }
@@ -682,17 +623,7 @@ app.post('/api/import-excel', uploadFile.single('file'), async (req, res) => {
             await client.query(
                 `INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, posizione, varianti, allergeni) 
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-                [
-                    nome, 
-                    prezzo, 
-                    categoria, 
-                    sottocategoria, 
-                    descrizione, 
-                    ristorante_id, 
-                    nextProdPos++, 
-                    JSON.stringify(variantiProdotto),
-                    JSON.stringify(allergeniArr) 
-                ]
+                [nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, nextProdPos++, JSON.stringify(variantiProdotto), JSON.stringify(allergeniArr)]
             );
         }
 
