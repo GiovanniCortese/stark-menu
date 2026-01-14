@@ -1,4 +1,4 @@
-// client/src/components_admin/AdminMenu.jsx - V51 MULTILINGUA INTEGRATO
+// client/src/components_admin/AdminMenu.jsx - V55 FIX SUPER ADMIN BLOCK & TRADUZIONI
 import { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
@@ -45,7 +45,6 @@ const ImageUploader = ({ type, currentUrl, icon, config, setConfig, API_URL }) =
                             const r = await fetch(`${API_URL}/api/upload`, {method:'POST', body:fd});
                             const d = await r.json();
                             if(d.url) {
-                                // Aggiornamento sicuro dello stato
                                 setConfig(prev => ({...prev, [type]: d.url}));
                             }
                         } catch(err) { alert("Errore caricamento"); }
@@ -63,7 +62,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       ingredienti_base: '', varianti_str: '', allergeni: [] 
   });
   
-  // 1. STATO PER LE TRADUZIONI
+  // STATO PER LE TRADUZIONI
   const [traduzioniInput, setTraduzioniInput] = useState({ 
     en: { nome: '', descrizione: '' },
     de: { nome: '', descrizione: '' }
@@ -81,6 +80,18 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const isMasterBlock = config.cucina_super_active === false; 
   const isCucinaAperta = config.ordini_abilitati;
 
+  // --- LOGICA VISIVA HEADER (FIX RICHIESTO) ---
+  let headerBg = isCucinaAperta ? 'linear-gradient(135deg, #2ecc71 0%, #27ae60 100%)' : 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)';
+  let headerTitle = isCucinaAperta ? "✅ Servizio Attivo" : "🛑 Servizio Sospeso";
+  let headerDesc = isCucinaAperta ? "I clienti possono inviare ordini." : "Gli ordini sono bloccati.";
+
+  // SE IL SUPER ADMIN HA BLOCCATO, SOVRASCRIVIAMO TUTTO
+  if (isMasterBlock) {
+      headerBg = 'linear-gradient(135deg, #8e44ad 0%, #c0392b 100%)'; // Viola scuro/Rosso per indicare blocco admin
+      headerTitle = "⛔ BLOCCATO DA SUPER ADMIN";
+      headerDesc = "L'amministrazione centrale ha disabilitato gli ordini per questo locale.";
+  }
+
   // --- HANDLERS ---
   const handleSaveStyle = async () => {
     try {
@@ -91,7 +102,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
   const toggleCucina = async () => { 
       if (!isAbbonamentoAttivo) return alert("⛔ ABBONAMENTO SOSPESO."); 
-      if (isMasterBlock) return alert("⛔ CUCINA BLOCCATA DAGLI ADMIN.");
+      if (isMasterBlock) return alert("⛔ CUCINA BLOCCATA DAL SUPER ADMIN."); // Alert extra di sicurezza
       const nuovoStatoCucina = !isCucinaAperta; 
       setConfig({...config, ordini_abilitati: nuovoStatoCucina}); 
       try {
@@ -117,7 +128,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       const payload = { ...nuovoPiatto, categoria: cat, ristorante_id: user.id, varianti: JSON.stringify(variantiFinali) };
       delete payload.varianti_str; delete payload.ingredienti_base;
 
-      // 2. AGGIUNGIAMO LE TRADUZIONI AL PAYLOAD
+      // AGGIUNGIAMO LE TRADUZIONI AL PAYLOAD
       payload.traduzioni = traduzioniInput; 
 
       try {
@@ -127,9 +138,8 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
           await fetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }); 
           alert(editId ? "✅ Piatto aggiornato!" : "✅ Piatto creato!");
           
-          // Reset completo
           setNuovoPiatto({ nome:'', prezzo:'', categoria:cat, sottocategoria: '', descrizione:'', immagine_url:'', varianti_str: '', ingredienti_base: '', allergeni: [] }); 
-          setTraduzioniInput({ en: { nome: '', descrizione: '' }, de: { nome: '', descrizione: '' } }); // Reset traduzioni
+          setTraduzioniInput({ en: { nome: '', descrizione: '' }, de: { nome: '', descrizione: '' } }); 
           
           setEditId(null); ricaricaDati(); 
       } catch(err) { alert("❌ Errore: " + err.message); }
@@ -149,7 +159,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
   const cancellaPiatto = async (id) => { if(confirm("Sei sicuro di voler eliminare questo piatto?")) { await fetch(`${API_URL}/api/prodotti/${id}`, {method:'DELETE'}); ricaricaDati(); }};
   
-  // 3. AGGIORNAMENTO LOGICA DI EDIT
   const avviaModifica = (piatto) => { 
       setEditId(piatto.id); 
       let variantiObj = { base: [], aggiunte: [] }; 
@@ -157,7 +166,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       
       setNuovoPiatto({ ...piatto, allergeni: piatto.allergeni || [], ingredienti_base: (variantiObj.base || []).join(', '), varianti_str: (variantiObj.aggiunte || []).map(v => `${v.nome}:${v.prezzo}`).join(', ') }); 
       
-      // Carico le traduzioni esistenti (se ci sono)
       const tr = piatto.traduzioni || {};
       setTraduzioniInput({
           en: { nome: tr.en?.nome || '', descrizione: tr.en?.descrizione || '' },
@@ -170,7 +178,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const annullaModifica = () => { 
       setEditId(null); 
       setNuovoPiatto({ nome:'', prezzo:'', categoria:categorie.length > 0 ? categorie[0].nome : '', sottocategoria: '', descrizione:'', immagine_url:'', varianti_str: '', ingredienti_base: '', allergeni: [] }); 
-      setTraduzioniInput({ en: { nome: '', descrizione: '' }, de: { nome: '', descrizione: '' } }); // Reset traduzioni
+      setTraduzioniInput({ en: { nome: '', descrizione: '' }, de: { nome: '', descrizione: '' } }); 
   };
 
   const duplicaPiatto = async (piatto) => { if(!confirm(`Duplicare ${piatto.nome}?`)) return; const copia = { ...piatto, nome: `${piatto.nome} (Copia)`, ristorante_id: user.id }; await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(copia) }); ricaricaDati(); };
@@ -201,12 +209,14 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   return (
     <div style={containerStyle}>
         
-        {/* 1. HEADER & STATUS */}
-        <div style={{...cardStyle, display:'flex', justifyContent:'space-between', alignItems:'center', background: isCucinaAperta ? 'linear-gradient(135deg, #2ecc71 0%, #27ae60 100%)' : 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)', color:'white', border:'none'}}>
+        {/* 1. HEADER & STATUS (AGGIORNATO CON FIX BLOCCO) */}
+        <div style={{...cardStyle, display:'flex', justifyContent:'space-between', alignItems:'center', background: headerBg, color:'white', border:'none'}}>
             <div>
-                <h2 style={{margin:0, fontSize:'24px'}}>{isCucinaAperta ? "✅ Servizio Attivo" : "🛑 Servizio Sospeso"}</h2>
-                <p style={{margin:0, opacity:0.9, fontSize:'14px'}}>{isCucinaAperta ? "I clienti possono inviare ordini." : "Gli ordini sono bloccati."}</p>
+                <h2 style={{margin:0, fontSize:'24px'}}>{headerTitle}</h2>
+                <p style={{margin:0, opacity:0.9, fontSize:'14px'}}>{headerDesc}</p>
             </div>
+            
+            {/* Il bottone appare SOLO se non c'è un blocco Master */}
             {isAbbonamentoAttivo && !isMasterBlock && (
                 <button onClick={toggleCucina} style={{background:'white', color: isCucinaAperta ? '#27ae60' : '#c0392b', border:'none', padding:'12px 25px', borderRadius:'30px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 5px 15px rgba(0,0,0,0.2)'}}>
                     {isCucinaAperta ? "CHIUDI ORDINI CLIENTE" : "APRI ORDINI CLIENTE"}
