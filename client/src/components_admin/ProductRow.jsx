@@ -51,19 +51,13 @@ const ProductRow = memo(({ prodotto, avviaModifica, eliminaProdotto, isDragging 
                         </div>
                     </div>
 
-                    {/* Badge Stati, Surgelato e Allergeni */}
+                    {/* Badge SOLO SURGELATO e ALLERGENI */}
                     <div style={{display:'flex', flexWrap:'wrap', gap:'5px', marginTop:'4px'}}>
-                        {!prodotto.disponibile && (
-                            <span style={{fontSize:'10px', background:'#e74c3c', color:'white', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold'}}>ESAURITO</span>
-                        )}
-                        {!prodotto.visibile && (
-                            <span style={{fontSize:'10px', background:'#95a5a6', color:'white', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold'}}>NASCOSTO</span>
-                        )}
                         
                         {/* BADGE SURGELATO (BLU) */}
                         {isSurgelato && (
                             <span style={{fontSize:'10px', background:'#3498db', color:'white', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold'}}>
-                                ❄️ SURGELATO
+                                ❄️ PRODOTTO SURGELATO/ABBATTUTO
                             </span>
                         )}
 
@@ -82,7 +76,7 @@ const ProductRow = memo(({ prodotto, avviaModifica, eliminaProdotto, isDragging 
                                  textOverflow: 'ellipsis',
                                  maxWidth: '100%'
                              }}>
-                                ⚠️ {allergeniReali.join(', ')}
+                                ⚠️ ALLERGENI: {allergeniReali.join(', ')}
                              </span>
                         )}
                     </div>
