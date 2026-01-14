@@ -1,4 +1,4 @@
-// client/src/Menu.jsx (SOSTITUISCI IL CONTENUTO)
+// client/src/Menu.jsx - VERSIONE AUTOMATICA SENZA UI GOOGLE
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { dictionary, getContent } from './translations'; 
@@ -10,24 +10,42 @@ function Menu() {
   const [style, setStyle] = useState({});
   const [tavoloStaff, setTavoloStaff] = useState("");
   
-  // --- LINGUA & GOOGLE TRANSLATE ---
+  // --- LINGUA & GOOGLE GHOST MODE ---
   const [lang, setLang] = useState('it'); 
   const t = dictionary[lang] || dictionary['it']; 
 
+  // Funzione per rimuovere la "spazzatura" visiva di Google
+  const pulisciGoogle = () => {
+      // Rimuove la barra in alto (iframe)
+      const frames = document.querySelectorAll('.goog-te-banner-frame');
+      frames.forEach(frame => frame.remove());
+
+      // Rimuove l'icona G se presente come immagine
+      const icons = document.querySelectorAll('.goog-te-gadget-icon');
+      icons.forEach(icon => icon.remove());
+
+      // Resetta lo stile del body se Google lo ha spostato
+      if (document.body.style.top !== "0px") {
+          document.body.style.top = "0px";
+          document.body.style.position = "static";
+      }
+  };
+
   useEffect(() => {
-    // Funzione di Init esposta globalmente
+    // 1. Init Google Translate
     window.googleTranslateElementInit = () => {
       if (window.google && window.google.translate) {
           new window.google.translate.TranslateElement({
             pageLanguage: 'it',
-            includedLanguages: 'it,en', // SOLO IT e EN (o aggiungi altri se servono)
-            autoDisplay: false, // FONDAMENTALE PER EVITARE LA BARRA
-            layout: window.google.translate.TranslateElement.InlineLayout.HORIZONTAL
+            includedLanguages: 'it,en', // Aggiungi altre lingue se servono es: 'it,en,de,fr'
+            autoDisplay: false,
+            // USIAMO "SIMPLE" INVECE DI "HORIZONTAL" PERCHÉ È PIÙ FACILE DA NASCONDERE
+            layout: window.google.translate.TranslateElement.InlineLayout.SIMPLE 
           }, 'google_translate_element');
       }
     };
 
-    // Caricamento script Google se non presente
+    // 2. Carica script
     if (!document.getElementById('google-translate-script')) {
       const script = document.createElement('script');
       script.id = 'google-translate-script';
@@ -35,19 +53,24 @@ function Menu() {
       script.async = true;
       document.body.appendChild(script);
     }
+
+    // 3. Avvia il "DOM Cleaner" che controlla ogni secondo se Google ha sporcato la pagina
+    const cleanerInterval = setInterval(pulisciGoogle, 1000);
+    return () => clearInterval(cleanerInterval);
   }, []);
 
   const cambiaLingua = (selectedLang) => {
       setLang(selectedLang); 
       
+      // Pilota il menu nascosto di Google
       const changeGoogle = () => {
           const googleCombo = document.querySelector('.goog-te-combo');
           if (googleCombo) {
               googleCombo.value = selectedLang;
               googleCombo.dispatchEvent(new Event('change'));
+              setTimeout(pulisciGoogle, 500); // Pulisci subito dopo il cambio
           } else {
-              // Riprova se il widget non è ancora pronto
-              setTimeout(changeGoogle, 500); 
+              setTimeout(changeGoogle, 500); // Riprova se non è pronto
           }
       };
       changeGoogle();
