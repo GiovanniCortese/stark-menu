@@ -219,33 +219,34 @@ app.get('/api/utenti', async (req, res) => {
 app.get('/api/ordini/cliente/:utente_id', async (req, res) => {
     try {
         const { utente_id } = req.params;
-        const { tavolo } = req.query; // Opzionale: per vedere ordini condivisi
+        const { tavolo } = req.query;
 
-        // 1. Recupera ordini personali
-        let query = "SELECT * FROM ordini WHERE utente_id = $1 ORDER BY data_ora DESC";
-        let params = [utente_id];
+        // --- MODIFICA QUI: Aggiunta JOIN per prendere il nome del ristorante ---
+        const query = `
+            SELECT o.*, r.nome as nome_ristorante 
+            FROM ordini o 
+            JOIN ristoranti r ON o.ristorante_id = r.id 
+            WHERE o.utente_id = $1 
+            ORDER BY o.data_ora DESC
+        `;
+        // ---------------------------------------------------------------------
 
-        // 2. Se richiesto "Condividi Tavolo", recupera ordini attivi di quel tavolo (escluso se stesso per non duplicare)
         let ordiniTavolo = [];
         if (tavolo && tavolo !== 'undefined') {
             const rTavolo = await pool.query(
-                "SELECT * FROM ordini WHERE tavolo = $1 AND utente_id != $2 AND stato != 'pagato'", 
+                "SELECT o.*, r.nome as nome_ristorante FROM ordini o JOIN ristoranti r ON o.ristorante_id = r.id WHERE o.tavolo = $1 AND o.utente_id != $2 AND o.stato != 'pagato'", 
                 [tavolo, utente_id]
             );
             ordiniTavolo = rTavolo.rows;
         }
 
-        const rUser = await pool.query(query, params);
+        const rUser = await pool.query(query, [utente_id]);
         
-        // Parsing prodotti JSON
         const ordiniPersonali = rUser.rows.map(o => ({...o, prodotti: typeof o.prodotti === 'string' ? JSON.parse(o.prodotti) : o.prodotti}));
         const ordiniCondivisi = ordiniTavolo.map(o => ({...o, prodotti: typeof o.prodotti === 'string' ? JSON.parse(o.prodotti) : o.prodotti, is_condiviso: true}));
 
-        res.json({ 
-            personali: ordiniPersonali, 
-            condivisi: ordiniCondivisi 
-        });
-    } catch (e) { res.status(500).json({ error: "Errore storico" }); }
+        res.json({ personali: ordiniPersonali, condivisi: ordiniCondivisi });
+    } catch (e) { console.error(e); res.status(500).json({ error: "Errore storico" }); }
 });
 
 // --- NUOVO: CALCOLO LIVELLO CLIENTE (API UTENTE ARRICCHITA) ---

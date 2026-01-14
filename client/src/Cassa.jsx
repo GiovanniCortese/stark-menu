@@ -4,6 +4,8 @@ import { useParams } from 'react-router-dom';
 
 function Cassa() {
   const { slug } = useParams();
+  const [selectedUserData, setSelectedUserData] = useState(null); // NUOVO: Per il modale utente
+const [loadingUser, setLoadingUser] = useState(false);
   
   // STATI DATI
   const [tab, setTab] = useState('attivi'); 
@@ -59,6 +61,22 @@ function Cassa() {
     }
   };
 
+  const apriDettagliUtente = async (id) => {
+    if(!id) return;
+    setLoadingUser(true);
+    setSelectedUserData(null);
+    try {
+        // Usiamo la stessa API della dashboard che restituisce anche il livello!
+        const res = await fetch(`${API_URL}/api/cliente/stats/${id}`);
+        const data = await res.json();
+        setSelectedUserData(data);
+    } catch(e) {
+        alert("Errore caricamento dati utente");
+    } finally {
+        setLoadingUser(false);
+    }
+  };
+
   const handleLogout = () => {
       if(confirm("Vuoi uscire dalla Cassa?")) {
           localStorage.removeItem(`cassa_session_${slug}`);
@@ -83,7 +101,8 @@ function Cassa() {
                 fullLog: "",
                 cameriere: ord.cameriere,
                 cliente: ord.cliente,
-                storico_ordini: ord.storico_ordini || 0
+                storico_ordini: ord.storico_ordini || 0,
+                utente_id: ord.utente_id // <--- FONDAMENTALE: AGGIUNGI QUESTO
             };
             raggruppati[t].ordini.push(ord);
             raggruppati[t].totale += Number(ord.totale || 0);
@@ -267,9 +286,19 @@ function Cassa() {
                                 <span style={{fontSize:'0.7rem', color:'#888', fontWeight:'bold', textTransform:'uppercase', lineHeight:1}}>
                                     {etichettaRuolo}
                                 </span>
-                                <span style={{fontSize:'1.05rem', fontWeight:'bold', color:'#2c3e50', lineHeight:1.2}}>
-                                    {nomeChi} {badgeLivello}
-                                </span>
+                               <span 
+    style={{
+        fontSize:'1.05rem', 
+        fontWeight:'bold', 
+        color:'#2c3e50', 
+        lineHeight:1.2,
+        cursor: isApp ? 'pointer' : 'default', // Cursore manina se è app
+        textDecoration: isApp ? 'underline' : 'none' // Sottolineato per far capire che è cliccabile
+    }}
+    onClick={() => isApp && info.utente_id && apriDettagliUtente(info.utente_id)} // <--- CLICK
+>
+    {nomeChi} {badgeLivello}
+</span>
                             </div>
                         </div>
                     </div>
@@ -442,6 +471,31 @@ function Cassa() {
             >
                 CHIUDI SCHERMATA
             </button>
+        </div>
+    </div>
+)}
+
+{/* --- MODALE DETTAGLI UTENTE --- */}
+{selectedUserData && (
+    <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.8)', zIndex:10000, display:'flex', alignItems:'center', justifyContent:'center'}} onClick={() => setSelectedUserData(null)}>
+        <div style={{background:'white', padding:30, borderRadius:15, width:'90%', maxWidth:400, textAlign:'center', position:'relative'}} onClick={e=>e.stopPropagation()}>
+            <button onClick={() => setSelectedUserData(null)} style={{position:'absolute', top:10, right:10, border:'none', background:'transparent', fontSize:20, cursor:'pointer'}}>✕</button>
+            
+            <div style={{width:80, height:80, background: selectedUserData.livello.colore, borderRadius:'50%', margin:'0 auto 15px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:30, color:'white', boxShadow:`0 5px 15px ${selectedUserData.livello.colore}66`}}>
+                {selectedUserData.livello.nome.split(' ')[1] || '👤'}
+            </div>
+            
+            <h2 style={{margin:0, color:'#2c3e50'}}>{selectedUserData.nome}</h2>
+            <div style={{background: selectedUserData.livello.bg, color: selectedUserData.livello.colore, padding:'5px 10px', borderRadius:20, display:'inline-block', fontWeight:'bold', marginTop:5, border:`1px solid ${selectedUserData.livello.colore}`}}>
+                {selectedUserData.livello.nome} • Affidabilità: {selectedUserData.livello.affidabilita}
+            </div>
+
+            <div style={{marginTop:25, textAlign:'left', background:'#f8f9fa', padding:15, borderRadius:10}}>
+                <p style={{margin:'5px 0'}}><strong>📧 Email:</strong> {selectedUserData.email}</p>
+                <p style={{margin:'5px 0'}}><strong>📞 Telefono:</strong> {selectedUserData.telefono || 'Non inserito'}</p>
+                <p style={{margin:'5px 0'}}><strong>📍 Indirizzo:</strong> {selectedUserData.indirizzo || 'Non inserito'}</p>
+                <p style={{margin:'5px 0'}}><strong>📊 Ordini Totali:</strong> {selectedUserData.num_ordini}</p>
+            </div>
         </div>
     </div>
 )}
