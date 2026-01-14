@@ -356,89 +356,42 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                             <span style={{background:'#eee', borderRadius:'50%', width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'14px'}}>📂</span> 
                             {cat.nome}
                         </h3>
-                        <Droppable droppableId={`cat-${cat.nome}`} type="DISH">
-                            {(provided, snapshot) => (
-                                <div {...provided.droppableProps} ref={provided.innerRef} 
-                                    style={{
-                                        background: snapshot.isDraggingOver ? '#f0f9ff' : 'transparent', 
-                                        minHeight: '60px', borderRadius:'10px', padding: '10px', transition: 'background 0.3s',
-                                        boxSizing: 'border-box'
-                                    }}>
-                                    {menu && menu.filter(p => p.categoria === cat.nome).sort((a,b) => (a.posizione || 0) - (b.posizione || 0)).map((p, index) => (
-                                            <Draggable key={p.id} draggableId={String(p.id)} index={index}>
-                                                {(provided, snapshot) => (
-                                                    <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} 
-                                                        style={{
-                                                            ...provided.draggableProps.style, marginBottom:'12px', 
-                                                            background: 'white', 
-                                                            border: '1px solid #eee', 
-                                                            borderRadius: '10px',
-                                                            padding:'15px', 
-                                                            display:'flex', justifyContent:'space-between', alignItems:'center',
-                                                            boxShadow: snapshot.isDragging ? '0 10px 20px rgba(0,0,0,0.2)' : '0 2px 5px rgba(0,0,0,0.02)',
-                                                            transform: snapshot.isDragging ? 'scale(1.02)' : 'scale(1)',
-                                                            boxSizing: 'border-box'
-                                                        }}>
-                                                        
-                                                        <div style={{display:'flex', alignItems:'center', gap:'15px', flex:1}}>
-                                                            <div style={{cursor:'grab', color:'#ccc', fontSize:'20px'}}>⋮⋮</div>
-                                                            {p.immagine_url && <img src={p.immagine_url} style={{width:'50px', height:'50px', objectFit:'cover', borderRadius:'8px'}}/>}
-                                                            <div>
-                                                                <div style={{fontWeight:'bold', color:'#333', fontSize:'15px'}}>{p.nome} <span style={{fontWeight:'normal', fontSize:'12px', color:'#888'}}>({Number(p.prezzo).toFixed(2)}€)</span></div>
-                                                                {p.descrizione && <div style={{fontSize:'12px', color:'#777'}}>{p.descrizione}</div>}
-                                                                
-                                                                {/* --- VISIBILITÀ INGREDIENTI & AGGIUNTE --- */}
-                                                                {(() => {
-                                                                    try {
-                                                                        const v = typeof p.varianti === 'string' ? JSON.parse(p.varianti || '{}') : (p.varianti || {});
-                                                                        const hasBase = v.base && v.base.length > 0;
-                                                                        const hasAdd = v.aggiunte && v.aggiunte.length > 0;
-                                                                        if (!hasBase && !hasAdd) return null;
-                                                                        return (
-                                                                            <div style={{fontSize:'11px', color:'#555', marginTop:'3px', display:'flex', flexDirection:'column', gap:'2px'}}>
-                                                                                {hasBase && <div>🧂 <span style={{fontStyle:'italic'}}>{v.base.join(', ')}</span></div>}
-                                                                                {hasAdd && <div style={{color:'#27ae60', fontWeight:'500'}}>➕ {v.aggiunte.map(a => a.nome).join(', ')}</div>}
-                                                                            </div>
-                                                                        );
-                                                                    } catch(e) { return null; }
-                                                                })()}
-
-                                                                {/* --- VISIBILITÀ SURGELATO E ALLERGENI --- */}
-                                                                {p.allergeni && p.allergeni.length > 0 && (
-                                                                    <div style={{display:'flex', flexWrap:'wrap', gap:'5px', marginTop:'6px'}}>
-                                                                        {p.allergeni.some(a => a.includes("❄️")) && (
-                                                                            <span style={{fontSize:'10px', background:'#e1f5fe', color:'#0277bd', padding:'2px 8px', borderRadius:'10px', fontWeight:'bold', border:'1px solid #81d4fa'}}>
-                                                                                ❄️ SURGELATO
-                                                                            </span>
-                                                                        )}
-                                                                        {p.allergeni.filter(a => !a.includes("❄️")).slice(0, 3).map(a => (
-                                                                            <span key={a} style={{fontSize:'10px', background:'#ffebee', color:'#c62828', padding:'2px 8px', borderRadius:'10px', border:'1px solid #ffcdd2', fontWeight:'500'}}>
-                                                                                {a}
-                                                                            </span>
-                                                                        ))}
-                                                                        {p.allergeni.filter(a => !a.includes("❄️")).length > 3 && (
-                                                                            <span style={{fontSize:'9px', color:'#888', alignSelf:'center'}}>
-                                                                                +{p.allergeni.filter(a => !a.includes("❄️")).length - 3}
-                                                                            </span>
-                                                                        )}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
-
-                                                        <div style={{display:'flex', gap:'8px'}}>
-                                                            <button onClick={() => avviaModifica(p)} style={{background:'#fff3e0', color:'#e67e22', border:'none', width:35, height:35, borderRadius:'50%', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center'}}>✏️</button>
-                                                            <button onClick={() => duplicaPiatto(p)} style={{background:'#e3f2fd', color:'#2980b9', border:'none', width:35, height:35, borderRadius:'50%', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center'}}>❐</button>
-                                                            <button onClick={() => cancellaPiatto(p.id)} style={{background:'#ffebee', color:'#c0392b', border:'none', width:35, height:35, borderRadius:'50%', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center'}}>🗑️</button>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </Draggable>
-                                    ))}
-                                    {provided.placeholder}
-                                </div>
-                            )}
-                        </Droppable>
+                       <Droppable droppableId="menu-list">
+    {(provided) => (
+        <div ref={provided.innerRef} {...provided.droppableProps} style={{paddingBottom:'50px'}}>
+            
+            {menuFiltrato.map((prodotto, index) => (
+                <Draggable key={prodotto.id} draggableId={String(prodotto.id)} index={index}>
+                    {(provided, snapshot) => (
+                        <div
+                            ref={provided.innerRef}
+                            {...provided.draggableProps}
+                            {...provided.dragHandleProps}
+                            // IMPORTANTE: Togli eventuali transition CSS inline qui
+                            style={{
+                                ...provided.draggableProps.style, // Mantiene la posizione calcolata
+                                marginBottom: '8px',
+                                opacity: snapshot.isDragging ? 0.8 : 1, // Effetto trasparenza quando trascini
+                                transform: provided.draggableProps.style?.transform, // Forza il transform
+                            }}
+                        >
+                            {/* Usiamo il componente memoizzato */}
+                            <ProductRow 
+                                prodotto={prodotto} 
+                                index={index}
+                                avviaModifica={avviaModifica} // La tua funzione esistente
+                                eliminaProdotto={eliminaProdotto} // La tua funzione esistente
+                                // Non passiamo 'providedStyle' qui perché l'abbiamo applicato al div wrapper sopra
+                                // Questa è la tecnica più stabile: il wrapper esterno gestisce il movimento
+                            />
+                        </div>
+                    )}
+                </Draggable>
+            ))}
+            {provided.placeholder}
+        </div>
+    )}
+</Droppable>
                     </div>
                 ))}
             </DragDropContext>
