@@ -172,7 +172,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             </div>
             {isAbbonamentoAttivo && !isMasterBlock && (
                 <button onClick={toggleCucina} style={{background:'white', color: isCucinaAperta ? '#27ae60' : '#c0392b', border:'none', padding:'12px 25px', borderRadius:'30px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 5px 15px rgba(0,0,0,0.2)'}}>
-                    {isCucinaAperta ? "CHIUDI CUCINA" : "APRI CUCINA"}
+                    {isCucinaAperta ? "CHIUDI ORDINI CLIENTE" : "APRI ORDINI CLIENTE"}
                 </button>
             )}
         </div>
