@@ -52,15 +52,15 @@ app.post('/api/ordine', async (req, res) => {
     try {
         const { ristorante_id, tavolo, prodotti, totale, cliente, cameriere, utente_id } = req.body;
         
-        // 1. Otteniamo la data leggibile (tua funzione)
+        // 1. Data Leggibile
         const dataOrdineLeggibile = getNowItaly(); 
 
-        // 2. LOGICA DI STATO (La parte nuova)
-        // Se c'è "cameriere", va in 'in_attesa' (Produzione).
-        // Se è App, va in 'in_arrivo' (Cassa).
+        // 2. STATO INIZIALE
+        // Cameriere -> 'in_attesa' (subito in produzione)
+        // App -> 'in_arrivo' (da confermare in cassa)
         const statoIniziale = cameriere ? 'in_attesa' : 'in_arrivo';
 
-        // 3. Creazione del LOG (Il tuo codice originale, che è ottimo)
+        // 3. LOGICA LOG
         let logIniziale = `[${dataOrdineLeggibile}] 🆕 ORDINE DA: ${cameriere ? cameriere : 'Cliente (' + cliente + ')'}\n`;
         
         if (Array.isArray(prodotti)) {
@@ -75,21 +75,22 @@ app.post('/api/ordine', async (req, res) => {
         }
         logIniziale += `TOTALE PARZIALE: ${Number(totale).toFixed(2)}€\n----------------------------------\n`;
 
-        // 4. Inserimento nel DB (Con statoIniziale dinamico al posto di 'in_arrivo')
+        // 4. INSERIMENTO DB (CORRETTO: AGGIUNTO CLIENTE)
         await pool.query(
             `INSERT INTO ordini 
-            (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id, data_ora, data_ordine) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9)`,
+            (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id, cliente, data_ora, data_ordine) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), $10)`,
             [
                 ristorante_id, 
                 String(tavolo), 
                 JSON.stringify(prodotti), 
                 totale, 
-                statoIniziale,      // <--- QUI CAMBIA (Ora è dinamico)
-                logIniziale,        // dettagli
+                statoIniziale,      
+                logIniziale,        
                 cameriere || null, 
                 utente_id || null,
-                dataOrdineLeggibile
+                cliente || "Ospite", // <--- ECCOLO! Prima mancava questo
+                dataOrdineLeggibile 
             ]
         );
         res.json({ success: true });
