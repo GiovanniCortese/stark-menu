@@ -1,146 +1,105 @@
-/* client/src/index.css - VERSIONE CLEAN (NO ICONA GOOGLE) */
+/* client/src/index.css - VERSIONE NUCLEAR (NO BARRA, NO ICONE) */
 
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-
-  /* --- FORZATURA MODALITÀ CHIARA --- */
   color-scheme: light;
   color: #213547;
   background-color: #ffffff;
-
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* --- RESET BASE --- */
-* { 
-  box-sizing: border-box; 
-  margin: 0; 
-  padding: 0; 
-}
+/* RESET BASE */
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
-/* --- FIX DEL BODY PER GOOGLE TRANSLATE --- */
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
-  
-  /* QUESTO BLOCCO È FONDAMENTALE PER RIMUOVERE LO SPAZIO BIANCO IN ALTO */
-  top: 0px !important;
-  position: static !important;
-  margin-top: 0px !important;
-  transform: none !important;
-}
-
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
+h1 { font-size: 3.2em; line-height: 1.1; }
+a { font-weight: 500; color: #646cff; text-decoration: inherit; }
+a:hover { color: #535bf2; }
 button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #f9f9f9; 
-  cursor: pointer;
-  transition: border-color 0.25s;
+  border-radius: 8px; border: 1px solid transparent; padding: 0.6em 1.2em;
+  font-size: 1em; font-weight: 500; font-family: inherit; background-color: #f9f9f9; 
+  cursor: pointer; transition: border-color 0.25s;
 }
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+button:hover { border-color: #646cff; }
+button:focus, button:focus-visible { outline: 4px auto -webkit-focus-ring-color; }
+
+
+/* ================================================================= */
+/* GOOGLE TRANSLATE - BLOCCO TOTALE ELEMENTI UI                     */
+/* ================================================================= */
+
+/* 1. Blocca lo spostamento del body (LA CAUSA DELLA BARRA) */
+body {
+    top: 0px !important;
+    position: static !important;
+    margin-top: 0px !important;
+    min-height: 100vh;
+    display: flex;
+    place-items: center;
+    min-width: 320px;
+    transform: none !important; /* Impedisce spostamenti */
 }
 
-/* ========================================================== */
-/* GOOGLE TRANSLATE HIDDEN STYLE (VERSIONE TOTAL CLEAN)     */
-/* ========================================================== */
-
-/* 1. NASCONDE L'IFRAME SPECIFICO DELLA BARRA IN ALTO */
+/* 2. Nasconde il Frame della Barra in alto */
 iframe.goog-te-banner-frame {
     display: none !important;
     visibility: hidden !important;
     height: 0 !important;
+    width: 0 !important;
 }
 
-/* 2. NASCONDE IL DIV CHE CONTIENE IL BANNER */
+/* 3. Nasconde il contenitore della Barra */
 .goog-te-banner-frame.skiptranslate {
     display: none !important;
 }
 
-/* 3. NASCONDE IL WIDGET DI CONTROLLO PRINCIPALE */
-/* Usiamo position absolute + top negativo per mantenerlo nel DOM (così funziona) ma invisibile */
-#google_translate_element {
-    position: absolute !important;
-    top: -9999px !important;         
-    left: -9999px !important;        
-    width: 1px !important;
-    height: 1px !important;
-    overflow: hidden !important;
-    opacity: 0 !important;           
-    pointer-events: none !important; 
-}
-
-/* 4. PULIZIA TOOLTIP E POPUP */
-.goog-tooltip, #goog-gt-tt, .goog-te-balloon-frame {
-    display: none !important;
-    visibility: hidden !important;
-}
-
-/* 5. RIMUOVE EVIDENZIAZIONI BLU/GIALLE */
-.goog-text-highlight {
-    background-color: transparent !important;
-    border: none !important; 
-    box-shadow: none !important;
-    color: inherit !important;
-}
-font {
-    background-color: transparent !important;
-    box-shadow: none !important;
-}
-
-/* 6. --- NUOVO: NASCONDE L'ICONA G (QUELLA DELLO SCREENSHOT) --- */
+/* 4. Nasconde l'icona "G" e il caricamento (QUELLO DELLA FOTO) */
 .goog-te-gadget-icon {
     display: none !important;
     background: none !important;
-    width: 0 !important;
-    height: 0 !important;
 }
-
 img.goog-te-gadget-icon {
     display: none !important;
 }
 
-/* 7. PULIZIA TESTI "POWERED BY GOOGLE" */
+/* 5. Nasconde il testo "Powered by Google" */
 .goog-te-gadget-simple {
     background-color: transparent !important;
     border: none !important;
-}
-
-.goog-logo-link {
-    display: none !important;
+    font-size: 0 !important;
 }
 
 .goog-te-gadget {
     color: transparent !important;
     font-size: 0 !important;
+}
+
+/* 6. Widget di controllo: Invisibile ma presente per funzionare */
+#google_translate_element {
+    position: absolute !important;
+    top: -9999px !important;
+    left: -9999px !important;
+    width: 1px !important;
+    height: 1px !important;
+    overflow: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/* 7. Nasconde Tooltip e Popup fastidiosi */
+.goog-tooltip, #goog-gt-tt, .goog-te-balloon-frame {
+    display: none !important;
+    visibility: hidden !important;
+}
+
+/* 8. Rimuove evidenziazioni di testo */
+.goog-text-highlight {
+    background-color: transparent !important;
+    border: none !important; 
+    box-shadow: none !important;
+    color: inherit !important;
 }
