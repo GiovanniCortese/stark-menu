@@ -247,7 +247,7 @@ const footerBtnStyle = { background: 'transparent', border: `1px solid ${style.c
                             <div style={{ fontSize: '14px', fontWeight: 'bold', color: priceColor, marginTop: '2px' }}>{Number(prodotto.prezzo).toFixed(2)} €</div>
                           </div>
                           <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
-                            {hasVar && ( <button onClick={(e) => { e.stopPropagation(); apriModale(prodotto); }} style={{ background: 'transparent', border: '1px solid #ccc', color: '#555', borderRadius: '5px', padding: '5px 8px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}>✏️</button> )}
+                            {hasVar && ( <button onClick={(e) => { e.stopPropagation(); apriModale(prodotto); }} style={{ background: 'transparent', border: '1px solid #ccc', color: '#555', borderRadius: '5px', padding: '5px 8px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}>✏️ MODIFICA</button> )}
                             <button onClick={(e) => { e.stopPropagation(); aggiungiAlCarrello(prodotto); }} style={{ background: btnBg, color: btnText, borderRadius: '50%', width: '35px', height: '35px', border: 'none', fontSize: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>+</button>
                           </div>
                         </div>
