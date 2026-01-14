@@ -9,6 +9,7 @@ import Admin from './Admin';
 import SuperAdmin from './SuperAdmin'; 
 import Menu from './Menu'; // MENU SPOSTATO
 import './App.css';
+import Dashboard from './Dashboard'; // <--- Importa il nuovo file
 
 function App() {
   return (
@@ -26,6 +27,11 @@ function App() {
         <Route path="/cassa/:slug" element={<Cassa />} />
         
         {/* MENU CLIENTE */}
+        <Route path="/:slug" element={<Menu />} />
+        <Route path="/" element={<Menu />} />
+
+        {/* DASHBOARD CLIENTE */}    
+        <Route path="/dashboard" element={<Dashboard />} /> {/* <--- NUOVA ROTTA */}
         <Route path="/:slug" element={<Menu />} />
         <Route path="/" element={<Menu />} />
       </Routes>

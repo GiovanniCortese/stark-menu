@@ -215,6 +215,66 @@ app.get('/api/utenti', async (req, res) => {
         res.status(500).json({ error: e.message }); 
     }
 });
+// --- NUOVO: API STORICO & LIVE TRACKER CLIENTE ---
+app.get('/api/ordini/cliente/:utente_id', async (req, res) => {
+    try {
+        const { utente_id } = req.params;
+        const { tavolo } = req.query; // Opzionale: per vedere ordini condivisi
+
+        // 1. Recupera ordini personali
+        let query = "SELECT * FROM ordini WHERE utente_id = $1 ORDER BY data_ora DESC";
+        let params = [utente_id];
+
+        // 2. Se richiesto "Condividi Tavolo", recupera ordini attivi di quel tavolo (escluso se stesso per non duplicare)
+        let ordiniTavolo = [];
+        if (tavolo && tavolo !== 'undefined') {
+            const rTavolo = await pool.query(
+                "SELECT * FROM ordini WHERE tavolo = $1 AND utente_id != $2 AND stato != 'pagato'", 
+                [tavolo, utente_id]
+            );
+            ordiniTavolo = rTavolo.rows;
+        }
+
+        const rUser = await pool.query(query, params);
+        
+        // Parsing prodotti JSON
+        const ordiniPersonali = rUser.rows.map(o => ({...o, prodotti: typeof o.prodotti === 'string' ? JSON.parse(o.prodotti) : o.prodotti}));
+        const ordiniCondivisi = ordiniTavolo.map(o => ({...o, prodotti: typeof o.prodotti === 'string' ? JSON.parse(o.prodotti) : o.prodotti, is_condiviso: true}));
+
+        res.json({ 
+            personali: ordiniPersonali, 
+            condivisi: ordiniCondivisi 
+        });
+    } catch (e) { res.status(500).json({ error: "Errore storico" }); }
+});
+
+// --- NUOVO: CALCOLO LIVELLO CLIENTE (API UTENTE ARRICCHITA) ---
+app.get('/api/cliente/stats/:id', async (req, res) => {
+    try {
+        const r = await pool.query(`
+            SELECT u.*, COUNT(o.id) as num_ordini 
+            FROM utenti u 
+            LEFT JOIN ordini o ON u.id = o.utente_id 
+            WHERE u.id = $1 
+            GROUP BY u.id`, 
+            [req.params.id]
+        );
+        
+        if(r.rows.length === 0) return res.status(404).json({error: "Utente non trovato"});
+        
+        const user = r.rows[0];
+        const n = parseInt(user.num_ordini);
+        
+        // LOGICA LIVELLI (GAMIFICATION) 🏆
+        let livello = { nome: "Novizio 🌱", colore: "#95a5a6", affidabilita: "Nuovo" }; // Grigio
+        if (n >= 5) livello = { nome: "Buongustaio 🥉", colore: "#cd7f32", affidabilita: "Ok" }; // Bronzo
+        if (n >= 15) livello = { nome: "Cliente Top 🥈", colore: "#bdc3c7", affidabilita: "Affidabile" }; // Argento
+        if (n >= 30) livello = { nome: "VIP 🥇", colore: "#f1c40f", affidabilita: "Super Affidabile" }; // Oro
+        if (n >= 100) livello = { nome: "Legend 💎", colore: "#3498db", affidabilita: "Divinità" }; // Diamante
+
+        res.json({ ...user, livello });
+    } catch (e) { res.status(500).json({ error: "Err" }); }
+});
 app.put('/api/utenti/:id', async (req, res) => { try { const { nome, email, password, telefono, indirizzo, ruolo } = req.body; await pool.query(`UPDATE utenti SET nome=$1, email=$2, password=$3, telefono=$4, indirizzo=$5, ruolo=$6 WHERE id=$7`, [nome, email, password, telefono, indirizzo, ruolo, req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
 app.delete('/api/utenti/:id', async (req, res) => { try { await pool.query('DELETE FROM utenti WHERE id=$1', [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
 
@@ -316,8 +376,19 @@ app.get('/api/menu/:slug', async (req, res) => {
 // Polling
 app.get('/api/polling/:ristorante_id', async (req, res) => {
     try {
-        const r = await pool.query("SELECT * FROM ordini WHERE ristorante_id = $1 AND stato != 'pagato' ORDER BY data_ora ASC", [req.params.ristorante_id]);
-        const ordini = r.rows.map(o => { try { return { ...o, prodotti: JSON.parse(o.prodotti) }; } catch { return { ...o, prodotti: [] }; }});
+        // Query aggiornata: Recupera anche lo storico_ordini (conteggio ordini pagati) dell'utente
+        const sql = `
+            SELECT o.*, 
+            (SELECT COUNT(*) FROM ordini o2 WHERE o2.utente_id = o.utente_id AND o2.stato = 'pagato') as storico_ordini
+            FROM ordini o 
+            WHERE o.ristorante_id = $1 AND o.stato != 'pagato' 
+            ORDER BY o.data_ora ASC
+        `;
+        const r = await pool.query(sql, [req.params.ristorante_id]);
+        const ordini = r.rows.map(o => { 
+            try { return { ...o, prodotti: JSON.parse(o.prodotti) }; } 
+            catch { return { ...o, prodotti: [] }; }
+        });
         res.json({ nuovi_ordini: ordini });
     } catch (e) { res.status(500).json({ error: "Err" }); }
 });

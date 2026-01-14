@@ -82,7 +82,8 @@ function Cassa() {
                 totale: 0,
                 fullLog: "",
                 cameriere: ord.cameriere,
-             cliente: ord.cliente
+                cliente: ord.cliente,
+                storico_ordini: ord.storico_ordini || 0
             };
             raggruppati[t].ordini.push(ord);
             raggruppati[t].totale += Number(ord.totale || 0);
@@ -214,33 +215,63 @@ function Cassa() {
       </header>
 
       {/* --- VISTA TAVOLI ATTIVI --- */}
-      {tab === 'attivi' && (
+    {tab === 'attivi' && (
           <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(350px, 1fr))', gap:20}}>
     {Object.keys(tavoliAttivi).length === 0 && <p style={{gridColumn:'1/-1', textAlign:'center', fontSize:20, color:'#888'}}>Nessun tavolo attivo.</p>}
     
     {Object.keys(tavoliAttivi).map(tavolo => {
-        // --- INIZIO NUOVA LOGICA AGGIUNTA ---
         const info = tavoliAttivi[tavolo];
-        const nomeChi = info.cameriere 
-            ? `👤 ${info.cameriere}` 
-            : `📱 ${info.cliente || 'Cliente'}`;
-        // --- FINE NUOVA LOGICA ---
+        
+        // --- NUOVA LOGICA LIVELLI & ICONE ---
+        const isApp = !info.cameriere; // Se non c'è cameriere, è un ordine App
+        let badgeLivello = null;
+
+        if (isApp) {
+             const n = info.storico_ordini || 0;
+             // Definisco i livelli di affidabilità
+             let liv = { label: "🌱 NOVIZIO", color: "#7f8c8d", bg: "#f0f3f4" }; // 0-4 ordini (Grigio)
+             if (n >= 5) liv = { label: "🥉 BRONZE", color: "#d35400", bg: "#fce6c9" }; // 5+ (Arancione)
+             if (n >= 15) liv = { label: "🥈 SILVER", color: "#34495e", bg: "#eaeded" }; // 15+ (Argento/Blu scuro)
+             if (n >= 30) liv = { label: "🥇 GOLD", color: "#f39c12", bg: "#f9e79f" }; // 30+ (Oro)
+             if (n >= 100) liv = { label: "💎 LEGEND", color: "#8e44ad", bg: "#e8daef" }; // 100+ (Viola)
+             
+             badgeLivello = (
+                 <span style={{
+                     marginLeft:'8px', fontSize:'0.7rem', 
+                     background: liv.bg, color: liv.color, 
+                     padding:'2px 6px', borderRadius:'6px', 
+                     border: `1px solid ${liv.color}`, fontWeight:'bold',
+                     verticalAlign: 'middle', textTransform:'uppercase'
+                 }}>
+                    {liv.label}
+                 </span>
+             );
+        }
+
+        const icona = isApp ? "📱" : "👤";
+        const nomeChi = isApp ? (info.cliente || "Cliente App") : info.cameriere;
+        const etichettaRuolo = isApp ? "Cliente App" : "Staff";
+        // ------------------------------------
 
         return (
             <div key={tavolo} style={{background:'white', padding:20, borderRadius:10, boxShadow:'0 4px 10px rgba(0,0,0,0.1)'}}>
                 
-                {/* HEADER MODIFICATO CON NOME */}
+                {/* HEADER AGGIORNATO */}
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', borderBottom:'2px solid #ddd', paddingBottom:10, marginBottom:10}}>
                     <div>
-                        <h2 style={{margin:0, color:'#000'}}>Tavolo {tavolo}</h2>
-                        {/* Etichetta chi ha preso l'ordine */}
-                        <span style={{
-                            fontSize:'0.9rem', color:'#666', background:'#eee', 
-                            padding:'2px 8px', borderRadius:'4px', marginTop:'5px', 
-                            display:'inline-block', fontWeight:'bold'
-                        }}>
-                            {nomeChi}
-                        </span>
+                        <h2 style={{margin:0, color:'#000', fontSize:'1.6rem'}}>Tavolo {tavolo}</h2>
+                        
+                        <div style={{marginTop:'8px', display:'flex', alignItems:'center', background:'#f8f9fa', padding:'5px 10px', borderRadius:'6px'}}>
+                            <span style={{fontSize:'1.4rem', marginRight:'8px'}}>{icona}</span>
+                            <div style={{display:'flex', flexDirection:'column'}}>
+                                <span style={{fontSize:'0.7rem', color:'#888', fontWeight:'bold', textTransform:'uppercase', lineHeight:1}}>
+                                    {etichettaRuolo}
+                                </span>
+                                <span style={{fontSize:'1.05rem', fontWeight:'bold', color:'#2c3e50', lineHeight:1.2}}>
+                                    {nomeChi} {badgeLivello}
+                                </span>
+                            </div>
+                        </div>
                     </div>
                     <div style={{textAlign:'right'}}>
                         <h2 style={{margin:0, color:'#27ae60', marginBottom:'5px'}}>{info.totale.toFixed(2)}€</h2>
@@ -299,23 +330,22 @@ function Cassa() {
                                                             {p.nome}
                                                         </div>
 
-                                                        {/* --- AGGIUNTA: VISUALIZZAZIONE VARIANTI E INGREDIENTI IN CASSA --- */}
-{p.varianti_scelte && (
-    <div style={{marginTop:'2px', display:'flex', flexWrap:'wrap', gap:'4px'}}>
-        {p.varianti_scelte.rimozioni?.map((ing, i) => (
-            <span key={i} style={{background:'#fceaea', color:'#c0392b', fontSize:'10px', padding:'1px 5px', borderRadius:'3px', border:'1px solid #fadbd8'}}>
-                NO {ing}
-            </span>
-        ))}
-        {p.varianti_scelte.aggiunte?.map((ing, i) => (
-            <span key={i} style={{background:'#e8f5e9', color:'#27ae60', fontSize:'10px', padding:'1px 5px', borderRadius:'3px', border:'1px solid #c8e6c9'}}>
-                + {ing.nome}
-            </span>
-        ))}
-    </div>
-)}
+                                                        {/* VISUALIZZAZIONE VARIANTI */}
+                                                        {p.varianti_scelte && (
+                                                            <div style={{marginTop:'2px', display:'flex', flexWrap:'wrap', gap:'4px'}}>
+                                                                {p.varianti_scelte.rimozioni?.map((ing, i) => (
+                                                                    <span key={i} style={{background:'#fceaea', color:'#c0392b', fontSize:'10px', padding:'1px 5px', borderRadius:'3px', border:'1px solid #fadbd8'}}>
+                                                                        NO {ing}
+                                                                    </span>
+                                                                ))}
+                                                                {p.varianti_scelte.aggiunte?.map((ing, i) => (
+                                                                    <span key={i} style={{background:'#e8f5e9', color:'#27ae60', fontSize:'10px', padding:'1px 5px', borderRadius:'3px', border:'1px solid #c8e6c9'}}>
+                                                                        + {ing.nome}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        )}
                                                         
-                                                        {/* SOTTOTITOLO REPARTO E PREZZO */}
                                                         <div style={{fontSize:'0.75rem', color:'#666', fontStyle:'italic', marginTop:'2px'}}>
                                                             {p.is_bar ? '🍹 Bar' : (p.is_pizzeria ? '🍕 Pizzeria' : '👨‍🍳 Cucina')} 
                                                             <span style={{marginLeft:'5px', fontWeight:'bold', color:'#333'}}>
