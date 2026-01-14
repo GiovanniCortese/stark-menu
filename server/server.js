@@ -54,12 +54,12 @@ app.post('/api/ordine', async (req, res) => {
         
         const dataOrdineLeggibile = getNowItaly(); 
 
-        // STATO: Cameriere -> 'in_attesa', App -> 'in_arrivo'
+        // STATO: Se c'è cameriere va in 'in_attesa' (Verde), se è App va in 'in_arrivo' (Arancione)
         const statoIniziale = cameriere ? 'in_attesa' : 'in_arrivo';
 
-        // LOG: Qui scriviamo il nome (anche se ospite) così rimane traccia nel testo
-        const nomeLog = cliente || "Ospite";
-        let logIniziale = `[${dataOrdineLeggibile}] 🆕 ORDINE DA: ${cameriere ? cameriere : nomeLog}\n`;
+        // LOGICA NOME
+        const nomeClienteDisplay = cliente || "Ospite";
+        let logIniziale = `[${dataOrdineLeggibile}] 🆕 ORDINE DA: ${cameriere ? cameriere : nomeClienteDisplay}\n`;
         
         if (Array.isArray(prodotti)) {
             prodotti.forEach(p => {
@@ -73,26 +73,27 @@ app.post('/api/ordine', async (req, res) => {
         }
         logIniziale += `TOTALE PARZIALE: ${Number(totale).toFixed(2)}€\n----------------------------------\n`;
 
-        // INSERT: Usiamo 'utente_id' ($8). RIMOSSO 'cliente' e 'data_ordine' che non esistono.
+        // INSERT: Corretto ordine parametri e rimosso hardcode 'in_attesa'
         await pool.query(
             `INSERT INTO ordini 
-            (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id, data_ora) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+            (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id, cliente, data_ora) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
             [
                 ristorante_id,              // $1
                 String(tavolo),             // $2
                 JSON.stringify(prodotti),   // $3
                 totale,                     // $4
-                statoIniziale,              // $5
+                statoIniziale,              // $5 <--- QUI ORA PRENDE LA VARIABILE (in_arrivo/in_attesa)
                 logIniziale,                // $6
                 cameriere || null,          // $7
-                utente_id || null           // $8 (Questo collega la persona!)
+                utente_id || null,          // $8
+                nomeClienteDisplay          // $9
             ]
         );
         res.json({ success: true });
     } catch (e) { 
         console.error("Errore inserimento ordine:", e); 
-        res.status(500).json({ error: "Errore DB: " + e.message }); 
+        res.status(500).json({ error: "Errore inserimento ordine: " + e.message }); 
     }
 });
 
@@ -383,11 +384,9 @@ app.get('/api/menu/:slug', async (req, res) => {
 // Polling
 app.get('/api/polling/:ristorante_id', async (req, res) => {
     try {
-        // Query aggiornata: NON usa più o.cliente che non esiste.
-        // Prende u.nome (dalla tabella utenti) tramite utente_id.
         const sql = `
             SELECT o.*, 
-            u.nome as nome_utente_registrato,
+            COALESCE(u.nome, o.cliente) as nome_vero_cliente, 
             (SELECT COUNT(*) FROM ordini o2 WHERE o2.utente_id = o.utente_id AND o2.stato = 'pagato') as storico_ordini
             FROM ordini o 
             LEFT JOIN utenti u ON o.utente_id = u.id 
@@ -401,8 +400,9 @@ app.get('/api/polling/:ristorante_id', async (req, res) => {
             try { 
                 return { 
                     ...o, 
-                    // Se c'è un nome utente registrato usalo, altrimenti scrivi "Ospite"
-                    cliente: o.nome_utente_registrato || "Ospite", 
+                    // Assicuriamoci che storico_ordini sia un numero intero
+                    storico_ordini: parseInt(o.storico_ordini || 0),
+                    cliente: o.nome_vero_cliente || "Ospite", 
                     prodotti: typeof o.prodotti === 'string' ? JSON.parse(o.prodotti) : o.prodotti 
                 }; 
             } 
