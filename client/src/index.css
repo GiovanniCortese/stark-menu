@@ -1,10 +1,15 @@
+/* client/src/index.css - VERSIONE NO-BANNER */
+
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
+
+  /* --- FORZATURA MODALITÀ CHIARA --- */
   color-scheme: light;
   color: #213547;
   background-color: #ffffff;
+
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -12,41 +17,113 @@
 }
 
 /* --- RESET BASE --- */
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { margin: 0; min-width: 320px; min-height: 100vh; top: 0px !important; position: static !important; }
+* { 
+  box-sizing: border-box; 
+  margin: 0; 
+  padding: 0; 
+}
 
-h1 { font-size: 3.2em; line-height: 1.1; }
-a { font-weight: 500; color: #646cff; text-decoration: inherit; }
-a:hover { color: #535bf2; }
-button { border-radius: 8px; border: 1px solid transparent; padding: 0.6em 1.2em; font-size: 1em; font-weight: 500; font-family: inherit; background-color: #f9f9f9; cursor: pointer; transition: border-color 0.25s; }
-button:hover { border-color: #646cff; }
-button:focus, button:focus-visible { outline: 4px auto -webkit-focus-ring-color; }
+/* --- FIX DEL BODY PER GOOGLE TRANSLATE --- */
+body {
+  margin: 0;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
+  min-height: 100vh;
+  
+  /* QUESTO BLOCCO È FONDAMENTALE PER RIMUOVERE LO SPAZIO BIANCO IN ALTO */
+  top: 0px !important;
+  position: static !important;
+  margin-top: 0px !important;
+  transform: none !important;
+}
+
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
+}
+
+a {
+  font-weight: 500;
+  color: #646cff;
+  text-decoration: inherit;
+}
+a:hover {
+  color: #535bf2;
+}
+
+button {
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: #f9f9f9; 
+  cursor: pointer;
+  transition: border-color 0.25s;
+}
+button:hover {
+  border-color: #646cff;
+}
+button:focus,
+button:focus-visible {
+  outline: 4px auto -webkit-focus-ring-color;
+}
 
 /* ========================================================== */
-/* GOOGLE TRANSLATE HIDDEN STYLE (CORRETTO E TESTATO)       */
+/* GOOGLE TRANSLATE HIDDEN STYLE (VERSIONE TOTAL CLEAN)     */
 /* ========================================================== */
 
-/* 1. Nasconde la barra superiore */
-.goog-te-banner-frame.skiptranslate, .goog-te-banner-frame {
+/* 1. NASCONDE L'IFRAME SPECIFICO DELLA BARRA IN ALTO */
+iframe.goog-te-banner-frame {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+}
+
+/* 2. NASCONDE IL DIV CHE CONTIENE IL BANNER */
+.goog-te-banner-frame.skiptranslate {
     display: none !important;
 }
 
-/* 2. Nasconde il widget MA lo lascia attivo per i comandi JS */
+/* 3. NASCONDE IL WIDGET DI CONTROLLO (MA LO LASCIA ATTIVO PER LO SCRIPT) */
 #google_translate_element {
-    display: block !important;    /* DEVE ESSERE BLOCK */
+    display: block !important;       
     position: absolute !important;
-    top: -9999px !important;      /* Spostato lontano */
-    left: -9999px !important;
+    top: -9999px !important;         
+    left: -9999px !important;        
     width: 1px !important;
     height: 1px !important;
-    opacity: 0 !important;        /* Trasparente */
+    opacity: 0 !important;           
+    pointer-events: none !important; 
     overflow: hidden !important;
-    /* RIMOSSO pointer-events: none per permettere l'interazione via script */
 }
 
-/* 3. Pulisce tooltip e popups */
-.goog-tooltip, .goog-tooltip:hover { display: none !important; }
-.goog-text-highlight { background-color: transparent !important; border: none !important; box-shadow: none !important; color: inherit !important; }
-.goog-logo-link { display: none !important; }
-.goog-te-gadget { color: transparent !important; }
-#goog-gt-tt { display: none !important; visibility: hidden !important; }
+/* 4. PULIZIA TOOLTIP E POPUP */
+.goog-tooltip {
+    display: none !important;
+}
+.goog-tooltip:hover {
+    display: none !important;
+}
+#goog-gt-tt {
+    display: none !important;
+    visibility: hidden !important;
+}
+
+/* 5. RIMUOVE EVIDENZIAZIONI BLU/GIALLE */
+.goog-text-highlight {
+    background-color: transparent !important;
+    border: none !important; 
+    box-shadow: none !important;
+    color: inherit !important;
+}
+
+/* 6. NASCONDE IL LOGO GOOGLE */
+.goog-logo-link {
+    display: none !important;
+}
+.goog-te-gadget {
+    color: transparent !important;
+}
