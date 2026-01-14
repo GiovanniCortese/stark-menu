@@ -23,15 +23,13 @@ function App() {
         {/* REPARTI OPERATIVI */}
         <Route path="/cucina/:slug" element={<Cucina />} />
         <Route path="/bar/:slug" element={<Bar />} />
-        <Route path="/pizzeria/:slug" element={<Pizzeria />} /> {/* NUOVA ROTTA */}
+        <Route path="/pizzeria/:slug" element={<Pizzeria />} />
         <Route path="/cassa/:slug" element={<Cassa />} />
-        
-        {/* MENU CLIENTE */}
-        <Route path="/:slug" element={<Menu />} />
-        <Route path="/" element={<Menu />} />
 
-        {/* DASHBOARD CLIENTE */}    
-        <Route path="/dashboard" element={<Dashboard />} /> {/* <--- NUOVA ROTTA */}
+        {/* DASHBOARD CLIENTE (Mettila PRIMA delle rotte generiche) */}    
+        <Route path="/dashboard" element={<Dashboard />} />
+        
+        {/* MENU CLIENTE (Queste "catturano" tutto il resto, lasciale per ultime) */}
         <Route path="/:slug" element={<Menu />} />
         <Route path="/" element={<Menu />} />
       </Routes>

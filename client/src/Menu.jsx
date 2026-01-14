@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { dictionary, getContent } from './translations'; 
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 function Menu() {
   const [menu, setMenu] = useState([]);
@@ -9,6 +10,7 @@ function Menu() {
   const [ristoranteId, setRistoranteId] = useState(null);
   const [style, setStyle] = useState({});
   const [tavoloStaff, setTavoloStaff] = useState("");
+  const navigate = useNavigate(); // <--- AGGIUNGI QUESTO
   
   // --- LINGUA & GOOGLE TRANSLATE ---
   // Default: Italiano. Opzioni: it, en.
@@ -211,9 +213,29 @@ function Menu() {
       <div style={{ width: '100%', minHeight: '260px', backgroundImage: style.cover ? `url(${style.cover})` : 'none', backgroundColor: '#333', backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', padding: '30px 20px', overflow: 'hidden' }}>
           <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0.1))', zIndex: 1 }}></div>
           <div className="notranslate" style={{position:'absolute', top:'20px', right:'20px', zIndex: 100}}>
-              {user ? ( <div onClick={logout} style={{ background: 'rgba(255,255,255,0.9)', padding:'6px 12px', borderRadius:'20px', cursor:'pointer', display:'flex', alignItems:'center', gap:5, boxShadow:'0 2px 5px rgba(0,0,0,0.3)', fontSize:'12px', fontWeight:'bold', color:'#333' }}>👤 {user.nome.split(' ')[0]}</div>
-              ) : ( <button onClick={() => setShowAuthModal(true)} style={{ background: priceColor, color:'white', border:'none', padding:'8px 15px', borderRadius:'20px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.3)', fontSize:'12px' }}>Accedi</button> )}
-          </div>
+    {user ? ( 
+        // --- MODIFICA QUI: Invece di logout, andiamo alla dashboard ---
+        <div onClick={() => navigate('/dashboard')} style={{ 
+            background: 'rgba(255,255,255,0.9)', 
+            padding:'6px 12px', 
+            borderRadius:'20px', 
+            cursor:'pointer', 
+            display:'flex', 
+            alignItems:'center', 
+            gap:5, 
+            boxShadow:'0 2px 5px rgba(0,0,0,0.3)', 
+            fontSize:'12px', 
+            fontWeight:'bold', 
+            color:'#333' 
+        }}>
+            👤 {user.nome.split(' ')[0]} (Area Personale)
+        </div>
+    ) : ( 
+        <button onClick={() => setShowAuthModal(true)} style={{ background: priceColor, color:'white', border:'none', padding:'8px 15px', borderRadius:'20px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.3)', fontSize:'12px' }}>
+            Accedi
+        </button> 
+    )}
+</div>
           <div style={{position:'relative', zIndex: 2, display:'flex', flexDirection:'column', alignItems:'center', gap:'15px', width:'100%'}}>
               {style.logo ? ( <div style={{ width: '110px', height: '110px', background: 'white', padding: '5px', borderRadius: '50%', boxShadow: '0 5px 20px rgba(0,0,0,0.5)', display: 'flex', alignItems:'center', justifyContent:'center', overflow: 'hidden' }}><img src={style.logo} style={{ width:'100%', height:'100%', objectFit:'contain' }} /></div> ) : ( <div style={{fontSize:'40px', background:'white', padding:10, borderRadius:'50%'}}>🍽️</div> )}
               {!style.logo && ( <h1 style={{ margin: 0, color: '#fff', fontSize:'26px', fontWeight:'800', textShadow: '0 2px 4px rgba(0,0,0,0.8)', textAlign: 'center', lineHeight: '1.2' }}>{ristorante}</h1> )}
