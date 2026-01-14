@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - VERSIONE V70 LIVE TRANSLATE INTEGRATO
+// client/src/Menu.jsx - VERSIONE V80 (GOOGLE INVISIBILE)
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { dictionary, getContent } from './translations'; 
@@ -12,20 +12,23 @@ function Menu() {
   
   // --- LINGUA & GOOGLE TRANSLATE ---
   const [lang, setLang] = useState('it'); 
-  const t = dictionary[lang]; // I tuoi testi statici
+  const t = dictionary[lang]; // Testi statici dal tuo file translations.js
 
-  // Inizializza Google Translate Script
+  // Inizializzazione Script Google (Modalità Invisibile)
   useEffect(() => {
-    // Funzione globale di init chiamata dallo script
+    // Definizione globale init
     window.googleTranslateElementInit = () => {
-      new window.google.translate.TranslateElement({
-        pageLanguage: 'it',
-        includedLanguages: 'it,en,de,fr,es', // Lingue supportate
-        autoDisplay: false
-      }, 'google_translate_element');
+      if (window.google && window.google.translate) {
+          new window.google.translate.TranslateElement({
+            pageLanguage: 'it',
+            includedLanguages: 'it,en,de,fr,es',
+            autoDisplay: false, // IMPORTANTE: Evita il banner automatico
+            layout: window.google.translate.TranslateElement.InlineLayout.SIMPLE
+          }, 'google_translate_element');
+      }
     };
 
-    // Inietta lo script se non esiste
+    // Iniezione Script se non esiste
     if (!document.getElementById('google-translate-script')) {
       const script = document.createElement('script');
       script.id = 'google-translate-script';
@@ -34,11 +37,11 @@ function Menu() {
     }
   }, []);
 
-  // Funzione che cambia la lingua "Live"
+  // Cambio Lingua "Live"
   const cambiaLingua = (selectedLang) => {
-      setLang(selectedLang); // Aggiorna i testi statici (file translations.js)
+      setLang(selectedLang); // Aggiorna i testi statici
 
-      // Comanda il Widget Google nascosto
+      // Hack per pilotare la select nascosta di Google
       const googleCombo = document.querySelector('.goog-te-combo');
       if (googleCombo) {
           googleCombo.value = selectedLang;
@@ -66,7 +69,6 @@ function Menu() {
   const numeroTavolo = searchParams.get('tavolo') || 'Banco';
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
-  // AUTH STATE
   const [user, setUser] = useState(null);
   const isStaffQui = user && (user.ruolo === 'cameriere' || user.ruolo === 'admin' || user.ruolo === 'editor') && parseInt(user.ristorante_id) === parseInt(ristoranteId);
   const isStaff = isStaffQui;
@@ -177,7 +179,6 @@ function Menu() {
       } catch(e) { alert("Errore connessione server."); }
   };
 
-  // STYLES
   const bg = style.bg || '#222'; const text = style.text || '#fff'; const titleColor = style.title || '#fff';
   const priceColor = style.price || '#27ae60'; const font = style.font || 'sans-serif';
   const cardBg = style.card_bg || 'white'; const cardBorder = style.card_border || '#eee';
@@ -195,10 +196,11 @@ function Menu() {
 
   return (
     <div style={{minHeight:'100vh', background: bg, color: text, fontFamily: font, paddingBottom:80}}>
-        <style>{`:root { color-scheme: light; } * { box-sizing: border-box; margin: 0; padding: 0; } body, html { background-color: ${bg} !important; color: ${text} !important; overflow-x: hidden; width: 100%; }`}</style>
+        {/* CSS INLINE DI SICUREZZA + QUELLO GLOBALE */}
+        <style>{`:root { color-scheme: light; } * { box-sizing: border-box; margin: 0; padding: 0; } body, html { background-color: ${bg} !important; color: ${text} !important; overflow-x: hidden; width: 100%; top: 0 !important; }`}</style>
       
       {/* WIDGET GOOGLE NASCOSTO */}
-      <div id="google_translate_element" style={{display:'none'}}></div>
+      <div id="google_translate_element" style={{display:'none', visibility:'hidden', position:'absolute', top:-9999}}></div>
 
       {!showCheckout && (
       <div style={{ width: '100%', minHeight: '260px', backgroundImage: style.cover ? `url(${style.cover})` : 'none', backgroundColor: '#333', backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', padding: '30px 20px', overflow: 'hidden' }}>

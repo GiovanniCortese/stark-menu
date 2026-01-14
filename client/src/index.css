@@ -58,27 +58,70 @@ button:focus-visible {
 /* Rimosso blocco @media (prefers-color-scheme: light) perché ora è tutto light di default */
 
 
-/* --- GOOGLE TRANSLATE HIDDEN STYLE --- */
-/* Nasconde il banner top di Google */
+:root {
+  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: light;
+  color: #213547;
+  background-color: #ffffff;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* --- RESET BASE --- */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+
+/* --- GOOGLE TRANSLATE HIDDEN STYLE (FIX DEFINITIVO) --- */
+
+/* 1. Nasconde la barra superiore (Desktop e Mobile) */
 .goog-te-banner-frame.skiptranslate {
     display: none !important;
-} 
-body {
-    top: 0px !important; 
 }
-/* Nasconde il widget originale */
+.goog-te-banner-frame {
+    display: none !important;
+}
+
+/* 2. Ripristina la posizione del sito (altrimenti Google lo spinge giù) */
+body {
+    top: 0px !important;
+    position: static !important;
+}
+
+/* 3. Nasconde il widget originale se dovesse apparire */
 #google_translate_element {
     display: none !important;
 }
-/* Nasconde i tooltip al passaggio del mouse */
+
+/* 4. Nasconde i Tooltip (i popup fastidiosi sui testi tradotti) */
 .goog-tooltip {
     display: none !important;
 }
 .goog-tooltip:hover {
     display: none !important;
 }
+
+/* 5. Rimuove l'evidenziazione blu/gialla dai testi tradotti */
 .goog-text-highlight {
     background-color: transparent !important;
     border: none !important; 
     box-shadow: none !important;
+    color: inherit !important;
+}
+
+/* 6. Nasconde logo Google nei menu a tendina se presenti */
+.goog-logo-link {
+    display: none !important;
+}
+.goog-te-gadget {
+    color: transparent !important;
+}
+
+/* 7. Blocca interazioni indesiderate */
+#goog-gt-tt {
+    display: none !important;
+    visibility: hidden !important;
 }
