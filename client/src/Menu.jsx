@@ -200,8 +200,7 @@ function Menu() {
         <style>{`:root { color-scheme: light; } * { box-sizing: border-box; margin: 0; padding: 0; } body, html { background-color: ${bg} !important; color: ${text} !important; overflow-x: hidden; width: 100%; top: 0 !important; }`}</style>
       
       {/* WIDGET GOOGLE NASCOSTO */}
-<div id="google_translate_element" style={{position:'absolute', top:'-9999px', left:'-9999px', width:'1px', height:'1px', overflow:'hidden'}}></div>
-
+<div id="google_translate_element"></div>
       {!showCheckout && (
       <div style={{ width: '100%', minHeight: '260px', backgroundImage: style.cover ? `url(${style.cover})` : 'none', backgroundColor: '#333', backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', padding: '30px 20px', overflow: 'hidden' }}>
           <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0.1))', zIndex: 1 }}></div>

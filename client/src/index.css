@@ -93,15 +93,15 @@ body {
 
 /* 3. Nasconde il widget originale se dovesse apparire */
 #google_translate_element {
-    /* NON usare display: none, altrimenti la select non viene creata! */
+    display: block !important;  /* DEVE essere block per funzionare! */
     position: absolute !important;
-    top: -9999px !important;
-    left: -9999px !important;
+    top: -9999px !important;    /* Lo spediamo fuori dallo schermo in alto */
+    left: -9999px !important;   /* Lo spediamo fuori a sinistra */
     width: 1px !important;
     height: 1px !important;
+    opacity: 0 !important;      /* Lo rendiamo trasparente */
+    pointer-events: none !important; /* Non cliccabile per errore */
     overflow: hidden !important;
-    opacity: 0 !important;
-    pointer-events: none !important;
 }
 
 /* 4. Nasconde i Tooltip (i popup fastidiosi sui testi tradotti) */
