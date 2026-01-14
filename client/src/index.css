@@ -56,3 +56,29 @@ button:focus-visible {
 }
 
 /* Rimosso blocco @media (prefers-color-scheme: light) perché ora è tutto light di default */
+
+
+/* --- GOOGLE TRANSLATE HIDDEN STYLE --- */
+/* Nasconde il banner top di Google */
+.goog-te-banner-frame.skiptranslate {
+    display: none !important;
+} 
+body {
+    top: 0px !important; 
+}
+/* Nasconde il widget originale */
+#google_translate_element {
+    display: none !important;
+}
+/* Nasconde i tooltip al passaggio del mouse */
+.goog-tooltip {
+    display: none !important;
+}
+.goog-tooltip:hover {
+    display: none !important;
+}
+.goog-text-highlight {
+    background-color: transparent !important;
+    border: none !important; 
+    box-shadow: none !important;
+}
