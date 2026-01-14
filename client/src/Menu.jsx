@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - VERSIONE AUTOMATICA SENZA UI GOOGLE
+// client/src/Menu.jsx - VERSIONE FIX LINGUA (NO BARRA, NO TEDESCO)
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { dictionary, getContent } from './translations'; 
@@ -10,42 +10,25 @@ function Menu() {
   const [style, setStyle] = useState({});
   const [tavoloStaff, setTavoloStaff] = useState("");
   
-  // --- LINGUA & GOOGLE GHOST MODE ---
+  // --- LINGUA & GOOGLE TRANSLATE ---
+  // Default: Italiano. Opzioni: it, en.
   const [lang, setLang] = useState('it'); 
   const t = dictionary[lang] || dictionary['it']; 
 
-  // Funzione per rimuovere la "spazzatura" visiva di Google
-  const pulisciGoogle = () => {
-      // Rimuove la barra in alto (iframe)
-      const frames = document.querySelectorAll('.goog-te-banner-frame');
-      frames.forEach(frame => frame.remove());
-
-      // Rimuove l'icona G se presente come immagine
-      const icons = document.querySelectorAll('.goog-te-gadget-icon');
-      icons.forEach(icon => icon.remove());
-
-      // Resetta lo stile del body se Google lo ha spostato
-      if (document.body.style.top !== "0px") {
-          document.body.style.top = "0px";
-          document.body.style.position = "static";
-      }
-  };
-
   useEffect(() => {
-    // 1. Init Google Translate
+    // Funzione di Init esposta globalmente
     window.googleTranslateElementInit = () => {
       if (window.google && window.google.translate) {
           new window.google.translate.TranslateElement({
             pageLanguage: 'it',
-            includedLanguages: 'it,en', // Aggiungi altre lingue se servono es: 'it,en,de,fr'
+            includedLanguages: 'it,en', // SOLO IT e EN
             autoDisplay: false,
-            // USIAMO "SIMPLE" INVECE DI "HORIZONTAL" PERCHÉ È PIÙ FACILE DA NASCONDERE
-            layout: window.google.translate.TranslateElement.InlineLayout.SIMPLE 
+            layout: window.google.translate.TranslateElement.InlineLayout.HORIZONTAL
           }, 'google_translate_element');
       }
     };
 
-    // 2. Carica script
+    // Caricamento script Google se non presente
     if (!document.getElementById('google-translate-script')) {
       const script = document.createElement('script');
       script.id = 'google-translate-script';
@@ -53,24 +36,20 @@ function Menu() {
       script.async = true;
       document.body.appendChild(script);
     }
-
-    // 3. Avvia il "DOM Cleaner" che controlla ogni secondo se Google ha sporcato la pagina
-    const cleanerInterval = setInterval(pulisciGoogle, 1000);
-    return () => clearInterval(cleanerInterval);
   }, []);
 
   const cambiaLingua = (selectedLang) => {
       setLang(selectedLang); 
       
-      // Pilota il menu nascosto di Google
+      // Pilotiamo il widget nascosto di Google
       const changeGoogle = () => {
           const googleCombo = document.querySelector('.goog-te-combo');
           if (googleCombo) {
               googleCombo.value = selectedLang;
               googleCombo.dispatchEvent(new Event('change'));
-              setTimeout(pulisciGoogle, 500); // Pulisci subito dopo il cambio
           } else {
-              setTimeout(changeGoogle, 500); // Riprova se non è pronto
+              // Riprova se il widget non è ancora pronto
+              setTimeout(changeGoogle, 500); 
           }
       };
       changeGoogle();
@@ -223,6 +202,8 @@ function Menu() {
 
   return (
     <div style={{minHeight:'100vh', background: bg, color: text, fontFamily: font, paddingBottom:80}}>
+      <style>{`:root { color-scheme: light; } * { box-sizing: border-box; margin: 0; padding: 0; } body, html { background-color: ${bg} !important; color: ${text} !important; overflow-x: hidden; width: 100%; top: 0 !important; }`}</style>
+      
       {/* WIDGET GOOGLE INVISIBILE */}
       <div id="google_translate_element"></div>
 
@@ -242,6 +223,7 @@ function Menu() {
               <div className="notranslate" style={{display:'flex', gap:'10px', justifyContent:'center', marginTop:'10px'}}>
                 <button onClick={()=>cambiaLingua('it')} style={{opacity: lang==='it'?1:0.5, border:'none', background:'none', fontSize:'24px', cursor:'pointer', padding:0}}>🇮🇹</button>
                 <button onClick={()=>cambiaLingua('en')} style={{opacity: lang==='en'?1:0.5, border:'none', background:'none', fontSize:'24px', cursor:'pointer', padding:0}}>🇬🇧</button>
+                {/* RIMOSSO TEDESCO */}
             </div>
           </div>
       </div>

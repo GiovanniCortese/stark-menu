@@ -1,4 +1,4 @@
-/* client/src/index.css - VERSIONE INVISIBILE DEFINITIVA */
+/* client/src/index.css */
 
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
@@ -19,82 +19,72 @@
 h1 { font-size: 3.2em; line-height: 1.1; }
 a { font-weight: 500; color: #646cff; text-decoration: inherit; }
 a:hover { color: #535bf2; }
+
 button {
-  border-radius: 8px; border: 1px solid transparent; padding: 0.6em 1.2em;
-  font-size: 1em; font-weight: 500; font-family: inherit; background-color: #f9f9f9; 
-  cursor: pointer; transition: border-color 0.25s;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: #f9f9f9; 
+  cursor: pointer;
+  transition: border-color 0.25s;
 }
 button:hover { border-color: #646cff; }
 button:focus, button:focus-visible { outline: 4px auto -webkit-focus-ring-color; }
 
+/* ========================================================== */
+/* GOOGLE TRANSLATE HIDDEN STYLE (FIX BARRA DEFINITIVO)      */
+/* ========================================================== */
 
-/* ================================================================= */
-/* 🕵️‍♂️ GOOGLE TRANSLATE - MODALITÀ FANTASMA                         */
-/* ================================================================= */
-
-/* 1. Blocca lo spostamento del body (Fondamentale) */
+/* 1. Blocca lo spostamento del body */
 body {
     top: 0px !important;
     position: static !important;
     margin-top: 0px !important;
+    transform: none !important;
     min-height: 100vh;
     display: flex;
     place-items: center;
     min-width: 320px;
-    transform: none !important;
-    transition: none !important;
 }
 
-/* 2. Nasconde TUTTI i frame di Google */
-iframe.goog-te-banner-frame { display: none !important; width: 0 !important; height: 0 !important; visibility: hidden !important; }
-.goog-te-banner-frame { display: none !important; }
-.goog-te-balloon-frame { display: none !important; }
-
-/* 3. Nasconde il Widget "Simple" e l'icona "G" */
-#google_translate_element {
-    position: absolute !important;
-    top: -9999px !important;
-    left: -9999px !important;
-    width: 0 !important;
-    height: 0 !important;
-    opacity: 0 !important;
-    overflow: hidden !important;
-    pointer-events: none !important;
-}
-
-.goog-te-gadget {
-    font-size: 0 !important;
-    color: transparent !important;
-}
-
-.goog-te-gadget-simple {
-    background-color: transparent !important;
-    border: none !important;
-    padding: 0 !important;
-    font-size: 0 !important;
-}
-
-/* Questa è l'icona che vedevi in alto a sinistra */
-.goog-te-gadget-icon {
+/* 2. Nasconde il banner frame che appare in alto */
+.goog-te-banner-frame.skiptranslate {
     display: none !important;
-    background: none !important;
-    width: 0 !important;
+}
+
+iframe.goog-te-banner-frame {
+    display: none !important;
+    visibility: hidden !important;
     height: 0 !important;
+}
+
+/* 3. Nasconde il body wrapper di Google (spesso causa della barra blu) */
+body > .skiptranslate {
+    display: none !important;
+}
+
+/* 4. Nasconde il widget di controllo originale */
+#google_translate_element {
+    display: none !important;       
+}
+
+/* 5. Nasconde tooltip e popup fastidiosi */
+.goog-tooltip, #goog-gt-tt, .goog-te-balloon-frame {
+    display: none !important;
     visibility: hidden !important;
 }
 
-/* 4. Nasconde Tooltip e Popup al passaggio del mouse */
-.goog-tooltip { display: none !important; }
-.goog-tooltip:hover { display: none !important; }
-#goog-gt-tt { display: none !important; visibility: hidden !important; }
-
-/* 5. Rimuove evidenziazioni di testo colorate */
+/* 6. Rimuove evidenziazioni e loghi */
 .goog-text-highlight {
     background-color: transparent !important;
     border: none !important; 
     box-shadow: none !important;
     color: inherit !important;
 }
+
 font {
     background-color: transparent !important;
     box-shadow: none !important;
