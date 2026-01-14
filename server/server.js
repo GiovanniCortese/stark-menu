@@ -52,18 +52,14 @@ app.post('/api/ordine', async (req, res) => {
     try {
         const { ristorante_id, tavolo, prodotti, totale, cliente, cameriere, utente_id } = req.body;
         
-        // 1. Data Leggibile per il LOG (Non per il database, che usa NOW())
         const dataOrdineLeggibile = getNowItaly(); 
 
-        // 2. STATO INIZIALE
-        // Cameriere -> 'in_attesa' (subito in produzione)
-        // App -> 'in_arrivo' (da confermare in cassa)
+        // STATO: Cameriere -> 'in_attesa', App -> 'in_arrivo'
         const statoIniziale = cameriere ? 'in_attesa' : 'in_arrivo';
 
-        // 3. LOGICA LOG
-        // Se cliente è null, usiamo "Ospite"
-        const nomeClienteDisplay = cliente || "Ospite";
-        let logIniziale = `[${dataOrdineLeggibile}] 🆕 ORDINE DA: ${cameriere ? cameriere : nomeClienteDisplay}\n`;
+        // LOG: Qui scriviamo il nome (anche se ospite) così rimane traccia nel testo
+        const nomeLog = cliente || "Ospite";
+        let logIniziale = `[${dataOrdineLeggibile}] 🆕 ORDINE DA: ${cameriere ? cameriere : nomeLog}\n`;
         
         if (Array.isArray(prodotti)) {
             prodotti.forEach(p => {
@@ -77,13 +73,11 @@ app.post('/api/ordine', async (req, res) => {
         }
         logIniziale += `TOTALE PARZIALE: ${Number(totale).toFixed(2)}€\n----------------------------------\n`;
 
-        // 4. INSERIMENTO DB
-        // NOTA: Ho tolto 'data_ordine' e $10 perché creavano l'errore.
-        // Ho lasciato 'cliente' ($9) così vedi il nome.
+        // INSERT: Usiamo 'utente_id' ($8). RIMOSSO 'cliente' e 'data_ordine' che non esistono.
         await pool.query(
             `INSERT INTO ordini 
-            (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id, cliente, data_ora) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+            (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id, data_ora) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
             [
                 ristorante_id,              // $1
                 String(tavolo),             // $2
@@ -92,15 +86,13 @@ app.post('/api/ordine', async (req, res) => {
                 statoIniziale,              // $5
                 logIniziale,                // $6
                 cameriere || null,          // $7
-                utente_id || null,          // $8
-                nomeClienteDisplay          // $9 (Questo salva il nome correttamente!)
+                utente_id || null           // $8 (Questo collega la persona!)
             ]
         );
         res.json({ success: true });
     } catch (e) { 
         console.error("Errore inserimento ordine:", e); 
-        // Questo ti mostra l'errore esatto nel terminale se succede ancora
-        res.status(500).json({ error: "Errore inserimento ordine: " + e.message }); 
+        res.status(500).json({ error: "Errore DB: " + e.message }); 
     }
 });
 
@@ -391,11 +383,11 @@ app.get('/api/menu/:slug', async (req, res) => {
 // Polling
 app.get('/api/polling/:ristorante_id', async (req, res) => {
     try {
-        // --- FIX NOME CLIENTE ---
-        // Usiamo COALESCE: Se u.nome (tabella utenti) esiste, usa quello. Altrimenti usa o.cliente (tabella ordini).
+        // Query aggiornata: NON usa più o.cliente che non esiste.
+        // Prende u.nome (dalla tabella utenti) tramite utente_id.
         const sql = `
             SELECT o.*, 
-            COALESCE(u.nome, o.cliente) as nome_vero_cliente, 
+            u.nome as nome_utente_registrato,
             (SELECT COUNT(*) FROM ordini o2 WHERE o2.utente_id = o.utente_id AND o2.stato = 'pagato') as storico_ordini
             FROM ordini o 
             LEFT JOIN utenti u ON o.utente_id = u.id 
@@ -409,7 +401,8 @@ app.get('/api/polling/:ristorante_id', async (req, res) => {
             try { 
                 return { 
                     ...o, 
-                    cliente: o.nome_vero_cliente, // Sovrascriviamo il campo cliente con il nome vero trovato
+                    // Se c'è un nome utente registrato usalo, altrimenti scrivi "Ospite"
+                    cliente: o.nome_utente_registrato || "Ospite", 
                     prodotti: typeof o.prodotti === 'string' ? JSON.parse(o.prodotti) : o.prodotti 
                 }; 
             } 
@@ -419,7 +412,7 @@ app.get('/api/polling/:ristorante_id', async (req, res) => {
         res.json({ nuovi_ordini: ordini });
     } catch (e) { 
         console.error("Polling error:", e);
-        res.status(500).json({ error: "Err" }); 
+        res.status(500).json({ error: e.message }); 
     }
 });
 
