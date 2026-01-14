@@ -1,4 +1,4 @@
-// client/src/components_admin/AdminMenu.jsx - V50 FIX UPLOAD
+// client/src/components_admin/AdminMenu.jsx - V51 MULTILINGUA INTEGRATO
 import { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
@@ -62,6 +62,13 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       nome: '', prezzo: '', categoria: '', sottocategoria: '', descrizione: '', immagine_url: '',
       ingredienti_base: '', varianti_str: '', allergeni: [] 
   });
+  
+  // 1. STATO PER LE TRADUZIONI
+  const [traduzioniInput, setTraduzioniInput] = useState({ 
+    en: { nome: '', descrizione: '' },
+    de: { nome: '', descrizione: '' }
+  });
+
   const [editId, setEditId] = useState(null); 
   const [uploading, setUploading] = useState(false);
 
@@ -110,13 +117,20 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       const payload = { ...nuovoPiatto, categoria: cat, ristorante_id: user.id, varianti: JSON.stringify(variantiFinali) };
       delete payload.varianti_str; delete payload.ingredienti_base;
 
+      // 2. AGGIUNGIAMO LE TRADUZIONI AL PAYLOAD
+      payload.traduzioni = traduzioniInput; 
+
       try {
           const method = editId ? 'PUT' : 'POST';
           const url = editId ? `${API_URL}/api/prodotti/${editId}` : `${API_URL}/api/prodotti`;
           if(!editId && categorie.length === 0) return alert("Crea prima una categoria!"); 
           await fetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }); 
           alert(editId ? "✅ Piatto aggiornato!" : "✅ Piatto creato!");
+          
+          // Reset completo
           setNuovoPiatto({ nome:'', prezzo:'', categoria:cat, sottocategoria: '', descrizione:'', immagine_url:'', varianti_str: '', ingredienti_base: '', allergeni: [] }); 
+          setTraduzioniInput({ en: { nome: '', descrizione: '' }, de: { nome: '', descrizione: '' } }); // Reset traduzioni
+          
           setEditId(null); ricaricaDati(); 
       } catch(err) { alert("❌ Errore: " + err.message); }
   };
@@ -134,8 +148,31 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   };
 
   const cancellaPiatto = async (id) => { if(confirm("Sei sicuro di voler eliminare questo piatto?")) { await fetch(`${API_URL}/api/prodotti/${id}`, {method:'DELETE'}); ricaricaDati(); }};
-  const avviaModifica = (piatto) => { setEditId(piatto.id); let variantiObj = { base: [], aggiunte: [] }; try { variantiObj = typeof piatto.varianti === 'string' ? JSON.parse(piatto.varianti) : piatto.varianti || { base: [], aggiunte: [] }; } catch(e) {} setNuovoPiatto({ ...piatto, allergeni: piatto.allergeni || [], ingredienti_base: (variantiObj.base || []).join(', '), varianti_str: (variantiObj.aggiunte || []).map(v => `${v.nome}:${v.prezzo}`).join(', ') }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
-  const annullaModifica = () => { setEditId(null); setNuovoPiatto({ nome:'', prezzo:'', categoria:categorie.length > 0 ? categorie[0].nome : '', sottocategoria: '', descrizione:'', immagine_url:'', varianti_str: '', ingredienti_base: '', allergeni: [] }); };
+  
+  // 3. AGGIORNAMENTO LOGICA DI EDIT
+  const avviaModifica = (piatto) => { 
+      setEditId(piatto.id); 
+      let variantiObj = { base: [], aggiunte: [] }; 
+      try { variantiObj = typeof piatto.varianti === 'string' ? JSON.parse(piatto.varianti) : piatto.varianti || { base: [], aggiunte: [] }; } catch(e) {} 
+      
+      setNuovoPiatto({ ...piatto, allergeni: piatto.allergeni || [], ingredienti_base: (variantiObj.base || []).join(', '), varianti_str: (variantiObj.aggiunte || []).map(v => `${v.nome}:${v.prezzo}`).join(', ') }); 
+      
+      // Carico le traduzioni esistenti (se ci sono)
+      const tr = piatto.traduzioni || {};
+      setTraduzioniInput({
+          en: { nome: tr.en?.nome || '', descrizione: tr.en?.descrizione || '' },
+          de: { nome: tr.de?.nome || '', descrizione: tr.de?.descrizione || '' }
+      });
+
+      window.scrollTo({ top: 0, behavior: 'smooth' }); 
+  };
+
+  const annullaModifica = () => { 
+      setEditId(null); 
+      setNuovoPiatto({ nome:'', prezzo:'', categoria:categorie.length > 0 ? categorie[0].nome : '', sottocategoria: '', descrizione:'', immagine_url:'', varianti_str: '', ingredienti_base: '', allergeni: [] }); 
+      setTraduzioniInput({ en: { nome: '', descrizione: '' }, de: { nome: '', descrizione: '' } }); // Reset traduzioni
+  };
+
   const duplicaPiatto = async (piatto) => { if(!confirm(`Duplicare ${piatto.nome}?`)) return; const copia = { ...piatto, nome: `${piatto.nome} (Copia)`, ristorante_id: user.id }; await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(copia) }); ricaricaDati(); };
 
   const onDragEnd = async (result) => {
@@ -227,6 +264,26 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                               <label style={labelStyle}>Descrizione</label>
                               <textarea placeholder="Descrivi il piatto..." value={nuovoPiatto.descrizione} onChange={e => setNuovoPiatto({...nuovoPiatto, descrizione: e.target.value})} style={{...inputStyle, minHeight:'80px', resize:'vertical'}}/>
                           </div>
+
+                          {/* 4. SEZIONE INPUT TRADUZIONI (INSERITA QUI) */}
+                          <div style={{background:'#fdfefe', border:'1px solid #e1f5fe', padding:'10px', borderRadius:'8px'}}>
+                                <label style={{...labelStyle, color:'#0277bd', marginBottom:'10px'}}>🌍 Traduzioni (Opzionale)</label>
+                                
+                                {/* Inglese */}
+                                <div style={{marginBottom:'10px'}}>
+                                    <div style={{fontSize:'12px', fontWeight:'bold', marginBottom:'5px', color:'#555'}}>🇬🇧 Inglese</div>
+                                    <input placeholder="Name EN" value={traduzioniInput.en.nome} onChange={e=>setTraduzioniInput({...traduzioniInput, en: {...traduzioniInput.en, nome: e.target.value}})} style={{...inputStyle, marginBottom:'5px', fontSize:'13px'}} />
+                                    <textarea placeholder="Description EN" value={traduzioniInput.en.descrizione} onChange={e=>setTraduzioniInput({...traduzioniInput, en: {...traduzioniInput.en, descrizione: e.target.value}})} style={{...inputStyle, minHeight:'50px', fontSize:'13px'}} />
+                                </div>
+
+                                {/* Tedesco */}
+                                <div>
+                                    <div style={{fontSize:'12px', fontWeight:'bold', marginBottom:'5px', color:'#555'}}>🇩🇪 Tedesco</div>
+                                    <input placeholder="Name DE" value={traduzioniInput.de.nome} onChange={e=>setTraduzioniInput({...traduzioniInput, de: {...traduzioniInput.de, nome: e.target.value}})} style={{...inputStyle, marginBottom:'5px', fontSize:'13px'}} />
+                                    <textarea placeholder="Description DE" value={traduzioniInput.de.descrizione} onChange={e=>setTraduzioniInput({...traduzioniInput, de: {...traduzioniInput.de, descrizione: e.target.value}})} style={{...inputStyle, minHeight:'50px', fontSize:'13px'}} />
+                                </div>
+                          </div>
+
                           <div>
                                 <label style={labelStyle}>📷 Foto Piatto</label>
                                 <div style={{background: '#f8f9fa', border: '2px dashed #ddd', borderRadius: '8px', padding: '15px', textAlign: 'center', cursor: 'pointer', position:'relative', boxSizing:'border-box'}}>

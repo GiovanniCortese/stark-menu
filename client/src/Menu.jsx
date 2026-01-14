@@ -1,6 +1,7 @@
 // client/src/Menu.jsx - FIXED UPLOADS & MODAL
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
+import { dictionary, getContent } from './translations';
 
 const LISTA_ALLERGENI = [
   "Glutine 🌾", "Crostacei 🦐", "Uova 🥚", "Pesce 🐟", "Arachidi 🥜", 
@@ -15,6 +16,8 @@ function Menu() {
   const [ristoranteId, setRistoranteId] = useState(null);
   const [style, setStyle] = useState({});
   const [tavoloStaff, setTavoloStaff] = useState("");
+  const [lang, setLang] = useState('it'); // Default Italiano
+  const t = dictionary[lang]; // Shortcut per i testi statici
   
   // --- STATI PER I FILE (Menu giorno/PDF/Allergeni) ---
   const [urlFileAttivo, setUrlFileAttivo] = useState("");
@@ -224,6 +227,12 @@ const footerBtnStyle = {
               {style.logo ? ( <div style={{ width: '110px', height: '110px', background: 'white', padding: '5px', borderRadius: '50%', boxShadow: '0 5px 20px rgba(0,0,0,0.5)', display: 'flex', alignItems:'center', justifyContent:'center', overflow: 'hidden' }}><img src={style.logo} style={{ width:'100%', height:'100%', objectFit:'contain' }} /></div> ) : ( <div style={{fontSize:'40px', background:'white', padding:10, borderRadius:'50%'}}>🍽️</div> )}
               {!style.logo && ( <h1 style={{ margin: 0, color: '#fff', fontSize:'26px', fontWeight:'800', textShadow: '0 2px 4px rgba(0,0,0,0.8)', textAlign: 'center', lineHeight: '1.2' }}>{ristorante}</h1> )}
               <div style={{ background: tavoloBg, color: tavoloText, padding: '6px 18px', borderRadius: '50px', fontSize: '14px', fontWeight: 'bold', boxShadow: '0 3px 10px rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.3)' }}>📍 Tavolo {numeroTavolo}</div>
+          {/* --- INIZIO CODICE DA INCOLLARE --- */}
+<div style={{display:'flex', gap:'10px', justifyContent:'center', marginTop:'10px', zIndex:10, position:'relative'}}>
+    <button onClick={()=>setLang('it')} style={{opacity: lang==='it'?1:0.5, border:'none', background:'none', fontSize:'24px', cursor:'pointer', padding:0}}>🇮🇹</button>
+    <button onClick={()=>setLang('en')} style={{opacity: lang==='en'?1:0.5, border:'none', background:'none', fontSize:'24px', cursor:'pointer', padding:0}}>🇬🇧</button>
+    <button onClick={()=>setLang('de')} style={{opacity: lang==='de'?1:0.5, border:'none', background:'none', fontSize:'24px', cursor:'pointer', padding:0}}>🇩🇪</button>
+</div>
           </div>
       </div>
       )}
