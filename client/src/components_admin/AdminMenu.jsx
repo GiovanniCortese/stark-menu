@@ -1,4 +1,4 @@
-// client/src/components_admin/AdminMenu.jsx - V55 FIX SUPER ADMIN BLOCK & TRADUZIONI
+// client/src/components_admin/AdminMenu.jsx - V56 FINAL FIX FLUIDITÀ
 import { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import ProductRow from './ProductRow';
@@ -81,14 +81,13 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const isMasterBlock = config.cucina_super_active === false; 
   const isCucinaAperta = config.ordini_abilitati;
 
-  // --- LOGICA VISIVA HEADER (FIX RICHIESTO) ---
+  // --- LOGICA VISIVA HEADER ---
   let headerBg = isCucinaAperta ? 'linear-gradient(135deg, #2ecc71 0%, #27ae60 100%)' : 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)';
   let headerTitle = isCucinaAperta ? "✅ Servizio Attivo" : "🛑 Servizio Sospeso";
   let headerDesc = isCucinaAperta ? "I clienti possono inviare ordini." : "Gli ordini sono bloccati.";
 
-  // SE IL SUPER ADMIN HA BLOCCATO, SOVRASCRIVIAMO TUTTO
   if (isMasterBlock) {
-      headerBg = 'linear-gradient(135deg, #8e44ad 0%, #c0392b 100%)'; // Viola scuro/Rosso per indicare blocco admin
+      headerBg = 'linear-gradient(135deg, #8e44ad 0%, #c0392b 100%)'; 
       headerTitle = "⛔ BLOCCATO DA SUPER ADMIN";
       headerDesc = "L'amministrazione centrale ha disabilitato gli ordini per questo locale.";
   }
@@ -103,7 +102,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
   const toggleCucina = async () => { 
       if (!isAbbonamentoAttivo) return alert("⛔ ABBONAMENTO SOSPESO."); 
-      if (isMasterBlock) return alert("⛔ CUCINA BLOCCATA DAL SUPER ADMIN."); // Alert extra di sicurezza
+      if (isMasterBlock) return alert("⛔ CUCINA BLOCCATA DAL SUPER ADMIN."); 
       const nuovoStatoCucina = !isCucinaAperta; 
       setConfig({...config, ordini_abilitati: nuovoStatoCucina}); 
       try {
@@ -129,7 +128,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       const payload = { ...nuovoPiatto, categoria: cat, ristorante_id: user.id, varianti: JSON.stringify(variantiFinali) };
       delete payload.varianti_str; delete payload.ingredienti_base;
 
-      // AGGIUNGIAMO LE TRADUZIONI AL PAYLOAD
       payload.traduzioni = traduzioniInput; 
 
       try {
@@ -182,8 +180,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       setTraduzioniInput({ en: { nome: '', descrizione: '' }, de: { nome: '', descrizione: '' } }); 
   };
 
-  const duplicaPiatto = async (piatto) => { if(!confirm(`Duplicare ${piatto.nome}?`)) return; const copia = { ...piatto, nome: `${piatto.nome} (Copia)`, ristorante_id: user.id }; await fetch(`${API_URL}/api/prodotti`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(copia) }); ricaricaDati(); };
-
   const onDragEnd = async (result) => {
     if (!result.destination) return;
     const destCat = result.destination.droppableId.replace("cat-", "");
@@ -210,14 +206,13 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   return (
     <div style={containerStyle}>
         
-        {/* 1. HEADER & STATUS (AGGIORNATO CON FIX BLOCCO) */}
+        {/* 1. HEADER & STATUS */}
         <div style={{...cardStyle, display:'flex', justifyContent:'space-between', alignItems:'center', background: headerBg, color:'white', border:'none'}}>
             <div>
                 <h2 style={{margin:0, fontSize:'24px'}}>{headerTitle}</h2>
                 <p style={{margin:0, opacity:0.9, fontSize:'14px'}}>{headerDesc}</p>
             </div>
             
-            {/* Il bottone appare SOLO se non c'è un blocco Master */}
             {isAbbonamentoAttivo && !isMasterBlock && (
                 <button onClick={toggleCucina} style={{background:'white', color: isCucinaAperta ? '#27ae60' : '#c0392b', border:'none', padding:'12px 25px', borderRadius:'30px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 5px 15px rgba(0,0,0,0.2)'}}>
                     {isCucinaAperta ? "CHIUDI ORDINI CLIENTE" : "APRI ORDINI CLIENTE"}
@@ -276,19 +271,14 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                               <textarea placeholder="Descrivi il piatto..." value={nuovoPiatto.descrizione} onChange={e => setNuovoPiatto({...nuovoPiatto, descrizione: e.target.value})} style={{...inputStyle, minHeight:'80px', resize:'vertical'}}/>
                           </div>
 
-                                {/* 4. SEZIONE INPUT TRADUZIONI (SOLO EN) */}
-<div style={{background:'#fdfefe', border:'1px solid #e1f5fe', padding:'10px', borderRadius:'8px'}}>
-    <label style={{...labelStyle, color:'#0277bd', marginBottom:'10px'}}>🌍 Traduzioni (Opzionale)</label>
-    
-    {/* Inglese */}
-    <div style={{marginBottom:'10px'}}>
-        <div style={{fontSize:'12px', fontWeight:'bold', marginBottom:'5px', color:'#555'}}>🇬🇧 Inglese</div>
-        <input placeholder="Name EN" value={traduzioniInput.en.nome} onChange={e=>setTraduzioniInput({...traduzioniInput, en: {...traduzioniInput.en, nome: e.target.value}})} style={{...inputStyle, marginBottom:'5px', fontSize:'13px'}} />
-        <textarea placeholder="Description EN" value={traduzioniInput.en.descrizione} onChange={e=>setTraduzioniInput({...traduzioniInput, en: {...traduzioniInput.en, descrizione: e.target.value}})} style={{...inputStyle, minHeight:'50px', fontSize:'13px'}} />
-    </div>
-
-    {/* TEDESCO RIMOSSO */}
-</div>
+                          <div style={{background:'#fdfefe', border:'1px solid #e1f5fe', padding:'10px', borderRadius:'8px'}}>
+                                <label style={{...labelStyle, color:'#0277bd', marginBottom:'10px'}}>🌍 Traduzioni (Opzionale)</label>
+                                <div style={{marginBottom:'10px'}}>
+                                    <div style={{fontSize:'12px', fontWeight:'bold', marginBottom:'5px', color:'#555'}}>🇬🇧 Inglese</div>
+                                    <input placeholder="Name EN" value={traduzioniInput.en.nome} onChange={e=>setTraduzioniInput({...traduzioniInput, en: {...traduzioniInput.en, nome: e.target.value}})} style={{...inputStyle, marginBottom:'5px', fontSize:'13px'}} />
+                                    <textarea placeholder="Description EN" value={traduzioniInput.en.descrizione} onChange={e=>setTraduzioniInput({...traduzioniInput, en: {...traduzioniInput.en, descrizione: e.target.value}})} style={{...inputStyle, minHeight:'50px', fontSize:'13px'}} />
+                                </div>
+                          </div>
 
                           <div>
                                 <label style={labelStyle}>📷 Foto Piatto</label>
@@ -349,61 +339,65 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                   </form>
             </div>
 
-            {/* 4. LISTA MENU DRAG & DROP */}
+            {/* 4. LISTA MENU DRAG & DROP (FIX LOGICA) */}
             <DragDropContext onDragEnd={onDragEnd}>
-                {categorie && categorie.map(cat => (
-                    <div key={cat.id} style={{marginBottom: '40px'}}>
-                        <h3 style={{display:'flex', alignItems:'center', gap:'10px', color:'#2c3e50', borderBottom:'2px solid #eee', paddingBottom:'10px', marginBottom:'20px'}}>
-                            <span style={{background:'#eee', borderRadius:'50%', width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'14px'}}>📂</span> 
-                            {cat.nome}
-                        </h3>
-                      <Droppable droppableId="menu-list">
-    {(provided) => (
-        <div 
-            ref={provided.innerRef} 
-            {...provided.droppableProps} 
-            style={{paddingBottom:'50px'}}
-        >
-            {menuFiltrato.map((prodotto, index) => (
-                <Draggable 
-                    key={String(prodotto.id)} 
-                    draggableId={String(prodotto.id)} 
-                    index={index}
-                >
-                    {(provided, snapshot) => (
-                        <div
-                            ref={provided.innerRef}
-                            {...provided.draggableProps}
-                            {...provided.dragHandleProps}
-                            style={{
-                                // 1. Mantiene lo stile necessario per il movimento (top, left, position)
-                                ...provided.draggableProps.style,
-                                
-                                // 2. Stile del contenitore esterno (margini tra le righe)
-                                marginBottom: '8px',
-                                userSelect: 'none', // Evita che si selezioni il testo mentre trascini
-                                
-                                // 3. FIX CRITICO: Forza l'hardware acceleration per fluidità
-                                transform: provided.draggableProps.style?.transform,
-                            }}
-                        >
-                            {/* Renderizziamo il componente ottimizzato */}
-                            <ProductRow 
-                                prodotto={prodotto} 
-                                avviaModifica={avviaModifica} 
-                                eliminaProdotto={eliminaProdotto}
-                                isDragging={snapshot.isDragging} // Passiamo lo stato per cambiare colore
-                            />
+                {categorie && categorie.map(cat => {
+                    // FILTRIAMO I PRODOTTI PER QUESTA CATEGORIA QUI
+                    const prodottiCategoria = menu
+                        .filter(p => p.categoria === cat.nome)
+                        .sort((a, b) => (a.posizione || 0) - (b.posizione || 0));
+
+                    return (
+                        <div key={cat.id} style={{marginBottom: '40px'}}>
+                            <h3 style={{display:'flex', alignItems:'center', gap:'10px', color:'#2c3e50', borderBottom:'2px solid #eee', paddingBottom:'10px', marginBottom:'20px'}}>
+                                <span style={{background:'#eee', borderRadius:'50%', width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'14px'}}>📂</span> 
+                                {cat.nome}
+                            </h3>
+                            
+                            {/* USIAMO UN ID UNIVOCO PER DROPPABLE */}
+                            <Droppable droppableId={`cat-${cat.nome}`}>
+                                {(provided) => (
+                                    <div 
+                                        ref={provided.innerRef} 
+                                        {...provided.droppableProps} 
+                                        style={{paddingBottom:'50px'}}
+                                    >
+                                        {prodottiCategoria.map((prodotto, index) => (
+                                            <Draggable 
+                                                key={String(prodotto.id)} 
+                                                draggableId={String(prodotto.id)} 
+                                                index={index}
+                                            >
+                                                {(provided, snapshot) => (
+                                                    <div
+                                                        ref={provided.innerRef}
+                                                        {...provided.draggableProps}
+                                                        {...provided.dragHandleProps}
+                                                        style={{
+                                                            ...provided.draggableProps.style,
+                                                            marginBottom: '8px',
+                                                            userSelect: 'none',
+                                                            transform: provided.draggableProps.style?.transform,
+                                                        }}
+                                                    >
+                                                        {/* Passiamo la funzione con il nome corretto */}
+                                                        <ProductRow 
+                                                            prodotto={prodotto} 
+                                                            avviaModifica={avviaModifica} 
+                                                            eliminaProdotto={cancellaPiatto} 
+                                                            isDragging={snapshot.isDragging} 
+                                                        />
+                                                    </div>
+                                                )}
+                                            </Draggable>
+                                        ))}
+                                        {provided.placeholder}
+                                    </div>
+                                )}
+                            </Droppable>
                         </div>
-                    )}
-                </Draggable>
-            ))}
-            {provided.placeholder}
-        </div>
-    )}
-</Droppable>
-                    </div>
-                ))}
+                    );
+                })}
             </DragDropContext>
         </div>
 
