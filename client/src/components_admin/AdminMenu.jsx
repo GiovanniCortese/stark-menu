@@ -1,6 +1,7 @@
 // client/src/components_admin/AdminMenu.jsx - V55 FIX SUPER ADMIN BLOCK & TRADUZIONI
 import { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+import ProductRow from './ProductRow';
 
 const LISTA_ALLERGENI = [
   "Glutine 🌾", "Crostacei 🦐", "Uova 🥚", "Pesce 🐟", "Arachidi 🥜", 
@@ -356,33 +357,42 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                             <span style={{background:'#eee', borderRadius:'50%', width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'14px'}}>📂</span> 
                             {cat.nome}
                         </h3>
-                       <Droppable droppableId="menu-list">
+                      <Droppable droppableId="menu-list">
     {(provided) => (
-        <div ref={provided.innerRef} {...provided.droppableProps} style={{paddingBottom:'50px'}}>
-            
+        <div 
+            ref={provided.innerRef} 
+            {...provided.droppableProps} 
+            style={{paddingBottom:'50px'}}
+        >
             {menuFiltrato.map((prodotto, index) => (
-                <Draggable key={prodotto.id} draggableId={String(prodotto.id)} index={index}>
+                <Draggable 
+                    key={String(prodotto.id)} 
+                    draggableId={String(prodotto.id)} 
+                    index={index}
+                >
                     {(provided, snapshot) => (
                         <div
                             ref={provided.innerRef}
                             {...provided.draggableProps}
                             {...provided.dragHandleProps}
-                            // IMPORTANTE: Togli eventuali transition CSS inline qui
                             style={{
-                                ...provided.draggableProps.style, // Mantiene la posizione calcolata
+                                // 1. Mantiene lo stile necessario per il movimento (top, left, position)
+                                ...provided.draggableProps.style,
+                                
+                                // 2. Stile del contenitore esterno (margini tra le righe)
                                 marginBottom: '8px',
-                                opacity: snapshot.isDragging ? 0.8 : 1, // Effetto trasparenza quando trascini
-                                transform: provided.draggableProps.style?.transform, // Forza il transform
+                                userSelect: 'none', // Evita che si selezioni il testo mentre trascini
+                                
+                                // 3. FIX CRITICO: Forza l'hardware acceleration per fluidità
+                                transform: provided.draggableProps.style?.transform,
                             }}
                         >
-                            {/* Usiamo il componente memoizzato */}
+                            {/* Renderizziamo il componente ottimizzato */}
                             <ProductRow 
                                 prodotto={prodotto} 
-                                index={index}
-                                avviaModifica={avviaModifica} // La tua funzione esistente
-                                eliminaProdotto={eliminaProdotto} // La tua funzione esistente
-                                // Non passiamo 'providedStyle' qui perché l'abbiamo applicato al div wrapper sopra
-                                // Questa è la tecnica più stabile: il wrapper esterno gestisce il movimento
+                                avviaModifica={avviaModifica} 
+                                eliminaProdotto={eliminaProdotto}
+                                isDragging={snapshot.isDragging} // Passiamo lo stato per cambiare colore
                             />
                         </div>
                     )}
