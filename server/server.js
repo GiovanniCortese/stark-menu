@@ -52,7 +52,7 @@ app.post('/api/ordine', async (req, res) => {
     try {
         const { ristorante_id, tavolo, prodotti, totale, cliente, cameriere, utente_id } = req.body;
         
-        // 1. Data Leggibile
+        // 1. Data Leggibile per il LOG (Non per il database, che usa NOW())
         const dataOrdineLeggibile = getNowItaly(); 
 
         // 2. STATO INIZIALE
@@ -61,7 +61,9 @@ app.post('/api/ordine', async (req, res) => {
         const statoIniziale = cameriere ? 'in_attesa' : 'in_arrivo';
 
         // 3. LOGICA LOG
-        let logIniziale = `[${dataOrdineLeggibile}] 🆕 ORDINE DA: ${cameriere ? cameriere : 'Cliente (' + cliente + ')'}\n`;
+        // Se cliente è null, usiamo "Ospite"
+        const nomeClienteDisplay = cliente || "Ospite";
+        let logIniziale = `[${dataOrdineLeggibile}] 🆕 ORDINE DA: ${cameriere ? cameriere : nomeClienteDisplay}\n`;
         
         if (Array.isArray(prodotti)) {
             prodotti.forEach(p => {
@@ -75,28 +77,30 @@ app.post('/api/ordine', async (req, res) => {
         }
         logIniziale += `TOTALE PARZIALE: ${Number(totale).toFixed(2)}€\n----------------------------------\n`;
 
-        // 4. INSERIMENTO DB (CORRETTO: AGGIUNTO CLIENTE)
+        // 4. INSERIMENTO DB
+        // NOTA: Ho tolto 'data_ordine' e $10 perché creavano l'errore.
+        // Ho lasciato 'cliente' ($9) così vedi il nome.
         await pool.query(
             `INSERT INTO ordini 
-            (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id, cliente, data_ora, data_ordine) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), $10)`,
+            (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id, cliente, data_ora) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
             [
-                ristorante_id, 
-                String(tavolo), 
-                JSON.stringify(prodotti), 
-                totale, 
-                statoIniziale,      
-                logIniziale,        
-                cameriere || null, 
-                utente_id || null,
-                cliente || "Ospite", // <--- ECCOLO! Prima mancava questo
-                dataOrdineLeggibile 
+                ristorante_id,              // $1
+                String(tavolo),             // $2
+                JSON.stringify(prodotti),   // $3
+                totale,                     // $4
+                statoIniziale,              // $5
+                logIniziale,                // $6
+                cameriere || null,          // $7
+                utente_id || null,          // $8
+                nomeClienteDisplay          // $9 (Questo salva il nome correttamente!)
             ]
         );
         res.json({ success: true });
     } catch (e) { 
         console.error("Errore inserimento ordine:", e); 
-        res.status(500).json({ error: "Errore inserimento ordine" }); 
+        // Questo ti mostra l'errore esatto nel terminale se succede ancora
+        res.status(500).json({ error: "Errore inserimento ordine: " + e.message }); 
     }
 });
 
