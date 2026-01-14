@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - VERSIONE FIX LINGUA (NO BARRA, NO TEDESCO)
+// client/src/Menu.jsx (SOSTITUISCI IL CONTENUTO)
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { dictionary, getContent } from './translations'; 
@@ -11,7 +11,6 @@ function Menu() {
   const [tavoloStaff, setTavoloStaff] = useState("");
   
   // --- LINGUA & GOOGLE TRANSLATE ---
-  // Default: Italiano. Opzioni: it, en.
   const [lang, setLang] = useState('it'); 
   const t = dictionary[lang] || dictionary['it']; 
 
@@ -21,8 +20,8 @@ function Menu() {
       if (window.google && window.google.translate) {
           new window.google.translate.TranslateElement({
             pageLanguage: 'it',
-            includedLanguages: 'it,en', // SOLO IT e EN
-            autoDisplay: false,
+            includedLanguages: 'it,en', // SOLO IT e EN (o aggiungi altri se servono)
+            autoDisplay: false, // FONDAMENTALE PER EVITARE LA BARRA
             layout: window.google.translate.TranslateElement.InlineLayout.HORIZONTAL
           }, 'google_translate_element');
       }
@@ -41,7 +40,6 @@ function Menu() {
   const cambiaLingua = (selectedLang) => {
       setLang(selectedLang); 
       
-      // Pilotiamo il widget nascosto di Google
       const changeGoogle = () => {
           const googleCombo = document.querySelector('.goog-te-combo');
           if (googleCombo) {
@@ -202,8 +200,6 @@ function Menu() {
 
   return (
     <div style={{minHeight:'100vh', background: bg, color: text, fontFamily: font, paddingBottom:80}}>
-      <style>{`:root { color-scheme: light; } * { box-sizing: border-box; margin: 0; padding: 0; } body, html { background-color: ${bg} !important; color: ${text} !important; overflow-x: hidden; width: 100%; top: 0 !important; }`}</style>
-      
       {/* WIDGET GOOGLE INVISIBILE */}
       <div id="google_translate_element"></div>
 
@@ -223,7 +219,6 @@ function Menu() {
               <div className="notranslate" style={{display:'flex', gap:'10px', justifyContent:'center', marginTop:'10px'}}>
                 <button onClick={()=>cambiaLingua('it')} style={{opacity: lang==='it'?1:0.5, border:'none', background:'none', fontSize:'24px', cursor:'pointer', padding:0}}>🇮🇹</button>
                 <button onClick={()=>cambiaLingua('en')} style={{opacity: lang==='en'?1:0.5, border:'none', background:'none', fontSize:'24px', cursor:'pointer', padding:0}}>🇬🇧</button>
-                {/* RIMOSSO TEDESCO */}
             </div>
           </div>
       </div>
