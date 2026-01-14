@@ -1,8 +1,7 @@
 // client/src/Menu.jsx - VERSIONE FIX LINGUA (NO BARRA, NO TEDESCO)
 import { useState, useEffect } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
-import { dictionary, getContent } from './translations'; 
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'; 
+import { dictionary, getContent } from './translations';
 
 function Menu() {
   const [menu, setMenu] = useState([]);
@@ -10,7 +9,9 @@ function Menu() {
   const [ristoranteId, setRistoranteId] = useState(null);
   const [style, setStyle] = useState({});
   const [tavoloStaff, setTavoloStaff] = useState("");
-  const navigate = useNavigate(); // <--- AGGIUNGI QUESTO
+
+  // HOOK PER LA NAVIGAZIONE
+  const navigate = useNavigate();
   
   // --- LINGUA & GOOGLE TRANSLATE ---
   // Default: Italiano. Opzioni: it, en.
