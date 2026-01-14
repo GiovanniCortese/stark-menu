@@ -1,17 +1,42 @@
+/* client/src/index.css - VERSIONE DEFINITIVA */
+
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
   /* --- FIX URGENTE: FORZATURA MODALITÀ CHIARA --- */
-  color-scheme: light;       /* Impedisce al browser di usare la dark mode di sistema */
-  color: #213547;            /* Testo scuro di default */
-  background-color: #ffffff; /* Sfondo bianco di default */
+  color-scheme: light;         /* Impedisce al browser di usare la dark mode di sistema */
+  color: #213547;              /* Testo scuro di default */
+  background-color: #ffffff;   /* Sfondo bianco di default */
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* --- RESET BASE --- */
+* { 
+  box-sizing: border-box; 
+  margin: 0; 
+  padding: 0; 
+}
+
+body {
+  margin: 0;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
+  min-height: 100vh;
+  /* 2. Ripristina la posizione del sito (altrimenti Google lo spinge giù) */
+  top: 0px !important;
+  position: static !important;
+}
+
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
 }
 
 a {
@@ -21,19 +46,6 @@ a {
 }
 a:hover {
   color: #535bf2;
-}
-
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
-}
-
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
 }
 
 button {
@@ -55,27 +67,9 @@ button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
 }
 
-/* Rimosso blocco @media (prefers-color-scheme: light) perché ora è tutto light di default */
-
-
-:root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-  color-scheme: light;
-  color: #213547;
-  background-color: #ffffff;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-/* --- RESET BASE --- */
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { margin: 0; min-width: 320px; min-height: 100vh; }
-
-/* --- GOOGLE TRANSLATE HIDDEN STYLE (FIX DEFINITIVO) --- */
+/* ========================================================== */
+/* GOOGLE TRANSLATE HIDDEN STYLE (MOTORE NASCOSTO)          */
+/* ========================================================== */
 
 /* 1. Nasconde la barra superiore (Desktop e Mobile) */
 .goog-te-banner-frame.skiptranslate {
@@ -85,21 +79,15 @@ body { margin: 0; min-width: 320px; min-height: 100vh; }
     display: none !important;
 }
 
-/* 2. Ripristina la posizione del sito (altrimenti Google lo spinge giù) */
-body {
-    top: 0px !important;
-    position: static !important;
-}
-
-/* 3. Nasconde il widget originale se dovesse apparire */
+/* 3. Nasconde il widget originale MA LO TIENE ATTIVO */
 #google_translate_element {
-    display: block !important;  /* DEVE essere block per funzionare! */
+    display: block !important;       /* FONDAMENTALE: Se metti 'none' smette di funzionare! */
     position: absolute !important;
-    top: -9999px !important;    /* Lo spediamo fuori dallo schermo in alto */
-    left: -9999px !important;   /* Lo spediamo fuori a sinistra */
+    top: -9999px !important;         /* Lo spediamo fuori dallo schermo in alto */
+    left: -9999px !important;        /* Lo spediamo fuori a sinistra */
     width: 1px !important;
     height: 1px !important;
-    opacity: 0 !important;      /* Lo rendiamo trasparente */
+    opacity: 0 !important;           /* Lo rendiamo trasparente */
     pointer-events: none !important; /* Non cliccabile per errore */
     overflow: hidden !important;
 }
