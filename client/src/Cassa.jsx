@@ -1,4 +1,4 @@
-// client/src/Cassa.jsx - VERSIONE V44 (FIX DEFINITIVO ORDINAMENTO ARRAY) 💶
+// client/src/Cassa.jsx - VERSIONE V45 (FIX LOGICA LOG: BLOCCHI ORDINATI) 💶
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -9,8 +9,7 @@ function Cassa() {
   
   // STATI DATI
   const [tab, setTab] = useState('attivi'); 
-  // NOTA: Ora tavoliAttivi è un ARRAY [], non più un oggetto {}
-  const [tavoliAttivi, setTavoliAttivi] = useState([]); 
+  const [tavoliAttivi, setTavoliAttivi] = useState([]); // Array ordinato
   const [storico, setStorico] = useState([]);
   const [infoRistorante, setInfoRistorante] = useState(null);
   const [selectedLog, setSelectedLog] = useState(null); 
@@ -68,7 +67,6 @@ function Cassa() {
     } catch(e) { alert("Errore caricamento dati utente"); } finally { setLoadingUser(false); }
   };
 
-  // --- HELPER CALCOLO LIVELLO CLIENTE ---
   const getLivello = (n) => {
       const num = parseInt(n || 0);
       if (num >= 100) return { label: "Legend 💎", color: "#3498db", bg: "#eafaf1" };
@@ -78,10 +76,8 @@ function Cassa() {
       return { label: "Novizio 🌱", color: "#27ae60", bg: "#e8f8f5" };
   };
 
-  // --- FUNZIONE: INVIA ORDINE AI REPARTI (APPROVAZIONE) ---
   const inviaInProduzione = async (ordiniDaInviare) => {
       if(!confirm(`Confermi di inviare ${ordiniDaInviare.length} ordini in cucina?`)) return;
-      
       try {
           await Promise.all(ordiniDaInviare.map(ord => 
               fetch(`${API_URL}/api/ordine/invia-produzione`, {
@@ -100,18 +96,17 @@ function Cassa() {
       .then(res => res.json())
       .then(data => {
         const ordini = Array.isArray(data.nuovi_ordini) ? data.nuovi_ordini : [];
-        const raggruppati = {}; // Oggetto temporaneo
+        const raggruppati = {};
         
+        // 1. RAGGRUPPA ORDINI PER TAVOLO
         ordini.forEach(ord => {
             const t = ord.tavolo;
-            
-            // Inizializza il tavolo se non esiste
             if(!raggruppati[t]) {
                 raggruppati[t] = { 
-                    tavolo: t, // Salviamo il numero tavolo dentro l'oggetto
+                    tavolo: t, 
                     ordini: [], 
                     totale: 0,
-                    fullLog: "",
+                    fullLog: "", // Lo calcoliamo dopo per sicurezza
                     cameriere: ord.cameriere,
                     cliente: ord.cliente, 
                     storico_ordini: ord.storico_ordini || 0,
@@ -120,26 +115,27 @@ function Cassa() {
                     orarioMin: ord.data_ora 
                 };
             }
-            
-            if (ord.stato === 'in_arrivo') {
-                raggruppati[t].hasPending = true;
-            }
-
+            if (ord.stato === 'in_arrivo') raggruppati[t].hasPending = true;
             raggruppati[t].ordini.push(ord);
             raggruppati[t].totale += Number(ord.totale || 0);
-            
-            if(ord.dettagli && ord.dettagli.trim() !== "") {
-                raggruppati[t].fullLog += "━━━━━━━━━━━━━━━━━━━━━━━━━━\n" + ord.dettagli + "\n";
-            }
         });
 
-        // *** FIX CRUCIALE: CONVERTIAMO IN ARRAY E ORDINIAMO QUI ***
+        // 2. CONVERTI IN ARRAY E ORDINA TAVOLI (FIFO: Primo ordine più vecchio in alto)
         const listaOrdinata = Object.values(raggruppati);
-        
-        listaOrdinata.sort((a, b) => {
-            const timeA = new Date(a.orarioMin).getTime();
-            const timeB = new Date(b.orarioMin).getTime();
-            return timeA - timeB; // Dal più vecchio (piccolo) al più nuovo (grande)
+        listaOrdinata.sort((a, b) => new Date(a.orarioMin).getTime() - new Date(b.orarioMin).getTime());
+
+        // 3. ORDINA GLI ORDINI DENTRO OGNI TAVOLO E COSTRUISCI IL LOG
+        // Qui garantiamo che i blocchi di testo seguano rigorosamente l'ordine cronologico
+        listaOrdinata.forEach(tavolo => {
+            // Ordina ordini dal più vecchio al più nuovo
+            tavolo.ordini.sort((a,b) => new Date(a.data_ora) - new Date(b.data_ora));
+
+            // Costruisci il log unendo i dettagli in ordine
+            tavolo.fullLog = tavolo.ordini
+                .map(o => (o.dettagli || "").trim())
+                .filter(d => d !== "")
+                .join("\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"); 
+                // Separatore più spazioso e chiaro
         });
 
         setTavoliAttivi(listaOrdinata);
@@ -174,7 +170,7 @@ function Cassa() {
     const nuovoStato = item.stato === 'servito' ? 'in_attesa' : 'servito';
     item.stato = nuovoStato;
     if (nuovoStato === 'in_attesa') { item.riaperto = true; delete item.ora_servizio; } 
-    else { item.ora_servizio = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}); item.chiuso_da_cassa = true; }
+    else { item.ora_servizio = new Date().toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'}); item.chiuso_da_cassa = true; }
     
     const logMsg = nuovoStato === 'in_attesa' ? `[CASSA 💶] ⚠️ RIAPERTO: ${item.nome}` : `[CASSA 💶] ✅ FATTO: ${item.nome}`;
     await fetch(`${API_URL}/api/ordine/${ord.id}/update-items`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ prodotti: nuoviProdotti, logMsg }) });
@@ -229,13 +225,8 @@ function Cassa() {
           <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(350px, 1fr))', gap:20}}>
             {tavoliAttivi.length === 0 && <p style={{gridColumn:'1/-1', textAlign:'center', fontSize:20, color:'#888'}}>Nessun tavolo attivo.</p>}
             
-            {/* ORA MAPPIAMO UN ARRAY ORDINATO, L'ORDINE VISIVO È GARANTITO */}
             {tavoliAttivi.map(info => {
-                    const tavolo = info.tavolo; // Ora leggiamo il tavolo dall'oggetto info
-                    
-                    // Ordini interni: dal più vecchio al più nuovo
-                    info.ordini.sort((a,b) => new Date(a.data_ora) - new Date(b.data_ora));
-
+                    const tavolo = info.tavolo;
                     const ordiniDaInviare = info.ordini.filter(o => o.stato === 'in_arrivo');
                     const richiedeApprovazione = ordiniDaInviare.length > 0;
                     const borderColor = richiedeApprovazione ? '#e67e22' : 'transparent';
