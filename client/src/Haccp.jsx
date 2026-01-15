@@ -1,7 +1,7 @@
-// client/src/Haccp.jsx - VERSIONE V4 (QR CODE + EDIT + DAILY CHECK) 🚀
+// client/src/Haccp.jsx - VERSIONE V5 (FULL MERGE: QR + EDIT + CALENDARIO + ETICHETTE) ✅
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import QRCode from 'react-qr-code'; // <--- ASSICURATI DI AVERLO INSTALLATO
+import QRCode from 'react-qr-code'; 
 
 function Haccp() {
   const { slug, scanId } = useParams(); // scanId cattura l'ID se arriviamo da un QR
@@ -21,7 +21,7 @@ function Haccp() {
   const [tempInput, setTempInput] = useState({}); 
   const [uploadingLog, setUploadingLog] = useState(null); 
   
-  // Stati Edit Log (Nuovo)
+  // Stati Edit Log
   const [editingLogId, setEditingLogId] = useState(null); // ID del log che stiamo modificando
 
   // Stati Asset Edit
@@ -44,7 +44,7 @@ function Haccp() {
   const [currentDate, setCurrentDate] = useState(new Date()); 
   const [selectedDayLogs, setSelectedDayLogs] = useState(null); 
 
-  const API_URL = "https://stark-backend-gg17.onrender.com"; 
+  const API_URL = "https://stark-backend-gg17.onrender.com"; // O importalo da config
 
   useEffect(() => {
       fetch(`${API_URL}/api/menu/${slug}`).then(r=>r.json()).then(setInfo);
@@ -155,7 +155,7 @@ function Haccp() {
       setTempInput(prev => ({ ...prev, [asset.id]: { val: '', photo: '' } })); 
       setEditingLogId(null);
       ricaricaDati();
-      if(scanId) navigate(`/haccp/${slug}`); // Se eravamo in scan mode, torna alla home haccp
+      if(scanId) navigate(`/haccp/${slug}`); 
   };
 
   const eliminaLog = async (logId) => {
@@ -169,6 +169,11 @@ function Haccp() {
   // ==========================
   // ASSET CRUD
   // ==========================
+  const apriModaleAsset = (asset = null) => {
+      if(asset) { setEditingAsset(asset); setAssetForm({ ...asset }); } 
+      else { setEditingAsset(null); setAssetForm({ nome:'', tipo:'frigo', range_min:0, range_max:4, marca:'', modello:'', serial_number:'', foto_url:'' }); }
+      setShowAssetModal(true);
+  };
   const salvaAsset = async (e) => {
       e.preventDefault();
       const endpoint = editingAsset ? `${API_URL}/api/haccp/assets/${editingAsset.id}` : `${API_URL}/api/haccp/assets`;
@@ -180,10 +185,12 @@ function Haccp() {
       const f = e.target.files[0]; if(!f) return; setUploadingAsset(true);
       try { const url = await uploadFile(f); setAssetForm(prev => ({...prev, foto_url: url})); } finally { setUploadingAsset(false); }
   };
-  // (Eliminazione asset omessa per brevità, uguale a prima)
+  const eliminaAsset = async (id) => {
+      if(confirm("Eliminare definitivamente?")) { await fetch(`${API_URL}/api/haccp/assets/${id}`, {method:'DELETE'}); ricaricaDati(); }
+  };
 
   // ==========================
-  // CALENDARIO & ETICHETTE (Standard)
+  // LOGICA CALENDARIO
   // ==========================
   const getDaysInMonth = (date) => {
       const year = date.getFullYear(), month = date.getMonth();
@@ -192,7 +199,100 @@ function Haccp() {
       const emptySlots = firstDay === 0 ? 6 : firstDay - 1; 
       return { days, emptySlots };
   };
-  const cambiaMese = (d) => { const n=new Date(currentDate); n.setMonth(n.getMonth()+d); setCurrentDate(n); setSelectedDayLogs(null); };
+  const cambiaMese = (delta) => { 
+      const newDate = new Date(currentDate);
+      newDate.setMonth(newDate.getMonth() + delta);
+      setCurrentDate(newDate);
+      setSelectedDayLogs(null);
+  };
+
+  const renderCalendario = () => {
+      const { days, emptySlots } = getDaysInMonth(currentDate);
+      const grid = [];
+      const monthNames = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
+      const weekDays = ['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
+
+      for (let i = 0; i < emptySlots; i++) grid.push(<div key={`empty-${i}`} style={{background:'#f0f0f0'}}></div>);
+      
+      for (let d = 1; d <= days; d++) {
+          const logsDelGiorno = calendarLogs.filter(l => new Date(l.data_ora).getDate() === d);
+          const hasError = logsDelGiorno.some(l => !l.conformita);
+          const hasLogs = logsDelGiorno.length > 0;
+          let bgColor = 'white';
+          if (hasLogs) bgColor = hasError ? '#ffcccc' : '#ccffcc'; 
+
+          grid.push(
+              <div key={d} 
+                   onClick={() => setSelectedDayLogs({ day: d, logs: logsDelGiorno })}
+                   style={{
+                       background: bgColor, border:'1px solid #ddd', minHeight:'80px', padding:'5px', cursor:'pointer',
+                       position:'relative', transition:'0.2s'
+                   }}
+                   className="calendar-day"
+              >
+                  <div style={{fontWeight:'bold', fontSize:'14px', marginBottom:'5px'}}>{d}</div>
+                  {hasLogs && (
+                      <div style={{fontSize:'10px', color:'#555'}}>
+                          {hasError ? '⚠️ ANOMALIA' : '✅ OK'} ({logsDelGiorno.length})
+                      </div>
+                  )}
+              </div>
+          );
+      }
+
+      return (
+          <div style={{background:'white', padding:20, borderRadius:10}}>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20}}>
+                  <button onClick={()=>cambiaMese(-1)} style={{padding:'5px 15px', cursor:'pointer'}}>◀ Prev</button>
+                  <h2 style={{margin:0}}>{monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}</h2>
+                  <button onClick={()=>cambiaMese(1)} style={{padding:'5px 15px', cursor:'pointer'}}>Next ▶</button>
+              </div>
+
+              <div style={{display:'grid', gridTemplateColumns:'repeat(7, 1fr)', gap:5, marginBottom:5}}>
+                  {weekDays.map(wd => <div key={wd} style={{textAlign:'center', fontWeight:'bold', background:'#2c3e50', color:'white', padding:5, borderRadius:4}}>{wd}</div>)}
+              </div>
+
+              <div style={{display:'grid', gridTemplateColumns:'repeat(7, 1fr)', gap:5}}>
+                  {grid}
+              </div>
+
+              {selectedDayLogs && (
+                  <div style={{marginTop:20, borderTop:'2px solid #ddd', paddingTop:20}}>
+                      <h3>📅 Dettaglio del {selectedDayLogs.day} {monthNames[currentDate.getMonth()]}</h3>
+                      {selectedDayLogs.logs.length === 0 ? <p>Nessuna registrazione.</p> : (
+                          <table style={{width:'100%', borderCollapse:'collapse', fontSize:'13px'}}>
+                              <thead>
+                                  <tr style={{background:'#eee'}}><th style={{padding:8}}>Ora</th><th style={{padding:8}}>Asset</th><th style={{padding:8}}>Temp</th><th style={{padding:8}}>Stato</th></tr>
+                              </thead>
+                              <tbody>
+                                  {selectedDayLogs.logs.map(l => (
+                                      <tr key={l.id} style={{borderBottom:'1px solid #eee', textAlign:'center'}}>
+                                          <td style={{padding:8}}>{new Date(l.data_ora).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</td>
+                                          <td style={{padding:8}}><strong>{l.nome_asset}</strong></td>
+                                          <td style={{padding:8}}>{l.valore}°C</td>
+                                          <td style={{padding:8}}>{l.conformita ? <span style={{color:'green', fontWeight:'bold'}}>OK</span> : <span style={{color:'red', fontWeight:'bold'}}>ERR</span>}</td>
+                                      </tr>
+                                  ))}
+                              </tbody>
+                          </table>
+                      )}
+                      <button onClick={()=>setSelectedDayLogs(null)} style={{marginTop:10, padding:'5px 10px', cursor:'pointer'}}>Chiudi Dettaglio</button>
+                  </div>
+              )}
+          </div>
+      );
+  };
+
+  // ==========================
+  // LOGICA ETICHETTE
+  // ==========================
+  const handleLabelTypeChange = (e) => {
+      const newType = e.target.value;
+      let nuoviGiorni = 3;
+      if (newType === 'negativo') nuoviGiorni = 180; // 6 Mesi
+      if (newType === 'sottovuoto') nuoviGiorni = 10;
+      setLabelData(prev => ({ ...prev, tipo: newType, giorni_scadenza: nuoviGiorni }));
+  };
 
   const generaEtichetta = async (e) => {
       e.preventDefault();
@@ -229,7 +329,7 @@ function Haccp() {
               <div><h1 style={{margin:0, color:'#2c3e50'}}>🛡️ HACCP Control</h1></div>
               <div style={{display:'flex', gap:10}}>
                   {['temperature', 'calendario', 'etichette', 'setup'].map(t => (
-                      <button key={t} onClick={()=>setTab(t)} style={{padding:'10px 20px', borderRadius:5, border:'none', cursor:'pointer', fontWeight:'bold', textTransform:'uppercase', background: tab===t ? '#2c3e50' : 'white', color: tab===t ? 'white' : '#333'}}>{t}</button>
+                      <button key={t} onClick={()=>setTab(t)} style={{padding:'10px 20px', borderRadius:5, border:'none', cursor:'pointer', fontWeight:'bold', textTransform:'uppercase', background: tab===t ? '#2c3e50' : 'white', color: tab===t ? 'white' : '#333'}}>{t === 'setup' ? '⚙️ Macchine' : (t === 'temperature' ? '🌡️ Controlli' : (t === 'calendario' ? '📅 Storico' : '🏷️ Etichette'))}</button>
                   ))}
                   <button onClick={()=>{localStorage.removeItem(`haccp_session_${slug}`); setIsAuthorized(false)}} style={{background:'#e74c3c', color:'white', border:'none', padding:'10px 20px', borderRadius:5, cursor:'pointer'}}>ESCI</button>
               </div>
@@ -304,22 +404,15 @@ function Haccp() {
           </div>
       )}
 
-      {/* 2. CALENDARIO (Solo lettura/Audit) */}
-      {tab === 'calendario' && !scanId && (
-          <div style={{background:'white', padding:20, borderRadius:10}}>
-             {/* ... CODICE CALENDARIO UGUALE ALLA V3 (Omesso per brevità, non cambia logica) ... */}
-             {/* Assicurati solo di usare la logica di renderizzazione della V3 qui */}
-             <div style={{textAlign:'center', padding:20}}>Visualizzazione Storico Calendario Attiva</div>
-             {/* (Copia qui il blocco renderCalendario() della risposta precedente se serve vederlo) */}
-          </div>
-      )}
+      {/* 2. CALENDARIO (RIPRISTINATO) */}
+      {tab === 'calendario' && !scanId && renderCalendario()}
 
       {/* 3. SETUP ASSET + QR CODE */}
       {tab === 'setup' && !scanId && (
           <div className="no-print">
               <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20}}>
                   <h2 style={{margin:0}}>⚙️ Registro Macchinari & QR</h2>
-                  <button onClick={() => { setEditingAsset(null); setAssetForm({nome:'', tipo:'frigo', range_min:0, range_max:4, marca:'', modello:'', serial_number:'', foto_url:''}); setShowAssetModal(true); }} style={{background:'#27ae60', color:'white', border:'none', padding:'10px 20px', borderRadius:5, cursor:'pointer', fontWeight:'bold'}}>➕ NUOVA MACCHINA</button>
+                  <button onClick={() => apriModaleAsset()} style={{background:'#27ae60', color:'white', border:'none', padding:'10px 20px', borderRadius:5, cursor:'pointer', fontWeight:'bold'}}>➕ NUOVA MACCHINA</button>
               </div>
               <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(350px, 1fr))', gap:20}}>
                   {assets.map(a => (
@@ -335,7 +428,7 @@ function Haccp() {
                           </div>
                           <div style={{display:'flex', gap:10, marginTop:15}}>
                               <button onClick={()=>setShowQRModal(a)} style={{flex:1, background:'#34495e', color:'white', padding:8, borderRadius:5, border:'none', cursor:'pointer'}}>🔳 QR CODE</button>
-                              <button onClick={()=>{ setEditingAsset(a); setAssetForm({...a}); setShowAssetModal(true); }} style={{flex:1, background:'#f39c12', color:'white', padding:8, borderRadius:5, border:'none', cursor:'pointer'}}>✏️ MODIFICA</button>
+                              <button onClick={()=>apriModaleAsset(a)} style={{flex:1, background:'#f39c12', color:'white', padding:8, borderRadius:5, border:'none', cursor:'pointer'}}>✏️ MODIFICA</button>
                           </div>
                       </div>
                   ))}
@@ -356,7 +449,7 @@ function Haccp() {
                   </div>
               )}
 
-              {/* MODALE ASSET (Stessa di prima) */}
+              {/* MODALE ASSET */}
               {showAssetModal && (
                   <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.8)', zIndex:999, display:'flex', alignItems:'center', justifyContent:'center', padding:20}}>
                       <div style={{background:'white', width:'100%', maxWidth:'500px', borderRadius:10, padding:25, maxHeight:'90vh', overflowY:'auto'}}>
@@ -384,20 +477,52 @@ function Haccp() {
           </div>
       )}
 
-      {/* 4. ETICHETTE (Standard - Omesso per brevità, usa codice V3) */}
+      {/* 4. ETICHETTE (RIPRISTINATO) */}
       {tab === 'etichette' && !scanId && (
-          <div className="no-print" style={{padding:20, background:'white', borderRadius:10}}>
-              <h2>🏷️ Genera Etichetta</h2>
-              <form onSubmit={generaEtichetta} style={{display:'flex', gap:10, alignItems:'flex-end'}}>
-                  <div style={{flex:1}}><label>Prodotto</label><br/><input value={labelData.prodotto} onChange={e=>setLabelData({...labelData, prodotto:e.target.value})} style={{width:'100%', padding:10}} /></div>
-                  <div style={{width:80}}><label>Giorni</label><br/><input type="number" value={labelData.giorni_scadenza} onChange={e=>setLabelData({...labelData, giorni_scadenza:e.target.value})} style={{width:'100%', padding:10}} /></div>
-                  <button style={{padding:10, background:'#3498db', color:'white', border:'none', cursor:'pointer'}}>STAMPA</button>
-              </form>
+          <div className="no-print" style={{display:'flex', gap:30, flexWrap:'wrap'}}>
+              <div style={{flex:1, background:'white', padding:30, borderRadius:10, minWidth:'300px'}}>
+                  <h2>🏷️ Genera Etichetta</h2>
+                  <form onSubmit={generaEtichetta} style={{display:'flex', flexDirection:'column', gap:15}}>
+                      <label style={{fontWeight:'bold'}}>Prodotto</label>
+                      <input required value={labelData.prodotto} onChange={e=>setLabelData({...labelData, prodotto:e.target.value})} style={{padding:12, borderRadius:5, border:'1px solid #ccc'}} />
+                      
+                      <div style={{display:'flex', gap:15}}>
+                        <div style={{flex:1}}>
+                            <label style={{fontWeight:'bold'}}>Tipo</label>
+                            <select value={labelData.tipo} onChange={handleLabelTypeChange} style={{width:'100%', padding:12, borderRadius:5, border:'1px solid #ccc'}}>
+                                <option value="positivo">Positivo (+3°C)</option>
+                                <option value="negativo">Negativo (-18°C)</option>
+                                <option value="sottovuoto">Sottovuoto</option>
+                            </select>
+                        </div>
+                        <div style={{flex:1}}>
+                            <label style={{fontWeight:'bold'}}>Scadenza (giorni)</label>
+                            <input type="number" value={labelData.giorni_scadenza} onChange={e=>setLabelData({...labelData, giorni_scadenza:e.target.value})} style={{width:'100%', padding:12, borderRadius:5, border:'1px solid #ccc'}} />
+                        </div>
+                      </div>
+
+                      <label style={{fontWeight:'bold'}}>Operatore</label>
+                      <input required value={labelData.operatore} onChange={e=>setLabelData({...labelData, operatore:e.target.value})} style={{padding:12, borderRadius:5, border:'1px solid #ccc'}} />
+                      
+                      <button style={{padding:15, background:'#3498db', color:'white', border:'none', borderRadius:5, fontWeight:'bold', cursor:'pointer', fontSize:16, marginTop:10}}>🖨️ STAMPA ETICHETTA</button>
+                  </form>
+              </div>
+              <div style={{flex:1, display:'flex', alignItems:'center', justifyContent:'center', background:'#bdc3c7', borderRadius:10, minHeight:'300px'}}>
+                   {lastLabel ? (
+                       <div style={{textAlign:'center'}}>
+                           <h3>Anteprima:</h3>
+                           <div style={{background:'white', width:'300px', padding:20, margin:'0 auto', border:'1px solid black'}}>
+                               <h4>{lastLabel.prodotto}</h4>
+                               <p>Prod: {new Date(lastLabel.data_produzione).toLocaleDateString()}</p>
+                               <p>Scad: <strong>{new Date(lastLabel.data_scadenza).toLocaleDateString()}</strong></p>
+                           </div>
+                       </div>
+                   ) : <p style={{color:'#666'}}>Nessuna etichetta generata.</p>}
+              </div>
           </div>
       )}
 
-      {/* TEMPLATE STAMPA (Nascosto) */}
-      {/* ... Copia il blocco .print-only e <style> dalla versione precedente ... */}
+      {/* TEMPLATE STAMPA (NASCOSTO) */}
       {lastLabel && (
         <div className="print-only" style={{position:'fixed', top:0, left:0, width:'58mm', height:'40mm', background:'white', color:'black', display:'none', flexDirection:'column', padding:'2mm', boxSizing:'border-box', fontSize:'10px', fontFamily:'Arial'}}>
             <div style={{fontWeight:'bold', fontSize:'12px', textAlign:'center', borderBottom:'1px solid black', paddingBottom:'2px'}}>{lastLabel.prodotto}</div>
