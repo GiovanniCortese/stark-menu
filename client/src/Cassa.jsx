@@ -1,4 +1,4 @@
-// client/src/Cassa.jsx - VERSIONE V41 (AGGIUNTO GRADO CLIENTE & ORARIO SERVIZIO) 💶
+// client/src/Cassa.jsx - VERSIONE V42 (FIX ORDINAMENTO CRONOLOGICO) 💶
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -215,6 +215,9 @@ function Cassa() {
             {Object.keys(tavoliAttivi).map(tavolo => {
                 const info = tavoliAttivi[tavolo];
                 
+                // --- FIX ORDINAMENTO: DAL PRIMO (VECCHIO) ALL'ULTIMO (NUOVO) ---
+                info.ordini.sort((a,b) => new Date(a.data_ora) - new Date(b.data_ora));
+
                 const ordiniDaInviare = info.ordini.filter(o => o.stato === 'in_arrivo');
                 const richiedeApprovazione = ordiniDaInviare.length > 0;
                 const borderColor = richiedeApprovazione ? '#e67e22' : 'transparent';
