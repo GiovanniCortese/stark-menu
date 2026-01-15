@@ -1,4 +1,4 @@
-// client/src/Cassa.jsx - VERSIONE V42 (FIX ORDINAMENTO CRONOLOGICO) 💶
+// client/src/Cassa.jsx - VERSIONE V44 (FIX DEFINITIVO ORDINAMENTO ARRAY) 💶
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -9,7 +9,8 @@ function Cassa() {
   
   // STATI DATI
   const [tab, setTab] = useState('attivi'); 
-  const [tavoliAttivi, setTavoliAttivi] = useState({}); 
+  // NOTA: Ora tavoliAttivi è un ARRAY [], non più un oggetto {}
+  const [tavoliAttivi, setTavoliAttivi] = useState([]); 
   const [storico, setStorico] = useState([]);
   const [infoRistorante, setInfoRistorante] = useState(null);
   const [selectedLog, setSelectedLog] = useState(null); 
@@ -99,20 +100,26 @@ function Cassa() {
       .then(res => res.json())
       .then(data => {
         const ordini = Array.isArray(data.nuovi_ordini) ? data.nuovi_ordini : [];
-        const raggruppati = {};
+        const raggruppati = {}; // Oggetto temporaneo
         
         ordini.forEach(ord => {
             const t = ord.tavolo;
-            if(!raggruppati[t]) raggruppati[t] = { 
-                ordini: [], 
-                totale: 0,
-                fullLog: "",
-                cameriere: ord.cameriere,
-                cliente: ord.cliente, 
-                storico_ordini: ord.storico_ordini || 0,
-                utente_id: ord.utente_id,
-                hasPending: false 
-            };
+            
+            // Inizializza il tavolo se non esiste
+            if(!raggruppati[t]) {
+                raggruppati[t] = { 
+                    tavolo: t, // Salviamo il numero tavolo dentro l'oggetto
+                    ordini: [], 
+                    totale: 0,
+                    fullLog: "",
+                    cameriere: ord.cameriere,
+                    cliente: ord.cliente, 
+                    storico_ordini: ord.storico_ordini || 0,
+                    utente_id: ord.utente_id,
+                    hasPending: false,
+                    orarioMin: ord.data_ora 
+                };
+            }
             
             if (ord.stato === 'in_arrivo') {
                 raggruppati[t].hasPending = true;
@@ -125,7 +132,17 @@ function Cassa() {
                 raggruppati[t].fullLog += "━━━━━━━━━━━━━━━━━━━━━━━━━━\n" + ord.dettagli + "\n";
             }
         });
-        setTavoliAttivi(raggruppati);
+
+        // *** FIX CRUCIALE: CONVERTIAMO IN ARRAY E ORDINIAMO QUI ***
+        const listaOrdinata = Object.values(raggruppati);
+        
+        listaOrdinata.sort((a, b) => {
+            const timeA = new Date(a.orarioMin).getTime();
+            const timeB = new Date(b.orarioMin).getTime();
+            return timeA - timeB; // Dal più vecchio (piccolo) al più nuovo (grande)
+        });
+
+        setTavoliAttivi(listaOrdinata);
       })
       .catch(e => console.error("Errore polling:", e));
   };
@@ -210,114 +227,113 @@ function Cassa() {
 
       {tab === 'attivi' && (
           <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(350px, 1fr))', gap:20}}>
-            {Object.keys(tavoliAttivi).length === 0 && <p style={{gridColumn:'1/-1', textAlign:'center', fontSize:20, color:'#888'}}>Nessun tavolo attivo.</p>}
+            {tavoliAttivi.length === 0 && <p style={{gridColumn:'1/-1', textAlign:'center', fontSize:20, color:'#888'}}>Nessun tavolo attivo.</p>}
             
-            {Object.keys(tavoliAttivi).map(tavolo => {
-                const info = tavoliAttivi[tavolo];
-                
-                // --- FIX ORDINAMENTO: DAL PRIMO (VECCHIO) ALL'ULTIMO (NUOVO) ---
-                info.ordini.sort((a,b) => new Date(a.data_ora) - new Date(b.data_ora));
+            {/* ORA MAPPIAMO UN ARRAY ORDINATO, L'ORDINE VISIVO È GARANTITO */}
+            {tavoliAttivi.map(info => {
+                    const tavolo = info.tavolo; // Ora leggiamo il tavolo dall'oggetto info
+                    
+                    // Ordini interni: dal più vecchio al più nuovo
+                    info.ordini.sort((a,b) => new Date(a.data_ora) - new Date(b.data_ora));
 
-                const ordiniDaInviare = info.ordini.filter(o => o.stato === 'in_arrivo');
-                const richiedeApprovazione = ordiniDaInviare.length > 0;
-                const borderColor = richiedeApprovazione ? '#e67e22' : 'transparent';
+                    const ordiniDaInviare = info.ordini.filter(o => o.stato === 'in_arrivo');
+                    const richiedeApprovazione = ordiniDaInviare.length > 0;
+                    const borderColor = richiedeApprovazione ? '#e67e22' : 'transparent';
 
-                return (
-                    <div key={tavolo} style={{background:'white', padding:20, borderRadius:10, boxShadow:'0 4px 10px rgba(0,0,0,0.1)', border: `4px solid ${borderColor}`}}>
-                        
-                        {richiedeApprovazione && (
-                            <div style={{
-                                background:'#e67e22', color:'white', padding:'15px', 
-                                borderRadius:'8px', marginBottom:'20px', textAlign:'center',
-                                animation: 'pulse 1.5s infinite' 
-                            }}>
-                                <h3 style={{margin:'0 0 10px 0', fontSize:'18px'}}>🔔 {ordiniDaInviare.length} ORDINI DA CLIENTE</h3>
-                                <button onClick={() => inviaInProduzione(ordiniDaInviare)} style={{background:'white', color:'#e67e22', border:'none', padding:'10px 20px', borderRadius:'30px', fontWeight:'bold', cursor:'pointer', fontSize:'16px', boxShadow:'0 2px 5px rgba(0,0,0,0.2)'}}>✅ ACCETTA E INVIA IN CUCINA</button>
-                            </div>
-                        )}
-
-                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', borderBottom:'2px solid #ddd', paddingBottom:10, marginBottom:10}}>
-                            <div>
-                                <h2 style={{margin:0, color:'#000', fontSize:'1.6rem'}}>Tavolo {tavolo}</h2>
-                            </div>
-                            <div style={{textAlign:'right'}}>
-                                <h2 style={{margin:0, color: richiedeApprovazione ? '#e67e22' : '#27ae60', marginBottom:'5px'}}>{info.totale.toFixed(2)}€</h2>
-                                <button onClick={() => setSelectedLog({ id: `Tavolo ${tavolo} (LIVE)`, dettagli: info.fullLog })} style={{background:'#27ae60', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:11, fontWeight:'bold'}}>🟢 LOG LIVE</button>
-                            </div>
-                        </div>
-
-                        {info.ordini.map(ord => {
-                            // --- LOGICA NOME, ICONE E LIVELLO ---
-                            const isStaffOrder = !!ord.cameriere; 
-                            const nomeAutore = isStaffOrder ? `Staff: ${ord.cameriere}` : (ord.cliente || "Ospite");
-                            const isUser = !ord.cameriere && ord.utente_id; 
-                            const iconaAutore = isStaffOrder ? '👤' : '📱';
+                    return (
+                        <div key={tavolo} style={{background:'white', padding:20, borderRadius:10, boxShadow:'0 4px 10px rgba(0,0,0,0.1)', border: `4px solid ${borderColor}`}}>
                             
-                            // CALCOLO LIVELLO
-                            const livelloInfo = isUser ? getLivello(ord.storico_ordini) : null;
-
-                            return (
-                                <div key={ord.id} style={{
-                                    marginBottom:20, 
-                                    borderLeft:`4px solid ${ord.stato === 'in_arrivo' ? '#e67e22' : '#eee'}`, 
-                                    paddingLeft:10,
-                                    opacity: ord.stato === 'in_arrivo' ? 0.6 : 1
+                            {richiedeApprovazione && (
+                                <div style={{
+                                    background:'#e67e22', color:'white', padding:'15px', 
+                                    borderRadius:'8px', marginBottom:'20px', textAlign:'center',
+                                    animation: 'pulse 1.5s infinite' 
                                 }}>
-                                    {ord.stato === 'in_arrivo' && <div style={{color:'#e67e22', fontWeight:'bold', fontSize:'0.8rem', marginBottom:5}}>⚠️ IN ATTESA DI CONFERMA</div>}
-                                    
-                                    {/* HEADER ORDINE: ID, ORA, NOME E GRADO */}
-                                    <div style={{fontSize:12, color:'#888', marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                                        <span>Ord #{ord.id} - {new Date(ord.data_ora).toLocaleTimeString()}</span>
-                                        
-                                        <div style={{display:'flex', alignItems:'center', gap:'5px'}}>
-                                            <span 
-                                                onClick={(e) => {
-                                                    if(isUser) { e.stopPropagation(); apriDettagliUtente(ord.utente_id); }
-                                                }}
-                                                style={{
-                                                    color: isUser ? '#2980b9' : '#555',
-                                                    fontWeight: 'bold',
-                                                    cursor: isUser ? 'pointer' : 'default',
-                                                    textDecoration: isUser ? 'underline' : 'none',
-                                                    background: '#f0f0f0',
-                                                    padding: '2px 8px',
-                                                    borderRadius: '4px',
-                                                    fontSize: '11px'
-                                                }}
-                                            >
-                                                {iconaAutore} {nomeAutore}
-                                            </span>
-
-                                            {/* --- MOSTRA IL GRADO SE È UN UTENTE --- */}
-                                            {isUser && livelloInfo && (
-                                                <span style={{
-                                                    fontSize: '10px', 
-                                                    background: livelloInfo.bg, 
-                                                    color: livelloInfo.color, 
-                                                    padding: '2px 6px', 
-                                                    borderRadius: '4px', 
-                                                    fontWeight: 'bold',
-                                                    border: `1px solid ${livelloInfo.color}`
-                                                }}>
-                                                    {livelloInfo.label}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {renderProdotti(ord, modificaStatoProdotto, eliminaProdotto)}
+                                    <h3 style={{margin:'0 0 10px 0', fontSize:'18px'}}>🔔 {ordiniDaInviare.length} ORDINI DA CLIENTE</h3>
+                                    <button onClick={() => inviaInProduzione(ordiniDaInviare)} style={{background:'white', color:'#e67e22', border:'none', padding:'10px 20px', borderRadius:'30px', fontWeight:'bold', cursor:'pointer', fontSize:'16px', boxShadow:'0 2px 5px rgba(0,0,0,0.2)'}}>✅ ACCETTA E INVIA IN CUCINA</button>
                                 </div>
-                            );
-                        })}
+                            )}
 
-                        <button onClick={() => chiudiTavolo(tavolo)} style={{width:'100%', padding:15, background:'#2c3e50', color:'white', border:'none', fontSize:18, marginTop:5, cursor:'pointer', borderRadius:5, fontWeight:'bold'}}>💰 CHIUDI CONTO</button>
-                    </div>
-                );
-            })}
+                            <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', borderBottom:'2px solid #ddd', paddingBottom:10, marginBottom:10}}>
+                                <div>
+                                    <h2 style={{margin:0, color:'#000', fontSize:'1.6rem'}}>Tavolo {tavolo}</h2>
+                                    <div style={{fontSize:'0.8rem', color:'#888', marginTop:5}}>
+                                        1° Ordine: {new Date(info.orarioMin).toLocaleTimeString()}
+                                    </div>
+                                </div>
+                                <div style={{textAlign:'right'}}>
+                                    <h2 style={{margin:0, color: richiedeApprovazione ? '#e67e22' : '#27ae60', marginBottom:'5px'}}>{info.totale.toFixed(2)}€</h2>
+                                    <button onClick={() => setSelectedLog({ id: `Tavolo ${tavolo} (LIVE)`, dettagli: info.fullLog })} style={{background:'#27ae60', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:11, fontWeight:'bold'}}>🟢 LOG LIVE</button>
+                                </div>
+                            </div>
+
+                            {info.ordini.map(ord => {
+                                const isStaffOrder = !!ord.cameriere; 
+                                const nomeAutore = isStaffOrder ? `Staff: ${ord.cameriere}` : (ord.cliente || "Ospite");
+                                const isUser = !ord.cameriere && ord.utente_id; 
+                                const iconaAutore = isStaffOrder ? '👤' : '📱';
+                                const livelloInfo = isUser ? getLivello(ord.storico_ordini) : null;
+
+                                return (
+                                    <div key={ord.id} style={{
+                                        marginBottom:20, 
+                                        borderLeft:`4px solid ${ord.stato === 'in_arrivo' ? '#e67e22' : '#eee'}`, 
+                                        paddingLeft:10,
+                                        opacity: ord.stato === 'in_arrivo' ? 0.6 : 1
+                                    }}>
+                                        {ord.stato === 'in_arrivo' && <div style={{color:'#e67e22', fontWeight:'bold', fontSize:'0.8rem', marginBottom:5}}>⚠️ IN ATTESA DI CONFERMA</div>}
+                                        
+                                        <div style={{fontSize:12, color:'#888', marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                                            <span>Ord #{ord.id} - {new Date(ord.data_ora).toLocaleTimeString()}</span>
+                                            
+                                            <div style={{display:'flex', alignItems:'center', gap:'5px'}}>
+                                                <span 
+                                                    onClick={(e) => {
+                                                        if(isUser) { e.stopPropagation(); apriDettagliUtente(ord.utente_id); }
+                                                    }}
+                                                    style={{
+                                                        color: isUser ? '#2980b9' : '#555',
+                                                        fontWeight: 'bold',
+                                                        cursor: isUser ? 'pointer' : 'default',
+                                                        textDecoration: isUser ? 'underline' : 'none',
+                                                        background: '#f0f0f0',
+                                                        padding: '2px 8px',
+                                                        borderRadius: '4px',
+                                                        fontSize: '11px'
+                                                    }}
+                                                >
+                                                    {iconaAutore} {nomeAutore}
+                                                </span>
+                                                {isUser && livelloInfo && (
+                                                    <span style={{
+                                                        fontSize: '10px', 
+                                                        background: livelloInfo.bg, 
+                                                        color: livelloInfo.color, 
+                                                        padding: '2px 6px', 
+                                                        borderRadius: '4px', 
+                                                        fontWeight: 'bold',
+                                                        border: `1px solid ${livelloInfo.color}`
+                                                    }}>
+                                                        {livelloInfo.label}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {renderProdotti(ord, modificaStatoProdotto, eliminaProdotto)}
+                                    </div>
+                                );
+                            })}
+
+                            <button onClick={() => chiudiTavolo(tavolo)} style={{width:'100%', padding:15, background:'#2c3e50', color:'white', border:'none', fontSize:18, marginTop:5, cursor:'pointer', borderRadius:5, fontWeight:'bold'}}>💰 CHIUDI CONTO</button>
+                        </div>
+                    );
+                })
+            }
           </div>
       )}
 
-      {/* --- TAB STORICO --- */}
+      {/* --- TAB STORICO (INVARIATO) --- */}
       {tab === 'storico' && (
           <div style={{background:'white', color:'#0b0b0bff', padding:20, borderRadius:10}}>
               <h2 style={{color:'#191e22ff', marginTop:0}}>📜 Storico Ordini Conclusi</h2>
@@ -391,19 +407,8 @@ const renderProdotti = (ord, modificaStatoProdotto, eliminaProdotto) => {
                                 <div style={{fontWeight: p.stato === 'servito'?'normal':'bold', textDecoration: p.stato==='servito'?'line-through':'none', color: p.stato==='servito'?'#aaa':'#000', fontSize:14}}>{p.nome}</div>
                                 {p.varianti_scelte && (<div style={{marginTop:'2px', display:'flex', flexWrap:'wrap', gap:'4px'}}>{p.varianti_scelte.rimozioni?.map((ing, i)=><span key={i} style={{background:'#fceaea', color:'#c0392b', fontSize:'10px', padding:'1px 5px', borderRadius:'3px'}}>NO {ing}</span>)}{p.varianti_scelte.aggiunte?.map((ing, i)=><span key={i} style={{background:'#e8f5e9', color:'#27ae60', fontSize:'10px', padding:'1px 5px', borderRadius:'3px'}}>+ {ing.nome}</span>)}</div>)}
                                 <div style={{fontSize:'0.75rem', color:'#666', fontStyle:'italic', marginTop:'2px'}}>{p.is_bar ? '🍹 Bar' : (p.is_pizzeria ? '🍕 Pizzeria' : '👨‍🍳 Cucina')} • {Number(p.prezzo).toFixed(2)}€</div>
-                                
-                                {/* --- NUOVA RIGA: ORARIO SERVIZIO VERDE --- */}
                                 {p.stato === 'servito' && (
-                                    <div style={{
-                                        color: '#27ae60', 
-                                        fontSize: '11px', 
-                                        fontWeight: 'bold', 
-                                        marginTop: '4px',
-                                        background: '#eafaf1',
-                                        display: 'inline-block',
-                                        padding: '2px 6px',
-                                        borderRadius: '4px'
-                                    }}>
+                                    <div style={{color: '#27ae60', fontSize: '11px', fontWeight: 'bold', marginTop: '4px', background: '#eafaf1', display: 'inline-block', padding: '2px 6px', borderRadius: '4px'}}>
                                         ✅ SERVITO ALLE {p.ora_servizio || "--:--"}
                                     </div>
                                 )}
