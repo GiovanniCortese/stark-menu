@@ -1,4 +1,4 @@
-// client/src/Cassa.jsx - VERSIONE V38 (FIX BARRA APPROVAZIONE IN ALTO) 💶
+// client/src/Cassa.jsx - VERSIONE V39 (NOMI INDIVIDUALI SU OGNI ORDINE) 💶
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -72,7 +72,6 @@ function Cassa() {
       if(!confirm(`Confermi di inviare ${ordiniDaInviare.length} ordini in cucina?`)) return;
       
       try {
-          // Eseguiamo le chiamate in parallelo per velocità
           await Promise.all(ordiniDaInviare.map(ord => 
               fetch(`${API_URL}/api/ordine/invia-produzione`, {
                   method: 'POST',
@@ -80,7 +79,7 @@ function Cassa() {
                   body: JSON.stringify({ id_ordine: ord.id })
               })
           ));
-          aggiornaDati(); // Ricarica subito i dati
+          aggiornaDati(); 
       } catch(e) { alert("Errore invio ordine"); }
   };
 
@@ -99,13 +98,12 @@ function Cassa() {
                 totale: 0,
                 fullLog: "",
                 cameriere: ord.cameriere,
-                cliente: ord.cliente,
+                cliente: ord.cliente, // Questo rimane come "nome principale" del tavolo
                 storico_ordini: ord.storico_ordini || 0,
                 utente_id: ord.utente_id,
                 hasPending: false 
             };
             
-            // SE L'ORDINE E' IN ARRIVO, IL TAVOLO HA PENDING
             if (ord.stato === 'in_arrivo') {
                 raggruppati[t].hasPending = true;
             }
@@ -113,7 +111,6 @@ function Cassa() {
             raggruppati[t].ordini.push(ord);
             raggruppati[t].totale += Number(ord.totale || 0);
             
-            // LOG LIVE: LINEA CONTINUA
             if(ord.dettagli && ord.dettagli.trim() !== "") {
                 raggruppati[t].fullLog += "━━━━━━━━━━━━━━━━━━━━━━━━━━\n" + ord.dettagli + "\n";
             }
@@ -210,6 +207,7 @@ function Cassa() {
                 const isApp = !info.cameriere;
                 let badgeLivello = null;
 
+                // Calcolo livello (basato sul primo utente trovato o generico)
                 if (isApp) {
                      const n = info.storico_ordini || 0;
                      let liv = { label: "🌱 NOVIZIO", color: "#7f8c8d", bg: "#f0f3f4" };
@@ -221,19 +219,16 @@ function Cassa() {
                 }
 
                 const icona = isApp ? "📱" : "👤";
+                // Nome principale (può essere 'Misti' se ci sono più utenti, ma lasciamo il logic standard)
                 const nomeChi = isApp ? (info.cliente || "Cliente App") : info.cameriere;
                 
-                // Filtro ordini 'in_arrivo'
                 const ordiniDaInviare = info.ordini.filter(o => o.stato === 'in_arrivo');
                 const richiedeApprovazione = ordiniDaInviare.length > 0;
-                
-                // Bordo Arancione se c'è attesa
                 const borderColor = richiedeApprovazione ? '#e67e22' : 'transparent';
 
                 return (
                     <div key={tavolo} style={{background:'white', padding:20, borderRadius:10, boxShadow:'0 4px 10px rgba(0,0,0,0.1)', border: `4px solid ${borderColor}`}}>
                         
-                        {/* --- BARRA DI APPROVAZIONE IN ALTO (NUOVA POSIZIONE) --- */}
                         {richiedeApprovazione && (
                             <div style={{
                                 background:'#e67e22', color:'white', padding:'15px', 
@@ -241,17 +236,7 @@ function Cassa() {
                                 animation: 'pulse 1.5s infinite' 
                             }}>
                                 <h3 style={{margin:'0 0 10px 0', fontSize:'18px'}}>🔔 {ordiniDaInviare.length} ORDINI DA CLIENTE</h3>
-                                <button 
-                                    onClick={() => inviaInProduzione(ordiniDaInviare)}
-                                    style={{
-                                        background:'white', color:'#e67e22', border:'none', 
-                                        padding:'10px 20px', borderRadius:'30px', 
-                                        fontWeight:'bold', cursor:'pointer', fontSize:'16px',
-                                        boxShadow:'0 2px 5px rgba(0,0,0,0.2)'
-                                    }}
-                                >
-                                    ✅ ACCETTA E INVIA IN CUCINA
-                                </button>
+                                <button onClick={() => inviaInProduzione(ordiniDaInviare)} style={{background:'white', color:'#e67e22', border:'none', padding:'10px 20px', borderRadius:'30px', fontWeight:'bold', cursor:'pointer', fontSize:'16px', boxShadow:'0 2px 5px rgba(0,0,0,0.2)'}}>✅ ACCETTA E INVIA IN CUCINA</button>
                             </div>
                         )}
 
@@ -261,12 +246,7 @@ function Cassa() {
                                 <div style={{marginTop:'8px', display:'flex', alignItems:'center', background:'#f8f9fa', padding:'5px 10px', borderRadius:'6px'}}>
                                     <span style={{fontSize:'1.4rem', marginRight:'8px'}}>{icona}</span>
                                     <div style={{display:'flex', flexDirection:'column'}}>
-                                        <span 
-                                            style={{fontSize:'1.1rem', fontWeight:'bold', color:'#2c3e50', cursor: isApp ? 'pointer' : 'default', textDecoration: isApp ? 'underline' : 'none'}}
-                                            onClick={() => isApp && info.utente_id && apriDettagliUtente(info.utente_id)}
-                                        >
-                                            {nomeChi}
-                                        </span>
+                                        <span style={{fontSize:'1.1rem', fontWeight:'bold', color:'#2c3e50'}}>{nomeChi}</span>
                                         <div style={{marginTop:2}}>{badgeLivello}</div>
                                     </div>
                                 </div>
@@ -277,18 +257,48 @@ function Cassa() {
                             </div>
                         </div>
 
-                        {info.ordini.map(ord => (
-                            <div key={ord.id} style={{
-                                marginBottom:20, 
-                                borderLeft:`4px solid ${ord.stato === 'in_arrivo' ? '#e67e22' : '#eee'}`, 
-                                paddingLeft:10,
-                                opacity: ord.stato === 'in_arrivo' ? 0.6 : 1
-                            }}>
-                                {ord.stato === 'in_arrivo' && <div style={{color:'#e67e22', fontWeight:'bold', fontSize:'0.8rem', marginBottom:5}}>⚠️ IN ATTESA DI CONFERMA</div>}
-                                <div style={{fontSize:12, color:'#888', marginBottom:10}}>Ord #{ord.id} - {new Date(ord.data_ora).toLocaleTimeString()}</div>
-                                {renderProdotti(ord, modificaStatoProdotto, eliminaProdotto)}
-                            </div>
-                        ))}
+                        {info.ordini.map(ord => {
+                            // --- LOGICA NOME INDIVIDUALE ---
+                            const nomeAutore = ord.cameriere ? `Staff: ${ord.cameriere}` : (ord.cliente || "Ospite");
+                            const isUser = !ord.cameriere && ord.utente_id; // Cliccabile solo se utente registrato
+
+                            return (
+                                <div key={ord.id} style={{
+                                    marginBottom:20, 
+                                    borderLeft:`4px solid ${ord.stato === 'in_arrivo' ? '#e67e22' : '#eee'}`, 
+                                    paddingLeft:10,
+                                    opacity: ord.stato === 'in_arrivo' ? 0.6 : 1
+                                }}>
+                                    {ord.stato === 'in_arrivo' && <div style={{color:'#e67e22', fontWeight:'bold', fontSize:'0.8rem', marginBottom:5}}>⚠️ IN ATTESA DI CONFERMA</div>}
+                                    
+                                    {/* RIGA INTESTAZIONE ORDINE CON NOME */}
+                                    <div style={{fontSize:12, color:'#888', marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                                        <span>Ord #{ord.id} - {new Date(ord.data_ora).toLocaleTimeString()}</span>
+                                        
+                                        {/* NOME CLICCABILE DELL'AUTORE DELL'ORDINE */}
+                                        <span 
+                                            onClick={(e) => {
+                                                if(isUser) { e.stopPropagation(); apriDettagliUtente(ord.utente_id); }
+                                            }}
+                                            style={{
+                                                color: isUser ? '#2980b9' : '#555',
+                                                fontWeight: 'bold',
+                                                cursor: isUser ? 'pointer' : 'default',
+                                                textDecoration: isUser ? 'underline' : 'none',
+                                                background: '#f0f0f0',
+                                                padding: '2px 8px',
+                                                borderRadius: '4px',
+                                                fontSize: '11px'
+                                            }}
+                                        >
+                                            👤 {nomeAutore}
+                                        </span>
+                                    </div>
+
+                                    {renderProdotti(ord, modificaStatoProdotto, eliminaProdotto)}
+                                </div>
+                            );
+                        })}
 
                         <button onClick={() => chiudiTavolo(tavolo)} style={{width:'100%', padding:15, background:'#2c3e50', color:'white', border:'none', fontSize:18, marginTop:5, cursor:'pointer', borderRadius:5, fontWeight:'bold'}}>💰 CHIUDI CONTO</button>
                     </div>
@@ -297,7 +307,7 @@ function Cassa() {
           </div>
       )}
 
-      {/* ... TAB STORICO, MODALI, ETC (INVARIATI) ... */}
+      {/* --- TAB STORICO, MODALI, ETC (INVARIATI) --- */}
       {tab === 'storico' && (
           <div style={{background:'white', color:'#0b0b0bff', padding:20, borderRadius:10}}>
               <h2 style={{color:'#191e22ff', marginTop:0}}>📜 Storico Ordini Conclusi</h2>
