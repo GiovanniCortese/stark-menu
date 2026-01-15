@@ -58,11 +58,11 @@ app.post('/api/ordine', async (req, res) => {
         // Un ordine è "Staff" SOLO se cameriere esiste, è una stringa E non è vuota.
         // Qualsiasi altra cosa (null, undefined, "", "null") viene trattata come CLIENTE.
         const isStaff = (
-            cameriere && 
-            typeof cameriere === 'string' && 
-            cameriere.trim().length > 0 &&
-            cameriere !== "null"
-        );
+    cameriere && 
+    typeof cameriere === 'string' && 
+    cameriere.trim().length > 0 &&
+    cameriere !== "null"
+);
 
         // Se è Staff -> 'in_attesa' (VERDE, va subito in cucina)
         // Se è Cliente -> 'in_arrivo' (ARANCIONE, appare il tasto in cassa)
