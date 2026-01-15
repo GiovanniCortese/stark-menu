@@ -400,7 +400,7 @@ app.post('/api/super/login', (req, res) => { try { const { email, password, code
 app.post('/api/ordine/invia-produzione', async (req, res) => { try { const { id_ordine } = req.body; await pool.query("UPDATE ordini SET stato = 'in_attesa' WHERE id = $1 AND stato = 'in_arrivo'", [id_ordine]); res.json({ success: true }); } catch (e) { console.error(e); res.status(500).json({ error: "Errore invio produzione" }); } });
 
 // ==========================================
-//          API HACCP (VERSIONE PRO)
+//          API HACCP (AGGIUNTA)
 // ==========================================
 
 // 1. GET ASSETS
@@ -411,7 +411,7 @@ app.get('/api/haccp/assets/:ristorante_id', async (req, res) => {
     } catch(e) { res.status(500).json({error:"Err"}); }
 });
 
-// 2. CREA ASSET (Nuovi campi)
+// 2. CREA ASSET
 app.post('/api/haccp/assets', async (req, res) => {
     try {
         const { ristorante_id, nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url } = req.body;
@@ -425,7 +425,7 @@ app.post('/api/haccp/assets', async (req, res) => {
     } catch(e) { res.status(500).json({error:e.message}); }
 });
 
-// 3. MODIFICA ASSET (NUOVA ROTTA)
+// 3. MODIFICA ASSET
 app.put('/api/haccp/assets/:id', async (req, res) => {
     try {
         const { nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url } = req.body;
@@ -444,10 +444,10 @@ app.delete('/api/haccp/assets/:id', async (req, res) => {
     try { await pool.query("DELETE FROM haccp_assets WHERE id=$1", [req.params.id]); res.json({success:true}); } catch(e){ res.status(500).json({error:"Err"}); }
 });
 
-// 5. GET LOGS
+// 5. GET LOGS (FILTRABILE PER CALENDARIO)
 app.get('/api/haccp/logs/:ristorante_id', async (req, res) => {
     try {
-        const { start, end } = req.query; // Riceviamo data inizio e fine
+        const { start, end } = req.query; 
         let query = `
             SELECT l.*, a.nome as nome_asset 
             FROM haccp_logs l 
@@ -456,12 +456,10 @@ app.get('/api/haccp/logs/:ristorante_id', async (req, res) => {
         `;
         const params = [req.params.ristorante_id];
 
-        // Se il calendario chiede un range di date, filtriamo
         if (start && end) {
             query += ` AND l.data_ora >= $2 AND l.data_ora <= $3 ORDER BY l.data_ora ASC`;
             params.push(start, end);
         } else {
-            // Altrimenti comportamento standard (ultimi 100 per la lista veloce)
             query += ` ORDER BY l.data_ora DESC LIMIT 100`;
         }
 
@@ -473,7 +471,19 @@ app.get('/api/haccp/logs/:ristorante_id', async (req, res) => {
     }
 });
 
-// 7. ETICHETTE (Invariato o aggiungi dettagli se vuoi)
+// 6. CREA LOG (Con Foto Prova)
+app.post('/api/haccp/logs', async (req, res) => {
+    try {
+        const { ristorante_id, asset_id, operatore, tipo_log, valore, conformita, azione_correttiva, foto_prova_url } = req.body;
+        await pool.query(
+            "INSERT INTO haccp_logs (ristorante_id, asset_id, operatore, tipo_log, valore, conformita, azione_correttiva, foto_prova_url) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+            [ristorante_id, asset_id, operatore, tipo_log, valore, conformita, azione_correttiva, foto_prova_url]
+        );
+        res.json({success:true});
+    } catch(e) { res.status(500).json({error:"Err"}); }
+});
+
+// 7. ETICHETTE
 app.post('/api/haccp/labels', async (req, res) => {
     try {
         const { ristorante_id, prodotto, data_scadenza, operatore, tipo_conservazione } = req.body;
