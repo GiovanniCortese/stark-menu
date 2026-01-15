@@ -12,6 +12,7 @@ import AdminUsers from './components_admin/AdminUsers'; // NUOVO IMPORT
 import AdminSicurezza from './components_admin/AdminSicurezza'; // <--- AGGIUNGI QUESTO
 import AdminDashboard from './components_admin/AdminDashboard'; // <--- IMPORTA QUESTO
 
+
 function Admin() {
   const { slug } = useParams(); 
   const navigate = useNavigate();
@@ -158,6 +159,7 @@ const handleAdminLogin = async (e) => {
   const apriCucina = () => window.open(`/cucina/${slug}`, '_blank');
   const apriPizzeria = () => window.open(`/pizzeria/${slug}`, '_blank');
   const apriBar = () => window.open(`/bar/${slug}`, '_blank');
+  const apriHaccp = () => window.open(`/haccp/${slug}`, '_blank');
 
   if (loading) return <div style={{padding:'50px', textAlign:'center', fontSize:'20px'}}>🔄 Caricamento Admin...</div>;
 
@@ -259,6 +261,9 @@ const handleAdminLogin = async (e) => {
             <button onClick={apriBar} style={{background:'#1abc9c', color:'white', border:'none', padding:'8px 12px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold'}}>
                 🍹 BAR
             </button>
+            <button onClick={apriHaccp} style={{background:'#2c3e50', color:'white', border:'none', padding:'8px 12px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold'}}>
+    🛡️ HACCP
+</button>
             
             {/* LOGOUT */}
             <button onClick={handleLogout} style={{background:'#333', color:'white', border:'none', padding:'8px 12px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold', marginLeft:'10px'}}>
