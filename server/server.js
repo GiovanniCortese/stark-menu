@@ -447,21 +447,30 @@ app.delete('/api/haccp/assets/:id', async (req, res) => {
 // 5. GET LOGS
 app.get('/api/haccp/logs/:ristorante_id', async (req, res) => {
     try {
-        const r = await pool.query(`SELECT l.*, a.nome as nome_asset FROM haccp_logs l LEFT JOIN haccp_assets a ON l.asset_id = a.id WHERE l.ristorante_id = $1 ORDER BY l.data_ora DESC LIMIT 100`, [req.params.ristorante_id]);
-        res.json(r.rows);
-    } catch(e) { res.status(500).json({error:"Err"}); }
-});
+        const { start, end } = req.query; // Riceviamo data inizio e fine
+        let query = `
+            SELECT l.*, a.nome as nome_asset 
+            FROM haccp_logs l 
+            LEFT JOIN haccp_assets a ON l.asset_id = a.id 
+            WHERE l.ristorante_id = $1 
+        `;
+        const params = [req.params.ristorante_id];
 
-// 6. CREA LOG (Con Foto Prova)
-app.post('/api/haccp/logs', async (req, res) => {
-    try {
-        const { ristorante_id, asset_id, operatore, tipo_log, valore, conformita, azione_correttiva, foto_prova_url } = req.body;
-        await pool.query(
-            "INSERT INTO haccp_logs (ristorante_id, asset_id, operatore, tipo_log, valore, conformita, azione_correttiva, foto_prova_url) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
-            [ristorante_id, asset_id, operatore, tipo_log, valore, conformita, azione_correttiva, foto_prova_url]
-        );
-        res.json({success:true});
-    } catch(e) { res.status(500).json({error:"Err"}); }
+        // Se il calendario chiede un range di date, filtriamo
+        if (start && end) {
+            query += ` AND l.data_ora >= $2 AND l.data_ora <= $3 ORDER BY l.data_ora ASC`;
+            params.push(start, end);
+        } else {
+            // Altrimenti comportamento standard (ultimi 100 per la lista veloce)
+            query += ` ORDER BY l.data_ora DESC LIMIT 100`;
+        }
+
+        const r = await pool.query(query, params);
+        res.json(r.rows);
+    } catch(e) { 
+        console.error(e);
+        res.status(500).json({error:"Err"}); 
+    }
 });
 
 // 7. ETICHETTE (Invariato o aggiungi dettagli se vuoi)
