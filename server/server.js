@@ -497,5 +497,24 @@ app.post('/api/haccp/labels', async (req, res) => {
         res.json({success:true, label: r.rows[0]});
     } catch(e) { res.status(500).json({error:"Err"}); }
 });
+// 8. MODIFICA UN LOG ESISTENTE (Correzione Errore)
+app.put('/api/haccp/logs/:id', async (req, res) => {
+    try {
+        const { valore, conformita, azione_correttiva, foto_prova_url } = req.body;
+        await pool.query(
+            "UPDATE haccp_logs SET valore=$1, conformita=$2, azione_correttiva=$3, foto_prova_url=$4 WHERE id=$5",
+            [valore, conformita, azione_correttiva, foto_prova_url, req.params.id]
+        );
+        res.json({success:true});
+    } catch(e) { res.status(500).json({error:"Err"}); }
+});
+
+// 9. ELIMINA UN LOG (Se inserito per sbaglio)
+app.delete('/api/haccp/logs/:id', async (req, res) => {
+    try {
+        await pool.query("DELETE FROM haccp_logs WHERE id=$1", [req.params.id]);
+        res.json({success:true});
+    } catch(e) { res.status(500).json({error:"Err"}); }
+});
 
 app.listen(port, () => console.log(`🚀 SERVER V12 (Porta ${port}) - TIMEZONE: ROME`));

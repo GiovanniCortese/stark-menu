@@ -27,6 +27,7 @@ function App() {
         <Route path="/pizzeria/:slug" element={<Pizzeria />} />
         <Route path="/cassa/:slug" element={<Cassa />} />
         <Route path="/haccp/:slug" element={<Haccp />} />
+        <Route path="/haccp/:slug/scan/:scanId" element={<Haccp />} />
 
         {/* DASHBOARD CLIENTE (Mettila PRIMA delle rotte generiche) */}    
         <Route path="/dashboard" element={<Dashboard />} />
