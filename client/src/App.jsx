@@ -10,6 +10,7 @@ import SuperAdmin from './SuperAdmin';
 import Menu from './Menu'; // MENU SPOSTATO
 import './App.css';
 import Dashboard from './Dashboard'; // <--- Importa il nuovo file
+import Haccp from './Haccp';
 
 function App() {
   return (
@@ -25,6 +26,7 @@ function App() {
         <Route path="/bar/:slug" element={<Bar />} />
         <Route path="/pizzeria/:slug" element={<Pizzeria />} />
         <Route path="/cassa/:slug" element={<Cassa />} />
+        <Route path="/haccp/:slug" element={<Haccp />} />
 
         {/* DASHBOARD CLIENTE (Mettila PRIMA delle rotte generiche) */}    
         <Route path="/dashboard" element={<Dashboard />} />

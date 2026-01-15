@@ -371,11 +371,19 @@ app.get('/api/ristorante/config/:id', async (req, res) => { try { const r = awai
 app.get('/api/db-fix-menu', async (req, res) => { try { const cols = ["url_menu_giorno TEXT DEFAULT ''", "url_menu_pdf TEXT DEFAULT ''", "colore_footer_text TEXT DEFAULT '#888888'", "dimensione_footer TEXT DEFAULT '12'", "allineamento_footer TEXT DEFAULT 'center'"]; for (const c of cols) { await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS ${c}`); } res.send("✅ DATABASE AGGIORNATO!"); } catch (e) { res.status(500).send("Errore DB: " + e.message); } });
 app.put('/api/ristorante/style/:id', async (req, res) => { try { const { logo_url, cover_url, colore_sfondo, colore_titolo, colore_testo, colore_prezzo, colore_card, colore_btn, colore_btn_text, colore_border, colore_tavolo_bg, colore_tavolo_text, colore_carrello_bg, colore_carrello_text, colore_checkout_bg, colore_checkout_text, colore_modal_bg, colore_modal_text, font_style, info_footer, url_allergeni, url_menu_giorno, url_menu_pdf } = req.body; await pool.query(`UPDATE ristoranti SET logo_url=$1, cover_url=$2, colore_sfondo=$3, colore_titolo=$4, colore_testo=$5, colore_prezzo=$6, colore_card=$7, colore_btn=$8, colore_btn_text=$9, colore_border=$10, colore_tavolo_bg=$11, colore_tavolo_text=$12, colore_carrello_bg=$13, colore_carrello_text=$14, colore_checkout_bg=$15, colore_checkout_text=$16, colore_modal_bg=$17, colore_modal_text=$18, font_style=$19, info_footer=$20, url_allergeni=$21, url_menu_giorno=$22, url_menu_pdf=$23 WHERE id=$24`, [logo_url, cover_url, colore_sfondo, colore_titolo, colore_testo, colore_prezzo, colore_card, colore_btn, colore_btn_text, colore_border, colore_tavolo_bg, colore_tavolo_text, colore_carrello_bg, colore_carrello_text, colore_checkout_bg, colore_checkout_text, colore_modal_bg, colore_modal_text, font_style, info_footer, url_allergeni, url_menu_giorno, url_menu_pdf, req.params.id]); res.json({ success: true }); } catch (err) { res.status(500).json({ error: "Errore salvataggio" }); } });
 app.put('/api/ristorante/servizio/:id', async (req, res) => { try { const { id } = req.params; if (req.body.ordini_abilitati !== undefined) await pool.query('UPDATE ristoranti SET ordini_abilitati = $1 WHERE id = $2', [req.body.ordini_abilitati, id]); if (req.body.servizio_attivo !== undefined) await pool.query('UPDATE ristoranti SET servizio_attivo = $1 WHERE id = $2', [req.body.servizio_attivo, id]); res.json({ success: true }); } catch (e) { res.status(500).json({error:"Err"}); } });
-app.put('/api/ristorante/security/:id', async (req, res) => { try { const { pw_cassa, pw_cucina, pw_pizzeria, pw_bar } = req.body; await pool.query(`UPDATE ristoranti SET pw_cassa=$1, pw_cucina=$2, pw_pizzeria=$3, pw_bar=$4 WHERE id=$5`, [pw_cassa, pw_cucina, pw_pizzeria, pw_bar, req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
-
+app.put('/api/ristorante/security/:id', async (req, res) => { 
+    try { 
+        const { pw_cassa, pw_cucina, pw_pizzeria, pw_bar, pw_haccp } = req.body; // Aggiunto pw_haccp
+        await pool.query(
+            `UPDATE ristoranti SET pw_cassa=$1, pw_cucina=$2, pw_pizzeria=$3, pw_bar=$4, pw_haccp=$5 WHERE id=$6`, 
+            [pw_cassa, pw_cucina, pw_pizzeria, pw_bar, pw_haccp, req.params.id]
+        ); 
+        res.json({ success: true }); 
+    } catch (e) { res.status(500).json({ error: "Err" }); } 
+});
 app.post('/api/upload', upload.single('photo'), (req, res) => res.json({ url: req.file.path }));
 app.post('/api/login', async (req, res) => { const { email, password } = req.body; try { const result = await pool.query("SELECT * FROM ristoranti WHERE email = $1", [email]); if (result.rows.length > 0) { const ristorante = result.rows[0]; if (ristorante.password === password) { return res.json({ success: true, user: { id: ristorante.id, nome: ristorante.nome, slug: ristorante.slug } }); } } res.status(401).json({ success: false, error: "Credenziali errate" }); } catch (e) { res.status(500).json({ success: false, error: "Errore interno" }); } });
-app.post('/api/auth/station', async (req, res) => { try { const { ristorante_id, role, password } = req.body; const roleMap = { 'cassa': 'pw_cassa', 'cucina': 'pw_cucina', 'pizzeria': 'pw_pizzeria', 'bar': 'pw_bar' }; const colonnaPwd = roleMap[role]; if (!colonnaPwd) return res.json({ success: false, error: "Ruolo non valido" }); const r = await pool.query(`SELECT id, nome, ${colonnaPwd} as password_reparto FROM ristoranti WHERE id = $1`, [ristorante_id]); if (r.rows.length === 0) return res.json({ success: false, error: "Ristorante non trovato" }); if (String(r.rows[0].password_reparto) === String(password)) res.json({ success: true, nome_ristorante: r.rows[0].nome }); else res.json({ success: false, error: "Password Errata" }); } catch (e) { res.status(500).json({ error: "Err" }); } });
+app.post('/api/auth/station', async (req, res) => { try { const { ristorante_id, role, password } = req.body; const roleMap = { 'cassa': 'pw_cassa', 'cucina': 'pw_cucina', 'pizzeria': 'pw_pizzeria', 'bar': 'pw_bar', 'haccp': 'pw_haccp' }; const colonnaPwd = roleMap[role]; if (!colonnaPwd) return res.json({ success: false, error: "Ruolo non valido" }); const r = await pool.query(`SELECT id, nome, ${colonnaPwd} as password_reparto FROM ristoranti WHERE id = $1`, [ristorante_id]); if (r.rows.length === 0) return res.json({ success: false, error: "Ristorante non trovato" }); if (String(r.rows[0].password_reparto) === String(password)) res.json({ success: true, nome_ristorante: r.rows[0].nome }); else res.json({ success: false, error: "Password Errata" }); } catch (e) { res.status(500).json({ error: "Err" }); } });
 app.get('/api/cassa/storico/:ristorante_id', async (req, res) => { try { const r = await pool.query("SELECT * FROM ordini WHERE ristorante_id = $1 AND stato = 'pagato' ORDER BY data_ora DESC LIMIT 50", [req.params.ristorante_id]); const ordini = r.rows.map(o => { try { return { ...o, prodotti: JSON.parse(o.prodotti) }; } catch { return { ...o, prodotti: [] }; }}); res.json(ordini); } catch (e) { res.status(500).json({ error: "Err" }); } });
 
 app.post('/api/utenti/import/excel', uploadFile.single('file'), async (req, res) => { try { if (!req.file) return res.status(400).json({ error: "File mancante" }); const workbook = xlsx.read(req.file.buffer, { type: 'buffer' }); const sheetName = workbook.SheetNames[0]; const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]); for (const row of data) { const ruolo = row.ruolo || 'cliente'; if(!row.email) continue; const check = await pool.query("SELECT id FROM utenti WHERE email = $1", [row.email]); if (check.rows.length > 0) { await pool.query("UPDATE utenti SET nome=$1, password=$2, telefono=$3, indirizzo=$4, ruolo=$5 WHERE email=$6", [row.nome, row.password, row.telefono, row.indirizzo, ruolo, row.email]); } else { await pool.query("INSERT INTO utenti (nome, email, password, telefono, indirizzo, ruolo) VALUES ($1, $2, $3, $4, $5, $6)", [row.nome, row.email, row.password, row.telefono, row.indirizzo, ruolo]); } } res.json({ success: true, message: "Importazione completata" }); } catch (e) { console.error(e); res.status(500).json({ error: "Errore Import" }); } });
@@ -390,5 +398,65 @@ app.delete('/api/super/ristoranti/:id', async (req, res) => { try { const id = r
 app.post('/api/super/login', (req, res) => { try { const { email, password, code2fa } = req.body; const adminEmail = process.env.ADMIN_EMAIL; const adminPass = process.env.ADMIN_PASSWORD; const adminSecret = process.env.ADMIN_2FA_SECRET; if (!adminEmail || !adminPass || !adminSecret) return res.status(500).json({ success: false, error: "Configurazione Server Incompleta" }); if (email !== adminEmail || password !== adminPass) return res.json({ success: false, error: "Credenziali non valide" }); const isValidToken = authenticator.check(code2fa, adminSecret); if (!isValidToken) return res.json({ success: false, error: "Codice 2FA Errato o Scaduto" }); res.json({ success: true, token: "SUPER_GOD_TOKEN_2026" }); } catch (e) { res.status(500).json({ success: false, error: "Errore interno server" }); } });
 
 app.post('/api/ordine/invia-produzione', async (req, res) => { try { const { id_ordine } = req.body; await pool.query("UPDATE ordini SET stato = 'in_attesa' WHERE id = $1 AND stato = 'in_arrivo'", [id_ordine]); res.json({ success: true }); } catch (e) { console.error(e); res.status(500).json({ error: "Errore invio produzione" }); } });
+
+// ==========================================
+//          API HACCP
+// ==========================================
+
+// 1. ASSET (Frighi/Zone)
+app.get('/api/haccp/assets/:ristorante_id', async (req, res) => {
+    try {
+        const r = await pool.query("SELECT * FROM haccp_assets WHERE ristorante_id = $1 ORDER BY tipo, nome", [req.params.ristorante_id]);
+        res.json(r.rows);
+    } catch(e) { res.status(500).json({error:"Err"}); }
+});
+
+app.post('/api/haccp/assets', async (req, res) => {
+    try {
+        const { ristorante_id, nome, tipo, range_min, range_max } = req.body;
+        await pool.query("INSERT INTO haccp_assets (ristorante_id, nome, tipo, range_min, range_max) VALUES ($1,$2,$3,$4,$5)", [ristorante_id, nome, tipo, range_min, range_max]);
+        res.json({success:true});
+    } catch(e) { res.status(500).json({error:"Err"}); }
+});
+
+app.delete('/api/haccp/assets/:id', async (req, res) => {
+    try { await pool.query("DELETE FROM haccp_assets WHERE id=$1", [req.params.id]); res.json({success:true}); } catch(e){ res.status(500).json({error:"Err"}); }
+});
+
+// 2. LOGS (Temperature/Pulizie)
+app.get('/api/haccp/logs/:ristorante_id', async (req, res) => {
+    try {
+        // Prende gli ultimi 50 log
+        const r = await pool.query(`SELECT l.*, a.nome as nome_asset FROM haccp_logs l LEFT JOIN haccp_assets a ON l.asset_id = a.id WHERE l.ristorante_id = $1 ORDER BY l.data_ora DESC LIMIT 50`, [req.params.ristorante_id]);
+        res.json(r.rows);
+    } catch(e) { res.status(500).json({error:"Err"}); }
+});
+
+app.post('/api/haccp/logs', async (req, res) => {
+    try {
+        const { ristorante_id, asset_id, operatore, tipo_log, valore, conformita, azione_correttiva } = req.body;
+        await pool.query(
+            "INSERT INTO haccp_logs (ristorante_id, asset_id, operatore, tipo_log, valore, conformita, azione_correttiva) VALUES ($1,$2,$3,$4,$5,$6,$7)",
+            [ristorante_id, asset_id, operatore, tipo_log, valore, conformita, azione_correttiva]
+        );
+        res.json({success:true});
+    } catch(e) { res.status(500).json({error:"Err"}); }
+});
+
+// 3. ETICHETTE (Abbattimento)
+app.post('/api/haccp/labels', async (req, res) => {
+    try {
+        const { ristorante_id, prodotto, data_scadenza, operatore, tipo_conservazione, ingredienti } = req.body;
+        // Genera un lotto semplice: AnnoMeseGiorno-OraMinuti
+        const now = new Date();
+        const lotto = `L-${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}-${now.getHours()}${now.getMinutes()}`;
+        
+        const r = await pool.query(
+            "INSERT INTO haccp_labels (ristorante_id, prodotto, lotto, data_produzione, data_scadenza, operatore, tipo_conservazione, ingredienti) VALUES ($1,$2,$3,NOW(),$4,$5,$6,$7) RETURNING *",
+            [ristorante_id, prodotto, lotto, data_scadenza, operatore, tipo_conservazione, ingredienti]
+        );
+        res.json({success:true, label: r.rows[0]});
+    } catch(e) { res.status(500).json({error:"Err"}); }
+});
 
 app.listen(port, () => console.log(`🚀 SERVER V12 (Porta ${port}) - TIMEZONE: ROME`));

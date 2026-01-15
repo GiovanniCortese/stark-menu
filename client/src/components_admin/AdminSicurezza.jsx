@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 
 function AdminSicurezza({ user, API_URL }) {
-    const [passwords, setPasswords] = useState({ pw_cassa: '', pw_cucina: '', pw_pizzeria: '', pw_bar: '' });
+const [passwords, setPasswords] = useState({ pw_cassa: '', pw_cucina: '', pw_pizzeria: '', pw_bar: '', pw_haccp: '' }); // <--- AGGIUNTO
 
     useEffect(() => {
         fetch(`${API_URL}/api/ristorante/config/${user.id}`)
@@ -11,7 +11,8 @@ function AdminSicurezza({ user, API_URL }) {
                     pw_cassa: data.pw_cassa || '1234',
                     pw_cucina: data.pw_cucina || '1234',
                     pw_pizzeria: data.pw_pizzeria || '1234',
-                    pw_bar: data.pw_bar || '1234'
+                    pw_bar: data.pw_bar || '1234',
+                    pw_haccp: data.pw_haccp || '1234'
                 });
             });
     }, [user.id]);
@@ -55,6 +56,11 @@ function AdminSicurezza({ user, API_URL }) {
                 <label style={labelStyle}>🍹 Password BAR</label>
                 <input type="text" value={passwords.pw_bar} onChange={e => setPasswords({...passwords, pw_bar: e.target.value})} style={inputStyle} />
             </div>
+
+            <div style={rowStyle}>
+    <label style={labelStyle}>🛡️ Password HACCP (Admin/Controllo)</label>
+    <input type="text" value={passwords.pw_haccp} onChange={e => setPasswords({...passwords, pw_haccp: e.target.value})} style={inputStyle} />
+</div>
 
             <button onClick={handleSave} className="btn-invia" style={{width:'100%', marginTop:10, background:'#2c3e50'}}>SALVA PASSWORD</button>
         </div>
