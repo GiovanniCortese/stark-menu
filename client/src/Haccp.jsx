@@ -137,38 +137,61 @@ function Haccp() {
       } finally { setUploadingLog(null); }
   };
 
-  const registraTemperatura = async (asset) => {
-      const currentInput = tempInput[asset.id] || {};
-      const val = parseFloat(currentInput.val);
-      
-      if(isNaN(val)) return alert("Inserisci un numero valido");
-      
-      // FIX INTELLIGENTE: Calcoliamo Min e Max reali indipendentemente da come sono stati scritti
-      const realMin = Math.min(parseFloat(asset.range_min), parseFloat(asset.range_max));
-      const realMax = Math.max(parseFloat(asset.range_min), parseFloat(asset.range_max));
+const registraTemperatura = async (asset) => {
+    const currentInput = tempInput[asset.id] || {};
+    const val = parseFloat(currentInput.val);
+    
+    if(isNaN(val)) return alert("Inserisci un numero valido");
+    
+    // Calcolo range intelligente
+    const realMin = Math.min(parseFloat(asset.range_min), parseFloat(asset.range_max));
+    const realMax = Math.max(parseFloat(asset.range_min), parseFloat(asset.range_max));
 
-      // Controllo matematico corretto (funziona anche con -4 tra -18 e 0)
-      const conforme = val >= realMin && val <= realMax;
-      
-      let azione = "";
-      if(!conforme) {
-          azione = prompt(`⚠️ ATTENZIONE: Temperatura ${val}°C fuori range (${realMin}° / ${realMax}°).\nDescrivi azione correttiva:`);
-          if(!azione) return alert("Azione correttiva obbligatoria!");
-      }
+    const conforme = val >= realMin && val <= realMax;
+    
+    let azione = "";
+    if(!conforme) {
+        azione = prompt(`⚠️ ATTENZIONE: Temperatura ${val}°C fuori range (${realMin}° / ${realMax}°).\nDescrivi azione correttiva:`);
+        if(!azione) return alert("Azione correttiva obbligatoria!");
+    }
 
-      await fetch(`${API_URL}/api/haccp/logs`, {
-          method: 'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({
-              ristorante_id: info.id, asset_id: asset.id, operatore: 'Staff', 
-              tipo_log: 'temperatura', valore: val.toString(), 
-              conformita: conforme, azione_correttiva: azione,
-              foto_prova_url: currentInput.photo || ''
-          })
-      });
-      alert("✅ Registrato");
-      setTempInput(prev => ({ ...prev, [asset.id]: { val: '', photo: '' } })); 
-      ricaricaDati();
-  };
+    try {
+        const res = await fetch(`${API_URL}/api/haccp/logs`, {
+            method: 'POST', 
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({
+                ristorante_id: info.id, 
+                asset_id: asset.id, 
+                operatore: 'Staff', 
+                tipo_log: 'temperatura', 
+                valore: val.toString(), 
+                conformita: conforme, 
+                azione_correttiva: azione,
+                foto_prova_url: currentInput.photo || ''
+            })
+        });
+
+        const data = await res.json();
+
+        // CONTROLLO FONDAMENTALE: Se il server dà errore, ci fermiamo qui
+        if (!res.ok || !data.success) {
+            throw new Error(data.error || "Errore sconosciuto dal server");
+        }
+
+        alert("✅ Registrato con successo!");
+        
+        // Reset e Ricarica
+        setTempInput(prev => ({ ...prev, [asset.id]: { val: '', photo: '' } })); 
+        ricaricaDati();
+        
+        // Se siamo nel tab calendario, ricarichiamo anche quello per vedere subito il pallino
+        if(tab === 'calendario') ricaricaCalendario();
+
+    } catch (err) {
+        console.error("Errore salvataggio:", err);
+        alert("❌ ERRORE SALVATAGGIO: " + err.message);
+    }
+};
 
   // ==========================
   // LOGICA ETICHETTE (AUTO SCADENZA)
