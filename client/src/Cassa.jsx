@@ -1,4 +1,4 @@
-// client/src/Cassa.jsx - VERSIONE V40 (UI CLEAN: NO HEADER NOME, ICONE TELEFONO/PERSONA) 💶
+// client/src/Cassa.jsx - VERSIONE V41 (AGGIUNTO GRADO CLIENTE & ORARIO SERVIZIO) 💶
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -65,6 +65,16 @@ function Cassa() {
         const data = await res.json();
         setSelectedUserData(data);
     } catch(e) { alert("Errore caricamento dati utente"); } finally { setLoadingUser(false); }
+  };
+
+  // --- HELPER CALCOLO LIVELLO CLIENTE ---
+  const getLivello = (n) => {
+      const num = parseInt(n || 0);
+      if (num >= 100) return { label: "Legend 💎", color: "#3498db", bg: "#eafaf1" };
+      if (num >= 30) return { label: "VIP 🥇", color: "#f1c40f", bg: "#fef9e7" };
+      if (num >= 15) return { label: "Cliente Top 🥈", color: "#7f8c8d", bg: "#f4f6f7" };
+      if (num >= 5) return { label: "Buongustaio 🥉", color: "#cd7f32", bg: "#fdf2e9" };
+      return { label: "Novizio 🌱", color: "#27ae60", bg: "#e8f8f5" };
   };
 
   // --- FUNZIONE: INVIA ORDINE AI REPARTI (APPROVAZIONE) ---
@@ -225,7 +235,6 @@ function Cassa() {
 
                         <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', borderBottom:'2px solid #ddd', paddingBottom:10, marginBottom:10}}>
                             <div>
-                                {/* --- MODIFICA QUI: RIMOSSO IL BLOCCO NOME/OSPITE --- */}
                                 <h2 style={{margin:0, color:'#000', fontSize:'1.6rem'}}>Tavolo {tavolo}</h2>
                             </div>
                             <div style={{textAlign:'right'}}>
@@ -235,13 +244,14 @@ function Cassa() {
                         </div>
 
                         {info.ordini.map(ord => {
-                            // --- LOGICA NOME & ICONE (TELEFONO vs PERSONA) ---
-                            const isStaffOrder = !!ord.cameriere; // true se esiste cameriere
+                            // --- LOGICA NOME, ICONE E LIVELLO ---
+                            const isStaffOrder = !!ord.cameriere; 
                             const nomeAutore = isStaffOrder ? `Staff: ${ord.cameriere}` : (ord.cliente || "Ospite");
                             const isUser = !ord.cameriere && ord.utente_id; 
-
-                            // ICONA: 📱 per clienti (app), 👤 per staff (camerieri)
                             const iconaAutore = isStaffOrder ? '👤' : '📱';
+                            
+                            // CALCOLO LIVELLO
+                            const livelloInfo = isUser ? getLivello(ord.storico_ordini) : null;
 
                             return (
                                 <div key={ord.id} style={{
@@ -252,28 +262,44 @@ function Cassa() {
                                 }}>
                                     {ord.stato === 'in_arrivo' && <div style={{color:'#e67e22', fontWeight:'bold', fontSize:'0.8rem', marginBottom:5}}>⚠️ IN ATTESA DI CONFERMA</div>}
                                     
-                                    {/* RIGA INTESTAZIONE ORDINE CON NOME E ICONA CORRETTA */}
+                                    {/* HEADER ORDINE: ID, ORA, NOME E GRADO */}
                                     <div style={{fontSize:12, color:'#888', marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                                         <span>Ord #{ord.id} - {new Date(ord.data_ora).toLocaleTimeString()}</span>
                                         
-                                        <span 
-                                            onClick={(e) => {
-                                                if(isUser) { e.stopPropagation(); apriDettagliUtente(ord.utente_id); }
-                                            }}
-                                            style={{
-                                                color: isUser ? '#2980b9' : '#555',
-                                                fontWeight: 'bold',
-                                                cursor: isUser ? 'pointer' : 'default',
-                                                textDecoration: isUser ? 'underline' : 'none',
-                                                background: '#f0f0f0',
-                                                padding: '2px 8px',
-                                                borderRadius: '4px',
-                                                fontSize: '11px'
-                                            }}
-                                        >
-                                            {/* QUI STAMPIAMO L'ICONA GIUSTA */}
-                                            {iconaAutore} {nomeAutore}
-                                        </span>
+                                        <div style={{display:'flex', alignItems:'center', gap:'5px'}}>
+                                            <span 
+                                                onClick={(e) => {
+                                                    if(isUser) { e.stopPropagation(); apriDettagliUtente(ord.utente_id); }
+                                                }}
+                                                style={{
+                                                    color: isUser ? '#2980b9' : '#555',
+                                                    fontWeight: 'bold',
+                                                    cursor: isUser ? 'pointer' : 'default',
+                                                    textDecoration: isUser ? 'underline' : 'none',
+                                                    background: '#f0f0f0',
+                                                    padding: '2px 8px',
+                                                    borderRadius: '4px',
+                                                    fontSize: '11px'
+                                                }}
+                                            >
+                                                {iconaAutore} {nomeAutore}
+                                            </span>
+
+                                            {/* --- MOSTRA IL GRADO SE È UN UTENTE --- */}
+                                            {isUser && livelloInfo && (
+                                                <span style={{
+                                                    fontSize: '10px', 
+                                                    background: livelloInfo.bg, 
+                                                    color: livelloInfo.color, 
+                                                    padding: '2px 6px', 
+                                                    borderRadius: '4px', 
+                                                    fontWeight: 'bold',
+                                                    border: `1px solid ${livelloInfo.color}`
+                                                }}>
+                                                    {livelloInfo.label}
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
 
                                     {renderProdotti(ord, modificaStatoProdotto, eliminaProdotto)}
@@ -288,7 +314,7 @@ function Cassa() {
           </div>
       )}
 
-      {/* --- TAB STORICO, MODALI, ETC (INVARIATI) --- */}
+      {/* --- TAB STORICO --- */}
       {tab === 'storico' && (
           <div style={{background:'white', color:'#0b0b0bff', padding:20, borderRadius:10}}>
               <h2 style={{color:'#191e22ff', marginTop:0}}>📜 Storico Ordini Conclusi</h2>
@@ -362,6 +388,22 @@ const renderProdotti = (ord, modificaStatoProdotto, eliminaProdotto) => {
                                 <div style={{fontWeight: p.stato === 'servito'?'normal':'bold', textDecoration: p.stato==='servito'?'line-through':'none', color: p.stato==='servito'?'#aaa':'#000', fontSize:14}}>{p.nome}</div>
                                 {p.varianti_scelte && (<div style={{marginTop:'2px', display:'flex', flexWrap:'wrap', gap:'4px'}}>{p.varianti_scelte.rimozioni?.map((ing, i)=><span key={i} style={{background:'#fceaea', color:'#c0392b', fontSize:'10px', padding:'1px 5px', borderRadius:'3px'}}>NO {ing}</span>)}{p.varianti_scelte.aggiunte?.map((ing, i)=><span key={i} style={{background:'#e8f5e9', color:'#27ae60', fontSize:'10px', padding:'1px 5px', borderRadius:'3px'}}>+ {ing.nome}</span>)}</div>)}
                                 <div style={{fontSize:'0.75rem', color:'#666', fontStyle:'italic', marginTop:'2px'}}>{p.is_bar ? '🍹 Bar' : (p.is_pizzeria ? '🍕 Pizzeria' : '👨‍🍳 Cucina')} • {Number(p.prezzo).toFixed(2)}€</div>
+                                
+                                {/* --- NUOVA RIGA: ORARIO SERVIZIO VERDE --- */}
+                                {p.stato === 'servito' && (
+                                    <div style={{
+                                        color: '#27ae60', 
+                                        fontSize: '11px', 
+                                        fontWeight: 'bold', 
+                                        marginTop: '4px',
+                                        background: '#eafaf1',
+                                        display: 'inline-block',
+                                        padding: '2px 6px',
+                                        borderRadius: '4px'
+                                    }}>
+                                        ✅ SERVITO ALLE {p.ora_servizio || "--:--"}
+                                    </div>
+                                )}
                             </div>
                             <div style={{display:'flex', gap:5}}>
                                 <button onClick={() => modificaStatoProdotto(ord, p.originalIdx)} style={{background: p.stato==='servito'?'#27ae60':'#f39c12', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:11, fontWeight:'bold'}}>{p.stato === 'servito' ? 'FATTO' : 'ATTESA'}</button>
