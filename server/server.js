@@ -54,12 +54,17 @@ app.post('/api/ordine', async (req, res) => {
         
         const dataOrdineLeggibile = getNowItaly(); 
 
-        // STATO: Se c'è cameriere va in 'in_attesa' (Verde), se è App va in 'in_arrivo' (Arancione)
-        const statoIniziale = cameriere ? 'in_attesa' : 'in_arrivo';
+        // --- FIX LOGICA CAMERIERE ---
+        // Verifichiamo che 'cameriere' non sia una stringa vuota o "null"
+        const isStaff = cameriere && cameriere !== "null" && cameriere !== "undefined" && cameriere.trim() !== "";
+        
+        // Se è Staff -> 'in_attesa' (VERDE, va subito ai reparti)
+        // Se è Cliente -> 'in_arrivo' (ARANCIONE, bloccato in cassa)
+        const statoIniziale = isStaff ? 'in_attesa' : 'in_arrivo';
 
-        // LOGICA NOME PER IL LOG (NON PER IL DB)
+        // Logica Nome
         const nomeClienteDisplay = cliente || "Ospite";
-        let logIniziale = `[${dataOrdineLeggibile}] 🆕 ORDINE DA: ${cameriere ? cameriere : nomeClienteDisplay}\n`;
+        let logIniziale = `[${dataOrdineLeggibile}] 🆕 ORDINE DA: ${isStaff ? cameriere : nomeClienteDisplay}\n`;
         
         if (Array.isArray(prodotti)) {
             prodotti.forEach(p => {
@@ -73,26 +78,27 @@ app.post('/api/ordine', async (req, res) => {
         }
         logIniziale += `TOTALE PARZIALE: ${Number(totale).toFixed(2)}€\n----------------------------------\n`;
 
-        // INSERT CORRETTA: Usiamo SOLO le colonne esistenti (utente_id SI, cliente NO)
+        // INSERT NEL DB (Usiamo statoIniziale calcolato sopra)
         await pool.query(
             `INSERT INTO ordini 
-            (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id, data_ora) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+            (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id, cliente, data_ora) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
             [
                 ristorante_id,              // $1
                 String(tavolo),             // $2
                 JSON.stringify(prodotti),   // $3
                 totale,                     // $4
-                statoIniziale,              // $5
+                statoIniziale,              // $5 (in_arrivo o in_attesa)
                 logIniziale,                // $6
                 cameriere || null,          // $7
-                utente_id || null           // $8
+                utente_id || null,          // $8 (Collega al livello cliente!)
+                nomeClienteDisplay          // $9 (Nome visibile in cassa)
             ]
         );
         res.json({ success: true });
     } catch (e) { 
         console.error("Errore inserimento ordine:", e); 
-        res.status(500).json({ error: "Errore inserimento ordine: " + e.message }); 
+        res.status(500).json({ error: "Errore DB: " + e.message }); 
     }
 });
 
