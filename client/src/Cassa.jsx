@@ -1,4 +1,4 @@
-// client/src/Cassa.jsx - VERSIONE V39 (NOMI INDIVIDUALI SU OGNI ORDINE) 💶
+// client/src/Cassa.jsx - VERSIONE V40 (UI CLEAN: NO HEADER NOME, ICONE TELEFONO/PERSONA) 💶
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -98,7 +98,7 @@ function Cassa() {
                 totale: 0,
                 fullLog: "",
                 cameriere: ord.cameriere,
-                cliente: ord.cliente, // Questo rimane come "nome principale" del tavolo
+                cliente: ord.cliente, 
                 storico_ordini: ord.storico_ordini || 0,
                 utente_id: ord.utente_id,
                 hasPending: false 
@@ -204,23 +204,6 @@ function Cassa() {
             
             {Object.keys(tavoliAttivi).map(tavolo => {
                 const info = tavoliAttivi[tavolo];
-                const isApp = !info.cameriere;
-                let badgeLivello = null;
-
-                // Calcolo livello (basato sul primo utente trovato o generico)
-                if (isApp) {
-                     const n = info.storico_ordini || 0;
-                     let liv = { label: "🌱 NOVIZIO", color: "#7f8c8d", bg: "#f0f3f4" };
-                     if (n >= 5) liv = { label: "🥉 BRONZE", color: "#d35400", bg: "#fce6c9" };
-                     if (n >= 15) liv = { label: "🥈 SILVER", color: "#34495e", bg: "#eaeded" };
-                     if (n >= 30) liv = { label: "🥇 GOLD", color: "#f39c12", bg: "#f9e79f" };
-                     if (n >= 100) liv = { label: "💎 LEGEND", color: "#8e44ad", bg: "#e8daef" };
-                     badgeLivello = <span style={{marginLeft:'8px', fontSize:'0.7rem', background: liv.bg, color: liv.color, padding:'2px 6px', borderRadius:'6px', border: `1px solid ${liv.color}`, fontWeight:'bold', verticalAlign: 'middle', textTransform:'uppercase'}}>{liv.label}</span>;
-                }
-
-                const icona = isApp ? "📱" : "👤";
-                // Nome principale (può essere 'Misti' se ci sono più utenti, ma lasciamo il logic standard)
-                const nomeChi = isApp ? (info.cliente || "Cliente App") : info.cameriere;
                 
                 const ordiniDaInviare = info.ordini.filter(o => o.stato === 'in_arrivo');
                 const richiedeApprovazione = ordiniDaInviare.length > 0;
@@ -242,14 +225,8 @@ function Cassa() {
 
                         <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', borderBottom:'2px solid #ddd', paddingBottom:10, marginBottom:10}}>
                             <div>
+                                {/* --- MODIFICA QUI: RIMOSSO IL BLOCCO NOME/OSPITE --- */}
                                 <h2 style={{margin:0, color:'#000', fontSize:'1.6rem'}}>Tavolo {tavolo}</h2>
-                                <div style={{marginTop:'8px', display:'flex', alignItems:'center', background:'#f8f9fa', padding:'5px 10px', borderRadius:'6px'}}>
-                                    <span style={{fontSize:'1.4rem', marginRight:'8px'}}>{icona}</span>
-                                    <div style={{display:'flex', flexDirection:'column'}}>
-                                        <span style={{fontSize:'1.1rem', fontWeight:'bold', color:'#2c3e50'}}>{nomeChi}</span>
-                                        <div style={{marginTop:2}}>{badgeLivello}</div>
-                                    </div>
-                                </div>
                             </div>
                             <div style={{textAlign:'right'}}>
                                 <h2 style={{margin:0, color: richiedeApprovazione ? '#e67e22' : '#27ae60', marginBottom:'5px'}}>{info.totale.toFixed(2)}€</h2>
@@ -258,9 +235,13 @@ function Cassa() {
                         </div>
 
                         {info.ordini.map(ord => {
-                            // --- LOGICA NOME INDIVIDUALE ---
-                            const nomeAutore = ord.cameriere ? `Staff: ${ord.cameriere}` : (ord.cliente || "Ospite");
-                            const isUser = !ord.cameriere && ord.utente_id; // Cliccabile solo se utente registrato
+                            // --- LOGICA NOME & ICONE (TELEFONO vs PERSONA) ---
+                            const isStaffOrder = !!ord.cameriere; // true se esiste cameriere
+                            const nomeAutore = isStaffOrder ? `Staff: ${ord.cameriere}` : (ord.cliente || "Ospite");
+                            const isUser = !ord.cameriere && ord.utente_id; 
+
+                            // ICONA: 📱 per clienti (app), 👤 per staff (camerieri)
+                            const iconaAutore = isStaffOrder ? '👤' : '📱';
 
                             return (
                                 <div key={ord.id} style={{
@@ -271,11 +252,10 @@ function Cassa() {
                                 }}>
                                     {ord.stato === 'in_arrivo' && <div style={{color:'#e67e22', fontWeight:'bold', fontSize:'0.8rem', marginBottom:5}}>⚠️ IN ATTESA DI CONFERMA</div>}
                                     
-                                    {/* RIGA INTESTAZIONE ORDINE CON NOME */}
+                                    {/* RIGA INTESTAZIONE ORDINE CON NOME E ICONA CORRETTA */}
                                     <div style={{fontSize:12, color:'#888', marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                                         <span>Ord #{ord.id} - {new Date(ord.data_ora).toLocaleTimeString()}</span>
                                         
-                                        {/* NOME CLICCABILE DELL'AUTORE DELL'ORDINE */}
                                         <span 
                                             onClick={(e) => {
                                                 if(isUser) { e.stopPropagation(); apriDettagliUtente(ord.utente_id); }
@@ -291,7 +271,8 @@ function Cassa() {
                                                 fontSize: '11px'
                                             }}
                                         >
-                                            👤 {nomeAutore}
+                                            {/* QUI STAMPIAMO L'ICONA GIUSTA */}
+                                            {iconaAutore} {nomeAutore}
                                         </span>
                                     </div>
 
