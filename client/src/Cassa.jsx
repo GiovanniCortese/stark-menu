@@ -1,4 +1,4 @@
-// client/src/Cassa.jsx - VERSIONE V40 (UI CLEAN: NO HEADER NOME, ICONE TELEFONO/PERSONA) 💶
+// client/src/Cassa.jsx - VERSIONE V37 (FIX UI NOME CLIENTE) 💶
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -38,7 +38,11 @@ function Cassa() {
         const res = await fetch(`${API_URL}/api/auth/station`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ ristorante_id: infoRistorante.id, role: 'cassa', password: passwordInput })
+            body: JSON.stringify({ 
+                ristorante_id: infoRistorante.id, 
+                role: 'cassa', 
+                password: passwordInput 
+            })
         });
         const data = await res.json();
         if(data.success) {
@@ -56,6 +60,7 @@ function Cassa() {
       }
   };
 
+  // --- NUOVA FUNZIONE: CARICA DETTAGLI UTENTE ---
   const apriDettagliUtente = async (id) => {
     if(!id) return;
     setLoadingUser(true);
@@ -65,22 +70,6 @@ function Cassa() {
         const data = await res.json();
         setSelectedUserData(data);
     } catch(e) { alert("Errore caricamento dati utente"); } finally { setLoadingUser(false); }
-  };
-
-  // --- FUNZIONE: INVIA ORDINE AI REPARTI (APPROVAZIONE) ---
-  const inviaInProduzione = async (ordiniDaInviare) => {
-      if(!confirm(`Confermi di inviare ${ordiniDaInviare.length} ordini in cucina?`)) return;
-      
-      try {
-          await Promise.all(ordiniDaInviare.map(ord => 
-              fetch(`${API_URL}/api/ordine/invia-produzione`, {
-                  method: 'POST',
-                  headers: {'Content-Type': 'application/json'},
-                  body: JSON.stringify({ id_ordine: ord.id })
-              })
-          ));
-          aggiornaDati(); 
-      } catch(e) { alert("Errore invio ordine"); }
   };
 
   const aggiornaDati = () => {
@@ -98,21 +87,15 @@ function Cassa() {
                 totale: 0,
                 fullLog: "",
                 cameriere: ord.cameriere,
-                cliente: ord.cliente, 
-                storico_ordini: ord.storico_ordini || 0,
-                utente_id: ord.utente_id,
-                hasPending: false 
+                cliente: ord.cliente,
+                storico_ordini: ord.storico_ordini || 0, // Importante per il livello
+                utente_id: ord.utente_id // Importante per aprire il profilo
             };
-            
-            if (ord.stato === 'in_arrivo') {
-                raggruppati[t].hasPending = true;
-            }
-
             raggruppati[t].ordini.push(ord);
             raggruppati[t].totale += Number(ord.totale || 0);
             
             if(ord.dettagli && ord.dettagli.trim() !== "") {
-                raggruppati[t].fullLog += "━━━━━━━━━━━━━━━━━━━━━━━━━━\n" + ord.dettagli + "\n";
+                raggruppati[t].fullLog += ord.dettagli + "\n";
             }
         });
         setTavoliAttivi(raggruppati);
@@ -140,7 +123,7 @@ function Cassa() {
     }
   }, [isAuthorized, infoRistorante, tab]);
 
-  // --- AZIONI SUI PRODOTTI ---
+  // --- AZIONI ---
   const modificaStatoProdotto = async (ord, indexDaModificare) => {
     const nuoviProdotti = [...ord.prodotti];
     const item = nuoviProdotti[indexDaModificare];
@@ -198,97 +181,85 @@ function Cassa() {
           </div>
       </header>
 
+      {/* --- VISTA TAVOLI ATTIVI --- */}
       {tab === 'attivi' && (
           <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(350px, 1fr))', gap:20}}>
             {Object.keys(tavoliAttivi).length === 0 && <p style={{gridColumn:'1/-1', textAlign:'center', fontSize:20, color:'#888'}}>Nessun tavolo attivo.</p>}
             
             {Object.keys(tavoliAttivi).map(tavolo => {
                 const info = tavoliAttivi[tavolo];
-                
-                const ordiniDaInviare = info.ordini.filter(o => o.stato === 'in_arrivo');
-                const richiedeApprovazione = ordiniDaInviare.length > 0;
-                const borderColor = richiedeApprovazione ? '#e67e22' : 'transparent';
+                const isApp = !info.cameriere;
+                let badgeLivello = null;
+
+                // Calcolo Badge Livello (se cliente app)
+                if (isApp) {
+                     const n = info.storico_ordini || 0;
+                     let liv = { label: "🌱 NOVIZIO", color: "#7f8c8d", bg: "#f0f3f4" };
+                     if (n >= 5) liv = { label: "🥉 BRONZE", color: "#d35400", bg: "#fce6c9" };
+                     if (n >= 15) liv = { label: "🥈 SILVER", color: "#34495e", bg: "#eaeded" };
+                     if (n >= 30) liv = { label: "🥇 GOLD", color: "#f39c12", bg: "#f9e79f" };
+                     if (n >= 100) liv = { label: "💎 LEGEND", color: "#8e44ad", bg: "#e8daef" };
+                     badgeLivello = <span style={{marginLeft:'8px', fontSize:'0.7rem', background: liv.bg, color: liv.color, padding:'2px 6px', borderRadius:'6px', border: `1px solid ${liv.color}`, fontWeight:'bold', verticalAlign: 'middle', textTransform:'uppercase'}}>{liv.label}</span>;
+                }
+
+                const icona = isApp ? "📱" : "👤";
+                // Qui usiamo il nome cliente se presente, altrimenti "Cliente App" generico se null
+                const nomeChi = isApp ? (info.cliente || "Cliente App") : info.cameriere;
 
                 return (
-                    <div key={tavolo} style={{background:'white', padding:20, borderRadius:10, boxShadow:'0 4px 10px rgba(0,0,0,0.1)', border: `4px solid ${borderColor}`}}>
+                    <div key={tavolo} style={{background:'white', padding:20, borderRadius:10, boxShadow:'0 4px 10px rgba(0,0,0,0.1)'}}>
                         
-                        {richiedeApprovazione && (
-                            <div style={{
-                                background:'#e67e22', color:'white', padding:'15px', 
-                                borderRadius:'8px', marginBottom:'20px', textAlign:'center',
-                                animation: 'pulse 1.5s infinite' 
-                            }}>
-                                <h3 style={{margin:'0 0 10px 0', fontSize:'18px'}}>🔔 {ordiniDaInviare.length} ORDINI DA CLIENTE</h3>
-                                <button onClick={() => inviaInProduzione(ordiniDaInviare)} style={{background:'white', color:'#e67e22', border:'none', padding:'10px 20px', borderRadius:'30px', fontWeight:'bold', cursor:'pointer', fontSize:'16px', boxShadow:'0 2px 5px rgba(0,0,0,0.2)'}}>✅ ACCETTA E INVIA IN CUCINA</button>
-                            </div>
-                        )}
-
                         <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', borderBottom:'2px solid #ddd', paddingBottom:10, marginBottom:10}}>
                             <div>
-                                {/* --- MODIFICA QUI: RIMOSSO IL BLOCCO NOME/OSPITE --- */}
                                 <h2 style={{margin:0, color:'#000', fontSize:'1.6rem'}}>Tavolo {tavolo}</h2>
+                                
+                                <div style={{marginTop:'8px', display:'flex', alignItems:'center', background:'#f8f9fa', padding:'5px 10px', borderRadius:'6px'}}>
+                                    <span style={{fontSize:'1.4rem', marginRight:'8px'}}>{icona}</span>
+                                    <div style={{display:'flex', flexDirection:'column'}}>
+                                        {/* NOME CLICCABILE SE CLIENTE APP */}
+                                        <span 
+                                            style={{
+                                                fontSize:'1.1rem', 
+                                                fontWeight:'bold', 
+                                                color:'#2c3e50', 
+                                                cursor: isApp ? 'pointer' : 'default', 
+                                                textDecoration: isApp ? 'underline' : 'none',
+                                                lineHeight: 1.2
+                                            }}
+                                            onClick={() => isApp && info.utente_id && apriDettagliUtente(info.utente_id)}
+                                        >
+                                            {nomeChi}
+                                        </span>
+                                        <div style={{marginTop:2}}>{badgeLivello}</div>
+                                    </div>
+                                </div>
                             </div>
                             <div style={{textAlign:'right'}}>
-                                <h2 style={{margin:0, color: richiedeApprovazione ? '#e67e22' : '#27ae60', marginBottom:'5px'}}>{info.totale.toFixed(2)}€</h2>
-                                <button onClick={() => setSelectedLog({ id: `Tavolo ${tavolo} (LIVE)`, dettagli: info.fullLog })} style={{background:'#27ae60', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:11, fontWeight:'bold'}}>🟢 LOG LIVE</button>
+                                <h2 style={{margin:0, color:'#27ae60', marginBottom:'5px'}}>{info.totale.toFixed(2)}€</h2>
+                                <button 
+                                onClick={() => setSelectedLog({ id: `Tavolo ${tavolo} (LIVE)`, dettagli: info.fullLog })}
+                                style={{background:'#27ae60', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:11, fontWeight:'bold'}}
+                                >
+                                    🟢 LOG LIVE
+                                </button>
                             </div>
                         </div>
 
-                        {info.ordini.map(ord => {
-                            // --- LOGICA NOME & ICONE (TELEFONO vs PERSONA) ---
-                            const isStaffOrder = !!ord.cameriere; // true se esiste cameriere
-                            const nomeAutore = isStaffOrder ? `Staff: ${ord.cameriere}` : (ord.cliente || "Ospite");
-                            const isUser = !ord.cameriere && ord.utente_id; 
-
-                            // ICONA: 📱 per clienti (app), 👤 per staff (camerieri)
-                            const iconaAutore = isStaffOrder ? '👤' : '📱';
-
-                            return (
-                                <div key={ord.id} style={{
-                                    marginBottom:20, 
-                                    borderLeft:`4px solid ${ord.stato === 'in_arrivo' ? '#e67e22' : '#eee'}`, 
-                                    paddingLeft:10,
-                                    opacity: ord.stato === 'in_arrivo' ? 0.6 : 1
-                                }}>
-                                    {ord.stato === 'in_arrivo' && <div style={{color:'#e67e22', fontWeight:'bold', fontSize:'0.8rem', marginBottom:5}}>⚠️ IN ATTESA DI CONFERMA</div>}
-                                    
-                                    {/* RIGA INTESTAZIONE ORDINE CON NOME E ICONA CORRETTA */}
-                                    <div style={{fontSize:12, color:'#888', marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                                        <span>Ord #{ord.id} - {new Date(ord.data_ora).toLocaleTimeString()}</span>
-                                        
-                                        <span 
-                                            onClick={(e) => {
-                                                if(isUser) { e.stopPropagation(); apriDettagliUtente(ord.utente_id); }
-                                            }}
-                                            style={{
-                                                color: isUser ? '#2980b9' : '#555',
-                                                fontWeight: 'bold',
-                                                cursor: isUser ? 'pointer' : 'default',
-                                                textDecoration: isUser ? 'underline' : 'none',
-                                                background: '#f0f0f0',
-                                                padding: '2px 8px',
-                                                borderRadius: '4px',
-                                                fontSize: '11px'
-                                            }}
-                                        >
-                                            {/* QUI STAMPIAMO L'ICONA GIUSTA */}
-                                            {iconaAutore} {nomeAutore}
-                                        </span>
-                                    </div>
-
-                                    {renderProdotti(ord, modificaStatoProdotto, eliminaProdotto)}
-                                </div>
-                            );
-                        })}
-
-                        <button onClick={() => chiudiTavolo(tavolo)} style={{width:'100%', padding:15, background:'#2c3e50', color:'white', border:'none', fontSize:18, marginTop:5, cursor:'pointer', borderRadius:5, fontWeight:'bold'}}>💰 CHIUDI CONTO</button>
+                        {info.ordini.map(ord => (
+                            <div key={ord.id} style={{marginBottom:20, borderLeft:'4px solid #eee', paddingLeft:10}}>
+                                <div style={{fontSize:12, color:'#888', marginBottom:10}}>Ord #{ord.id} - {new Date(ord.data_ora).toLocaleTimeString()}</div>
+                                {/* USO DELLA FUNZIONE HELPER PER IL RENDERING PRODOTTI */}
+                                {renderProdotti(ord, modificaStatoProdotto, eliminaProdotto)}
+                            </div>
+                        ))}
+                        <button onClick={() => chiudiTavolo(tavolo)} style={{width:'100%', padding:15, background:'#2c3e50', color:'white', border:'none', fontSize:18, marginTop:20, cursor:'pointer', borderRadius:5, fontWeight:'bold'}}>💰 CHIUDI CONTO</button>
                     </div>
                 );
             })}
           </div>
       )}
 
-      {/* --- TAB STORICO, MODALI, ETC (INVARIATI) --- */}
+      {/* --- VISTA STORICO --- */}
       {tab === 'storico' && (
           <div style={{background:'white', color:'#0b0b0bff', padding:20, borderRadius:10}}>
               <h2 style={{color:'#191e22ff', marginTop:0}}>📜 Storico Ordini Conclusi</h2>
@@ -311,25 +282,35 @@ function Cassa() {
           </div>
       )}
 
+      {/* MODAL LOG */}
       {selectedLog && (
-        <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999}} onClick={()=>setSelectedLog(null)}>
-            <div style={{background:'white', padding:30, borderRadius:10, maxWidth:600, width:'90%', maxHeight:'80vh', overflowY:'auto', boxShadow:'0 20px 50px rgba(0,0,0,0.5)'}} onClick={e=>e.stopPropagation()}>
+        <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999}}>
+            <div style={{background:'white', padding:30, borderRadius:10, maxWidth:600, width:'90%', maxHeight:'80vh', overflowY:'auto', boxShadow:'0 20px 50px rgba(0,0,0,0.5)'}}>
                 <h2 style={{color:'#000', marginTop:0, borderBottom:'2px solid #eee', paddingBottom:'10px'}}>📋 LOG DETTAGLIATO</h2>
                 <div style={{background:'#1a1a1a', color:'#2ecc71', padding:20, borderRadius:8, fontFamily:'"Courier New", monospace', whiteSpace:'pre-wrap', fontSize:13, lineHeight:'1.5', border:'1px solid #333', marginTop:'15px'}}>
-                    {(selectedLog.dettagli || "").replace(/\n/g, "\n").split("----------------------------------").join("\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n")}
+                    {selectedLog.dettagli || "Nessun log disponibile."}
                 </div>
                 <button onClick={() => setSelectedLog(null)} style={{width:'100%', marginTop:25, padding:'15px', background:'#2c3e50', color:'white', border:'none', borderRadius:8, fontWeight:'bold', cursor:'pointer', fontSize:'16px'}}>CHIUDI SCHERMATA</button>
             </div>
         </div>
       )}
 
+      {/* NUOVO MODALE: DETTAGLI UTENTE */}
       {selectedUserData && (
           <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.8)', zIndex:10000, display:'flex', alignItems:'center', justifyContent:'center'}} onClick={() => setSelectedUserData(null)}>
               <div style={{background:'white', padding:30, borderRadius:15, width:'90%', maxWidth:400, textAlign:'center', position:'relative'}} onClick={e=>e.stopPropagation()}>
                   <button onClick={() => setSelectedUserData(null)} style={{position:'absolute', top:10, right:10, border:'none', background:'transparent', fontSize:20, cursor:'pointer'}}>✕</button>
-                  <div style={{width:80, height:80, background: selectedUserData.livello.colore, borderRadius:'50%', margin:'0 auto 15px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:30, color:'white', boxShadow:`0 5px 15px ${selectedUserData.livello.colore}66`}}>{selectedUserData.livello.nome.split(' ')[1] || '👤'}</div>
+                  
+                  {/* Avatar Livello */}
+                  <div style={{width:80, height:80, background: selectedUserData.livello.colore, borderRadius:'50%', margin:'0 auto 15px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:30, color:'white', boxShadow:`0 5px 15px ${selectedUserData.livello.colore}66`}}>
+                      {selectedUserData.livello.nome.split(' ')[1] || '👤'}
+                  </div>
+                  
                   <h2 style={{margin:0, color:'#2c3e50'}}>{selectedUserData.nome}</h2>
-                  <div style={{background: selectedUserData.livello.bg, color: selectedUserData.livello.colore, padding:'5px 10px', borderRadius:20, display:'inline-block', fontWeight:'bold', marginTop:5, border:`1px solid ${selectedUserData.livello.colore}`}}>{selectedUserData.livello.nome} • Affidabilità: {selectedUserData.livello.affidabilita}</div>
+                  <div style={{background: selectedUserData.livello.bg, color: selectedUserData.livello.colore, padding:'5px 10px', borderRadius:20, display:'inline-block', fontWeight:'bold', marginTop:5, border:`1px solid ${selectedUserData.livello.colore}`}}>
+                      {selectedUserData.livello.nome} • Affidabilità: {selectedUserData.livello.affidabilita}
+                  </div>
+
                   <div style={{marginTop:25, textAlign:'left', background:'#f8f9fa', padding:15, borderRadius:10}}>
                       <p style={{margin:'5px 0'}}><strong>📧 Email:</strong> {selectedUserData.email}</p>
                       <p style={{margin:'5px 0'}}><strong>📞 Telefono:</strong> {selectedUserData.telefono || 'Non inserito'}</p>
@@ -343,6 +324,7 @@ function Cassa() {
   );
 }
 
+// --- HELPER FUNCTION: RENDER PRODOTTI (ESTRATTO PER PULIZIA) ---
 const renderProdotti = (ord, modificaStatoProdotto, eliminaProdotto) => {
     const prods = ord.prodotti.map((p, i) => ({...p, originalIdx: i}));
     const getCourse = (p) => { if (p.course !== undefined) return p.course === 0 ? 5 : p.course; if (p.is_bar) return 5; if (p.is_pizzeria) return 3; return 2; };
