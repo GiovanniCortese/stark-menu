@@ -1,4 +1,4 @@
-// client/src/Cassa.jsx - VERSIONE V37 (FIX UI NOME CLIENTE) 💶
+// client/src/Cassa.jsx - VERSIONE V38 (FIX BARRA APPROVAZIONE IN ALTO) 💶
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -38,11 +38,7 @@ function Cassa() {
         const res = await fetch(`${API_URL}/api/auth/station`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ 
-                ristorante_id: infoRistorante.id, 
-                role: 'cassa', 
-                password: passwordInput 
-            })
+            body: JSON.stringify({ ristorante_id: infoRistorante.id, role: 'cassa', password: passwordInput })
         });
         const data = await res.json();
         if(data.success) {
@@ -71,6 +67,23 @@ function Cassa() {
     } catch(e) { alert("Errore caricamento dati utente"); } finally { setLoadingUser(false); }
   };
 
+  // --- FUNZIONE: INVIA ORDINE AI REPARTI (APPROVAZIONE) ---
+  const inviaInProduzione = async (ordiniDaInviare) => {
+      if(!confirm(`Confermi di inviare ${ordiniDaInviare.length} ordini in cucina?`)) return;
+      
+      try {
+          // Eseguiamo le chiamate in parallelo per velocità
+          await Promise.all(ordiniDaInviare.map(ord => 
+              fetch(`${API_URL}/api/ordine/invia-produzione`, {
+                  method: 'POST',
+                  headers: {'Content-Type': 'application/json'},
+                  body: JSON.stringify({ id_ordine: ord.id })
+              })
+          ));
+          aggiornaDati(); // Ricarica subito i dati
+      } catch(e) { alert("Errore invio ordine"); }
+  };
+
   const aggiornaDati = () => {
     if (!infoRistorante?.id) return;
     fetch(`${API_URL}/api/polling/${infoRistorante.id}`)
@@ -88,13 +101,21 @@ function Cassa() {
                 cameriere: ord.cameriere,
                 cliente: ord.cliente,
                 storico_ordini: ord.storico_ordini || 0,
-                utente_id: ord.utente_id 
+                utente_id: ord.utente_id,
+                hasPending: false 
             };
+            
+            // SE L'ORDINE E' IN ARRIVO, IL TAVOLO HA PENDING
+            if (ord.stato === 'in_arrivo') {
+                raggruppati[t].hasPending = true;
+            }
+
             raggruppati[t].ordini.push(ord);
             raggruppati[t].totale += Number(ord.totale || 0);
             
+            // LOG LIVE: LINEA CONTINUA
             if(ord.dettagli && ord.dettagli.trim() !== "") {
-                raggruppati[t].fullLog += ord.dettagli + "\n";
+                raggruppati[t].fullLog += "━━━━━━━━━━━━━━━━━━━━━━━━━━\n" + ord.dettagli + "\n";
             }
         });
         setTavoliAttivi(raggruppati);
@@ -122,7 +143,7 @@ function Cassa() {
     }
   }, [isAuthorized, infoRistorante, tab]);
 
-  // --- AZIONI ---
+  // --- AZIONI SUI PRODOTTI ---
   const modificaStatoProdotto = async (ord, indexDaModificare) => {
     const nuoviProdotti = [...ord.prodotti];
     const item = nuoviProdotti[indexDaModificare];
@@ -134,22 +155,6 @@ function Cassa() {
     const logMsg = nuovoStato === 'in_attesa' ? `[CASSA 💶] ⚠️ RIAPERTO: ${item.nome}` : `[CASSA 💶] ✅ FATTO: ${item.nome}`;
     await fetch(`${API_URL}/api/ordine/${ord.id}/update-items`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ prodotti: nuoviProdotti, logMsg }) });
     aggiornaDati();
-  };
-
-  const approvaOrdine = async (idOrdine, tavolo) => {
-      try {
-          const res = await fetch(`${API_URL}/api/ordine/invia-produzione`, {
-              method: 'POST',
-              headers: {'Content-Type': 'application/json'},
-              body: JSON.stringify({ id_ordine: idOrdine })
-          });
-          if(res.ok) {
-              alert(`✅ Ordine Tavolo ${tavolo} Inviato in Cucina!`);
-              aggiornaDati();
-          } else {
-              alert("Errore nell'approvazione");
-          }
-      } catch(e) { alert("Errore di connessione"); }
   };
 
   const eliminaProdotto = async (ord, indexDaEliminare) => {
@@ -196,86 +201,103 @@ function Cassa() {
           </div>
       </header>
 
-      {/* --- VISTA TAVOLI ATTIVI --- */}
       {tab === 'attivi' && (
           <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(350px, 1fr))', gap:20}}>
             {Object.keys(tavoliAttivi).length === 0 && <p style={{gridColumn:'1/-1', textAlign:'center', fontSize:20, color:'#888'}}>Nessun tavolo attivo.</p>}
             
             {Object.keys(tavoliAttivi).map(tavolo => {
                 const info = tavoliAttivi[tavolo];
-                
-                // 1. CERCHIAMO SE C'È UN ORDINE DA APPROVARE (Stato: in_arrivo)
-                const ordiniDaApprovare = info.ordini.filter(o => o.stato === 'in_arrivo');
-                const richiedeApprovazione = ordiniDaApprovare.length > 0;
-
                 const isApp = !info.cameriere;
-                // ... (tutto il tuo codice calcolo livelli e icone resta uguale) ...
-                const nomeChi = isApp ? (info.cliente || "Ospite") : info.cameriere;
+                let badgeLivello = null;
+
+                if (isApp) {
+                     const n = info.storico_ordini || 0;
+                     let liv = { label: "🌱 NOVIZIO", color: "#7f8c8d", bg: "#f0f3f4" };
+                     if (n >= 5) liv = { label: "🥉 BRONZE", color: "#d35400", bg: "#fce6c9" };
+                     if (n >= 15) liv = { label: "🥈 SILVER", color: "#34495e", bg: "#eaeded" };
+                     if (n >= 30) liv = { label: "🥇 GOLD", color: "#f39c12", bg: "#f9e79f" };
+                     if (n >= 100) liv = { label: "💎 LEGEND", color: "#8e44ad", bg: "#e8daef" };
+                     badgeLivello = <span style={{marginLeft:'8px', fontSize:'0.7rem', background: liv.bg, color: liv.color, padding:'2px 6px', borderRadius:'6px', border: `1px solid ${liv.color}`, fontWeight:'bold', verticalAlign: 'middle', textTransform:'uppercase'}}>{liv.label}</span>;
+                }
+
+                const icona = isApp ? "📱" : "👤";
+                const nomeChi = isApp ? (info.cliente || "Cliente App") : info.cameriere;
+                
+                // Filtro ordini 'in_arrivo'
+                const ordiniDaInviare = info.ordini.filter(o => o.stato === 'in_arrivo');
+                const richiedeApprovazione = ordiniDaInviare.length > 0;
+                
+                // Bordo Arancione se c'è attesa
+                const borderColor = richiedeApprovazione ? '#e67e22' : 'transparent';
 
                 return (
-                    <div key={tavolo} style={{
-                        background:'white', 
-                        padding:20, 
-                        borderRadius:10, 
-                        boxShadow:'0 4px 10px rgba(0,0,0,0.1)',
-                        border: richiedeApprovazione ? '4px solid #e67e22' : 'none' // Bordo Arancione se c'è attesa
-                    }}>
+                    <div key={tavolo} style={{background:'white', padding:20, borderRadius:10, boxShadow:'0 4px 10px rgba(0,0,0,0.1)', border: `4px solid ${borderColor}`}}>
                         
-                        {/* --- BARRA DI APPROVAZIONE (NUOVA) --- */}
+                        {/* --- BARRA DI APPROVAZIONE IN ALTO (NUOVA POSIZIONE) --- */}
                         {richiedeApprovazione && (
                             <div style={{
-                                background:'#e67e22', color:'white', padding:'10px', 
-                                borderRadius:'5px', marginBottom:'15px', textAlign:'center',
-                                animation: 'pulse 1.5s infinite' // Opzionale per farlo lampeggiare
+                                background:'#e67e22', color:'white', padding:'15px', 
+                                borderRadius:'8px', marginBottom:'20px', textAlign:'center',
+                                animation: 'pulse 1.5s infinite' 
                             }}>
-                                <h3 style={{margin:0, fontSize:'16px'}}>🔔 NUOVO ORDINE DA APPROVARE</h3>
-                                <p style={{margin:'5px 0 10px 0', fontSize:'13px'}}>Il cliente ha inviato un ordine.</p>
-                                {ordiniDaApprovare.map(o => (
-                                    <button 
-                                        key={o.id}
-                                        onClick={() => approvaOrdine(o.id, tavolo)}
-                                        style={{
-                                            background:'white', color:'#e67e22', border:'none', 
-                                            padding:'8px 20px', borderRadius:'20px', 
-                                            fontWeight:'bold', cursor:'pointer', fontSize:'14px'
-                                        }}
-                                    >
-                                        ✅ ACCETTA E INVIA IN CUCINA
-                                    </button>
-                                ))}
+                                <h3 style={{margin:'0 0 10px 0', fontSize:'18px'}}>🔔 {ordiniDaInviare.length} ORDINI DA CLIENTE</h3>
+                                <button 
+                                    onClick={() => inviaInProduzione(ordiniDaInviare)}
+                                    style={{
+                                        background:'white', color:'#e67e22', border:'none', 
+                                        padding:'10px 20px', borderRadius:'30px', 
+                                        fontWeight:'bold', cursor:'pointer', fontSize:'16px',
+                                        boxShadow:'0 2px 5px rgba(0,0,0,0.2)'
+                                    }}
+                                >
+                                    ✅ ACCETTA E INVIA IN CUCINA
+                                </button>
                             </div>
                         )}
 
-                        {/* ... IL RESTO DEL TUO CODICE UI (Header tavolo, log, lista prodotti) ... */}
                         <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', borderBottom:'2px solid #ddd', paddingBottom:10, marginBottom:10}}>
-                             {/* ... qui c'è il codice che hai già per il titolo tavolo ... */}
-                             <div>
+                            <div>
                                 <h2 style={{margin:0, color:'#000', fontSize:'1.6rem'}}>Tavolo {tavolo}</h2>
-                                {/* ... etc ... */}
-                             </div>
-                             {/* ... etc ... */}
+                                <div style={{marginTop:'8px', display:'flex', alignItems:'center', background:'#f8f9fa', padding:'5px 10px', borderRadius:'6px'}}>
+                                    <span style={{fontSize:'1.4rem', marginRight:'8px'}}>{icona}</span>
+                                    <div style={{display:'flex', flexDirection:'column'}}>
+                                        <span 
+                                            style={{fontSize:'1.1rem', fontWeight:'bold', color:'#2c3e50', cursor: isApp ? 'pointer' : 'default', textDecoration: isApp ? 'underline' : 'none'}}
+                                            onClick={() => isApp && info.utente_id && apriDettagliUtente(info.utente_id)}
+                                        >
+                                            {nomeChi}
+                                        </span>
+                                        <div style={{marginTop:2}}>{badgeLivello}</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style={{textAlign:'right'}}>
+                                <h2 style={{margin:0, color: richiedeApprovazione ? '#e67e22' : '#27ae60', marginBottom:'5px'}}>{info.totale.toFixed(2)}€</h2>
+                                <button onClick={() => setSelectedLog({ id: `Tavolo ${tavolo} (LIVE)`, dettagli: info.fullLog })} style={{background:'#27ae60', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:11, fontWeight:'bold'}}>🟢 LOG LIVE</button>
+                            </div>
                         </div>
 
                         {info.ordini.map(ord => (
                             <div key={ord.id} style={{
-                                marginBottom:20, borderLeft:'4px solid #eee', paddingLeft:10,
-                                opacity: ord.stato === 'in_arrivo' ? 0.5 : 1 // Sbiadisce se non approvato
+                                marginBottom:20, 
+                                borderLeft:`4px solid ${ord.stato === 'in_arrivo' ? '#e67e22' : '#eee'}`, 
+                                paddingLeft:10,
+                                opacity: ord.stato === 'in_arrivo' ? 0.6 : 1
                             }}>
-                                <div style={{fontSize:12, color:'#888', marginBottom:10}}>
-                                    Ord #{ord.id} - {new Date(ord.data_ora).toLocaleTimeString()}
-                                    {ord.stato === 'in_arrivo' && <span style={{color:'#e67e22', fontWeight:'bold', marginLeft:5}}> (IN ATTESA APPROVAZIONE)</span>}
-                                </div>
+                                {ord.stato === 'in_arrivo' && <div style={{color:'#e67e22', fontWeight:'bold', fontSize:'0.8rem', marginBottom:5}}>⚠️ IN ATTESA DI CONFERMA</div>}
+                                <div style={{fontSize:12, color:'#888', marginBottom:10}}>Ord #{ord.id} - {new Date(ord.data_ora).toLocaleTimeString()}</div>
                                 {renderProdotti(ord, modificaStatoProdotto, eliminaProdotto)}
                             </div>
                         ))}
-                        <button onClick={() => chiudiTavolo(tavolo)} style={{width:'100%', padding:15, background:'#2c3e50', color:'white', border:'none', fontSize:18, marginTop:20, cursor:'pointer', borderRadius:5, fontWeight:'bold'}}>💰 CHIUDI CONTO</button>
+
+                        <button onClick={() => chiudiTavolo(tavolo)} style={{width:'100%', padding:15, background:'#2c3e50', color:'white', border:'none', fontSize:18, marginTop:5, cursor:'pointer', borderRadius:5, fontWeight:'bold'}}>💰 CHIUDI CONTO</button>
                     </div>
                 );
             })}
           </div>
       )}
 
-      {/* --- VISTA STORICO --- */}
+      {/* ... TAB STORICO, MODALI, ETC (INVARIATI) ... */}
       {tab === 'storico' && (
           <div style={{background:'white', color:'#0b0b0bff', padding:20, borderRadius:10}}>
               <h2 style={{color:'#191e22ff', marginTop:0}}>📜 Storico Ordini Conclusi</h2>
@@ -298,20 +320,18 @@ function Cassa() {
           </div>
       )}
 
-      {/* MODAL LOG */}
       {selectedLog && (
-        <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999}}>
-            <div style={{background:'white', padding:30, borderRadius:10, maxWidth:600, width:'90%', maxHeight:'80vh', overflowY:'auto', boxShadow:'0 20px 50px rgba(0,0,0,0.5)'}}>
+        <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999}} onClick={()=>setSelectedLog(null)}>
+            <div style={{background:'white', padding:30, borderRadius:10, maxWidth:600, width:'90%', maxHeight:'80vh', overflowY:'auto', boxShadow:'0 20px 50px rgba(0,0,0,0.5)'}} onClick={e=>e.stopPropagation()}>
                 <h2 style={{color:'#000', marginTop:0, borderBottom:'2px solid #eee', paddingBottom:'10px'}}>📋 LOG DETTAGLIATO</h2>
                 <div style={{background:'#1a1a1a', color:'#2ecc71', padding:20, borderRadius:8, fontFamily:'"Courier New", monospace', whiteSpace:'pre-wrap', fontSize:13, lineHeight:'1.5', border:'1px solid #333', marginTop:'15px'}}>
-                    {selectedLog.dettagli || "Nessun log disponibile."}
+                    {(selectedLog.dettagli || "").replace(/\n/g, "\n").split("----------------------------------").join("\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n")}
                 </div>
                 <button onClick={() => setSelectedLog(null)} style={{width:'100%', marginTop:25, padding:'15px', background:'#2c3e50', color:'white', border:'none', borderRadius:8, fontWeight:'bold', cursor:'pointer', fontSize:'16px'}}>CHIUDI SCHERMATA</button>
             </div>
         </div>
       )}
 
-      {/* MODALE UTENTE */}
       {selectedUserData && (
           <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.8)', zIndex:10000, display:'flex', alignItems:'center', justifyContent:'center'}} onClick={() => setSelectedUserData(null)}>
               <div style={{background:'white', padding:30, borderRadius:15, width:'90%', maxWidth:400, textAlign:'center', position:'relative'}} onClick={e=>e.stopPropagation()}>
