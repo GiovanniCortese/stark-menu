@@ -17,6 +17,36 @@ const LabelGenerator = ({
 
     useEffect(() => { caricaStorico(); }, [lastLabel, info.id]);
 
+    // Funzione per sincronizzare i giorni quando cambio la data nel calendario
+    const handleDateChange = (e) => {
+        const dateStr = e.target.value;
+        if(!dateStr) return;
+
+        const newDate = new Date(dateStr);
+        const today = new Date();
+        const diffTime = Math.abs(newDate - today);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+        
+        setLabelData({
+            ...labelData,
+            scadenza_manuale: dateStr,
+            giorni_scadenza: diffDays
+        });
+    };
+
+    // Funzione per sincronizzare la data quando cambio i giorni numerici
+    const handleDaysChange = (e) => {
+        const days = parseInt(e.target.value) || 0;
+        const newDate = new Date();
+        newDate.setDate(newDate.getDate() + days);
+
+        setLabelData({
+            ...labelData,
+            giorni_scadenza: days,
+            scadenza_manuale: newDate.toISOString().split('T')[0]
+        });
+    };
+
     return (
         <div className="no-print">
             <div style={{background:'white', padding:20, borderRadius:10, marginBottom:20, borderLeft:'5px solid #2980b9'}}>
@@ -25,6 +55,7 @@ const LabelGenerator = ({
                     <div style={{flex:2, minWidth:200}}><label style={{fontSize:11}}>Prodotto / Piatto</label>
                         <input value={labelData.prodotto} onChange={e=>setLabelData({...labelData, prodotto:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required />
                     </div>
+                    
                     <div style={{flex:1, minWidth:150}}><label style={{fontSize:11}}>Conservazione</label>
                         <select value={labelData.tipo} onChange={handleLabelTypeChange} style={{width:'100%', padding:9, border:'1px solid #ddd'}}>
                             <option value="positivo">Positivo (+3°C)</option>
@@ -32,6 +63,15 @@ const LabelGenerator = ({
                             <option value="sottovuoto">Sottovuoto</option>
                         </select>
                     </div>
+
+                    {/* NUOVA SEZIONE SCADENZA SINCRONIZZATA */}
+                    <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Giorni Scad.</label>
+                        <input type="number" value={labelData.giorni_scadenza} onChange={handleDaysChange} style={{width:'100%', padding:8, border:'1px solid #ddd'}} />
+                    </div>
+                    <div style={{flex:1, minWidth:120}}><label style={{fontSize:11}}>Data Scadenza</label>
+                        <input type="date" value={labelData.scadenza_manuale} onChange={handleDateChange} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required />
+                    </div>
+
                     <div style={{flex:1, minWidth:150}}><label style={{fontSize:11}}>Operatore</label>
                         <select value={labelData.operatore} onChange={e=>setLabelData({...labelData, operatore:e.target.value})} style={{width:'100%', padding:9, border:'1px solid #ddd'}} required>
                             <option value="">-- Seleziona --</option>
@@ -46,7 +86,7 @@ const LabelGenerator = ({
 
             <div style={{background:'white', padding:20, borderRadius:10}}>
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:15}}>
-                    <h3>📑 Registro Storico Abbattimenti</h3>
+                    <h3>📑 Registro Storico Produzione</h3>
                     <div style={{display:'flex', gap:5}}>
                         <button onClick={() => window.open(`${API_URL}/api/haccp/export/labels/${info.id}?format=excel`, '_blank')} style={{background:'#27ae60', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Excel</button>
                         <button onClick={() => window.open(`${API_URL}/api/haccp/export/labels/${info.id}?format=pdf`, '_blank')} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ PDF</button>

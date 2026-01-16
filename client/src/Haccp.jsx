@@ -9,7 +9,7 @@ import HaccpCalendar from './components/haccp/HaccpCalendar';
 import AssetSetup from './components/haccp/AssetSetup';
 import StaffManager from './components/haccp/StaffManager';
 import LabelGenerator from './components/haccp/LabelGenerator';
-import CleaningManager from './components/haccp/CleaningManager'; // Assicurati di avere questo file
+import CleaningManager from './components/haccp/CleaningManager';
 
 function Haccp() {
   const { slug, scanId } = useParams();
@@ -67,8 +67,16 @@ function Haccp() {
   const [downloadFormat, setDownloadFormat] = useState('excel'); 
   const [selectedMonth, setSelectedMonth] = useState('');
 
-  // Stati Etichette
-  const [labelData, setLabelData] = useState({ prodotto: '', giorni_scadenza: 3, operatore: '', tipo: 'positivo' });
+  // Stati Etichette (Produzione) - Inizializzo con data scadenza manuale a oggi + 3
+  const today = new Date();
+  today.setDate(today.getDate() + 3);
+  const [labelData, setLabelData] = useState({ 
+      prodotto: '', 
+      giorni_scadenza: 3, 
+      scadenza_manuale: today.toISOString().split('T')[0], // NUOVO CAMPO
+      operatore: '', 
+      tipo: 'positivo' 
+  });
   const [lastLabel, setLastLabel] = useState(null);
   const [printMode, setPrintMode] = useState(null);
 
@@ -113,14 +121,16 @@ function Haccp() {
         .catch(e => console.error("Err Cal", e));
   };
 
-  // --- GESTIONE FILE (PDF vs IMMAGINE) ---
+  // --- GESTIONE FILE (AGGIORNATA: SOLO DOWNLOAD SE PDF) ---
   const handleFileAction = (url) => {
     if (!url) return;
-    // Controlla estensione (molto basilare, ma efficace per url cloudinary)
+    
+    // Controllo estensione
     const isPdf = url.toLowerCase().endsWith('.pdf') || url.toLowerCase().includes('.pdf');
     
     if (isPdf) {
-        // Se è PDF, apri in nuova scheda (che avvia download o visualizzazione browser)
+        // Se è PDF, apri in nuova scheda (che forza il visualizzatore/download nativo del browser)
+        // Non settiamo previewImage, quindi il modale non si apre.
         window.open(url, '_blank');
     } else {
         // Se è Immagine, apri modale anteprima
@@ -296,18 +306,43 @@ function Haccp() {
       setShowDownloadModal(false);
   };
 
-  // --- LABELS ---
+  // --- LABELS (PRODUZIONE) ---
   const handleLabelTypeChange = (e) => {
-      const type = e.target.value; let days = 3;
-      if (type === 'negativo') days = 180; if (type === 'sottovuoto') days = 10;
-      setLabelData({...labelData, tipo: type, giorni_scadenza: days});
+      const type = e.target.value; 
+      let days = 3;
+      if (type === 'negativo') days = 180; // 6 mesi
+      if (type === 'sottovuoto') days = 10;
+      
+      // Calcola nuova data
+      const newDate = new Date();
+      newDate.setDate(newDate.getDate() + days);
+      
+      setLabelData({
+          ...labelData, 
+          tipo: type, 
+          giorni_scadenza: days,
+          scadenza_manuale: newDate.toISOString().split('T')[0]
+      });
   };
+
   const handlePrintLabel = async (e) => {
       e.preventDefault();
-      const scadenza = new Date(); scadenza.setDate(scadenza.getDate() + parseInt(labelData.giorni_scadenza));
+      
+      // Usa la data manuale se presente, altrimenti calcola (ma ora sono sempre sincronizzati)
+      const scadenza = labelData.scadenza_manuale ? new Date(labelData.scadenza_manuale) : new Date();
+      if (!labelData.scadenza_manuale) {
+          scadenza.setDate(scadenza.getDate() + parseInt(labelData.giorni_scadenza));
+      }
+
       const res = await fetch(`${API_URL}/api/haccp/labels`, { 
           method:'POST', headers:{'Content-Type':'application/json'}, 
-          body: JSON.stringify({ ristorante_id: info.id, prodotto: labelData.prodotto, data_scadenza: scadenza, operatore: labelData.operatore || 'Chef', tipo_conservazione: labelData.tipo }) 
+          body: JSON.stringify({ 
+              ristorante_id: info.id, 
+              prodotto: labelData.prodotto, 
+              data_scadenza: scadenza, 
+              operatore: labelData.operatore || 'Chef', 
+              tipo_conservazione: labelData.tipo 
+          }) 
       });
       const data = await res.json(); 
       if(data.success) { setLastLabel(data.label); setPrintMode('label'); setTimeout(() => { window.print(); setPrintMode(null); }, 500); }
@@ -332,10 +367,10 @@ function Haccp() {
           <div className="no-print" style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20, flexWrap:'wrap', gap:10}}>
               <div><h1 style={{margin:0, color:'#2c3e50'}}>🛡️ HACCP Control</h1></div>
               <div style={{display:'flex', gap:10, alignItems:'center'}}>
-                  {/* PULSANTI DI NAVIGAZIONE - AGGIUNTA PULIZIA */}
+                  {/* PULSANTI DI NAVIGAZIONE - ETICHETTE RINOMINATO IN PRODUZIONE */}
                   {['temperature', 'merci', 'pulizie', 'calendario', 'etichette', 'staff', 'setup'].map(t => (
                     <button key={t} onClick={()=>setTab(t)} style={{padding:'10px 20px', borderRadius:5, border:'none', cursor:'pointer', fontWeight:'bold', textTransform:'uppercase', background: tab===t ? '#2c3e50' : 'white', color: tab===t ? 'white' : '#333'}}>
-                    {t==='merci' ? '📦 Merci' : (t==='setup' ? '⚙️ Macchine' : (t==='staff' ? '👥 Staff' : (t==='pulizie' ? '🧼 Pulizia' : t)))}
+                    {t==='merci' ? '📦 Merci' : (t==='setup' ? '⚙️ Macchine' : (t==='staff' ? '👥 Staff' : (t==='pulizie' ? '🧼 Pulizia' : (t==='etichette' ? '🏭 Produzione' : t))))}
                     </button>
                   ))}
                   <button onClick={()=>{localStorage.removeItem(`haccp_session_${slug}`); setIsAuthorized(false)}} style={{background:'#e74c3c', color:'white', border:'none', padding:'10px 20px', borderRadius:5}}>ESCI</button>
@@ -354,7 +389,7 @@ function Haccp() {
             handleLogPhoto={handleLogPhoto}
             abilitaNuovaMisurazione={abilitaNuovaMisurazione}
             logs={logs}
-            openDownloadModal={openDownloadModal} // Passato per download interno
+            openDownloadModal={openDownloadModal}
           />
       )}
 
@@ -370,12 +405,11 @@ function Haccp() {
              eliminaMerce={eliminaMerce}
              assets={assets}
              resetMerciForm={resetMerciForm}
-             handleFileAction={handleFileAction} // Funzione intelligente (PDF/IMG)
-             openDownloadModal={openDownloadModal} // Passato per download interno
+             handleFileAction={handleFileAction} 
+             openDownloadModal={openDownloadModal}
           />
       )}
       
-      {/* AGGIUNTA TAB PULIZIA */}
       {tab === 'pulizie' && !scanId && (
           <CleaningManager 
             info={info} 
@@ -404,11 +438,11 @@ function Haccp() {
              setSelectedStaff={setSelectedStaff}
              newDoc={newDoc}
              setNewDoc={setNewDoc}
-             uploadStaffDoc={uploadStaffDoc} // Qui usiamo la funzione originale wrapperata nel componente
-             uploadFile={uploadFile} // Passiamo l'uploader per la gestione interna loading
+             uploadStaffDoc={uploadStaffDoc}
+             uploadFile={uploadFile}
              staffDocs={staffDocs}
              deleteDoc={deleteDoc}
-             handleFileAction={handleFileAction} // Funzione intelligente (PDF/IMG)
+             handleFileAction={handleFileAction} 
              API_URL={API_URL}
           />
       )}
@@ -418,9 +452,9 @@ function Haccp() {
              assets={assets}
              apriModaleAsset={apriModaleAsset}
              setShowQRModal={setShowQRModal}
-             setPreviewImage={setPreviewImage} // Qui va bene solo anteprima o anche pdf? Meglio generic
+             setPreviewImage={setPreviewImage}
              handleFileAction={handleFileAction}
-             openDownloadModal={openDownloadModal} // Passato per download interno
+             openDownloadModal={openDownloadModal}
           />
       )}
 
@@ -434,7 +468,7 @@ function Haccp() {
              info={info}
              API_URL={API_URL}
              staffList={staffList}
-             handleReprint={handleReprint} // Nuova funzione per ristampa
+             handleReprint={handleReprint}
           />
       )}
 
