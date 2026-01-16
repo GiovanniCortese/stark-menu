@@ -210,9 +210,9 @@ app.get('/api/utenti', async (req, res) => {
             return res.json(r.rows);
         } 
         if (mode === 'staff' && ristorante_id) {
-            const r = await pool.query("SELECT * FROM utenti WHERE ristorante_id = $1 AND ruolo IN ('cameriere', 'editor') ORDER BY nome", [ristorante_id]);
-            return res.json(r.rows);
-        }
+            const r = await pool.query("SELECT * FROM utenti WHERE ristorante_id = $1 ORDER BY nome", [ristorante_id]);
+    return res.json(r.rows);
+}
         if ((mode === 'clienti' || mode === 'clienti_ordini') && ristorante_id) {
             const r = await pool.query(`SELECT u.id, u.nome, u.email, u.telefono, COUNT(o.id) as totale_ordini, MAX(o.data_ora) as ultimo_ordine FROM utenti u INNER JOIN ordini o ON u.id = o.utente_id WHERE o.ristorante_id = $1 GROUP BY u.id, u.nome, u.email, u.telefono ORDER BY ultimo_ordine DESC`, [ristorante_id]);
             return res.json(r.rows);

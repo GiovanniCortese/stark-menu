@@ -240,9 +240,16 @@ function AdminUsers({ API_URL, user }) {
                         <form onSubmit={handleCreateStaff} style={formStyle}>
                             <label style={labelStyle}>RUOLO</label>
                             <select value={newUser.ruolo} onChange={e => setNewUser({...newUser, ruolo: e.target.value})} style={inputStyle}>
-                                <option value="cameriere">Cameriere (Prende ordini)</option>
-                                <option value="editor">Editor (Modifica Menu)</option>
-                            </select>
+    <option value="cameriere">Cameriere (Prende ordini)</option>
+    <option value="editor">Editor (Modifica Menu)</option>
+    {/* --- NUOVI RUOLI PER STAFF/HACCP --- */}
+    <option value="cuoco">Cuoco / Chef</option>
+    <option value="pizzaiolo">Pizzaiolo</option>
+    <option value="barman">Barman</option>
+    <option value="manager">Manager / Direttore</option>
+    <option value="lavapiatti">Lavapiatti</option>
+    <option value="addetto_pulizie">Addetto Pulizie</option>
+</select>
                             
                             <input type="text" placeholder="Nome Completo" required value={newUser.nome} onChange={e => setNewUser({...newUser, nome: e.target.value})} style={inputStyle} />
                             <input type="email" placeholder="Email (Login)" required value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} style={inputStyle} />
@@ -265,9 +272,16 @@ function AdminUsers({ API_URL, user }) {
                         <form onSubmit={handleSave} style={formStyle}>
                             <label style={labelStyle}>RUOLO</label>
                             <select value={editingUser.ruolo} onChange={e => setEditingUser({...editingUser, ruolo: e.target.value})} style={inputStyle}>
-                                <option value="cameriere">Cameriere</option>
-                                <option value="editor">Editor</option>
-                            </select>
+    <option value="cameriere">Cameriere</option>
+    <option value="editor">Editor</option>
+    {/* --- NUOVI RUOLI PER STAFF/HACCP --- */}
+    <option value="cuoco">Cuoco / Chef</option>
+    <option value="pizzaiolo">Pizzaiolo</option>
+    <option value="barman">Barman</option>
+    <option value="manager">Manager / Direttore</option>
+    <option value="lavapiatti">Lavapiatti</option>
+    <option value="addetto_pulizie">Addetto Pulizie</option>
+</select>
                             <input type="text" placeholder="Nome" value={editingUser.nome} onChange={e=>setEditingUser({...editingUser, nome:e.target.value})} style={inputStyle} required />
                             <input type="email" placeholder="Email" value={editingUser.email} onChange={e=>setEditingUser({...editingUser, email:e.target.value})} style={inputStyle} required />
                             <input type="text" placeholder="Password" value={editingUser.password} onChange={e=>setEditingUser({...editingUser, password:e.target.value})} style={inputStyle} required />
