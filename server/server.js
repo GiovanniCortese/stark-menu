@@ -307,10 +307,51 @@ app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
 app.post('/api/staff/docs', async (req, res) => { try { const { utente_id, tipo_doc, nome_file, url } = req.body; await pool.query("INSERT INTO staff_docs (utente_id, tipo_doc, nome_file, url) VALUES ($1, $2, $3, $4)", [utente_id, tipo_doc, nome_file, url]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
 app.get('/api/staff/docs/:utente_id', async (req, res) => { try { const r = await pool.query("SELECT * FROM staff_docs WHERE utente_id = $1 ORDER BY data_caricamento DESC", [req.params.utente_id]); res.json(r.rows); } catch (e) { res.status(500).json({ error: e.message }); } });
 app.delete('/api/staff/docs/:id', async (req, res) => { try { await pool.query("DELETE FROM staff_docs WHERE id = $1", [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
-app.get('/api/haccp/logs/:ristorante_id', async (req, res) => { try { const { start, end } = req.query; let query = `SELECT l.*, a.nome as nome_asset FROM haccp_logs l LEFT JOIN haccp_assets a ON l.asset_id = a.id WHERE l.ristorante_id = $1`; const params = [req.params.ristorante_id]; if (start && end) { query += ` AND l.data_ora >= $2 AND l.data_ora <= $3 ORDER BY l.data_ora ASC`; params.push(start, end); } else { query += ` ORDER BY l.data_ora DESC LIMIT 200`; } const r = await pool.query(query, params); res.json(r.rows); } catch(e) { res.status(500).json({error:"Err"}); } });
+app.get('/api/haccp/logs/:ristorante_id', async (req, res) => { 
+    try { 
+        const { start, end } = req.query; 
+        let query = `SELECT l.*, a.nome as nome_asset FROM haccp_logs l LEFT JOIN haccp_assets a ON l.asset_id = a.id WHERE l.ristorante_id = $1`; 
+        const params = [req.params.ristorante_id]; 
+        
+        if (start && end) { 
+            // Se c'è un filtro calendario usa quello
+            query += ` AND l.data_ora >= $2 AND l.data_ora <= $3 ORDER BY l.data_ora ASC`; 
+            params.push(start, end); 
+        } else { 
+            // DEFAULT: Solo ultimi 7 giorni
+            query += ` AND l.data_ora >= NOW() - INTERVAL '7 days' ORDER BY l.data_ora DESC`; 
+        } 
+        const r = await pool.query(query, params); 
+        res.json(r.rows); 
+    } catch(e) { res.status(500).json({error:"Err"}); } 
+});
 app.post('/api/haccp/logs', async (req, res) => { try { const { ristorante_id, asset_id, operatore, tipo_log, valore, conformita, azione_correttiva, foto_prova_url } = req.body; await pool.query("INSERT INTO haccp_logs (ristorante_id, asset_id, operatore, tipo_log, valore, conformita, azione_correttiva, foto_prova_url) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)", [ristorante_id, asset_id, operatore, tipo_log, valore, conformita, azione_correttiva, foto_prova_url]); res.json({success:true}); } catch(e) { res.status(500).json({error:"Err"}); } });
-app.post('/api/haccp/labels', async (req, res) => { try { const { ristorante_id, prodotto, data_scadenza, operatore, tipo_conservazione } = req.body; const t = getItalyDateComponents(); const lotto = `L-${t.year}${t.month}${t.day}-${t.hour}${t.minute}`; const r = await pool.query("INSERT INTO haccp_labels (ristorante_id, prodotto, lotto, data_produzione, data_scadenza, operatore, tipo_conservazione) VALUES ($1,$2,$3,NOW(),$4,$5,$6) RETURNING *", [ristorante_id, prodotto, lotto, data_scadenza, operatore, tipo_conservazione]); res.json({success:true, label: r.rows[0]}); } catch(e) { res.status(500).json({error:"Err"}); } });
-app.get('/api/haccp/merci/:ristorante_id', async (req, res) => { try { const r = await pool.query("SELECT * FROM haccp_merci WHERE ristorante_id = $1 ORDER BY data_ricezione DESC, data_ora DESC LIMIT 100", [req.params.ristorante_id]); res.json(r.rows); } catch(e) { res.status(500).json({error:"Err"}); } });
+app.post('/api/haccp/labels', async (req, res) => { 
+    try { 
+        // Aggiunto ingredienti nel destructuring e nella query
+        const { ristorante_id, prodotto, data_scadenza, operatore, tipo_conservazione, ingredienti } = req.body; 
+        const t = getItalyDateComponents(); 
+        const lotto = `L-${t.year}${t.month}${t.day}-${t.hour}${t.minute}`; 
+        
+        const r = await pool.query(
+            "INSERT INTO haccp_labels (ristorante_id, prodotto, lotto, data_produzione, data_scadenza, operatore, tipo_conservazione, ingredienti) VALUES ($1,$2,$3,NOW(),$4,$5,$6,$7) RETURNING *", 
+            [ristorante_id, prodotto, lotto, data_scadenza, operatore, tipo_conservazione, ingredienti || '']
+        ); 
+        res.json({success:true, label: r.rows[0]}); 
+    } catch(e) { 
+        res.status(500).json({error:"Err"}); 
+    } 
+});
+app.get('/api/haccp/merci/:ristorante_id', async (req, res) => { 
+    try { 
+        // Filtra ultimi 7 giorni
+        const r = await pool.query(
+            "SELECT * FROM haccp_merci WHERE ristorante_id = $1 AND data_ricezione >= NOW() - INTERVAL '7 days' ORDER BY data_ricezione DESC, data_ora DESC", 
+            [req.params.ristorante_id]
+        ); 
+        res.json(r.rows); 
+    } catch(e) { res.status(500).json({error:"Err"}); } 
+});
 app.post('/api/haccp/merci', async (req, res) => { try { const { ristorante_id, data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione } = req.body; await pool.query(`INSERT INTO haccp_merci (ristorante_id, data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`, [ristorante_id, data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione]); res.json({success:true}); } catch(e) { console.error(e); res.status(500).json({error:"Err"}); } });
 app.put('/api/haccp/merci/:id', async (req, res) => { try { const { data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione } = req.body; await pool.query(`UPDATE haccp_merci SET data_ricezione=$1, fornitore=$2, prodotto=$3, lotto=$4, scadenza=$5, temperatura=$6, conforme=$7, integro=$8, note=$9, operatore=$10, quantita=$11, allegato_url=$12, destinazione=$13 WHERE id=$14`, [data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione, req.params.id]); res.json({success:true}); } catch(e) { res.status(500).json({error:"Err"}); } });
 app.delete('/api/haccp/merci/:id', async (req, res) => { try { await pool.query("DELETE FROM haccp_merci WHERE id=$1", [req.params.id]); res.json({success:true}); } catch(e){ res.status(500).json({error:"Err"}); } });
@@ -319,6 +360,15 @@ app.delete('/api/haccp/logs/:id', async (req, res) => { try { await pool.query("
 app.get('/api/haccp/pulizie/:ristorante_id', async (req, res) => { try { const r = await pool.query("SELECT * FROM haccp_cleaning WHERE ristorante_id = $1 ORDER BY data_ora DESC LIMIT 100", [req.params.ristorante_id]); res.json(r.rows); } catch(e) { res.status(500).json({error:"Err"}); } });
 app.post('/api/haccp/pulizie', async (req, res) => { try { const { ristorante_id, area, prodotto, operatore, conformita, data_ora } = req.body; await pool.query("INSERT INTO haccp_cleaning (ristorante_id, area, prodotto, operatore, conformita, data_ora) VALUES ($1, $2, $3, $4, $5, $6)", [ristorante_id, area, prodotto, operatore, conformita !== undefined ? conformita : true, data_ora || new Date()]); res.json({success:true}); } catch(e) { res.status(500).json({error:e.message}); } });
 app.delete('/api/haccp/pulizie/:id', async (req, res) => { try { await pool.query("DELETE FROM haccp_cleaning WHERE id = $1", [req.params.id]); res.json({success:true}); } catch(e) { res.status(500).json({error:"Err"}); } });
-app.get('/api/haccp/labels/storico/:ristorante_id', async (req, res) => { try { const r = await pool.query("SELECT * FROM haccp_labels WHERE ristorante_id = $1 ORDER BY data_produzione DESC LIMIT 100", [req.params.ristorante_id]); res.json(r.rows); } catch(e) { res.status(500).json({error: "Errore recupero storico"}); } });
+app.get('/api/haccp/labels/storico/:ristorante_id', async (req, res) => { 
+    try { 
+        // Filtra ultimi 7 giorni
+        const r = await pool.query(
+            "SELECT * FROM haccp_labels WHERE ristorante_id = $1 AND data_produzione >= NOW() - INTERVAL '7 days' ORDER BY data_produzione DESC", 
+            [req.params.ristorante_id]
+        ); 
+        res.json(r.rows); 
+    } catch(e) { res.status(500).json({error: "Errore recupero storico"}); } 
+});
 
 app.listen(port, () => console.log(`🚀 SERVER V12.2 (Porta ${port}) - TIMEZONE: ROME`));

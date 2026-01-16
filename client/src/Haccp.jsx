@@ -330,15 +330,20 @@ function Haccp() {
   };
 
   // NUOVA FUNZIONE PER GESTIONE QR CODE E STAMPA IMMEDIATA
-  const handlePrintQR = (asset) => {
-      setShowQRModal(asset);
-      setPrintMode('qr');
-      setTimeout(() => {
-          window.print();
-          setPrintMode(null);
-          setShowQRModal(null);
-      }, 500);
-  };
+const handlePrintQR = (asset) => {
+    // Apre solo il modale, NON stampa subito
+    setShowQRModal(asset);
+};
+
+// 2. Aggiungi questa funzione per stampare dal modale
+const printOnlyQR = () => {
+    setPrintMode('qr');
+    setTimeout(() => {
+        window.print();
+        setPrintMode(null);
+        // Non chiudiamo il modale automaticamente, lascia decidere all'utente
+    }, 500);
+};
 
   if(!info) return <div>Caricamento...</div>;
   if(!isAuthorized) return <div style={{padding:50, textAlign:'center'}}><h1>🔒 Password Required</h1><form onSubmit={handleLogin}><input type="password" value={password} onChange={e=>setPassword(e.target.value)} /><button>Login</button></form></div>;
@@ -442,19 +447,20 @@ function Haccp() {
       )}
 
       {tab === 'etichette' && !scanId && (
-          <LabelGenerator 
-             labelData={labelData}
-             setLabelData={setLabelData}
-             handleLabelTypeChange={handleLabelTypeChange}
-             handlePrintLabel={handlePrintLabel}
-             lastLabel={lastLabel}
-             info={info}
-             API_URL={API_URL}
-             staffList={staffList}
-             handleReprint={handleReprint}
-             openDownloadModal={openDownloadModal}
-          />
-      )}
+    <LabelGenerator 
+       labelData={labelData}
+       setLabelData={setLabelData}
+       handleLabelTypeChange={handleLabelTypeChange}
+       handlePrintLabel={handlePrintLabel}
+       lastLabel={lastLabel}
+       info={info}
+       API_URL={API_URL}
+       staffList={staffList}
+       handleReprint={handleReprint}
+       openDownloadModal={openDownloadModal}
+       merciList={merci} // <--- NUOVA PROP AGGIUNTA
+    />
+)}
 
       {showDownloadModal && (
           <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000}}>
@@ -496,6 +502,28 @@ function Haccp() {
             <div style={{marginTop:'auto', fontSize:'9px', textAlign:'center', borderTop:'1px solid black', paddingTop:'2px'}}>Lotto: {lastLabel.lotto}</div>
         </div>
       )}
+{showQRModal && (
+          <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.85)', zIndex:3000, display:'flex', alignItems:'center', justifyContent:'center'}}>
+              <div style={{background:'white', padding:40, borderRadius:20, textAlign:'center', maxWidth:500, width:'90%'}}>
+                  <h2 style={{margin:'0 0 20px 0', color:'#2c3e50'}}>{showQRModal.nome}</h2>
+                  <div style={{background:'white', padding:20, display:'inline-block'}}>
+                      <QRCode value={`${window.location.origin}/haccp/${slug}/scan/${showQRModal.id}`} size={250} />
+                  </div>
+                  <p style={{marginTop:20, color:'#7f8c8d'}}>Scansiona per registrare le temperature</p>
+                  
+                  <div style={{marginTop:30, display:'flex', gap:10, justifyContent:'center'}}>
+                      <button onClick={printOnlyQR} style={{background:'#2c3e50', color:'white', border:'none', padding:'12px 25px', borderRadius:8, fontSize:16, cursor:'pointer', display:'flex', alignItems:'center', gap:5}}>
+                          🖨️ Stampa QR
+                      </button>
+                      <button onClick={()=>setShowQRModal(null)} style={{background:'#e74c3c', color:'white', border:'none', padding:'12px 25px', borderRadius:8, fontSize:16, cursor:'pointer'}}>
+                          Chiudi
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* 2. LA VERSIONE PER LA STAMPA (Invisibile finché non stampi) */}
       {printMode === 'qr' && showQRModal && (
         <div className="print-area" style={{position:'fixed', top:0, left:0, width:'100%', height:'100%', background:'white', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'}}>
              <h1 style={{fontSize:'40px', marginBottom:20}}>{showQRModal.nome}</h1>
