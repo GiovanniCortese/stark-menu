@@ -7,43 +7,33 @@ const StaffManager = ({
     setSelectedStaff, 
     newDoc, 
     setNewDoc, 
-    uploadStaffDoc: originalUploadStaffDoc, // Rinominiamo la prop
-    uploadFile, // Serve per l'upload interno con feedback
+    uploadStaffDoc: originalUploadStaffDoc,
+    uploadFile,
     staffDocs, 
     deleteDoc,
-    handleFileAction, // Usato per PDF/IMG
-    API_URL // Serve per fetch interno
+    API_URL 
 }) => {
     
-    // Stato locale per il caricamento
     const [isLoading, setIsLoading] = useState(false);
 
-    // Funzione wrapper per gestire il caricamento
     const handleUploadWrapper = async (e) => {
         const f = e.target.files[0];
         if(!f) return;
-
-        setIsLoading(true); // Attiva stato loading
+        setIsLoading(true);
         try {
-            // Logica replicata per gestire lo stato qui (oppure potresti modificare Haccp.jsx)
-            // Per semplicità, replichiamo la chiamata qui usando le props passate
             const url = await uploadFile(f);
-            
             await fetch(`${API_URL}/api/staff/docs`, {
                 method: 'POST', headers: {'Content-Type':'application/json'},
                 body: JSON.stringify({ utente_id: selectedStaff.id, tipo_doc: newDoc.tipo, nome_file: f.name, url })
             });
-            
-            // Ricarica documenti
             openStaffDocs(selectedStaff);
             setNewDoc({...newDoc, url: ''});
-            
-            alert("✅ Caricamento completato con successo!");
+            alert("✅ Caricamento completato!");
         } catch (error) {
             console.error(error);
             alert("❌ Errore durante il caricamento.");
         } finally {
-            setIsLoading(false); // Disattiva stato loading
+            setIsLoading(false);
         }
     };
 
@@ -82,7 +72,6 @@ const StaffManager = ({
                             <button onClick={()=>setSelectedStaff(null)} style={{background:'#ccc', border:'none', padding:'2px 8px', borderRadius:4, cursor:'pointer'}}>X</button>
                         </div>
 
-                        {/* FORM CARICAMENTO CON FEEDBACK */}
                         <div style={{marginTop:20, background:'#f9f9f9', padding:15, borderRadius:5, display:'flex', gap:10, alignItems:'center'}}>
                             <select 
                                 value={newDoc.tipo} 
@@ -107,7 +96,6 @@ const StaffManager = ({
                             </label>
                         </div>
 
-                        {/* TABELLA DOCUMENTI */}
                         <table style={{width:'100%', marginTop:20, fontSize:13, borderCollapse:'collapse'}}>
                             <thead>
                                 <tr style={{textAlign:'left', borderBottom:'2px solid #ddd'}}>
@@ -127,15 +115,19 @@ const StaffManager = ({
                                             <td style={{padding:8}}><span style={{background:'#eee', padding:'2px 5px', borderRadius:3, fontSize:11}}>{d.tipo_doc}</span></td>
                                             <td style={{padding:8}}>{d.nome_file}</td>
                                             <td style={{padding:8, display:'flex', gap:5}}>
-                                                <button 
-                                                    onClick={() => handleFileAction(d.url)} 
-                                                    style={{background:'#27ae60', color:'white', border:'none', padding:'3px 8px', borderRadius:3, fontSize:12, cursor:'pointer'}}
+                                                {/* MODIFICA QUI: Solo tasto Download semplice */}
+                                                <a 
+                                                    href={d.url} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer"
+                                                    style={{background:'#3498db', color:'white', textDecoration:'none', padding:'4px 10px', borderRadius:3, fontSize:12, fontWeight:'bold'}}
                                                 >
-                                                    Vedi/Scarica
-                                                </button>
+                                                    Download ⬇
+                                                </a>
+                                                
                                                 <button 
                                                     onClick={()=>deleteDoc(d.id)} 
-                                                    style={{background:'#e74c3c', color:'white', border:'none', padding:'3px 8px', borderRadius:3, cursor:'pointer', fontSize:12}}
+                                                    style={{background:'#e74c3c', color:'white', border:'none', padding:'4px 10px', borderRadius:3, cursor:'pointer', fontSize:12}}
                                                 >
                                                     X
                                                 </button>

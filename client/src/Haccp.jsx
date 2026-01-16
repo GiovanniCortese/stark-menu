@@ -67,13 +67,13 @@ function Haccp() {
   const [downloadFormat, setDownloadFormat] = useState('excel'); 
   const [selectedMonth, setSelectedMonth] = useState('');
 
-  // Stati Etichette (Produzione) - Inizializzo con data scadenza manuale a oggi + 3
+  // Stati Etichette (Produzione)
   const today = new Date();
   today.setDate(today.getDate() + 3);
   const [labelData, setLabelData] = useState({ 
       prodotto: '', 
       giorni_scadenza: 3, 
-      scadenza_manuale: today.toISOString().split('T')[0], // NUOVO CAMPO
+      scadenza_manuale: today.toISOString().split('T')[0], 
       operatore: '', 
       tipo: 'positivo' 
   });
@@ -121,19 +121,15 @@ function Haccp() {
         .catch(e => console.error("Err Cal", e));
   };
 
-  // --- GESTIONE FILE (AGGIORNATA: SOLO DOWNLOAD SE PDF) ---
+  // --- GESTIONE FILE (AGGIORNATA) ---
   const handleFileAction = (url) => {
     if (!url) return;
-    
-    // Controllo estensione
+    // Se è PDF o altro documento, apri in nuova scheda (Download/View)
     const isPdf = url.toLowerCase().endsWith('.pdf') || url.toLowerCase().includes('.pdf');
-    
     if (isPdf) {
-        // Se è PDF, apri in nuova scheda (che forza il visualizzatore/download nativo del browser)
-        // Non settiamo previewImage, quindi il modale non si apre.
         window.open(url, '_blank');
     } else {
-        // Se è Immagine, apri modale anteprima
+        // Solo se è immagine apri anteprima
         setPreviewImage(url);
     }
   };
@@ -290,7 +286,7 @@ function Haccp() {
       try { const url = await uploadFile(f); setAssetForm(prev => ({...prev, etichetta_url: url})); } finally { setUploadingLabel(false); }
   };
 
-  // --- EXPORT ---
+  // --- EXPORT (AGGIORNATO) ---
   const openDownloadModal = (type) => { setDownloadType(type); setShowDownloadModal(true); setSelectedMonth(''); };
   const executeDownload = (range) => {
       let start = new Date(), end = new Date(), rangeName = "Tutto";
@@ -301,22 +297,24 @@ function Haccp() {
           const [y, m] = selectedMonth.split('-'); start = new Date(y, m - 1, 1); end = new Date(y, m, 0, 23, 59, 59);
           rangeName = `Mese di ${start.toLocaleString('it-IT', { month: 'long', year: 'numeric' })}`;
       } else if(range === 'all') { start = new Date('2020-01-01'); rangeName="Storico Completo"; }
+      
       const query = `?start=${start.toISOString()}&end=${end.toISOString()}&rangeName=${rangeName}&format=${downloadFormat}`;
-      window.open(`${API_URL}/api/haccp/export/${downloadType}/${info.id}${query}`, '_blank');
+      // Gestione URL per etichette vs altri
+      let endpointType = downloadType;
+      window.open(`${API_URL}/api/haccp/export/${endpointType}/${info.id}${query}`, '_blank');
       setShowDownloadModal(false);
   };
 
-  // --- LABELS (PRODUZIONE) ---
+  // --- LABELS ---
   const handleLabelTypeChange = (e) => {
       const type = e.target.value; 
       let days = 3;
-      if (type === 'negativo') days = 180; // 6 mesi
+      if (type === 'negativo') days = 180; 
       if (type === 'sottovuoto') days = 10;
       
-      // Calcola nuova data
       const newDate = new Date();
       newDate.setDate(newDate.getDate() + days);
-      
+
       setLabelData({
           ...labelData, 
           tipo: type, 
@@ -327,28 +325,18 @@ function Haccp() {
 
   const handlePrintLabel = async (e) => {
       e.preventDefault();
-      
-      // Usa la data manuale se presente, altrimenti calcola (ma ora sono sempre sincronizzati)
+      // Usa data manuale se presente
       const scadenza = labelData.scadenza_manuale ? new Date(labelData.scadenza_manuale) : new Date();
-      if (!labelData.scadenza_manuale) {
-          scadenza.setDate(scadenza.getDate() + parseInt(labelData.giorni_scadenza));
-      }
+      if(!labelData.scadenza_manuale) scadenza.setDate(scadenza.getDate() + parseInt(labelData.giorni_scadenza));
 
       const res = await fetch(`${API_URL}/api/haccp/labels`, { 
           method:'POST', headers:{'Content-Type':'application/json'}, 
-          body: JSON.stringify({ 
-              ristorante_id: info.id, 
-              prodotto: labelData.prodotto, 
-              data_scadenza: scadenza, 
-              operatore: labelData.operatore || 'Chef', 
-              tipo_conservazione: labelData.tipo 
-          }) 
+          body: JSON.stringify({ ristorante_id: info.id, prodotto: labelData.prodotto, data_scadenza: scadenza, operatore: labelData.operatore || 'Chef', tipo_conservazione: labelData.tipo }) 
       });
       const data = await res.json(); 
       if(data.success) { setLastLabel(data.label); setPrintMode('label'); setTimeout(() => { window.print(); setPrintMode(null); }, 500); }
   };
   
-  // FUNZIONE PER RISTAMPA
   const handleReprint = (label) => {
       setLastLabel(label);
       setPrintMode('label');
@@ -367,7 +355,6 @@ function Haccp() {
           <div className="no-print" style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20, flexWrap:'wrap', gap:10}}>
               <div><h1 style={{margin:0, color:'#2c3e50'}}>🛡️ HACCP Control</h1></div>
               <div style={{display:'flex', gap:10, alignItems:'center'}}>
-                  {/* PULSANTI DI NAVIGAZIONE - ETICHETTE RINOMINATO IN PRODUZIONE */}
                   {['temperature', 'merci', 'pulizie', 'calendario', 'etichette', 'staff', 'setup'].map(t => (
                     <button key={t} onClick={()=>setTab(t)} style={{padding:'10px 20px', borderRadius:5, border:'none', cursor:'pointer', fontWeight:'bold', textTransform:'uppercase', background: tab===t ? '#2c3e50' : 'white', color: tab===t ? 'white' : '#333'}}>
                     {t==='merci' ? '📦 Merci' : (t==='setup' ? '⚙️ Macchine' : (t==='staff' ? '👥 Staff' : (t==='pulizie' ? '🧼 Pulizia' : (t==='etichette' ? '🏭 Produzione' : t))))}
@@ -378,7 +365,6 @@ function Haccp() {
           </div>
       )}
 
-      {/* --- TAB CONTENT --- */}
       {tab === 'temperature' && (
           <TempControl 
             assetsToDisplay={assetsToDisplay}
@@ -469,12 +455,10 @@ function Haccp() {
              API_URL={API_URL}
              staffList={staffList}
              handleReprint={handleReprint}
+             openDownloadModal={openDownloadModal}
           />
       )}
 
-      {/* --- MODALI CONDIVISI --- */}
-      
-      {/* 1. Modale Download */}
       {showDownloadModal && (
           <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000}}>
               <div style={{background:'white', padding:30, borderRadius:10, textAlign:'center', width:350}}>
@@ -500,7 +484,6 @@ function Haccp() {
           </div>
       )}
 
-      {/* 2. Modale Preview Immagine */}
       {previewImage && (
           <div onClick={() => setPreviewImage(null)} style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.9)', zIndex:3000, display:'flex', alignItems:'center', justifyContent:'center', cursor:'zoom-out'}}>
               <img src={previewImage} alt="Anteprima" style={{maxWidth:'90%', maxHeight:'90%', borderRadius:10, border:'2px solid white'}} />
@@ -508,51 +491,6 @@ function Haccp() {
           </div>
       )}
 
-      {/* 3. Modale Asset Edit (Form) */}
-      {showAssetModal && (
-        <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000}}>
-            <div style={{background:'white', padding:30, borderRadius:10, width:400, maxHeight:'90vh', overflowY:'auto'}}>
-                <h3>{editingAsset ? 'Modifica Macchina' : 'Nuova Macchina'}</h3>
-                <form onSubmit={salvaAsset} style={{display:'flex', flexDirection:'column', gap:10}}>
-                    <input placeholder="Nome (es. Frigo Bibite)" value={assetForm.nome} onChange={e=>setAssetForm({...assetForm, nome:e.target.value})} style={{padding:10, border:'1px solid #ccc'}} required />
-                    <select value={assetForm.tipo} onChange={e=>setAssetForm({...assetForm, tipo:e.target.value})} style={{padding:10, border:'1px solid #ccc'}}>
-                        <option value="frigo">Frigorifero</option>
-                        <option value="cella">Cella Frigo</option>
-                        <option value="vetrina">Vetrina</option>
-                        <option value="forno">Forno</option>
-                        <option value="altro">Altro</option>
-                    </select>
-                    <div style={{display:'flex', gap:10}}>
-                        <input type="number" placeholder="Min °C" value={assetForm.range_min} onChange={e=>setAssetForm({...assetForm, range_min:e.target.value})} style={{flex:1, padding:10, border:'1px solid #ccc'}} required />
-                        <input type="number" placeholder="Max °C" value={assetForm.range_max} onChange={e=>setAssetForm({...assetForm, range_max:e.target.value})} style={{flex:1, padding:10, border:'1px solid #ccc'}} required />
-                    </div>
-                    <input placeholder="Marca" value={assetForm.marca} onChange={e=>setAssetForm({...assetForm, marca:e.target.value})} style={{padding:10, border:'1px solid #ccc'}} />
-                    <input placeholder="Modello" value={assetForm.modello} onChange={e=>setAssetForm({...assetForm, modello:e.target.value})} style={{padding:10, border:'1px solid #ccc'}} />
-                    <input placeholder="Serial Number / Matricola" value={assetForm.serial_number} onChange={e=>setAssetForm({...assetForm, serial_number:e.target.value})} style={{padding:10, border:'1px solid #ccc'}} />
-                    
-                    <label style={{border:'1px dashed #ccc', padding:10, cursor:'pointer', textAlign:'center'}}>
-                        {uploadingAsset ? "Caricamento..." : (assetForm.foto_url ? "✅ Foto Caricata" : "📸 Carica Foto Macchina")}
-                        <input type="file" onChange={handleAssetPhoto} style={{display:'none'}} />
-                    </label>
-                    <label style={{border:'1px dashed #ccc', padding:10, cursor:'pointer', textAlign:'center'}}>
-                        {uploadingLabel ? "Caricamento..." : (assetForm.etichetta_url ? "✅ Etichetta Caricata" : "📄 Carica Etichetta CE")}
-                        <input type="file" onChange={handleAssetLabel} style={{display:'none'}} />
-                    </label>
-
-                    <select value={assetForm.stato} onChange={e=>setAssetForm({...assetForm, stato:e.target.value})} style={{padding:10, border:'1px solid #ccc', fontWeight:'bold', background: assetForm.stato==='attivo' ? '#eafaf1' : '#f2f2f2'}}>
-                        <option value="attivo">ATTIVO (In uso)</option>
-                        <option value="spento">SPENTO (Non in uso)</option>
-                        <option value="manutenzione">IN MANUTENZIONE</option>
-                    </select>
-
-                    <button disabled={uploadingAsset || uploadingLabel} style={{marginTop:10, padding:15, background:'#27ae60', color:'white', border:'none', borderRadius:5, fontWeight:'bold', cursor:'pointer'}}>SALVA</button>
-                    <button type="button" onClick={()=>setShowAssetModal(false)} style={{background:'transparent', border:'none', color:'red', cursor:'pointer', textDecoration:'underline'}}>Annulla</button>
-                </form>
-            </div>
-        </div>
-      )}
-
-      {/* 4. Print Areas */}
       {printMode === 'label' && lastLabel && (
         <div className="print-area" style={{position:'fixed', top:0, left:0, width:'58mm', height:'40mm', background:'white', color:'black', display:'flex', flexDirection:'column', padding:'3mm', boxSizing:'border-box', fontFamily:'Arial', border:'1px solid black'}}>
             <div style={{fontWeight:'900', fontSize:'14px', textAlign:'center', borderBottom:'2px solid black', paddingBottom:'2px', textTransform:'uppercase'}}>{lastLabel.prodotto}</div>
@@ -568,7 +506,6 @@ function Haccp() {
              <p style={{marginTop:20, fontSize:'20px'}}>Scansiona per registrare la temperatura</p>
         </div>
       )}
-      
       <style>{`@media print { .no-print { display: none !important; } .print-area { z-index: 9999; display: flex !important; } body { margin: 0; padding: 0; } @page { margin: 0; size: auto; } }`}</style>
     </div>
   );
