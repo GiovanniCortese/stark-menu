@@ -452,65 +452,55 @@ app.get('/api/haccp/labels/storico/:ristorante_id', async (req, res) => {
     } catch(e) { res.status(500).json({error: "Errore recupero storico"}); } 
 });
 
-// --- PROXY DOWNLOAD V6 (SOLUZIONE DEFINITIVA API) ---
-app.get('/api/proxy-download', async (req, res) => {
+// --- PROXY DOWNLOAD V7 (RICOSTRUZIONE FORZATA URL AUTENTICATO) ---
+app.get('/api/proxy-download', (req, res) => {
     const fileUrl = req.query.url;
     const fileName = req.query.name || 'documento.pdf';
-    
+
     if (!fileUrl) return res.status(400).send("URL mancante");
 
     // Moduli necessari
     const http = require('http');
     const https = require('https');
 
-    let downloadUrl = fileUrl; // Partiamo con l'URL che abbiamo
+    let downloadUrl = fileUrl;
 
-    // 1. CLOUDINARY INTELLIGENT LOOKUP
+    // Logica di rigenerazione URL Firmato
     if (fileUrl.includes('cloudinary.com')) {
         try {
-            // Estraiamo il percorso dopo /upload/
+            // 1. Pulizia dell'URL per trovare il Public ID
+            // Esempio URL: https://res.cloudinary.com/.../image/upload/v1768605417/menu-app/doc.pdf
+            
+            // Separiamo l'URL in base a '/upload/'
             const parts = fileUrl.split('/upload/');
+            
             if (parts.length === 2) {
-                let path = parts[1];
-                path = path.replace(/^v\d+\//, ''); // Rimuove la versione (es. v123/) se c'è
+                let path = parts[1]; // Prende: "v1768605417/menu-app/doc.pdf"
                 
-                // Tentativo A: ID standard (senza estensione .pdf)
-                let publicId = path.replace(/\.[^/.]+$/, "");
+                // Rimuove la versione (vXXXXX/) se presente
+                path = path.replace(/^v\d+\//, ''); // Diventa: "menu-app/doc.pdf"
                 
-                // CHIEDIAMO A CLOUDINARY I DETTAGLI REALI DEL FILE
-                // (Nota: I PDF sono gestiti come resource_type: 'image' nelle API)
-                let resource;
-                try {
-                    resource = await cloudinary.api.resource(publicId, { resource_type: 'image' });
-                } catch (e) {
-                    // Tentativo B: Se fallisce, proviamo l'ID *con* l'estensione (a volte capita)
-                    try {
-                        resource = await cloudinary.api.resource(path, { resource_type: 'image' });
-                    } catch (e2) {
-                        console.log("File non trovato via API Admin, uso URL originale.");
-                    }
-                }
-
-                // Se Cloudinary ci ha risposto, generiamo il link PERFETTO
-                if (resource) {
-                    console.log(`✅ File Trovato: ID=${resource.public_id}, Tipo=${resource.type}`);
-                    downloadUrl = cloudinary.url(resource.public_id, {
-                        resource_type: resource.resource_type,
-                        type: resource.type, // Usa il tipo reale (es. 'authenticated')
-                        sign_url: true,      // Genera la firma corretta
-                        format: resource.format || 'pdf'
-                    });
-                }
+                // Rimuove l'estensione (.pdf) per ottenere il vero Public ID
+                const publicId = path.replace(/\.[^/.]+$/, ""); // Diventa: "menu-app/doc"
+                
+                // 2. Generiamo un NUOVO URL di tipo 'authenticated'
+                // Questo crea un link che inizia con /image/authenticated/s--FIRMA--/...
+                downloadUrl = cloudinary.url(publicId, {
+                    resource_type: 'image', // I PDF su Cloudinary sono gestiti come immagini
+                    type: 'authenticated',  // <--- FORZIAMO QUESTO
+                    sign_url: true,         // Genera la firma
+                    format: 'pdf',          // Assicura l'estensione corretta
+                    secure: true
+                });
+                
+                console.log("🔓 URL Rigenerato (Authenticated):", downloadUrl);
             }
-        } catch (error) {
-            console.error("⚠️ Errore API Cloudinary:", error.message);
-            // Non blocchiamo tutto, proviamo comunque a scaricare con l'URL originale
+        } catch (e) {
+            console.error("Errore rigenerazione URL:", e);
         }
     }
 
-    console.log("⬇️ Scaricando da:", downloadUrl);
-
-    // 2. DOWNLOAD STREAM (Gestisce Redirect e HTTPS)
+    // 3. Eseguiamo il download del nuovo URL
     const downloadLoop = (url, redirectCount = 0) => {
         if (redirectCount > 5) return res.status(500).send("Troppi redirect.");
 
@@ -522,26 +512,21 @@ app.get('/api/proxy-download', async (req, res) => {
         };
 
         client.get(url, options, (response) => {
-            // Gestione Redirect (3xx)
             if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
                 return downloadLoop(response.headers.location, redirectCount + 1);
             }
 
-            // Gestione Errori (4xx, 5xx)
             if (response.statusCode !== 200) {
-                console.error(`❌ Errore Download Finale: ${response.statusCode} - URL: ${url}`);
-                return res.status(response.statusCode).send(`Errore Cloudinary: ${response.statusCode} (Accesso Negato o File non trovato)`);
+                console.error(`❌ Errore Proxy: ${response.statusCode} su ${url}`);
+                // Se fallisce anche questo, è probabile che le chiavi API nel .env non siano quelle dell'account Cloudinary corretto
+                return res.status(response.statusCode).send(`Errore Cloudinary: ${response.statusCode} (Verifica API Key o Permissions)`);
             }
 
-            // Successo! Inviamo il PDF al browser
             res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
             res.setHeader('Content-Type', 'application/pdf');
             response.pipe(res);
 
-        }).on('error', (err) => {
-            console.error("❌ Errore Rete:", err);
-            res.status(500).send("Errore di connessione.");
-        });
+        }).on('error', (err) => res.status(500).send("Errore di rete."));
     };
 
     downloadLoop(downloadUrl);
