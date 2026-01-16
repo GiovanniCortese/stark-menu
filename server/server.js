@@ -452,68 +452,77 @@ app.get('/api/haccp/labels/storico/:ristorante_id', async (req, res) => {
     } catch(e) { res.status(500).json({error: "Errore recupero storico"}); } 
 });
 
-// --- NUOVA ROUTE PER DOWNLOAD SICURO STAFF ---
+// --- PROXY DOWNLOAD V4 (CON FIRMA AUTOMATICA PER PDF PRIVATI) ---
 app.get('/api/proxy-download', (req, res) => {
     const fileUrl = req.query.url;
     const fileName = req.query.name || 'documento.pdf';
 
     if (!fileUrl) return res.status(400).send("URL mancante");
 
-    // Moduli nativi
+    // Se è un PDF e dà 401, probabilmente serve un URL firmato.
+    // Proviamo a generarlo usando la libreria Cloudinary già presente.
+    let targetUrl = fileUrl;
+    
+    // Tenta di generare un URL firmato se è un file Cloudinary
+    if (fileUrl.includes('cloudinary.com')) {
+        try {
+            // Estrae il public_id dall'URL (es: menu-app/xyz123)
+            // L'URL tipico è: .../upload/v12345/menu-app/filename.pdf
+            const parts = fileUrl.split('/upload/');
+            if (parts.length === 2) {
+                // Prendi la parte dopo 'upload/', rimuovi la versione (v12345/) se c'è
+                let path = parts[1]; 
+                path = path.replace(/^v\d+\//, ''); // rimuove v1768.../
+                // Rimuove l'estensione per ottenere il public_id puro
+                const publicId = path.replace(/\.[^/.]+$/, ""); 
+                
+                // Genera l'URL firmato
+                targetUrl = cloudinary.url(publicId, {
+                    resource_type: 'image', // Cloudinary tratta i PDF come immagini per la delivery
+                    type: 'authenticated', // Richiediamo l'accesso autenticato
+                    sign_url: true,
+                    format: 'pdf' // Forza formato PDF
+                });
+                console.log("URL Firmato generato:", targetUrl);
+            }
+        } catch (e) {
+            console.error("Errore generazione firma:", e);
+            // In caso di errore, proseguiamo con l'URL originale
+        }
+    }
+
     const http = require('http');
     const https = require('https');
 
-    // Funzione ricorsiva per gestire redirect e headers
     const downloadLoop = (url, redirectCount = 0) => {
-        if (redirectCount > 5) {
-            return res.status(500).send("Troppi reindirizzamenti.");
-        }
+        if (redirectCount > 5) return res.status(500).send("Troppi redirect.");
 
         const client = url.startsWith('https') ? https : http;
-        
-        // OPZIONI FONDAMENTALI: Fingiamo di essere un browser (Chrome)
-        // Questo evita che Cloudinary blocchi la richiesta server-to-server
         const options = {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': '*/*',
-                'Connection': 'keep-alive'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36'
             }
         };
 
         client.get(url, options, (response) => {
-            // 1. Gestione Redirect (301, 302, ecc.)
             if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-                console.log(`Redirecting to: ${response.headers.location}`);
                 return downloadLoop(response.headers.location, redirectCount + 1);
             }
 
-            // 2. Controllo Errori (Se Cloudinary risponde 404 o 403)
             if (response.statusCode !== 200) {
-                console.error(`Errore Proxy: Status ${response.statusCode} per URL: ${url}`);
-                return res.status(response.statusCode).send(`Errore dal server remoto: ${response.statusCode} (Verifica che il file esista su Cloudinary)`);
+                // Se fallisce anche con la firma, stampiamo l'errore
+                console.error(`Errore Proxy: ${response.statusCode} su ${url}`);
+                return res.status(response.statusCode).send(`Errore ${response.statusCode}: Impossibile accedere al file.`);
             }
 
-            // 3. Successo
             res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
-            
-            // Gestione Content-Type
-            const contentType = response.headers['content-type'];
-            if (fileName.toLowerCase().endsWith('.pdf')) {
-                res.setHeader('Content-Type', 'application/pdf');
-            } else if (contentType) {
-                res.setHeader('Content-Type', contentType);
-            }
-
+            res.setHeader('Content-Type', 'application/pdf');
             response.pipe(res);
 
-        }).on('error', (err) => {
-            console.error("Errore Proxy Network:", err);
-            res.status(500).send("Errore di connessione al server delle immagini.");
-        });
+        }).on('error', (err) => res.status(500).send("Errore di rete."));
     };
 
-    downloadLoop(fileUrl);
+    downloadLoop(targetUrl);
 });
 
 app.listen(port, () => console.log(`🚀 SERVER V12.2 (Porta ${port}) - TIMEZONE: ROME`));
