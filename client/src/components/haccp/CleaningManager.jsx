@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const CleaningManager = ({ info, API_URL, staffList }) => {
+const CleaningManager = ({ info, API_URL, staffList, openDownloadModal }) => {
     const [pulizie, setPulizie] = useState([]);
     const [form, setForm] = useState({ 
         area: '', prodotto: '', operatore: '', data: new Date().toISOString().split('T')[0] 
@@ -46,7 +46,7 @@ const CleaningManager = ({ info, API_URL, staffList }) => {
             <div style={{background:'white', padding:20, borderRadius:10}}>
                 <div style={{display:'flex', justifyContent:'space-between', marginBottom:15}}>
                     <h3>📅 Storico Sanificazioni</h3>
-                    <button onClick={() => window.open(`${API_URL}/api/haccp/export/pulizie/${info.id}?format=pdf`, '_blank')} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Export PDF</button>
+                    <button onClick={() => openDownloadModal('pulizie')} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 15px', borderRadius:5, fontSize:13, cursor:'pointer', fontWeight:'bold'}}>⬇ Scarica Registro Pulizie</button>
                 </div>
                 <table style={{width:'100%', borderCollapse:'collapse', fontSize:13}}>
                     <thead>

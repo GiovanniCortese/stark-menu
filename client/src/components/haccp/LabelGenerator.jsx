@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 
 const LabelGenerator = ({ 
     labelData, setLabelData, handleLabelTypeChange, handlePrintLabel, 
-    lastLabel, info, API_URL, staffList
+    lastLabel, info, API_URL, staffList,
+    handleReprint // NUOVA PROP
 }) => {
     const [storicoLabels, setStoricoLabels] = useState([]);
 
@@ -67,9 +68,9 @@ const LabelGenerator = ({
                                 <td style={{padding:8}}>{new Date(l.data_produzione).toLocaleDateString()}</td>
                                 <td style={{padding:8}}><strong>{l.prodotto}</strong></td>
                                 <td style={{padding:8}}><code>{l.lotto}</code></td>
-                                <td style={{padding:8}}>{new Date(l.data_scadenza).toLocaleDateString()}</td>
+                                <td style={{padding:8, color:'#c0392b', fontWeight:'bold'}}>{new Date(l.data_scadenza).toLocaleDateString()}</td>
                                 <td style={{padding:8}}>
-                                    <button onClick={() => window.print()} style={{background:'#34495e', color:'white', border:'none', borderRadius:3, padding:'4px 8px', cursor:'pointer'}}>Ristampa 🖨️</button>
+                                    <button onClick={() => handleReprint(l)} style={{background:'#34495e', color:'white', border:'none', borderRadius:3, padding:'4px 8px', cursor:'pointer'}}>Ristampa 🖨️</button>
                                 </td>
                             </tr>
                         ))}

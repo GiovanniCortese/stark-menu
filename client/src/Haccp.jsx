@@ -8,7 +8,8 @@ import MerciManager from './components/haccp/MerciManager';
 import HaccpCalendar from './components/haccp/HaccpCalendar';
 import AssetSetup from './components/haccp/AssetSetup';
 import StaffManager from './components/haccp/StaffManager';
-import LabelGenerator from './components/haccp/LabelGenerator'; // Se usi quello caricato prima
+import LabelGenerator from './components/haccp/LabelGenerator';
+import CleaningManager from './components/haccp/CleaningManager'; // Assicurati di avere questo file
 
 function Haccp() {
   const { slug, scanId } = useParams();
@@ -110,6 +111,21 @@ function Haccp() {
         .then(r=>r.json())
         .then(setCalendarLogs)
         .catch(e => console.error("Err Cal", e));
+  };
+
+  // --- GESTIONE FILE (PDF vs IMMAGINE) ---
+  const handleFileAction = (url) => {
+    if (!url) return;
+    // Controlla estensione (molto basilare, ma efficace per url cloudinary)
+    const isPdf = url.toLowerCase().endsWith('.pdf') || url.toLowerCase().includes('.pdf');
+    
+    if (isPdf) {
+        // Se è PDF, apri in nuova scheda (che avvia download o visualizzazione browser)
+        window.open(url, '_blank');
+    } else {
+        // Se è Immagine, apri modale anteprima
+        setPreviewImage(url);
+    }
   };
 
   // --- AUTH & UPLOAD ---
@@ -296,6 +312,13 @@ function Haccp() {
       const data = await res.json(); 
       if(data.success) { setLastLabel(data.label); setPrintMode('label'); setTimeout(() => { window.print(); setPrintMode(null); }, 500); }
   };
+  
+  // FUNZIONE PER RISTAMPA
+  const handleReprint = (label) => {
+      setLastLabel(label);
+      setPrintMode('label');
+      setTimeout(() => { window.print(); setPrintMode(null); }, 500);
+  };
 
   // --- RENDER ---
   if(!info) return <div>Caricamento...</div>;
@@ -309,14 +332,10 @@ function Haccp() {
           <div className="no-print" style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20, flexWrap:'wrap', gap:10}}>
               <div><h1 style={{margin:0, color:'#2c3e50'}}>🛡️ HACCP Control</h1></div>
               <div style={{display:'flex', gap:10, alignItems:'center'}}>
-                  <div style={{marginRight:20, display:'flex', gap:5}}>
-                      <button onClick={()=>openDownloadModal('temperature')} style={{background:'#27ae60', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Temp</button>
-                      <button onClick={()=>openDownloadModal('merci')} style={{background:'#f39c12', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Merci</button>
-                      <button onClick={()=>openDownloadModal('assets')} style={{background:'#34495e', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Macchine</button>
-                  </div>
-                  {['temperature', 'merci', 'calendario', 'etichette', 'staff', 'setup'].map(t => (
+                  {/* PULSANTI DI NAVIGAZIONE - AGGIUNTA PULIZIA */}
+                  {['temperature', 'merci', 'pulizie', 'calendario', 'etichette', 'staff', 'setup'].map(t => (
                     <button key={t} onClick={()=>setTab(t)} style={{padding:'10px 20px', borderRadius:5, border:'none', cursor:'pointer', fontWeight:'bold', textTransform:'uppercase', background: tab===t ? '#2c3e50' : 'white', color: tab===t ? 'white' : '#333'}}>
-                    {t==='merci' ? '📦 Merci' : (t==='setup' ? '⚙️ Macchine' : (t==='staff' ? '👥 Staff' : t))}
+                    {t==='merci' ? '📦 Merci' : (t==='setup' ? '⚙️ Macchine' : (t==='staff' ? '👥 Staff' : (t==='pulizie' ? '🧼 Pulizia' : t)))}
                     </button>
                   ))}
                   <button onClick={()=>{localStorage.removeItem(`haccp_session_${slug}`); setIsAuthorized(false)}} style={{background:'#e74c3c', color:'white', border:'none', padding:'10px 20px', borderRadius:5}}>ESCI</button>
@@ -335,6 +354,7 @@ function Haccp() {
             handleLogPhoto={handleLogPhoto}
             abilitaNuovaMisurazione={abilitaNuovaMisurazione}
             logs={logs}
+            openDownloadModal={openDownloadModal} // Passato per download interno
           />
       )}
 
@@ -350,7 +370,18 @@ function Haccp() {
              eliminaMerce={eliminaMerce}
              assets={assets}
              resetMerciForm={resetMerciForm}
-             handleFileView={setPreviewImage} // Passa la funzione per l'anteprima
+             handleFileAction={handleFileAction} // Funzione intelligente (PDF/IMG)
+             openDownloadModal={openDownloadModal} // Passato per download interno
+          />
+      )}
+      
+      {/* AGGIUNTA TAB PULIZIA */}
+      {tab === 'pulizie' && !scanId && (
+          <CleaningManager 
+            info={info} 
+            API_URL={API_URL} 
+            staffList={staffList} 
+            openDownloadModal={openDownloadModal}
           />
       )}
 
@@ -373,10 +404,12 @@ function Haccp() {
              setSelectedStaff={setSelectedStaff}
              newDoc={newDoc}
              setNewDoc={setNewDoc}
-             uploadStaffDoc={uploadStaffDoc}
+             uploadStaffDoc={uploadStaffDoc} // Qui usiamo la funzione originale wrapperata nel componente
+             uploadFile={uploadFile} // Passiamo l'uploader per la gestione interna loading
              staffDocs={staffDocs}
              deleteDoc={deleteDoc}
-             handleFileView={(url) => window.open(url, '_blank')}
+             handleFileAction={handleFileAction} // Funzione intelligente (PDF/IMG)
+             API_URL={API_URL}
           />
       )}
 
@@ -385,7 +418,9 @@ function Haccp() {
              assets={assets}
              apriModaleAsset={apriModaleAsset}
              setShowQRModal={setShowQRModal}
-             setPreviewImage={setPreviewImage}
+             setPreviewImage={setPreviewImage} // Qui va bene solo anteprima o anche pdf? Meglio generic
+             handleFileAction={handleFileAction}
+             openDownloadModal={openDownloadModal} // Passato per download interno
           />
       )}
 
@@ -399,6 +434,7 @@ function Haccp() {
              info={info}
              API_URL={API_URL}
              staffList={staffList}
+             handleReprint={handleReprint} // Nuova funzione per ristampa
           />
       )}
 

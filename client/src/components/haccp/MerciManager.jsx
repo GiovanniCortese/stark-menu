@@ -3,7 +3,7 @@ import React from 'react';
 const MerciManager = ({ 
     merci, merciForm, setMerciForm, salvaMerci, handleMerciPhoto, 
     uploadingMerci, iniziaModificaMerci, eliminaMerce, assets, resetMerciForm,
-    handleFileView 
+    handleFileAction, openDownloadModal
 }) => {
     return (
         <div className="no-print">
@@ -12,6 +12,7 @@ const MerciManager = ({
                     <h3>{merciForm.id ? '✏️ Modifica Arrivo Merce' : '📥 Nuovo Arrivo'}</h3>
                     {merciForm.id && <button onClick={resetMerciForm} style={{background:'#e74c3c', color:'white', border:'none', borderRadius:5, padding:'5px 10px', cursor:'pointer'}}>Annulla Modifica</button>}
                 </div>
+                {/* ... FORM IDENTICO A PRIMA (tagliato per brevità, mantieni il form originale qui) ... */}
                 <form onSubmit={salvaMerci} style={{display:'flex', flexWrap:'wrap', gap:10, alignItems:'flex-end'}}>
                     <div style={{flex:1, minWidth:120}}><label style={{fontSize:11}}>Data Arrivo</label><input type="date" value={merciForm.data_ricezione} onChange={e=>setMerciForm({...merciForm, data_ricezione:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required /></div>
                     <div style={{flex:2, minWidth:150}}><label style={{fontSize:11}}>Fornitore</label><input value={merciForm.fornitore} onChange={e=>setMerciForm({...merciForm, fornitore:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required /></div>
@@ -49,7 +50,10 @@ const MerciManager = ({
             </div>
 
             <div style={{background:'white', padding:20, borderRadius:10}}>
-                <h3>📦 Storico Arrivi</h3>
+                <div style={{display:'flex', justifyContent:'space-between', marginBottom:15}}>
+                   <h3>📦 Storico Arrivi</h3>
+                   <button onClick={()=>openDownloadModal('merci')} style={{background:'#f39c12', color:'white', border:'none', padding:'5px 15px', borderRadius:5, fontWeight:'bold', cursor:'pointer'}}>⬇ Scarica Report Merci</button>
+                </div>
                 <table style={{width:'100%', borderCollapse:'collapse', fontSize:13}}>
                     <thead>
                         <tr style={{background:'#f0f0f0', textAlign:'left'}}>
@@ -81,7 +85,7 @@ const MerciManager = ({
                                 </td>
                                 <td style={{padding:8, display:'flex', gap:5}}>
                                     {m.allegato_url && (
-                                        <button onClick={() => handleFileView(m.allegato_url)} style={{background:'#3498db', color:'white', border:'none', borderRadius:3, padding:'2px 5px', cursor:'pointer'}}>📎</button>
+                                        <button onClick={() => handleFileAction(m.allegato_url)} style={{background:'#3498db', color:'white', border:'none', borderRadius:3, padding:'2px 5px', cursor:'pointer'}}>📎</button>
                                     )}
                                     <button onClick={()=>iniziaModificaMerci(m)} style={{background:'#f39c12', color:'white', border:'none', borderRadius:3, cursor:'pointer', padding:'2px 5px'}}>✏️</button>
                                     <button onClick={()=>eliminaMerce(m.id)} style={{background:'#e74c3c', color:'white', border:'none', borderRadius:3, cursor:'pointer', padding:'2px 5px'}}>🗑️</button>
