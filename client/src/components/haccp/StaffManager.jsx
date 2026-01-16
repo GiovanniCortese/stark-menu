@@ -115,9 +115,10 @@ const StaffManager = ({
                                             <td style={{padding:8}}><span style={{background:'#eee', padding:'2px 5px', borderRadius:3, fontSize:11}}>{d.tipo_doc}</span></td>
                                             <td style={{padding:8}}>{d.nome_file}</td>
                                             <td style={{padding:8, display:'flex', gap:5}}>
-                                                {/* MODIFICA QUI: Tasto Download via Proxy */}
+                                                
+                                                {/* MODIFICA: TASTO ANTEPRIMA (Stile Admin Menu) */}
                                                 <a 
-                                                    href={`${API_URL}/api/proxy-download?url=${encodeURIComponent(d.url)}&name=${encodeURIComponent(d.nome_file || 'documento.pdf')}`}
+                                                    href={d.url} 
                                                     target="_blank" 
                                                     rel="noopener noreferrer"
                                                     style={{
@@ -130,10 +131,10 @@ const StaffManager = ({
                                                         fontWeight:'bold',
                                                         display: 'flex',
                                                         alignItems: 'center',
-                                                        gap: '4px'
+                                                        gap: '5px'
                                                     }}
                                                 >
-                                                    ⬇ Download
+                                                    👁️ Visualizza
                                                 </a>
                                                 
                                                 <button 
