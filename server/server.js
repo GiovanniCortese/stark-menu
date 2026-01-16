@@ -459,43 +459,57 @@ app.get('/api/proxy-download', (req, res) => {
 
     if (!fileUrl) return res.status(400).send("URL mancante");
 
+    // Moduli nativi
     const http = require('http');
     const https = require('https');
 
-    // Funzione ricorsiva per gestire i redirect
+    // Funzione ricorsiva per gestire redirect e headers
     const downloadLoop = (url, redirectCount = 0) => {
         if (redirectCount > 5) {
             return res.status(500).send("Troppi reindirizzamenti.");
         }
 
         const client = url.startsWith('https') ? https : http;
+        
+        // OPZIONI FONDAMENTALI: Fingiamo di essere un browser (Chrome)
+        // Questo evita che Cloudinary blocchi la richiesta server-to-server
+        const options = {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': '*/*',
+                'Connection': 'keep-alive'
+            }
+        };
 
-        client.get(url, (response) => {
-            // 1. Gestione Redirect (301, 302, 303, 307, 308)
+        client.get(url, options, (response) => {
+            // 1. Gestione Redirect (301, 302, ecc.)
             if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+                console.log(`Redirecting to: ${response.headers.location}`);
                 return downloadLoop(response.headers.location, redirectCount + 1);
             }
 
-            // 2. Se non è 200 OK, è un errore
+            // 2. Controllo Errori (Se Cloudinary risponde 404 o 403)
             if (response.statusCode !== 200) {
-                return res.status(response.statusCode).send("Errore nel recupero del file remoto.");
+                console.error(`Errore Proxy: Status ${response.statusCode} per URL: ${url}`);
+                return res.status(response.statusCode).send(`Errore dal server remoto: ${response.statusCode} (Verifica che il file esista su Cloudinary)`);
             }
 
-            // 3. Successo: inviamo gli header e il file
+            // 3. Successo
             res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
             
+            // Gestione Content-Type
+            const contentType = response.headers['content-type'];
             if (fileName.toLowerCase().endsWith('.pdf')) {
                 res.setHeader('Content-Type', 'application/pdf');
-            } else if (fileName.match(/\.(jpg|jpeg|png)$/i)) {
-                // Mantiene il content type originale per le immagini o forza jpeg
-                res.setHeader('Content-Type', response.headers['content-type'] || 'image/jpeg');
+            } else if (contentType) {
+                res.setHeader('Content-Type', contentType);
             }
 
             response.pipe(res);
 
         }).on('error', (err) => {
-            console.error("Errore Proxy:", err);
-            res.status(500).send("Errore di connessione al file server.");
+            console.error("Errore Proxy Network:", err);
+            res.status(500).send("Errore di connessione al server delle immagini.");
         });
     };
 
