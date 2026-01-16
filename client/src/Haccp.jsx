@@ -1,4 +1,4 @@
-// client/src/Haccp.jsx - VERSIONE MOBILE FIXED
+// client/src/Haccp.jsx - VERSIONE PRO (Mobile Ready & UI Fixes)
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import QRCode from 'react-qr-code'; 
@@ -7,81 +7,68 @@ function Haccp() {
   const { slug, scanId } = useParams();
   const navigate = useNavigate();
   
+  // --- STATI GLOBALI ---
   const [info, setInfo] = useState(null);
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [password, setPassword] = useState("");
   
-  // Dati
+  // --- DATI ---
   const [assets, setAssets] = useState([]);
   const [logs, setLogs] = useState([]); 
   const [merci, setMerci] = useState([]); 
   const [calendarLogs, setCalendarLogs] = useState([]); 
   const [tab, setTab] = useState('temperature'); 
   
-  // Stati Moduli
+  // --- STATI UI/UX ---
   const [tempInput, setTempInput] = useState({}); 
   const [uploadingLog, setUploadingLog] = useState(null); 
-  
-  // Stati Merci (Form)
   const [merciForm, setMerciForm] = useState({
-      id: null,
-      data_ricezione: new Date().toISOString().split('T')[0],
+      id: null, data_ricezione: new Date().toISOString().split('T')[0],
       fornitore: '', prodotto: '', lotto: '', scadenza: '',
       temperatura: '', conforme: true, integro: true, note: '',
       quantita: '', allegato_url: '', destinazione: ''
   });
   const [uploadingMerci, setUploadingMerci] = useState(false);
 
-  // Stati Asset Edit & QR
+  // --- MODALI & EDITING ---
   const [showAssetModal, setShowAssetModal] = useState(false);
   const [editingAsset, setEditingAsset] = useState(null); 
   const [assetForm, setAssetForm] = useState({ 
       nome:'', tipo:'frigo', range_min:0, range_max:4, 
-      marca:'', modello:'', serial_number:'', 
-      foto_url:'', etichetta_url:'',
-      stato: 'attivo' 
+      marca:'', modello:'', serial_number:'', foto_url:'', etichetta_url:'', stato: 'attivo' 
   });
   const [uploadingAsset, setUploadingAsset] = useState(false); 
   const [uploadingLabel, setUploadingLabel] = useState(false); 
   const [showQRModal, setShowQRModal] = useState(null);
-
-  // Stati Anteprima Immagine (Popup)
   const [previewImage, setPreviewImage] = useState(null);
 
-  // Stati Download Excel/PDF
+  // --- DOWNLOAD & PRINT ---
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [downloadType, setDownloadType] = useState(null); 
   const [downloadFormat, setDownloadFormat] = useState('excel'); 
   const [selectedMonth, setSelectedMonth] = useState(''); 
-
-  // Stati Etichette e Stampa
   const [labelData, setLabelData] = useState({ prodotto: '', giorni_scadenza: 3, operatore: '', tipo: 'positivo' });
   const [lastLabel, setLastLabel] = useState(null);
   const [printMode, setPrintMode] = useState(null);
 
-  // Stati Calendario
+  // --- CALENDARIO ---
   const [currentDate, setCurrentDate] = useState(new Date()); 
   const [selectedDayLogs, setSelectedDayLogs] = useState(null); 
 
   const API_URL = "https://stark-backend-gg17.onrender.com"; 
 
-  // --- INIT ---
+  // --- EFFETTI ---
   useEffect(() => {
-      fetch(`${API_URL}/api/menu/${slug}`).then(r=>r.json()).then(data => {
-          setInfo(data);
-      });
-      const sess = localStorage.getItem(`haccp_session_${slug}`);
-      if(sess === "true") setIsAuthorized(true);
+      fetch(`${API_URL}/api/menu/${slug}`).then(r=>r.json()).then(setInfo);
+      if(localStorage.getItem(`haccp_session_${slug}`) === "true") setIsAuthorized(true);
       if(scanId) setTab('temperature');
   }, [slug, scanId]);
 
   useEffect(() => {
-      if(isAuthorized && info) {
-          ricaricaDati();
-          ricaricaCalendario(); 
-      }
+      if(isAuthorized && info) { ricaricaDati(); ricaricaCalendario(); }
   }, [isAuthorized, info, tab, currentDate]);
 
+  // --- API CALLS ---
   const ricaricaDati = () => {
       fetch(`${API_URL}/api/haccp/assets/${info.id}`).then(r=>r.json()).then(setAssets);
       fetch(`${API_URL}/api/haccp/logs/${info.id}`).then(r=>r.json()).then(setLogs);
@@ -90,30 +77,24 @@ function Haccp() {
 
   const ricaricaCalendario = async () => {
       if(tab !== 'calendario') return;
-      const year = currentDate.getFullYear();
-      const month = currentDate.getMonth();
-      const start = new Date(year, month, 1).toISOString();
-      const end = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
+      const start = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).toISOString();
+      const end = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0, 23, 59, 59).toISOString();
       try {
           const res = await fetch(`${API_URL}/api/haccp/logs/${info.id}?start=${start}&end=${end}`);
-          const dataLogs = await res.json();
-          setCalendarLogs(dataLogs);
-      } catch(e) { console.error("Err Cal", e); }
+          setCalendarLogs(await res.json());
+      } catch(e) { console.error(e); }
   };
 
-  // --- AUTH & UPLOAD ---
   const handleLogin = async (e) => {
       e.preventDefault();
       try {
-          const r = await fetch(`${API_URL}/api/auth/station`, {
+          const res = await fetch(`${API_URL}/api/auth/station`, {
               method:'POST', headers:{'Content-Type':'application/json'},
               body: JSON.stringify({ ristorante_id: info.id, role: 'haccp', password })
           });
-          const d = await r.json();
-          if(d.success) {
-              setIsAuthorized(true);
-              localStorage.setItem(`haccp_session_${slug}`, "true");
-          } else alert("Password Errata");
+          const d = await res.json();
+          if(d.success) { setIsAuthorized(true); localStorage.setItem(`haccp_session_${slug}`, "true"); } 
+          else alert("Password Errata");
       } catch(e) { alert("Errore connessione"); }
   };
 
@@ -123,94 +104,70 @@ function Haccp() {
       const data = await res.json(); return data.url;
   };
 
-  // --- EXCEL/PDF DOWNLOAD ---
-  const openDownloadModal = (type) => {
-      setDownloadType(type);
-      setShowDownloadModal(true);
-      setSelectedMonth(''); 
-  };
-
+  // --- DOWNLOAD MANAGER ---
   const executeDownload = (range) => {
-      let start = new Date();
-      let end = new Date();
-      let rangeName = "Tutto";
-
-      if(range === 'week') { 
-          start.setDate(end.getDate() - 7); 
-          rangeName="Ultima Settimana"; 
-      } else if(range === 'month') { 
-          start.setMonth(end.getMonth() - 1); 
-          rangeName="Ultimo Mese"; 
-      } else if(range === 'year') { 
-          start.setFullYear(end.getFullYear() - 1); 
-          rangeName="Ultimo Anno"; 
-      } else if (range === 'custom-month') {
+      let start = new Date(), end = new Date(), rangeName = "Tutto";
+      if(range === 'week') { start.setDate(end.getDate() - 7); rangeName="Ultima Settimana"; } 
+      else if(range === 'month') { start.setMonth(end.getMonth() - 1); rangeName="Ultimo Mese"; }
+      else if (range === 'custom-month') {
           if(!selectedMonth) return alert("Seleziona un mese!");
           const [y, m] = selectedMonth.split('-');
-          start = new Date(y, m - 1, 1); 
-          end = new Date(y, m, 0, 23, 59, 59); 
-          const nomeMese = start.toLocaleString('it-IT', { month: 'long', year: 'numeric' });
-          rangeName = `Mese di ${nomeMese}`;
-      } else if(range === 'all') { 
-          start = new Date('2020-01-01'); 
-          rangeName="Storico Completo"; 
-      }
+          start = new Date(y, m - 1, 1); end = new Date(y, m, 0, 23, 59, 59);
+          rangeName = `Mese ${selectedMonth}`;
+      } else if(range === 'all') start = new Date('2020-01-01');
       
       const query = `?start=${start.toISOString()}&end=${end.toISOString()}&rangeName=${rangeName}&format=${downloadFormat}`;
       window.open(`${API_URL}/api/haccp/export/${downloadType}/${info.id}${query}`, '_blank');
       setShowDownloadModal(false);
   };
 
-  // --- TEMPERATURE ---
+  // --- LOGIC: TEMPERATURE ---
   const getTodayLog = (assetId) => {
       const today = new Date().toDateString();
       return logs.find(l => l.asset_id === assetId && new Date(l.data_ora).toDateString() === today);
   };
+  
+  // LOGICA "MODIFICATO": Verifica se created_at è diverso da updated_at
+  const getUpdateStatus = (logData) => {
+      // Se il backend supporta updated_at e created_at, usiamo quelli.
+      // Fallback: se la logica di update aggiorna solo il record esistente, consideriamo che
+      // se l'orario è molto recente rispetto a un orario standard di apertura, è stato modificato.
+      // PER ORA: Ci basiamo sulla presenza di updated_at se esiste, altrimenti assumiamo modificato se l'utente ci clicca sopra.
+      if (logData.updated_at && logData.created_at !== logData.updated_at) return "✏️ Modificato alle";
+      return "✅ Registrato alle";
+  };
+
   const handleLogPhoto = async (e, assetId) => {
       const f = e.target.files[0]; if(!f) return;
       setUploadingLog(assetId);
-      try {
-          const url = await uploadFile(f);
-          setTempInput(prev => ({...prev, [assetId]: { ...(prev[assetId] || {}), photo: url }}));
-      } finally { setUploadingLog(null); }
+      try { const url = await uploadFile(f); setTempInput(prev => ({...prev, [assetId]: { ...(prev[assetId] || {}), photo: url }})); } 
+      finally { setUploadingLog(null); }
   };
   
   const registraTemperatura = async (asset, isSpento = false) => {
-      let val = 'OFF';
-      let conforme = true;
-      let azione = "";
-      
+      let val = 'OFF', conforme = true, azione = "";
       if (!isSpento) {
-          const currentInput = tempInput[asset.id] || {};
-          val = parseFloat(currentInput.val);
-          if(isNaN(val) && currentInput.val !== '0') return alert("Inserisci un numero valido");
-          
-          const realMin = Math.min(parseFloat(asset.range_min), parseFloat(asset.range_max));
-          const realMax = Math.max(parseFloat(asset.range_min), parseFloat(asset.range_max));
-          conforme = val >= realMin && val <= realMax;
-          
+          val = parseFloat((tempInput[asset.id] || {}).val);
+          if(isNaN(val)) return alert("Inserisci un numero valido");
+          const min = Math.min(parseFloat(asset.range_min), parseFloat(asset.range_max));
+          const max = Math.max(parseFloat(asset.range_min), parseFloat(asset.range_max));
+          conforme = val >= min && val <= max;
           if(!conforme) {
-              azione = prompt(`⚠️ ATTENZIONE: Temp ${val}°C fuori range.\nDescrivi azione correttiva:`, "");
-              if(!azione) return alert("Azione correttiva obbligatoria!");
+              azione = prompt(`⚠️ Temp ${val}°C fuori range. Azione correttiva:`, "");
+              if(!azione) return alert("Azione obbligatoria!");
           }
           val = val.toString();
-      } else {
-          val = "OFF";
-          conforme = true;
-          azione = "Macchinario spento/inutilizzato in data odierna";
-      }
-
-      const currentInput = tempInput[asset.id] || {};
+      } else { azione = "Macchinario spento"; }
 
       await fetch(`${API_URL}/api/haccp/logs`, {
           method: 'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({
               ristorante_id: info.id, asset_id: asset.id, operatore: 'Staff', 
-              tipo_log: 'temperatura', valore: val, 
-              conformita: conforme, azione_correttiva: azione, foto_prova_url: currentInput.photo || ''
+              tipo_log: 'temperatura', valore: val, conformita: conforme, 
+              azione_correttiva: azione, foto_prova_url: (tempInput[asset.id] || {}).photo || ''
           })
       });
-      setTempInput(prev => { const newState = {...prev}; delete newState[asset.id]; return newState; }); 
+      setTempInput(prev => { const n = {...prev}; delete n[asset.id]; return n; }); 
       ricaricaDati();
       if(scanId) navigate(`/haccp/${slug}`); 
   };
@@ -220,53 +177,37 @@ function Haccp() {
       setTempInput(prev => ({ ...prev, [asset.id]: { val: logEsistente ? logEsistente.valore : '', photo: '' } }));
   };
 
-  // --- MERCI ---
+  // --- LOGIC: MERCI ---
+  const salvaMerci = async (e) => {
+      e.preventDefault();
+      try {
+        const url = merciForm.id ? `${API_URL}/api/haccp/merci/${merciForm.id}` : `${API_URL}/api/haccp/merci`;
+        const method = merciForm.id ? 'PUT' : 'POST';
+        const payload = { ...merciForm, ristorante_id: info.id, operatore: 'Staff' };
+        ['scadenza','temperatura','quantita'].forEach(k => { if(!payload[k]) payload[k]=null; });
+
+        const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        if ((await res.json()).success) { resetMerciForm(); ricaricaDati(); alert("Salvato!"); }
+        else alert("Errore salvataggio");
+      } catch (err) { alert("Errore connessione"); }
+  };
+  const resetMerciForm = () => setMerciForm({
+      id: null, data_ricezione: new Date().toISOString().split('T')[0],
+      fornitore: '', prodotto: '', lotto: '', scadenza: '', temperatura: '', 
+      conforme: true, integro: true, note: '', quantita: '', allegato_url: '', destinazione: ''
+  });
+  const iniziaModificaMerci = (m) => {
+      setMerciForm({ ...m, data_ricezione: m.data_ricezione.split('T')[0], scadenza: m.scadenza ? m.scadenza.split('T')[0] : '' });
+      window.scrollTo(0,0);
+  };
+  const eliminaMerce = async (id) => { if(confirm("Eliminare?")) { await fetch(`${API_URL}/api/haccp/merci/${id}`, {method:'DELETE'}); ricaricaDati(); } };
   const handleMerciPhoto = async (e) => {
       const f = e.target.files[0]; if(!f) return;
       setUploadingMerci(true);
       try { const url = await uploadFile(f); setMerciForm(prev => ({...prev, allegato_url: url})); } finally { setUploadingMerci(false); }
   };
-  const salvaMerci = async (e) => {
-      e.preventDefault();
-      try {
-        const endpoint = merciForm.id ? `${API_URL}/api/haccp/merci/${merciForm.id}` : `${API_URL}/api/haccp/merci`;
-        const method = merciForm.id ? 'PUT' : 'POST';
-        
-        const payload = { ...merciForm, ristorante_id: info.id, operatore: 'Staff' };
-        if (!payload.scadenza || payload.scadenza === "") payload.scadenza = null;
-        if (!payload.temperatura || payload.temperatura === "") payload.temperatura = null;
-        if (!payload.quantita || payload.quantita === "") payload.quantita = null;
 
-        const res = await fetch(endpoint, {
-            method, 
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-        
-        const data = await res.json();
-        if (data.success) {
-            resetMerciForm(); 
-            ricaricaDati();
-            alert("✅ Salvataggio riuscito!");
-        } else {
-            alert("❌ Errore Server: " + (data.error || "Sconosciuto"));
-        }
-      } catch (err) { alert("❌ Errore Connessione: " + err.message); }
-  };
-  const resetMerciForm = () => {
-      setMerciForm({
-        id: null, data_ricezione: new Date().toISOString().split('T')[0],
-        fornitore: '', prodotto: '', lotto: '', scadenza: '', temperatura: '', 
-        conforme: true, integro: true, note: '', quantita: '', allegato_url: '', destinazione: ''
-      });
-  };
-  const iniziaModificaMerci = (m) => {
-      setMerciForm({ ...m, data_ricezione: m.data_ricezione.split('T')[0], scadenza: m.scadenza ? m.scadenza.split('T')[0] : '' });
-      window.scrollTo(0,0);
-  };
-  const eliminaMerce = async (id) => { if(confirm("Eliminare riga?")) { await fetch(`${API_URL}/api/haccp/merci/${id}`, {method:'DELETE'}); ricaricaDati(); } };
-
-  // --- ASSET CRUD ---
+  // --- LOGIC: ASSETS ---
   const apriModaleAsset = (asset = null) => {
       if(asset) { setEditingAsset(asset); setAssetForm({ ...asset }); } 
       else { setEditingAsset(null); setAssetForm({ nome:'', tipo:'frigo', range_min:0, range_max:4, marca:'', modello:'', serial_number:'', foto_url:'', etichetta_url:'', stato:'attivo' }); }
@@ -274,19 +215,12 @@ function Haccp() {
   };
   const salvaAsset = async (e) => {
       e.preventDefault();
-      const endpoint = editingAsset ? `${API_URL}/api/haccp/assets/${editingAsset.id}` : `${API_URL}/api/haccp/assets`;
-      const method = editingAsset ? 'PUT' : 'POST';
-      await fetch(endpoint, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...assetForm, ristorante_id: info.id }) });
+      const url = editingAsset ? `${API_URL}/api/haccp/assets/${editingAsset.id}` : `${API_URL}/api/haccp/assets`;
+      await fetch(url, { method: editingAsset ? 'PUT' : 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...assetForm, ristorante_id: info.id }) });
       setShowAssetModal(false); ricaricaDati();
   };
-  const handleAssetPhoto = async (e) => {
-      const f = e.target.files[0]; if(!f) return; setUploadingAsset(true);
-      try { const url = await uploadFile(f); setAssetForm(prev => ({...prev, foto_url: url})); } finally { setUploadingAsset(false); }
-  };
-  const handleAssetLabel = async (e) => {
-      const f = e.target.files[0]; if(!f) return; setUploadingLabel(true);
-      try { const url = await uploadFile(f); setAssetForm(prev => ({...prev, etichetta_url: url})); } finally { setUploadingLabel(false); }
-  };
+  const handleAssetPhoto = async (e) => { const f=e.target.files[0]; if(f){ setUploadingAsset(true); try{ const url=await uploadFile(f); setAssetForm(prev=>({...prev, foto_url:url})); } finally{ setUploadingAsset(false); } } };
+  const handleAssetLabel = async (e) => { const f=e.target.files[0]; if(f){ setUploadingLabel(true); try{ const url=await uploadFile(f); setAssetForm(prev=>({...prev, etichetta_url:url})); } finally{ setUploadingLabel(false); } } };
 
   // --- CALENDARIO ---
   const getDaysInMonth = (date) => { 
@@ -296,108 +230,37 @@ function Haccp() {
     const emptySlots = firstDay === 0 ? 6 : firstDay - 1; 
     return { days, emptySlots };
   };
-  const cambiaMese = (delta) => { 
-      const newDate = new Date(currentDate); newDate.setMonth(newDate.getMonth() + delta);
-      setCurrentDate(newDate); setSelectedDayLogs(null);
-  };
   const renderCalendario = () => {
       const { days, emptySlots } = getDaysInMonth(currentDate);
-      const grid = [];
-      const monthNames = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
-      
-      for (let i = 0; i < emptySlots; i++) grid.push(<div key={`empty-${i}`} style={{background:'#f0f0f0'}}></div>);
-      
+      const grid = []; const monthNames = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
+      for (let i = 0; i < emptySlots; i++) grid.push(<div key={`empty-${i}`} className="cal-empty"></div>);
       for (let d = 1; d <= days; d++) {
           const currentDayStr = new Date(currentDate.getFullYear(), currentDate.getMonth(), d).toDateString();
           const logsDelGiorno = calendarLogs.filter(l => new Date(l.data_ora).toDateString() === currentDayStr);
           const merciDelGiorno = merci.filter(m => new Date(m.data_ricezione).toDateString() === currentDayStr);
-
-          const hasLogs = logsDelGiorno.length > 0;
-          const hasMerci = merciDelGiorno.length > 0;
+          const hasLogs = logsDelGiorno.length > 0; const hasMerci = merciDelGiorno.length > 0;
           const hasError = logsDelGiorno.some(l => !l.conformita) || merciDelGiorno.some(m => !m.conforme || !m.integro);
-          
-          let bgColor = 'white'; 
-          if (hasLogs || hasMerci) bgColor = hasError ? '#ffcccc' : '#ccffcc'; 
-
-          grid.push(
-            <div key={d} onClick={() => setSelectedDayLogs({ day: d, logs: logsDelGiorno, merci: merciDelGiorno })} 
-                 style={{background: bgColor, border:'1px solid #ddd', minHeight:'80px', padding:'5px', cursor:'pointer', position:'relative'}}>
-                  <div style={{fontWeight:'bold'}}>{d}</div>
-                  <div style={{fontSize:'10px', marginTop:5}}>
-                      {hasLogs && <div>🌡️ {logsDelGiorno.length}</div>}
-                      {hasMerci && <div>📦 {merciDelGiorno.length}</div>}
-                  </div>
-            </div>
-          );
+          let bgClass = 'cal-day'; if(hasLogs||hasMerci) bgClass += hasError ? ' error' : ' ok';
+          grid.push(<div key={d} onClick={() => setSelectedDayLogs({ day: d, logs: logsDelGiorno, merci: merciDelGiorno })} className={bgClass}><span>{d}</span><div className="cal-dots">{hasLogs && <span>🌡️</span>}{hasMerci && <span>📦</span>}</div></div>);
       }
       return (
-          <div style={{background:'white', padding:20, borderRadius:10}}>
-             <div style={{display:'flex', justifyContent:'space-between', marginBottom:10}}>
-                <button onClick={()=>cambiaMese(-1)}>◀</button>
-                <h3>{monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}</h3>
-                <button onClick={()=>cambiaMese(1)}>▶</button>
-             </div>
-             <div style={{display:'grid', gridTemplateColumns:'repeat(7, 1fr)', gap:5}}>{grid}</div>
+          <>
+             <div className="cal-header"><button onClick={()=>{const d=new Date(currentDate); d.setMonth(d.getMonth()-1); setCurrentDate(d);}}>◀</button><h3>{monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}</h3><button onClick={()=>{const d=new Date(currentDate); d.setMonth(d.getMonth()+1); setCurrentDate(d);}}>▶</button></div>
+             <div className="cal-grid">{grid}</div>
              {selectedDayLogs && (
-                 <div style={{marginTop:20, borderTop:'2px solid #333', paddingTop:20}}>
-                     <h2 style={{marginTop:0}}>Dettagli {selectedDayLogs.day} {monthNames[currentDate.getMonth()]}</h2>
-                     <div style={{display:'flex', gap:20, flexWrap:'wrap'}}>
-                         <div style={{flex:1, minWidth:300, background:'#f9f9f9', padding:15, borderRadius:5}}>
-                             <h4 style={{marginTop:0, borderBottom:'2px solid #27ae60', color:'#27ae60'}}>🌡️ Temperature</h4>
-                             {selectedDayLogs.logs.length === 0 ? <p style={{color:'#999'}}>Nessuna registrazione.</p> : (
-                                 <table style={{width:'100%', fontSize:13, borderCollapse:'collapse'}}>
-                                     <thead><tr style={{textAlign:'left'}}><th>Ora</th><th>Macchina</th><th>°C</th><th>Stato</th></tr></thead>
-                                     <tbody>
-                                        {selectedDayLogs.logs.map(l => (
-                                            <tr key={l.id} style={{borderBottom:'1px solid #eee'}}>
-                                                <td style={{padding:5}}>{new Date(l.data_ora).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'})}</td>
-                                                <td style={{padding:5}}><strong>{l.nome_asset}</strong></td>
-                                                <td style={{padding:5}}>{l.valore}</td>
-                                                <td style={{padding:5}}>
-                                                    {l.conformita 
-                                                        ? <span style={{color:'green', fontWeight:'bold'}}>OK</span> 
-                                                        : <span style={{color:'red', fontWeight:'bold'}}>❌ ERR - {l.azione_correttiva}</span>}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                     </tbody>
-                                 </table>
-                             )}
-                         </div>
-                         <div style={{flex:1, minWidth:300, background:'#f9f9f9', padding:15, borderRadius:5}}>
-                             <h4 style={{marginTop:0, borderBottom:'2px solid #f39c12', color:'#f39c12'}}>📦 Arrivo Merci</h4>
-                             {selectedDayLogs.merci.length === 0 ? <p style={{color:'#999'}}>Nessun arrivo.</p> : (
-                                 <div style={{display:'flex', flexDirection:'column', gap:10}}>
-                                     {selectedDayLogs.merci.map(m => (
-                                         <div key={m.id} style={{background:'white', padding:10, border:'1px solid #ddd', borderRadius:5}}>
-                                             <div style={{fontWeight:'bold'}}>{m.prodotto}</div>
-                                             <div style={{fontSize:12, color:'#555'}}>{m.fornitore} | Qty: {m.quantita}</div>
-                                             <div style={{fontSize:12}}>Lotto: {m.lotto} | Scad: {new Date(m.scadenza).toLocaleDateString()}</div>
-                                             <div style={{marginTop:5}}>
-                                                 {m.conforme ? <span style={{background:'#eafaf1', color:'green', padding:'2px 5px', borderRadius:3, fontSize:10}}>OK</span> : <span style={{background:'#fadbd8', color:'red', padding:'2px 5px', borderRadius:3, fontSize:10}}>NO</span>}
-                                                 {m.allegato_url && <a href={m.allegato_url} target="_blank" style={{marginLeft:10, fontSize:12}}>📎 Bolla</a>}
-                                             </div>
-                                         </div>
-                                     ))}
-                                 </div>
-                             )}
-                         </div>
+                 <div className="cal-details">
+                     <h3>Dettagli {selectedDayLogs.day}</h3>
+                     <div className="cal-cols">
+                         <div className="cal-col"><h4>🌡️ Temperature</h4>{selectedDayLogs.logs.map(l=><div key={l.id} className="cal-item"><strong>{l.nome_asset}</strong>: {l.valore}° <small>{l.conformita?'OK':'ERR'}</small></div>)}</div>
+                         <div className="cal-col"><h4>📦 Merci</h4>{selectedDayLogs.merci.map(m=><div key={m.id} className="cal-item"><strong>{m.prodotto}</strong> <small>{m.fornitore}</small></div>)}</div>
                      </div>
                  </div>
              )}
-          </div>
+          </>
       );
   };
 
-  // --- ETICHETTE ---
-  const handleLabelTypeChange = (e) => {
-      const type = e.target.value;
-      let days = 3;
-      if (type === 'negativo') days = 180;
-      if (type === 'sottovuoto') days = 10;
-      setLabelData({...labelData, tipo: type, giorni_scadenza: days});
-  };
-
+  // --- LOGIC: ETICHETTE ---
   const handlePrintLabel = async (e) => {
       e.preventDefault();
       const scadenza = new Date(); scadenza.setDate(scadenza.getDate() + parseInt(labelData.giorni_scadenza));
@@ -408,355 +271,389 @@ function Haccp() {
       const data = await res.json(); 
       if(data.success) { setLastLabel(data.label); setPrintMode('label'); setTimeout(() => { window.print(); setPrintMode(null); }, 500); }
   };
-  const executePrintQR = () => { setPrintMode('qr'); setTimeout(() => { window.print(); setPrintMode(null); }, 500); };
 
-  // --- UI RENDER ---
-  if(!info) return <div>Caricamento...</div>;
-  if(!isAuthorized) return <div style={{padding:50, textAlign:'center'}}><h1>🔒 Password Required</h1><form onSubmit={handleLogin}><input type="password" value={password} onChange={e=>setPassword(e.target.value)} /><button>Login</button></form></div>;
+  // --- RENDER HELPERS ---
+  if(!info) return <div className="loading-screen">🛡️ Caricamento Sistema HACCP...</div>;
+  if(!isAuthorized) return (
+      <div className="auth-screen">
+          <div className="auth-card">
+              <h1>🔒 Accesso HACCP</h1>
+              <p>Area riservata al personale autorizzato</p>
+              <form onSubmit={handleLogin}>
+                  <input type="password" placeholder="Inserisci Password" value={password} onChange={e=>setPassword(e.target.value)} />
+                  <button>ENTRA</button>
+              </form>
+          </div>
+          <style>{`.auth-screen{height:100vh;display:flex;align-items:center;justify-content:center;background:#ecf0f1;}.auth-card{background:white;padding:30px;border-radius:10px;text-align:center;box-shadow:0 4px 10px rgba(0,0,0,0.1);}.auth-card input{padding:10px;width:100%;margin:10px 0;border:1px solid #ccc;border-radius:5px;}.auth-card button{width:100%;padding:10px;background:#2c3e50;color:white;border:none;border-radius:5px;cursor:pointer;}`}</style>
+      </div>
+  );
+
   const assetsToDisplay = scanId ? assets.filter(a => a.id.toString() === scanId) : assets.filter(a=>['frigo','cella','vetrina','congelatore','abbattitore'].includes(a.tipo));
 
   return (
-    <div className="haccp-container" style={{minHeight:'100vh', background:'#ecf0f1', padding:20, fontFamily:'sans-serif'}}>
+    <div className="app-container">
       
       {!scanId && (
-          <div className="no-print" style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20, flexWrap:'wrap', gap:10}}>
-              <div><h1 style={{margin:0, color:'#2c3e50'}}>🛡️ HACCP Control</h1></div>
-              <div style={{display:'flex', gap:10, alignItems:'center', flexWrap: 'wrap'}}>
-                  <div style={{marginRight:20, display:'flex', gap:5}}>
-                      <button onClick={()=>openDownloadModal('temperature')} style={{background:'#27ae60', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Temp</button>
-                      <button onClick={()=>openDownloadModal('merci')} style={{background:'#f39c12', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Merci</button>
-                      <button onClick={()=>openDownloadModal('assets')} style={{background:'#34495e', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Macchine</button>
-                  </div>
-
-                  {['temperature', 'merci', 'calendario', 'etichette', 'setup'].map(t => (
-                      <button key={t} onClick={()=>setTab(t)} style={{padding:'10px 20px', borderRadius:5, border:'none', cursor:'pointer', fontWeight:'bold', textTransform:'uppercase', background: tab===t ? '#2c3e50' : 'white', color: tab===t ? 'white' : '#333'}}>
-                        {t==='merci' ? '📦 Merci' : (t==='setup' ? '⚙️ Macchine' : t)}
-                      </button>
-                  ))}
-                  <button onClick={()=>{localStorage.removeItem(`haccp_session_${slug}`); setIsAuthorized(false)}} style={{background:'#e74c3c', color:'white', border:'none', padding:'10px 20px', borderRadius:5}}>ESCI</button>
-              </div>
-          </div>
-      )}
-
-      {/* 1. TEMPERATURE (MOBILE FIXED) */}
-      {tab === 'temperature' && (
-          <div className="no-print" style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:20}}>
-              {assetsToDisplay.map(asset => {
-                  const todayLog = getTodayLog(asset.id);
-                  
-                  if(asset.stato === 'spento') {
-                      return (
-                          <div key={asset.id} style={{background:'#e0e0e0', padding:15, borderRadius:10, border:'2px solid #999', opacity:0.7, position:'relative'}}>
-                              <div style={{position:'absolute', top:10, right:10, background:'#555', color:'white', padding:'2px 8px', borderRadius:4, fontSize:10, fontWeight:'bold'}}>OFF</div>
-                              <h3 style={{margin:0, color:'#555', fontSize:16}}>🚫 {asset.nome}</h3>
-                              <div style={{marginTop:10, height:40, background:'#ccc', borderRadius:5, display:'flex', alignItems:'center', justifyContent:'center', color:'#777', fontWeight:'bold', fontSize:12}}>SPENTO</div>
-                          </div>
-                      );
-                  }
-
-                  const isInputActive = !!tempInput[asset.id];
-                  const currentData = tempInput[asset.id] || {};
-                  
-                  if (todayLog && !isInputActive) {
-                      const timeStr = new Date(todayLog.data_ora).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'});
-                      return (
-                          <div key={asset.id} style={{background:'#eafaf1', padding:15, borderRadius:10, border:'1px solid #27ae60', boxShadow:'0 2px 5px rgba(0,0,0,0.05)'}}>
-                              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                                  <h3 style={{margin:0, color:'#27ae60', fontSize:16}}>✅ {asset.nome}</h3>
-                                  <span style={{fontSize:'20px', fontWeight:'bold'}}>{todayLog.valore === 'OFF' ? 'OFF' : todayLog.valore + '°'}</span>
-                              </div>
-                              <div style={{fontSize:'12px', color:'#555', marginTop:5}}>
-                                  {todayLog.conformita ? `Ore ${timeStr}` : `⚠️ ANOMALIA`}
-                              </div>
-                              <button onClick={() => abilitaNuovaMisurazione(asset)} style={{marginTop:10, width:'100%', background:'#f39c12', color:'white', border:'none', padding:'10px', borderRadius:5, cursor:'pointer', fontWeight:'bold'}}>✏️ MODIFICA</button>
-                          </div>
-                      );
-                  }
-                  
-                  return (
-                      <div key={asset.id} style={{background:'white', padding:15, borderRadius:12, boxShadow:'0 4px 10px rgba(0,0,0,0.08)', borderTop:'4px solid #34495e'}}>
-                           <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12}}>
-                                <div style={{overflow:'hidden'}}>
-                                    <h3 style={{margin:0, fontSize:'16px', whiteSpace:'nowrap', textOverflow:'ellipsis'}}>{asset.nome}</h3>
-                                    <span style={{fontSize:'11px', color:'#999'}}>{asset.marca}</span>
-                                </div>
-                                <span style={{background:'#f0f2f5', color:'#666', padding:'2px 8px', borderRadius:4, fontSize:10, fontWeight:'bold', whiteSpace:'nowrap'}}>
-                                    {asset.range_min}° / {asset.range_max}°
-                                </span>
-                           </div>
-                           <div style={{display:'flex', gap:8, height:45}}>
-                              <input type="number" inputMode="decimal" step="0.1" placeholder="°C" 
-                                   value={currentData.val || ''} 
-                                   onChange={e=>setTempInput({...tempInput, [asset.id]: {...currentData, val: e.target.value}})} 
-                                   style={{flex: 1, minWidth: 0, borderRadius:8, border:'1px solid #ccc', fontSize:'18px', textAlign:'center', fontWeight:'bold'}} 
-                              />
-                              <button onClick={()=>registraTemperatura(asset, true)} style={{width:45, background:'#95a5a6', color:'white', border:'none', borderRadius:8, cursor:'pointer', fontWeight:'bold', fontSize:'11px'}}>OFF</button>
-                              <label style={{width:45, cursor:'pointer', borderRadius:8, border:'1px solid #ddd', background: currentData.photo ? '#2ecc71' : '#f8f9fa', display:'flex', alignItems:'center', justifyContent:'center'}}>
-                                  <span style={{fontSize:'18px'}}>📷</span>
-                                  <input type="file" accept="image/*" onChange={(e)=>handleLogPhoto(e, asset.id)} style={{display:'none'}} />
-                              </label>
-                              <button onClick={()=>registraTemperatura(asset, false)} style={{padding:'0 15px', background:'#2c3e50', color:'white', border:'none', borderRadius:8, cursor:'pointer', fontWeight:'bold', fontSize:'13px'}}>SALVA</button>
-                           </div>
-                           {isInputActive && getTodayLog(asset.id) && <div style={{textAlign:'center', marginTop:5}}><button onClick={()=>{const n={...tempInput}; delete n[asset.id]; setTempInput(n);}} style={{fontSize:11, background:'transparent', border:'none', color:'#e74c3c', textDecoration:'underline'}}>Annulla</button></div>}
-                      </div>
-                  );
-              })}
-          </div>
-      )}
-
-      {/* 2. MERCI */}
-      {tab === 'merci' && !scanId && (
-          <div className="no-print">
-              <div style={{background:'white', padding:20, borderRadius:10, marginBottom:20, borderLeft: merciForm.id ? '5px solid #f39c12' : '5px solid #27ae60'}}>
-                  <div style={{display:'flex', justifyContent:'space-between'}}>
-                      <h3>{merciForm.id ? '✏️ Modifica Arrivo Merce' : '📥 Nuovo Arrivo'}</h3>
-                      {merciForm.id && <button onClick={resetMerciForm} style={{background:'#e74c3c', color:'white', border:'none', borderRadius:5, padding:'5px 10px'}}>Annulla</button>}
-                  </div>
-                  <form onSubmit={salvaMerci} style={{display:'flex', flexWrap:'wrap', gap:10, alignItems:'flex-end'}}>
-                      <div style={{flex:1, minWidth:120}}><label style={{fontSize:11}}>Data Arrivo</label><input type="date" value={merciForm.data_ricezione} onChange={e=>setMerciForm({...merciForm, data_ricezione:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required /></div>
-                      <div style={{flex:2, minWidth:150}}><label style={{fontSize:11}}>Fornitore</label><input value={merciForm.fornitore} onChange={e=>setMerciForm({...merciForm, fornitore:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required /></div>
-                      <div style={{flex:2, minWidth:150}}><label style={{fontSize:11}}>Prodotto</label><input value={merciForm.prodotto} onChange={e=>setMerciForm({...merciForm, prodotto:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required /></div>
-                      <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Quantità</label><input value={merciForm.quantita} onChange={e=>setMerciForm({...merciForm, quantita:e.target.value})} placeholder="Es. 10kg" style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
-                      <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Lotto</label><input value={merciForm.lotto} onChange={e=>setMerciForm({...merciForm, lotto:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
-                      <div style={{flex:1, minWidth:120}}><label style={{fontSize:11}}>Scadenza</label><input type="date" value={merciForm.scadenza} onChange={e=>setMerciForm({...merciForm, scadenza:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
-                      <div style={{flex:1, minWidth:80}}><label style={{fontSize:11}}>Temp °C</label><input type="number" step="0.1" value={merciForm.temperatura} onChange={e=>setMerciForm({...merciForm, temperatura:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
-                      
-                      <div style={{flex:1, minWidth:150}}><label style={{fontSize:11}}>Destinazione</label>
-                        <select value={merciForm.destinazione} onChange={e=>setMerciForm({...merciForm, destinazione:e.target.value})} style={{width:'100%', padding:9, border:'1px solid #ddd'}}>
-                            <option value="">-- Seleziona --</option>
-                            {assets.map(a => <option key={a.id} value={a.nome}>{a.nome}</option>)}
-                        </select>
-                      </div>
-
-                      <div style={{flex:2, minWidth:200}}><label style={{fontSize:11}}>Note</label><input value={merciForm.note} onChange={e=>setMerciForm({...merciForm, note:e.target.value})} placeholder="Es. Fattura..." style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
-                      
-                      <div style={{display:'flex', alignItems:'center', gap:5}}>
-                        <label style={{cursor:'pointer', background: merciForm.allegato_url ? '#2ecc71' : '#ecf0f1', padding:'10px', borderRadius:5, border:'1px solid #ccc', fontSize:12, whiteSpace:'nowrap'}}>
-                            {uploadingMerci ? "..." : (merciForm.allegato_url ? "📎 OK" : "📎 Bolla")}
-                            <input type="file" accept="image/*,.pdf" onChange={handleMerciPhoto} style={{display:'none'}} />
-                        </label>
-                      </div>
-
-                      <div style={{display:'flex', flexDirection:'column', gap:5, minWidth:100}}>
-                          <label style={{fontSize:11}}><input type="checkbox" checked={merciForm.conforme} onChange={e=>setMerciForm({...merciForm, conforme:e.target.checked})} /> Conforme</label>
-                          <label style={{fontSize:11}}><input type="checkbox" checked={merciForm.integro} onChange={e=>setMerciForm({...merciForm, integro:e.target.checked})} /> Integro</label>
-                      </div>
-                      
-                      <button style={{background: merciForm.id ? '#f39c12' : '#27ae60', color:'white', border:'none', padding:'10px 20px', borderRadius:5, cursor:'pointer', height:40, fontWeight:'bold'}}>
-                          {merciForm.id ? 'AGGIORNA' : 'REGISTRA'}
-                      </button>
-                  </form>
-              </div>
-
-              <div style={{background:'white', padding:20, borderRadius:10}}>
-                  <h3>📦 Storico Arrivi</h3>
-                  <table style={{width:'100%', borderCollapse:'collapse', fontSize:13}}>
-                      <thead>
-                          <tr style={{background:'#f0f0f0', textAlign:'left'}}>
-                              <th style={{padding:8}}>Data</th>
-                              <th style={{padding:8}}>Fornitore / Prodotto</th>
-                              <th style={{padding:8}}>Dettagli</th>
-                              <th style={{padding:8}}>Stato</th>
-                              <th style={{padding:8}}>Azioni</th>
-                          </tr>
-                      </thead>
-                      <tbody>
-                          {merci.map(m => (
-                              <tr key={m.id} style={{borderBottom:'1px solid #eee'}}>
-                                  <td style={{padding:8}}>{new Date(m.data_ricezione).toLocaleDateString()}</td>
-                                  <td style={{padding:8}}><strong>{m.fornitore}</strong><br/>{m.prodotto}</td>
-                                  <td style={{padding:8}}>
-                                      Qty: {m.quantita || '-'} | Lotto: {m.lotto} <br/>
-                                      Scad: {m.scadenza ? new Date(m.scadenza).toLocaleDateString() : '-'}
-                                      {m.destinazione && <div style={{fontSize:11, color:'#666'}}>📍 {m.destinazione}</div>}
-                                  </td>
-                                  <td style={{padding:8}}>{m.conforme && m.integro ? <span style={{color:'green', fontWeight:'bold'}}>OK</span> : <span style={{color:'red', fontWeight:'bold'}}>NO</span>}</td>
-                                  <td style={{padding:8, display:'flex', gap:5}}>
-                                      {m.allegato_url && <a href={m.allegato_url} target="_blank" style={{background:'#3498db', color:'white', border:'none', borderRadius:3, padding:'2px 5px', textDecoration:'none'}}>📎</a>}
-                                      <button onClick={()=>iniziaModificaMerci(m)} style={{background:'#f39c12', color:'white', border:'none', borderRadius:3, cursor:'pointer', padding:'2px 5px'}}>✏️</button>
-                                      <button onClick={()=>eliminaMerce(m.id)} style={{background:'#e74c3c', color:'white', border:'none', borderRadius:3, cursor:'pointer', padding:'2px 5px'}}>🗑️</button>
-                                  </td>
-                              </tr>
-                          ))}
-                      </tbody>
-                  </table>
-              </div>
-          </div>
-      )}
-
-      {/* 3. CALENDARIO */}
-      {tab === 'calendario' && !scanId && renderCalendario()}
-
-      {/* 4. ETICHETTE */}
-      {tab === 'etichette' && !scanId && (
-          <div className="no-print" style={{display:'flex', gap:20, flexWrap:'wrap'}}>
-             <div style={{background:'white', padding:20, borderRadius:10, flex:1, minWidth:300}}>
-                 <h3>Genera Etichetta Interna</h3>
-                 <form onSubmit={handlePrintLabel} style={{display:'flex', flexDirection:'column', gap:10}}>
-                    <input placeholder="Prodotto" required value={labelData.prodotto} onChange={e=>setLabelData({...labelData, prodotto:e.target.value})} style={{padding:10, border:'1px solid #ccc'}} />
-                    <select value={labelData.tipo} onChange={handleLabelTypeChange} style={{padding:10, border:'1px solid #ccc'}}>
-                        <option value="positivo">Positivo (+3°C) - 3gg</option>
-                        <option value="negativo">Negativo (-18°C) - 180gg</option>
-                        <option value="sottovuoto">Sottovuoto - 10gg</option>
-                    </select>
-                    <div style={{fontSize:12, color:'#666'}}>Giorni scadenza (Modificabile):</div>
-                    <input type="number" value={labelData.giorni_scadenza} onChange={e=>setLabelData({...labelData, giorni_scadenza:e.target.value})} style={{padding:10, border:'1px solid #ccc'}} />
-                    <input placeholder="Operatore" value={labelData.operatore} onChange={e=>setLabelData({...labelData, operatore:e.target.value})} style={{padding:10, border:'1px solid #ccc'}} />
-                    <button style={{background:'#2980b9', color:'white', border:'none', padding:10, marginTop:10, borderRadius:5}}>STAMPA</button>
-                 </form>
-             </div>
-             <div style={{flex:1, background:'#eee', display:'flex', alignItems:'center', justifyContent:'center', minHeight:200}}>
-                 {lastLabel && <div style={{background:'white', padding:15, border:'2px solid black', width:300}}>
-                     <h2 style={{margin:'0 0 10px 0', borderBottom:'1px solid black'}}>{lastLabel.prodotto}</h2>
-                     <div style={{display:'flex', justifyContent:'space-between'}}>
-                        <span>📅 Prod: {new Date(lastLabel.data_produzione).toLocaleDateString()}</span>
-                        <span>👨‍🍳 {lastLabel.operatore}</span>
-                     </div>
-                     <div style={{marginTop:10, fontWeight:'bold', fontSize:18}}>
-                        SCAD: {new Date(lastLabel.data_scadenza).toLocaleDateString()}
-                     </div>
-                     <div style={{marginTop:10, fontSize:12, color:'#555'}}>Lotto: {lastLabel.lotto}</div>
-                 </div>}
-             </div>
-          </div>
-      )}
-
-      {/* 5. SETUP (MACCHINE) */}
-      {tab === 'setup' && !scanId && (
-          <div className="no-print">
-              <div style={{display:'flex', justifyContent:'space-between', marginBottom:20}}>
-                  <h2>Macchinari</h2>
-                  <button onClick={()=>apriModaleAsset()} style={{background:'#27ae60', color:'white', border:'none', padding:'10px 20px', borderRadius:5, fontWeight:'bold'}}>+ Nuova Macchina</button>
-              </div>
-              <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:20}}>
-                  {assets.map(a => (
-                      <div key={a.id} style={{background: 'white', padding:15, borderRadius:10, borderLeft: '4px solid #34495e', boxShadow:'0 2px 5px rgba(0,0,0,0.1)'}}>
-                          <div style={{display:'flex', justifyContent:'space-between'}}>
-                              <strong>{a.nome}</strong> 
-                              <span style={{fontSize:12, color:'#666'}}>({a.tipo})</span>
-                          </div>
-                          <div style={{fontSize:12, color:'#7f8c8d', margin:'5px 0'}}>SN: {a.serial_number || '-'}</div>
-                          
-                          <div style={{marginTop:10, display:'flex', gap:5}}>
-                              <button onClick={()=>setShowQRModal(a)} style={{background:'#34495e', color:'white', border:'none', padding:'8px', borderRadius:3, flex:1, fontWeight:'bold'}}>QR Code</button>
-                              <button onClick={()=>apriModaleAsset(a)} style={{background:'#f39c12', color:'white', border:'none', padding:'8px', borderRadius:3, flex:1, fontWeight:'bold'}}>Modifica</button>
-                          </div>
-                          
-                          <div style={{marginTop:10, display:'flex', gap:10, fontSize:13}}>
-                                {a.foto_url ? (
-                                    <button onClick={() => setPreviewImage(a.foto_url)} style={{background:'transparent', border:'none', color:'#3498db', cursor:'pointer', display:'flex', alignItems:'center', gap:5, padding:0}}>📸 Foto</button>
-                                ) : <span style={{color:'#ccc'}}>📸 No Foto</span>}
-
-                                {a.etichetta_url ? (
-                                    <button onClick={() => setPreviewImage(a.etichetta_url)} style={{background:'transparent', border:'none', color:'#e67e22', cursor:'pointer', display:'flex', alignItems:'center', gap:5, padding:0}}>📄 Etichetta</button>
-                                ) : <span style={{color:'#ccc'}}>📄 No Etich.</span>}
-                          </div>
-                      </div>
-                  ))}
+          <header className="app-header no-print">
+              <div className="header-top">
+                  <h1>🛡️ HACCP Control</h1>
+                  <button className="btn-logout" onClick={()=>{localStorage.removeItem(`haccp_session_${slug}`); setIsAuthorized(false)}}>ESCI</button>
               </div>
               
-              {showQRModal && (
-                  <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center'}}>
-                      <div style={{background:'white', padding:30, textAlign:'center', borderRadius:10}}>
-                          <h3>QR: {showQRModal.nome}</h3>
-                          <QRCode value={`${window.location.origin}/haccp/${slug}/scan/${showQRModal.id}`} size={150} />
-                          <br/><br/><button onClick={executePrintQR}>STAMPA QR</button><button onClick={()=>setShowQRModal(null)} style={{marginLeft:10}}>CHIUDI</button>
-                      </div>
-                  </div>
-              )}
-              {showAssetModal && (
-                  <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000}}>
-                     <div style={{background:'white', padding:25, width:400, borderRadius:10, maxHeight:'90vh', overflowY:'auto'}}>
-                        <h3 style={{marginTop:0}}>{editingAsset ? 'Modifica Asset' : 'Nuovo Asset'}</h3>
-                        <form onSubmit={salvaAsset} style={{display:'flex', flexDirection:'column', gap:10}}>
-                           <input value={assetForm.nome} onChange={e=>setAssetForm({...assetForm, nome:e.target.value})} placeholder="Nome (es. Frigo 1)" style={{padding:8, border:'1px solid #ccc'}} required />
-                           <select value={assetForm.stato} onChange={e=>setAssetForm({...assetForm, stato:e.target.value})} style={{padding:5, borderRadius:3}}>
-                               <option value="attivo">✅ ATTIVA (Accesa)</option>
-                               <option value="spento">⛔ SPENTA (Non in uso)</option>
-                           </select>
-                           <select value={assetForm.tipo} onChange={e=>setAssetForm({...assetForm, tipo:e.target.value})} style={{padding:8, border:'1px solid #ccc'}}>
-                               <option value="frigo">Frigorifero</option><option value="cella">Cella Frigo</option><option value="vetrina">Vetrina</option><option value="congelatore">Congelatore</option><option value="magazzino">Magazzino Secco</option><option value="abbattitore">Abbattitore</option>
-                           </select>
-                           <div style={{display:'flex', gap:5}}>
-                               <input type="number" value={assetForm.range_min} onChange={e=>setAssetForm({...assetForm, range_min:e.target.value})} placeholder="Min" style={{flex:1, padding:8, border:'1px solid #ccc'}} />
-                               <input type="number" value={assetForm.range_max} onChange={e=>setAssetForm({...assetForm, range_max:e.target.value})} placeholder="Max" style={{flex:1, padding:8, border:'1px solid #ccc'}} />
-                           </div>
-                           <input value={assetForm.marca} onChange={e=>setAssetForm({...assetForm, marca:e.target.value})} placeholder="Marca" style={{padding:8, border:'1px solid #ccc'}} />
-                           <input value={assetForm.modello} onChange={e=>setAssetForm({...assetForm, modello:e.target.value})} placeholder="Modello" style={{padding:8, border:'1px solid #ccc'}} />
-                           <input value={assetForm.serial_number} onChange={e=>setAssetForm({...assetForm, serial_number:e.target.value})} placeholder="Numero Seriale" style={{padding:8, border:'1px solid #ccc'}} />
-                           <div style={{display:'flex', gap:10}}>
-                                <label style={{flex:1, cursor:'pointer', background: assetForm.foto_url ? '#eafaf1' : '#f0f0f0', padding:10, textAlign:'center', borderRadius:5, fontSize:12, border:'1px solid #ccc'}}>
-                                    {uploadingAsset ? '...' : (assetForm.foto_url ? '✅ Foto OK' : '📸 Foto Frigo')}
-                                    <input type="file" onChange={handleAssetPhoto} style={{display:'none'}} />
-                                </label>
-                                <label style={{flex:1, cursor:'pointer', background: assetForm.etichetta_url ? '#eafaf1' : '#f0f0f0', padding:10, textAlign:'center', borderRadius:5, fontSize:12, border:'1px solid #ccc'}}>
-                                    {uploadingLabel ? '...' : (assetForm.etichetta_url ? '✅ Etic. OK' : '📄 Etic. Frigo')}
-                                    <input type="file" onChange={handleAssetLabel} style={{display:'none'}} />
-                                </label>
-                           </div>
-                           <button style={{background:'#27ae60', color:'white', border:'none', padding:10, borderRadius:5}}>SALVA</button>
-                           <button type="button" onClick={()=>setShowAssetModal(false)} style={{background:'#95a5a6', color:'white', border:'none', padding:10, borderRadius:5}}>Annulla</button>
-                        </form>
-                     </div>
-                  </div>
-              )}
-          </div>
+              <div className="header-actions">
+                   <div className="download-group">
+                      <button onClick={()=>setTab('temperature')} className={`nav-btn ${tab==='temperature'?'active':''}`}>🌡️ Temp</button>
+                      <button onClick={()=>setTab('merci')} className={`nav-btn ${tab==='merci'?'active':''}`}>📦 Merci</button>
+                      <button onClick={()=>setTab('calendario')} className={`nav-btn ${tab==='calendario'?'active':''}`}>📅 Cal</button>
+                      <button onClick={()=>setTab('etichette')} className={`nav-btn ${tab==='etichette'?'active':''}`}>🏷️ Label</button>
+                      <button onClick={()=>setTab('setup')} className={`nav-btn ${tab==='setup'?'active':''}`}>⚙️ Setup</button>
+                   </div>
+              </div>
+          </header>
       )}
 
-      {/* --- MODALE DOWNLOAD --- */}
-      {showDownloadModal && (
-          <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000}}>
-              <div style={{background:'white', padding:30, borderRadius:10, textAlign:'center', width:350}}>
-                  <h3 style={{marginTop:0}}>Scarica Report: {downloadType === 'temperature' ? 'Temperature' : (downloadType === 'merci' ? 'Merci' : 'Macchine')}</h3>
-                  <div style={{marginBottom:20, background:'#f9f9f9', padding:10, borderRadius:5}}>
-                       <p style={{margin:'0 0 10px 0', fontSize:14, fontWeight:'bold'}}>Formato:</p>
-                       <div style={{display:'flex', justifyContent:'center', gap:10}}>
-                           <button onClick={()=>setDownloadFormat('excel')} style={{background: downloadFormat==='excel'?'#27ae60':'#eee', color:downloadFormat==='excel'?'white':'black', padding:'5px 15px', border:'none', borderRadius:20, cursor:'pointer'}}>Excel</button>
-                           <button onClick={()=>setDownloadFormat('pdf')} style={{background: downloadFormat==='pdf'?'#e74c3c':'#eee', color:downloadFormat==='pdf'?'white':'black', padding:'5px 15px', border:'none', borderRadius:20, cursor:'pointer'}}>PDF</button>
-                       </div>
+      <main className="app-content">
+          
+          {/* TAB 1: TEMPERATURE */}
+          {tab === 'temperature' && (
+              <>
+                {!scanId && (
+                   <div className="action-bar no-print">
+                      <h2>Rilevazione Temperature</h2>
+                      <button onClick={()=>{setDownloadType('temperature'); setShowDownloadModal(true);}} className="btn-secondary">⬇ Report</button>
+                   </div>
+                )}
+                <div className="grid-responsive">
+                  {assetsToDisplay.map(asset => {
+                      const todayLog = getTodayLog(asset.id);
+                      const isInputActive = !!tempInput[asset.id];
+                      const currentData = tempInput[asset.id] || {};
+                      
+                      // CARD 1: SPENTO
+                      if(asset.stato === 'spento') return (
+                          <div key={asset.id} className="card card-off">
+                              <div className="card-badge off">OFF</div>
+                              <h3>{asset.nome}</h3>
+                              <div className="status-box off">MACCHINARIO SPENTO</div>
+                          </div>
+                      );
+
+                      // CARD 2: REGISTRATO (MOSTRA ORA CORRETTA O "MODIFICATO")
+                      if (todayLog && !isInputActive) {
+                          const timeStr = new Date(todayLog.data_ora).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'});
+                          const statusLabel = getUpdateStatus(todayLog);
+
+                          return (
+                              <div key={asset.id} className={`card card-ok ${!todayLog.conformita ? 'card-error' : ''}`}>
+                                  <div className="card-header">
+                                      <h3>{asset.nome}</h3>
+                                      <span className="temp-display">{todayLog.valore === 'OFF' ? 'OFF' : todayLog.valore + '°'}</span>
+                                  </div>
+                                  <div className="card-meta">
+                                      {todayLog.conformita ? 
+                                          <span>{statusLabel} <strong>{timeStr}</strong></span> : 
+                                          <span className="error-text">⚠️ {todayLog.azione_correttiva}</span>
+                                      }
+                                  </div>
+                                  <button onClick={() => abilitaNuovaMisurazione(asset)} className="btn-edit full-width">
+                                      ✏️ MODIFICA
+                                  </button>
+                              </div>
+                          );
+                      }
+                      
+                      // CARD 3: INPUT MODE
+                      return (
+                          <div key={asset.id} className="card card-input">
+                               <div className="card-header-sm">
+                                    <div>
+                                        <h3>{asset.nome}</h3>
+                                        <small>{asset.marca}</small>
+                                    </div>
+                                    <span className="badge-range">{asset.range_min}° / {asset.range_max}°</span>
+                               </div>
+                               
+                               <div className="input-row">
+                                  <input 
+                                       type="number" inputMode="decimal" step="0.1" placeholder="°C" 
+                                       value={currentData.val || ''} 
+                                       onChange={e=>setTempInput({...tempInput, [asset.id]: {...currentData, val: e.target.value}})} 
+                                       className="input-temp"
+                                  />
+                                  <button onClick={()=>registraTemperatura(asset, true)} className="btn-icon btn-grey">OFF</button>
+                                  <label className={`btn-icon ${currentData.photo ? 'btn-green' : 'btn-light'}`}>
+                                      📷 <input type="file" accept="image/*" onChange={(e)=>handleLogPhoto(e, asset.id)} hidden />
+                                  </label>
+                                  <button onClick={()=>registraTemperatura(asset, false)} className="btn-primary">SALVA</button>
+                               </div>
+                               {isInputActive && getTodayLog(asset.id) && <button onClick={()=>{const n={...tempInput}; delete n[asset.id]; setTempInput(n);}} className="btn-link text-center full-width">Annulla</button>}
+                          </div>
+                      );
+                  })}
+                </div>
+              </>
+          )}
+
+          {/* TAB 2: MERCI */}
+          {tab === 'merci' && !scanId && (
+              <div className="no-print">
+                  <div className="action-bar">
+                      <h2>Carico Merci</h2>
+                      <button onClick={()=>{setDownloadType('merci'); setShowDownloadModal(true);}} className="btn-secondary">⬇ Report</button>
                   </div>
-                  <p style={{color:'#666', fontSize:14}}>Seleziona il periodo:</p>
-                  <div style={{display:'flex', flexDirection:'column', gap:10, marginTop:10}}>
-                      <div style={{display:'flex', gap:5}}>
-                          <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} style={{flex:1, padding:10, border:'1px solid #ccc', borderRadius:5}} />
-                          <button onClick={()=>executeDownload('custom-month')} style={{padding:'0 15px', background:'#8e44ad', color:'white', border:'none', borderRadius:5, cursor:'pointer', fontWeight:'bold'}}>SCARICA</button>
+                  
+                  {/* FORM MERCI */}
+                  <div className="card form-card">
+                      <div className="card-header">
+                          <h3>{merciForm.id ? '✏️ Modifica Merce' : '📥 Nuovo Arrivo'}</h3>
+                          {merciForm.id && <button onClick={resetMerciForm} className="btn-danger-outline">Annulla</button>}
                       </div>
-                      <div style={{borderTop:'1px solid #eee', margin:'5px 0'}}></div>
-                      <button onClick={()=>executeDownload('week')} style={{padding:12, background:'#3498db', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Ultima Settimana</button>
-                      <button onClick={()=>executeDownload('month')} style={{padding:12, background:'#2980b9', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Ultimi 30 Giorni</button>
-                      <button onClick={()=>executeDownload('all')} style={{padding:12, background:'#2c3e50', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Tutto lo storico</button>
+                      <form onSubmit={salvaMerci} className="form-grid">
+                          <div className="form-group"><label>Data</label><input type="date" value={merciForm.data_ricezione} onChange={e=>setMerciForm({...merciForm, data_ricezione:e.target.value})} required /></div>
+                          <div className="form-group span-2"><label>Fornitore</label><input value={merciForm.fornitore} onChange={e=>setMerciForm({...merciForm, fornitore:e.target.value})} required /></div>
+                          <div className="form-group span-2"><label>Prodotto</label><input value={merciForm.prodotto} onChange={e=>setMerciForm({...merciForm, prodotto:e.target.value})} required /></div>
+                          <div className="form-group"><label>Quantità</label><input value={merciForm.quantita} onChange={e=>setMerciForm({...merciForm, quantita:e.target.value})} /></div>
+                          <div className="form-group"><label>Lotto</label><input value={merciForm.lotto} onChange={e=>setMerciForm({...merciForm, lotto:e.target.value})} /></div>
+                          <div className="form-group"><label>Scadenza</label><input type="date" value={merciForm.scadenza} onChange={e=>setMerciForm({...merciForm, scadenza:e.target.value})} /></div>
+                          <div className="form-group"><label>Temp °C</label><input type="number" step="0.1" value={merciForm.temperatura} onChange={e=>setMerciForm({...merciForm, temperatura:e.target.value})} /></div>
+                          <div className="form-group span-2"><label>Destinazione</label>
+                            <select value={merciForm.destinazione} onChange={e=>setMerciForm({...merciForm, destinazione:e.target.value})}>
+                                <option value="">-- Seleziona --</option>{assets.map(a => <option key={a.id} value={a.nome}>{a.nome}</option>)}
+                            </select>
+                          </div>
+                          <div className="form-group full-width"><label>Note</label><input value={merciForm.note} onChange={e=>setMerciForm({...merciForm, note:e.target.value})} /></div>
+                          
+                          <div className="form-actions full-width">
+                              <div className="checkbox-group">
+                                  <label><input type="checkbox" checked={merciForm.conforme} onChange={e=>setMerciForm({...merciForm, conforme:e.target.checked})} /> Conforme</label>
+                                  <label><input type="checkbox" checked={merciForm.integro} onChange={e=>setMerciForm({...merciForm, integro:e.target.checked})} /> Integro</label>
+                              </div>
+                              <label className={`btn-upload ${merciForm.allegato_url ? 'uploaded' : ''}`}>
+                                  {uploadingMerci ? "..." : (merciForm.allegato_url ? "📎 OK" : "📎 Bolla")}
+                                  <input type="file" accept="image/*,.pdf" onChange={handleMerciPhoto} hidden />
+                              </label>
+                              <button className="btn-primary big-btn">{merciForm.id ? 'AGGIORNA' : 'REGISTRA'}</button>
+                          </div>
+                      </form>
                   </div>
-                  <button onClick={()=>setShowDownloadModal(false)} style={{marginTop:20, background:'transparent', border:'none', color:'#999', cursor:'pointer', textDecoration:'underline'}}>Annulla</button>
+
+                  {/* LISTA MERCI RESPONSIVE */}
+                  <div className="card list-card">
+                      <h3>Storico Recente</h3>
+                      <div className="table-responsive">
+                          <table className="clean-table">
+                              <thead><tr><th>Data</th><th>Dettagli Prodotto</th><th>Info</th><th>Stato</th><th>Azioni</th></tr></thead>
+                              <tbody>
+                                  {merci.map(m => (
+                                      <tr key={m.id}>
+                                          <td data-label="Data">{new Date(m.data_ricezione).toLocaleDateString()}</td>
+                                          <td data-label="Prodotto"><strong>{m.prodotto}</strong><br/><small>{m.fornitore}</small></td>
+                                          <td data-label="Info">Qty: {m.quantita}<br/>Lotto: {m.lotto}</td>
+                                          <td data-label="Stato">{m.conforme ? <span className="tag ok">OK</span> : <span className="tag no">NO</span>}</td>
+                                          <td data-label="Azioni" className="actions-cell">
+                                              {m.allegato_url && <a href={m.allegato_url} target="_blank" className="btn-icon btn-blue">📎</a>}
+                                              <button onClick={()=>iniziaModificaMerci(m)} className="btn-icon btn-orange">✏️</button>
+                                              <button onClick={()=>eliminaMerce(m.id)} className="btn-icon btn-red">🗑️</button>
+                                          </td>
+                                      </tr>
+                                  ))}
+                              </tbody>
+                          </table>
+                      </div>
+                  </div>
+              </div>
+          )}
+
+          {/* TAB 3: CALENDARIO */}
+          {tab === 'calendario' && !scanId && (
+             <div className="card">
+                 {renderCalendario()} 
+             </div>
+          )}
+
+          {/* TAB 4: ETICHETTE */}
+          {tab === 'etichette' && !scanId && (
+              <div className="split-view no-print">
+                  <div className="card">
+                     <h3>Stampa Etichetta</h3>
+                     <form onSubmit={handlePrintLabel} className="form-stack">
+                        <input placeholder="Prodotto" required value={labelData.prodotto} onChange={e=>setLabelData({...labelData, prodotto:e.target.value})} />
+                        <select value={labelData.tipo} onChange={e=>{
+                            const t=e.target.value; setLabelData({...labelData, tipo:t, giorni_scadenza: t==='negativo'?180:(t==='sottovuoto'?10:3)});
+                        }}>
+                            <option value="positivo">Positivo (+3°C)</option>
+                            <option value="negativo">Negativo (-18°C)</option>
+                            <option value="sottovuoto">Sottovuoto</option>
+                        </select>
+                        <input type="number" value={labelData.giorni_scadenza} onChange={e=>setLabelData({...labelData, giorni_scadenza:e.target.value})} placeholder="Giorni" />
+                        <input placeholder="Operatore" value={labelData.operatore} onChange={e=>setLabelData({...labelData, operatore:e.target.value})} />
+                        <button className="btn-primary">STAMPA</button>
+                     </form>
+                  </div>
+                  <div className="preview-box">
+                      {lastLabel ? (
+                          <div className="label-preview">
+                             <strong>{lastLabel.prodotto}</strong>
+                             <p>SCAD: {new Date(lastLabel.data_scadenza).toLocaleDateString()}</p>
+                          </div>
+                      ) : <p>Anteprima etichetta</p>}
+                  </div>
+              </div>
+          )}
+
+          {/* TAB 5: SETUP */}
+          {tab === 'setup' && !scanId && (
+              <div className="no-print">
+                  <div className="action-bar">
+                      <h2>Gestione Macchinari</h2>
+                      <button onClick={()=>apriModaleAsset()} className="btn-primary">+ Nuovo</button>
+                  </div>
+                  <div className="grid-responsive">
+                      {assets.map(a => (
+                          <div key={a.id} className="card card-setup">
+                              <div className="card-header">
+                                  <strong>{a.nome}</strong>
+                                  <span className="badge-type">{a.tipo}</span>
+                              </div>
+                              <div className="card-actions-row">
+                                  <button onClick={()=>setShowQRModal(a)} className="btn-secondary small">QR Code</button>
+                                  <button onClick={()=>apriModaleAsset(a)} className="btn-secondary small">Modifica</button>
+                              </div>
+                          </div>
+                      ))}
+                  </div>
+              </div>
+          )}
+      </main>
+
+      {/* --- MODALS --- */}
+      {showDownloadModal && (
+          <div className="modal-overlay">
+              <div className="modal-content">
+                  <h3>Scarica Report</h3>
+                  <div className="modal-body">
+                      <div className="format-toggle">
+                          <button onClick={()=>setDownloadFormat('excel')} className={downloadFormat==='excel'?'active':''}>Excel</button>
+                          <button onClick={()=>setDownloadFormat('pdf')} className={downloadFormat==='pdf'?'active':''}>PDF</button>
+                      </div>
+                      <div className="date-picker-row">
+                          <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} />
+                          <button onClick={()=>executeDownload('custom-month')} className="btn-primary">SCARICA MESE</button>
+                      </div>
+                      <hr/>
+                      <button onClick={()=>executeDownload('week')} className="btn-block">Ultima Settimana</button>
+                      <button onClick={()=>executeDownload('month')} className="btn-block">Ultimi 30 Giorni</button>
+                  </div>
+                  <button onClick={()=>setShowDownloadModal(false)} className="btn-link">Chiudi</button>
               </div>
           </div>
       )}
-
-      {/* --- MODALE ANTEPRIMA --- */}
-      {previewImage && (
-          <div onClick={() => setPreviewImage(null)} style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.9)', zIndex:3000, display:'flex', alignItems:'center', justifyContent:'center', cursor:'zoom-out'}}>
-              <img src={previewImage} alt="Anteprima" style={{maxWidth:'90%', maxHeight:'90%', borderRadius:10, border:'2px solid white'}} />
-              <button style={{position:'absolute', top:20, right:20, background:'white', border:'none', borderRadius:'50%', width:40, height:40, fontWeight:'bold', cursor:'pointer'}}>X</button>
+      
+      {showAssetModal && (
+          <div className="modal-overlay">
+             <div className="modal-content large">
+                <h3>{editingAsset ? 'Modifica' : 'Nuovo'} Asset</h3>
+                <form onSubmit={salvaAsset} className="form-grid">
+                   <input value={assetForm.nome} onChange={e=>setAssetForm({...assetForm, nome:e.target.value})} placeholder="Nome" className="full-width" required />
+                   <select value={assetForm.stato} onChange={e=>setAssetForm({...assetForm, stato:e.target.value})}><option value="attivo">Attivo</option><option value="spento">Spento</option></select>
+                   <select value={assetForm.tipo} onChange={e=>setAssetForm({...assetForm, tipo:e.target.value})}><option value="frigo">Frigo</option><option value="congelatore">Congelatore</option></select>
+                   <div className="row-2"><input placeholder="Min" value={assetForm.range_min} onChange={e=>setAssetForm({...assetForm, range_min:e.target.value})} /><input placeholder="Max" value={assetForm.range_max} onChange={e=>setAssetForm({...assetForm, range_max:e.target.value})} /></div>
+                   <button className="btn-primary full-width">SALVA</button>
+                   <button type="button" onClick={()=>setShowAssetModal(false)} className="btn-link full-width">Annulla</button>
+                </form>
+             </div>
           </div>
       )}
 
-      {/* --- PRINT AREA --- */}
-      {printMode === 'label' && lastLabel && (
-        <div className="print-area" style={{position:'fixed', top:0, left:0, width:'58mm', height:'40mm', background:'white', color:'black', display:'flex', flexDirection:'column', padding:'3mm', boxSizing:'border-box', fontFamily:'Arial', border:'1px solid black'}}>
-            <div style={{fontWeight:'900', fontSize:'14px', textAlign:'center', borderBottom:'2px solid black', paddingBottom:'2px', textTransform:'uppercase'}}>{lastLabel.prodotto}</div>
-            <div style={{display:'flex', justifyContent:'space-between', marginTop:'5px', fontSize:'10px'}}><span>PROD: <strong>{new Date(lastLabel.data_produzione).toLocaleDateString()}</strong></span><span>OP: {lastLabel.operatore}</span></div>
-            <div style={{marginTop:'5px', textAlign:'center'}}><div style={{fontSize:'10px'}}>SCADENZA</div><div style={{fontWeight:'900', fontSize:'16px'}}>{new Date(lastLabel.data_scadenza).toLocaleDateString()}</div></div>
-            <div style={{marginTop:'auto', fontSize:'9px', textAlign:'center', borderTop:'1px solid black', paddingTop:'2px'}}>Lotto: {lastLabel.lotto}</div>
-        </div>
-      )}
-      {printMode === 'qr' && showQRModal && (
-        <div className="print-area" style={{position:'fixed', top:0, left:0, width:'100%', height:'100%', background:'white', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'}}>
-             <h1 style={{fontSize:'40px', marginBottom:20}}>{showQRModal.nome}</h1>
-             <QRCode value={`${window.location.origin}/haccp/${slug}/scan/${showQRModal.id}`} size={400} />
-             <p style={{marginTop:20, fontSize:'20px'}}>Scansiona per registrare la temperatura</p>
-        </div>
-      )}
+      {/* --- STILI CSS MODERNI --- */}
+      <style>{`
+        :root { --primary: #2c3e50; --secondary: #34495e; --accent: #27ae60; --danger: #e74c3c; --bg: #f3f4f6; --white: #ffffff; --text: #1f2937; }
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
+        
+        /* LAYOUT */
+        .app-container { min-height: 100vh; padding-bottom: 40px; }
+        .app-header { background: var(--white); padding: 15px 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 100; }
+        .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .header-top h1 { margin: 0; font-size: 1.2rem; color: var(--primary); }
+        .app-content { max-width: 1200px; margin: 20px auto; padding: 0 15px; }
 
-      <style>{`@media print { .no-print { display: none !important; } .print-area { z-index: 9999; display: flex !important; } body { margin: 0; padding: 0; } @page { margin: 0; size: auto; } }`}</style>
+        /* NAVIGATION (SCROLLABLE) */
+        .download-group { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 5px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+        .nav-btn { white-space: nowrap; padding: 8px 16px; border: 1px solid #e5e7eb; background: var(--white); border-radius: 20px; font-weight: 600; font-size: 0.9rem; color: #6b7280; cursor: pointer; transition: all 0.2s; }
+        .nav-btn.active { background: var(--primary); color: var(--white); border-color: var(--primary); }
+        
+        /* GRID SYSTEM */
+        .grid-responsive { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; }
+        @media(max-width: 480px) { .grid-responsive { grid-template-columns: 1fr; } }
+
+        /* CARDS */
+        .card { background: var(--white); border-radius: 12px; padding: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 15px; position: relative; border-top: 4px solid transparent; }
+        .card-ok { border-top-color: var(--accent); background: #f0fdf4; }
+        .card-error { border-top-color: var(--danger); background: #fef2f2; }
+        .card-off { border-top-color: #9ca3af; opacity: 0.8; }
+        .card-input { border-top-color: var(--secondary); }
+        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .card-header h3 { margin: 0; font-size: 1.1rem; }
+        .temp-display { font-size: 1.5rem; font-weight: 800; color: var(--primary); }
+        .card-meta { font-size: 0.85rem; color: #6b7280; margin-bottom: 15px; }
+        
+        /* INPUTS & FORMS */
+        .input-row { display: flex; gap: 10px; height: 48px; }
+        .input-temp { flex: 1; border: 1px solid #d1d5db; border-radius: 8px; text-align: center; font-size: 1.2rem; font-weight: bold; width: 0; }
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .form-group { display: flex; flex-direction: column; gap: 4px; }
+        .form-group label { font-size: 0.8rem; font-weight: 600; color: #6b7280; }
+        .form-group input, .form-group select { padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem; }
+        .span-2 { grid-column: span 2; }
+        .full-width { width: 100%; grid-column: span 2; }
+        @media(max-width: 600px) { .form-grid { grid-template-columns: 1fr; } .span-2, .full-width { grid-column: span 1; } }
+
+        /* BUTTONS */
+        button { border: none; cursor: pointer; transition: opacity 0.2s; }
+        .btn-primary { background: var(--primary); color: var(--white); border-radius: 8px; font-weight: 600; padding: 0 20px; }
+        .btn-secondary { background: #e5e7eb; color: var(--text); padding: 8px 12px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; }
+        .btn-icon { width: 48px; height: 48px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; margin: 0 2px;}
+        .btn-grey { background: #9ca3af; color: white; font-size: 0.7rem; font-weight: bold; }
+        .btn-green { background: var(--accent); color: white; }
+        .btn-light { background: #f3f4f6; border: 1px solid #d1d5db; }
+        .btn-blue { background: #3498db; color: white; }
+        .btn-orange { background: #f39c12; color: white; }
+        .btn-red { background: #e74c3c; color: white; }
+        .btn-logout { background: var(--danger); color: white; padding: 5px 10px; border-radius: 4px; font-size: 0.8rem; }
+        .btn-edit { background: #f59e0b; color: white; padding: 10px; border-radius: 8px; font-weight: bold; margin-top: 10px; }
+        .text-center { text-align: center; display: block;}
+
+        /* TABLE RESPONSIVE */
+        .clean-table { width: 100%; border-collapse: collapse; }
+        .clean-table th { text-align: left; padding: 12px; background: #f9fafb; color: #6b7280; font-size: 0.85rem; }
+        .clean-table td { padding: 12px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+        
+        @media(max-width: 600px) {
+            .clean-table thead { display: none; }
+            .clean-table tr { display: block; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 10px; padding: 10px; }
+            .clean-table td { display: flex; justify-content: space-between; border: none; padding: 5px 0; font-size: 0.9rem; }
+            .clean-table td::before { content: attr(data-label); font-weight: bold; color: #9ca3af; margin-right: 10px; }
+            .clean-table td.actions-cell { justify-content: flex-end; gap: 10px; margin-top: 10px; border-top: 1px solid #eee; padding-top: 10px; }
+        }
+        
+        /* CALENDAR */
+        .cal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+        .cal-day { border: 1px solid #e5e7eb; min-height: 70px; padding: 5px; border-radius: 6px; cursor: pointer; position: relative; font-weight: bold; }
+        .cal-day.ok { background: #d1fae5; border-color: #34d399; }
+        .cal-day.error { background: #fee2e2; border-color: #f87171; }
+        .cal-dots { font-size: 0.7rem; margin-top: 5px; }
+        .cal-details { margin-top: 20px; border-top: 2px solid #eee; padding-top: 15px; }
+        .cal-cols { display: flex; gap: 15px; flex-wrap: wrap; }
+        .cal-col { flex: 1; background: #f9fafb; padding: 10px; border-radius: 8px; min-width: 250px; }
+        .cal-item { background: white; padding: 8px; margin-bottom: 5px; border-radius: 5px; border: 1px solid #eee; font-size: 0.9rem; }
+
+        /* UTILS */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .modal-content { background: white; padding: 25px; border-radius: 12px; width: 90%; max-width: 400px; max-height: 90vh; overflow-y: auto; }
+        .print-area { display: none; }
+        @media print { .no-print { display: none !important; } .print-area { display: flex !important; } }
+      `}</style>
     </div>
   );
 }
