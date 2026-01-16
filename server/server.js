@@ -452,10 +452,25 @@ app.get('/api/haccp/labels/storico/:ristorante_id', async (req, res) => {
     } catch(e) { res.status(500).json({error: "Errore recupero storico"}); } 
 });
 
-// --- PROXY DOWNLOAD V8 (TENTATIVI MULTIPLI INTELLIGENTI) ---
+// --- PROXY DOWNLOAD V9 (DEBUG CHIAVI + FIX PDF) ---
 app.get('/api/proxy-download', async (req, res) => {
     const fileUrl = req.query.url;
     const fileName = req.query.name || 'documento.pdf';
+    
+    // 1. CONTROLLO DI SICUREZZA VARIABILI AMBIENTE
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const apiKey = process.env.CLOUDINARY_API_KEY;
+    const apiSecret = process.env.CLOUDINARY_API_SECRET;
+
+    // Stampiamo nei log (console di Render) se le chiavi ci sono
+    console.log("--- DEBUG CLOUDINARY ---");
+    console.log("Cloud Name caricato:", cloudName ? "SÌ (" + cloudName + ")" : "❌ NO (Manca nel .env!)");
+    console.log("API Key caricata:", apiKey ? "SÌ" : "❌ NO");
+    console.log("API Secret caricato:", apiSecret ? "SÌ (lunghezza: " + apiSecret.length + ")" : "❌ NO");
+
+    if (!cloudName || !apiKey || !apiSecret) {
+        return res.status(500).send("ERRORE CONFIGURAZIONE SERVER: Mancano le chiavi Cloudinary nel file .env o su Render.");
+    }
 
     if (!fileUrl) return res.status(400).send("URL mancante");
 
@@ -463,103 +478,67 @@ app.get('/api/proxy-download', async (req, res) => {
     const https = require('https');
     const http = require('http');
 
-    // Funzione helper per scaricare un URL
-    const tryDownload = (url) => {
-        return new Promise((resolve, reject) => {
-            const client = url.startsWith('https') ? https : http;
-            const req = client.get(url, {
-                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36' }
-            }, (response) => {
-                // Se è un redirect, seguiamolo (massimo 1 livello per semplicità qui)
-                if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-                    resolve({ status: 'redirect', location: response.headers.location });
-                } else if (response.statusCode === 200) {
-                    resolve({ status: 'ok', response: response });
-                } else {
-                    resolve({ status: 'error', code: response.statusCode });
-                }
-            });
-            req.on('error', (err) => reject(err));
-        });
+    let downloadUrl = fileUrl;
+
+    // 2. RICOSTRUZIONE URL FIRMATO (SPECIFICO PER PDF PROTETTI)
+    if (fileUrl.includes('cloudinary.com')) {
+        try {
+            // Estrae Public ID
+            // Es: .../image/upload/v12345/cartella/file.pdf
+            const parts = fileUrl.split('/upload/');
+            if (parts.length === 2) {
+                let path = parts[1];
+                path = path.replace(/^v\d+\//, ''); // Rimuove v12345/
+                const publicId = path.replace(/\.[^/.]+$/, ""); // Rimuove .pdf
+                
+                // NOTA: Usiamo 'image' come resource_type perché Cloudinary tratta i PDF come immagini per la delivery
+                // Usiamo 'upload' come type ma con sign_url: true
+                downloadUrl = cloudinary.url(publicId, {
+                    resource_type: 'image',
+                    type: 'upload',      // I PDF sono in upload (non authenticated) ma richiedono firma
+                    sign_url: true,      // Genera la firma s--xxxxx--
+                    format: 'pdf',
+                    secure: true
+                });
+                
+                console.log("Tentativo URL Firmato:", downloadUrl);
+            }
+        } catch (e) {
+            console.error("Errore generazione URL:", e);
+        }
+    }
+
+    // 3. ESECUZIONE DOWNLOAD
+    const client = downloadUrl.startsWith('https') ? https : http;
+    const options = {
+        headers: { 'User-Agent': 'Mozilla/5.0' }
     };
 
-    try {
-        let publicId = "";
-        let version = "";
-        
-        // 1. ESTRAZIONE ID E VERSIONE DALL'URL
-        if (fileUrl.includes('/upload/')) {
-            const parts = fileUrl.split('/upload/');
-            let path = parts[1]; // es: v1768605417/menu-app/doc.pdf
-            
-            // Estrai versione se c'è (es. v12345)
-            const verMatch = path.match(/^(v\d+)\//);
-            if (verMatch) {
-                version = verMatch[1]; // v1768605417
-                path = path.replace(/^(v\d+)\//, ''); // rimuovi versione
-            }
-            
-            // Public ID senza estensione
-            publicId = path.replace(/\.[^/.]+$/, ""); // menu-app/doc
+    client.get(downloadUrl, options, (response) => {
+        // Gestione Redirect
+        if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+             const newUrl = response.headers.location;
+             console.log("Seguo redirect verso:", newUrl);
+             // Semplice gestione redirect a 1 livello
+             client.get(newUrl, options, (res2) => {
+                 if(res2.statusCode !== 200) return res.status(res2.statusCode).send("Errore dopo redirect.");
+                 res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+                 res.setHeader('Content-Type', 'application/pdf');
+                 res2.pipe(res);
+             });
+             return;
         }
 
-        // 2. GENERIAMO I CANDIDATI (Tentativi)
-        const candidates = [];
-
-        // TENTATIVO A: Tipo 'upload' (Pubblico) ma FIRMATO (Probabile soluzione per i tuoi PDF)
-        candidates.push(cloudinary.url(publicId, {
-            resource_type: 'image',
-            type: 'upload', 
-            sign_url: true,
-            format: 'pdf',
-            version: version // Manteniamo la versione originale per sicurezza
-        }));
-
-        // TENTATIVO B: Tipo 'authenticated' (Privato)
-        candidates.push(cloudinary.url(publicId, {
-            resource_type: 'image',
-            type: 'authenticated',
-            sign_url: true,
-            format: 'pdf',
-            version: version
-        }));
-
-        console.log(`🔎 Tentativo Download per ID: ${publicId}`);
-
-        // 3. ESECUZIONE TENTATIVI
-        for (const attemptUrl of candidates) {
-            console.log(`   ➡ Provo URL: ${attemptUrl}`);
-            try {
-                const result = await tryDownload(attemptUrl);
-                
-                if (result.status === 'redirect') {
-                    // Se c'è un redirect, seguiamolo una volta (spesso porta al file vero)
-                    const result2 = await tryDownload(result.location);
-                    if (result2.status === 'ok') {
-                         res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
-                         res.setHeader('Content-Type', 'application/pdf');
-                         result2.response.pipe(res);
-                         return; // FERMATI QUI, ABBIAMO VINTO
-                    }
-                } else if (result.status === 'ok') {
-                    res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
-                    res.setHeader('Content-Type', 'application/pdf');
-                    result.response.pipe(res);
-                    return; // FERMATI QUI, ABBIAMO VINTO
-                }
-                // Se error, continua al prossimo candidato...
-            } catch (e) {
-                console.error("Err rete candidato:", e.message);
-            }
+        if (response.statusCode !== 200) {
+            console.error(`Errore Download: ${response.statusCode} - URL: ${downloadUrl}`);
+            return res.status(response.statusCode).send(`Errore Cloudinary ${response.statusCode}: Verifica le chiavi nel log del server.`);
         }
 
-        // Se siamo qui, nessun tentativo ha funzionato
-        res.status(404).send("Errore: Impossibile scaricare il file con nessuna configurazione (Upload/Auth). Controlla se il file esiste ancora.");
+        res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+        res.setHeader('Content-Type', 'application/pdf');
+        response.pipe(res);
 
-    } catch (e) {
-        console.error("Errore script:", e);
-        res.status(500).send("Errore interno proxy.");
-    }
+    }).on('error', (err) => res.status(500).send("Errore di rete."));
 });
 
 app.listen(port, () => console.log(`🚀 SERVER V12.2 (Porta ${port}) - TIMEZONE: ROME`));
