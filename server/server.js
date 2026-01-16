@@ -513,6 +513,7 @@ app.post('/api/haccp/labels', async (req, res) => {
 });
 
 // --- NUOVE API: RICEVIMENTO MERCI ---
+// 1. GET (Include i nuovi campi) - Nessuna modifica necessaria se usi SELECT *
 app.get('/api/haccp/merci/:ristorante_id', async (req, res) => {
     try {
         const r = await pool.query("SELECT * FROM haccp_merci WHERE ristorante_id = $1 ORDER BY data_ricezione DESC, data_ora DESC LIMIT 100", [req.params.ristorante_id]);
@@ -520,16 +521,34 @@ app.get('/api/haccp/merci/:ristorante_id', async (req, res) => {
     } catch(e) { res.status(500).json({error:"Err"}); }
 });
 
+// 2. POST (AGGIORNATA CON NUOVI CAMPI)
 app.post('/api/haccp/merci', async (req, res) => {
     try {
-        const { ristorante_id, data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore } = req.body;
+        const { ristorante_id, data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione } = req.body;
+        
         await pool.query(
-            `INSERT INTO haccp_merci (ristorante_id, data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-            [ristorante_id, data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore]
+            `INSERT INTO haccp_merci 
+            (ristorante_id, data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+            [ristorante_id, data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione]
         );
         res.json({success:true});
     } catch(e) { console.error(e); res.status(500).json({error:"Err"}); }
+});
+
+// 3. PUT (NUOVA: PER MODIFICARE UNA RIGA)
+app.put('/api/haccp/merci/:id', async (req, res) => {
+    try {
+        const { data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione } = req.body;
+        
+        await pool.query(
+            `UPDATE haccp_merci 
+             SET data_ricezione=$1, fornitore=$2, prodotto=$3, lotto=$4, scadenza=$5, temperatura=$6, conforme=$7, integro=$8, note=$9, operatore=$10, quantita=$11, allegato_url=$12, destinazione=$13 
+             WHERE id=$14`,
+            [data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione, req.params.id]
+        );
+        res.json({success:true});
+    } catch(e) { res.status(500).json({error:"Err"}); }
 });
 app.delete('/api/haccp/merci/:id', async (req, res) => {
     try { await pool.query("DELETE FROM haccp_merci WHERE id=$1", [req.params.id]); res.json({success:true}); } catch(e){ res.status(500).json({error:"Err"}); }
