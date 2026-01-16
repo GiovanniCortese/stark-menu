@@ -99,7 +99,6 @@ function Haccp() {
       }
   }, [isAuthorized, info, tab, currentDate]);
 
-  // --- FUNZIONI CARICAMENTO DATI ---
   const ricaricaDati = () => {
       fetch(`${API_URL}/api/haccp/assets/${info.id}`).then(r=>r.json()).then(setAssets);
       fetch(`${API_URL}/api/haccp/logs/${info.id}`).then(r=>r.json()).then(setLogs);
@@ -121,20 +120,17 @@ function Haccp() {
         .catch(e => console.error("Err Cal", e));
   };
 
-  // --- GESTIONE FILE (AGGIORNATA) ---
+  // --- GESTIONE FILE ---
   const handleFileAction = (url) => {
     if (!url) return;
-    // Se è PDF o altro documento, apri in nuova scheda (Download/View)
     const isPdf = url.toLowerCase().endsWith('.pdf') || url.toLowerCase().includes('.pdf');
     if (isPdf) {
         window.open(url, '_blank');
     } else {
-        // Solo se è immagine apri anteprima
         setPreviewImage(url);
     }
   };
 
-  // --- AUTH & UPLOAD ---
   const handleLogin = async (e) => {
       e.preventDefault();
       try {
@@ -156,7 +152,6 @@ function Haccp() {
       const data = await res.json(); return data.url;
   };
 
-  // --- STAFF ---
   const openStaffDocs = async (user) => {
       setSelectedStaff(user);
       const r = await fetch(`${API_URL}/api/staff/docs/${user.id}`);
@@ -180,7 +175,6 @@ function Haccp() {
       setStaffDocs(await r.json());
   };
 
-  // --- TEMPERATURE ---
   const getTodayLog = (assetId) => {
       const today = new Date().toDateString();
       return logs.find(l => l.asset_id === assetId && new Date(l.data_ora).toDateString() === today);
@@ -229,7 +223,6 @@ function Haccp() {
       setTempInput(prev => ({ ...prev, [asset.id]: { val: logEsistente ? logEsistente.valore : '', photo: '' } }));
   };
 
-  // --- MERCI ---
   const handleMerciPhoto = async (e) => {
       const f = e.target.files[0]; if(!f) return;
       setUploadingMerci(true);
@@ -264,7 +257,6 @@ function Haccp() {
   };
   const eliminaMerce = async (id) => { if(confirm("Eliminare riga?")) { await fetch(`${API_URL}/api/haccp/merci/${id}`, {method:'DELETE'}); ricaricaDati(); } };
 
-  // --- ASSETS ---
   const apriModaleAsset = (asset = null) => {
       if(asset) { setEditingAsset(asset); setAssetForm({ ...asset }); } 
       else { setEditingAsset(null); setAssetForm({ nome:'', tipo:'frigo', range_min:0, range_max:4, marca:'', modello:'', serial_number:'', foto_url:'', etichetta_url:'', stato:'attivo' }); }
@@ -286,7 +278,6 @@ function Haccp() {
       try { const url = await uploadFile(f); setAssetForm(prev => ({...prev, etichetta_url: url})); } finally { setUploadingLabel(false); }
   };
 
-  // --- EXPORT (AGGIORNATO) ---
   const openDownloadModal = (type) => { setDownloadType(type); setShowDownloadModal(true); setSelectedMonth(''); };
   const executeDownload = (range) => {
       let start = new Date(), end = new Date(), rangeName = "Tutto";
@@ -299,22 +290,18 @@ function Haccp() {
       } else if(range === 'all') { start = new Date('2020-01-01'); rangeName="Storico Completo"; }
       
       const query = `?start=${start.toISOString()}&end=${end.toISOString()}&rangeName=${rangeName}&format=${downloadFormat}`;
-      // Gestione URL per etichette vs altri
       let endpointType = downloadType;
       window.open(`${API_URL}/api/haccp/export/${endpointType}/${info.id}${query}`, '_blank');
       setShowDownloadModal(false);
   };
 
-  // --- LABELS ---
   const handleLabelTypeChange = (e) => {
       const type = e.target.value; 
       let days = 3;
       if (type === 'negativo') days = 180; 
       if (type === 'sottovuoto') days = 10;
-      
       const newDate = new Date();
       newDate.setDate(newDate.getDate() + days);
-
       setLabelData({
           ...labelData, 
           tipo: type, 
@@ -325,7 +312,6 @@ function Haccp() {
 
   const handlePrintLabel = async (e) => {
       e.preventDefault();
-      // Usa data manuale se presente
       const scadenza = labelData.scadenza_manuale ? new Date(labelData.scadenza_manuale) : new Date();
       if(!labelData.scadenza_manuale) scadenza.setDate(scadenza.getDate() + parseInt(labelData.giorni_scadenza));
 
@@ -343,7 +329,17 @@ function Haccp() {
       setTimeout(() => { window.print(); setPrintMode(null); }, 500);
   };
 
-  // --- RENDER ---
+  // NUOVA FUNZIONE PER GESTIONE QR CODE E STAMPA IMMEDIATA
+  const handlePrintQR = (asset) => {
+      setShowQRModal(asset);
+      setPrintMode('qr');
+      setTimeout(() => {
+          window.print();
+          setPrintMode(null);
+          setShowQRModal(null);
+      }, 500);
+  };
+
   if(!info) return <div>Caricamento...</div>;
   if(!isAuthorized) return <div style={{padding:50, textAlign:'center'}}><h1>🔒 Password Required</h1><form onSubmit={handleLogin}><input type="password" value={password} onChange={e=>setPassword(e.target.value)} /><button>Login</button></form></div>;
   const assetsToDisplay = scanId ? assets.filter(a => a.id.toString() === scanId) : assets.filter(a=>['frigo','cella','vetrina'].includes(a.tipo));
@@ -441,6 +437,7 @@ function Haccp() {
              setPreviewImage={setPreviewImage}
              handleFileAction={handleFileAction}
              openDownloadModal={openDownloadModal}
+             handlePrintQR={handlePrintQR} // PASSAGGIO NUOVA FUNZIONE
           />
       )}
 

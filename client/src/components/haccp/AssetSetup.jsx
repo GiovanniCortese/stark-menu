@@ -1,6 +1,6 @@
 import React from 'react';
 
-const AssetSetup = ({ assets, apriModaleAsset, setShowQRModal, setPreviewImage, handleFileAction, openDownloadModal }) => {
+const AssetSetup = ({ assets, apriModaleAsset, handlePrintQR, setPreviewImage, handleFileAction, openDownloadModal }) => {
     return (
         <div className="no-print">
             <div style={{display:'flex', justifyContent:'space-between', marginBottom:20}}>
@@ -22,7 +22,8 @@ const AssetSetup = ({ assets, apriModaleAsset, setShowQRModal, setPreviewImage, 
                         </div>
                         
                         <div style={{marginTop:10, display:'flex', gap:5}}>
-                            <button onClick={()=>setShowQRModal(a)} style={{background:'#34495e', color:'white', border:'none', padding:'8px', borderRadius:3, flex:1, cursor:'pointer'}}>QR Code</button>
+                            {/* FIX: ORA CHIAMA handlePrintQR CHE APRE E STAMPA */}
+                            <button onClick={()=>handlePrintQR(a)} style={{background:'#34495e', color:'white', border:'none', padding:'8px', borderRadius:3, flex:1, cursor:'pointer'}}>QR Code 🖨️</button>
                             <button onClick={()=>apriModaleAsset(a)} style={{background:'#f39c12', color:'white', border:'none', padding:'8px', borderRadius:3, flex:1, cursor:'pointer'}}>Modifica</button>
                         </div>
                         
