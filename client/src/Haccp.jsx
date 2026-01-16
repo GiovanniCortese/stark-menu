@@ -1,198 +1,506 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import QRCode from 'react-qr-code'; 
+import QRCode from 'react-qr-code';
 
-// IMPORTA I NUOVI COMPONENTI
+// Import Componenti
 import TempControl from './components/haccp/TempControl';
 import MerciManager from './components/haccp/MerciManager';
 import HaccpCalendar from './components/haccp/HaccpCalendar';
-import LabelGenerator from './components/haccp/LabelGenerator';
-import StaffManager from './components/haccp/StaffManager';
 import AssetSetup from './components/haccp/AssetSetup';
-import CleaningManager from './components/haccp/CleaningManager';
+import StaffManager from './components/haccp/StaffManager';
+import LabelGenerator from './components/haccp/LabelGenerator'; // Se usi quello caricato prima
 
 function Haccp() {
   const { slug, scanId } = useParams();
   const navigate = useNavigate();
+  const API_URL = "https://stark-backend-gg17.onrender.com";
 
-  // STATI ESISTENTI
+  // --- STATO GLOBALE ---
   const [info, setInfo] = useState(null);
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [password, setPassword] = useState("");
+  
+  // Dati
   const [assets, setAssets] = useState([]);
   const [logs, setLogs] = useState([]); 
   const [merci, setMerci] = useState([]); 
   const [calendarLogs, setCalendarLogs] = useState([]); 
   const [tab, setTab] = useState('temperature'); 
   const [staffList, setStaffList] = useState([]);
+
+  // Stati Staff
   const [selectedStaff, setSelectedStaff] = useState(null);
   const [staffDocs, setStaffDocs] = useState([]);
   const [newDoc, setNewDoc] = useState({ tipo: 'Contratto', url: '' });
+
+  // Stati Moduli
   const [tempInput, setTempInput] = useState({}); 
+  const [uploadingLog, setUploadingLog] = useState(null); 
+  
+  // Stati Merci
   const [merciForm, setMerciForm] = useState({
-      id: null, data_ricezione: new Date().toISOString().split('T')[0],
-      fornitore: '', prodotto: '', lotto: '', scadenza: '', temperatura: '', 
-      conforme: true, integro: true, note: '', quantita: '', allegato_url: '', destinazione: ''
+      id: null,
+      data_ricezione: new Date().toISOString().split('T')[0],
+      fornitore: '', prodotto: '', lotto: '', scadenza: '',
+      temperatura: '', conforme: true, integro: true, note: '',
+      quantita: '', allegato_url: '', destinazione: ''
   });
+  const [uploadingMerci, setUploadingMerci] = useState(false);
+
+  // Stati Asset / Modali
+  const [showAssetModal, setShowAssetModal] = useState(false);
+  const [editingAsset, setEditingAsset] = useState(null); 
+  const [assetForm, setAssetForm] = useState({ 
+      nome:'', tipo:'frigo', range_min:0, range_max:4, 
+      marca:'', modello:'', serial_number:'', 
+      foto_url:'', etichetta_url:'', stato: 'attivo' 
+  });
+  const [uploadingAsset, setUploadingAsset] = useState(false); 
+  const [uploadingLabel, setUploadingLabel] = useState(false); 
+  const [showQRModal, setShowQRModal] = useState(null);
+
+  // Stati UI Extra
   const [previewImage, setPreviewImage] = useState(null);
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
+  const [downloadType, setDownloadType] = useState(null); 
+  const [downloadFormat, setDownloadFormat] = useState('excel'); 
+  const [selectedMonth, setSelectedMonth] = useState('');
+
+  // Stati Etichette
   const [labelData, setLabelData] = useState({ prodotto: '', giorni_scadenza: 3, operatore: '', tipo: 'positivo' });
   const [lastLabel, setLastLabel] = useState(null);
   const [printMode, setPrintMode] = useState(null);
+
+  // Stati Calendario
   const [currentDate, setCurrentDate] = useState(new Date()); 
-  const [selectedDayLogs, setSelectedDayLogs] = useState(null);
-  const [showAssetModal, setShowAssetModal] = useState(false);
-  const [showQRModal, setShowQRModal] = useState(null);
+  const [selectedDayLogs, setSelectedDayLogs] = useState(null); 
 
-  const API_URL = "https://stark-backend-gg17.onrender.com"; 
-
-  // --- FUNZIONI DI LOGICA ---
+  // --- EFFETTI ---
   useEffect(() => {
-      fetch(`${API_URL}/api/menu/${slug}`).then(r=>r.json()).then(data => setInfo(data));
-      if(localStorage.getItem(`haccp_session_${slug}`) === "true") setIsAuthorized(true);
-  }, [slug]);
+      fetch(`${API_URL}/api/menu/${slug}`).then(r=>r.json()).then(setInfo);
+      const sess = localStorage.getItem(`haccp_session_${slug}`);
+      if(sess === "true") setIsAuthorized(true);
+      if(scanId) setTab('temperature');
+  }, [slug, scanId]);
 
   useEffect(() => {
-      if(isAuthorized && info) ricaricaDati();
-  }, [isAuthorized, info, tab]);
+      if(isAuthorized && info) {
+          ricaricaDati();
+          ricaricaCalendario(); 
+      }
+  }, [isAuthorized, info, tab, currentDate]);
 
+  // --- FUNZIONI CARICAMENTO DATI ---
   const ricaricaDati = () => {
       fetch(`${API_URL}/api/haccp/assets/${info.id}`).then(r=>r.json()).then(setAssets);
       fetch(`${API_URL}/api/haccp/logs/${info.id}`).then(r=>r.json()).then(setLogs);
       fetch(`${API_URL}/api/haccp/merci/${info.id}`).then(r=>r.json()).then(setMerci);
-      fetch(`${API_URL}/api/utenti?mode=staff&ristorante_id=${info.id}`).then(r=>r.json()).then(setStaffList);
+      fetch(`${API_URL}/api/utenti?mode=staff&ristorante_id=${info.id}&t=${new Date().getTime()}`)
+        .then(r=>r.json())
+        .then(data => setStaffList(Array.isArray(data) ? data : []));
   };
 
-  // --- NUOVA GESTIONE DOWNLOAD PDF / POPUP FOTO ---
-  const handleFileView = (url) => {
-    if (!url) return;
-    const isPDF = url.toLowerCase().endsWith('.pdf');
-    if (isPDF) {
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', url.split('/').pop());
-        link.setAttribute('target', '_blank');
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    } else {
-        setPreviewImage(url);
-    }
+  const ricaricaCalendario = async () => {
+      if(tab !== 'calendario') return;
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+      const start = new Date(year, month, 1).toISOString();
+      const end = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
+      fetch(`${API_URL}/api/haccp/logs/${info.id}?start=${start}&end=${end}`)
+        .then(r=>r.json())
+        .then(setCalendarLogs)
+        .catch(e => console.error("Err Cal", e));
   };
 
-  // --- ALTRE FUNZIONI (Registra Temp, Salva Merci, etc. - Mantieni le tue implementazioni originali) ---
+  // --- AUTH & UPLOAD ---
+  const handleLogin = async (e) => {
+      e.preventDefault();
+      try {
+          const r = await fetch(`${API_URL}/api/auth/station`, {
+              method:'POST', headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({ ristorante_id: info.id, role: 'haccp', password })
+          });
+          const d = await r.json();
+          if(d.success) {
+              setIsAuthorized(true);
+              localStorage.setItem(`haccp_session_${slug}`, "true");
+          } else alert("Password Errata");
+      } catch(e) { alert("Errore connessione"); }
+  };
+
+  const uploadFile = async (file) => {
+      const fd = new FormData(); fd.append('photo', file);
+      const res = await fetch(`${API_URL}/api/upload`, { method:'POST', body:fd });
+      const data = await res.json(); return data.url;
+  };
+
+  // --- STAFF ---
+  const openStaffDocs = async (user) => {
+      setSelectedStaff(user);
+      const r = await fetch(`${API_URL}/api/staff/docs/${user.id}`);
+      setStaffDocs(await r.json());
+  };
+  const uploadStaffDoc = async (e) => {
+      const f = e.target.files[0]; if(!f) return;
+      const url = await uploadFile(f);
+      await fetch(`${API_URL}/api/staff/docs`, {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ utente_id: selectedStaff.id, tipo_doc: newDoc.tipo, nome_file: f.name, url })
+      });
+      const r = await fetch(`${API_URL}/api/staff/docs/${selectedStaff.id}`);
+      setStaffDocs(await r.json());
+      setNewDoc({...newDoc, url: ''});
+  };
+  const deleteDoc = async (id) => {
+      if(!confirm("Eliminare documento?")) return;
+      await fetch(`${API_URL}/api/staff/docs/${id}`, {method:'DELETE'});
+      const r = await fetch(`${API_URL}/api/staff/docs/${selectedStaff.id}`);
+      setStaffDocs(await r.json());
+  };
+
+  // --- TEMPERATURE ---
+  const getTodayLog = (assetId) => {
+      const today = new Date().toDateString();
+      return logs.find(l => l.asset_id === assetId && new Date(l.data_ora).toDateString() === today);
+  };
+  const handleLogPhoto = async (e, assetId) => {
+      const f = e.target.files[0]; if(!f) return;
+      setUploadingLog(assetId);
+      try {
+          const url = await uploadFile(f);
+          setTempInput(prev => ({...prev, [assetId]: { ...(prev[assetId] || {}), photo: url }}));
+      } finally { setUploadingLog(null); }
+  };
+  const registraTemperatura = async (asset, isSpento = false) => {
+      let val = 'OFF', conforme = true, azione = "";
+      if (!isSpento) {
+          const currentInput = tempInput[asset.id] || {};
+          val = parseFloat(currentInput.val);
+          if(isNaN(val) && currentInput.val !== '0') return alert("Inserisci un numero valido");
+          
+          const realMin = Math.min(parseFloat(asset.range_min), parseFloat(asset.range_max));
+          const realMax = Math.max(parseFloat(asset.range_min), parseFloat(asset.range_max));
+          conforme = val >= realMin && val <= realMax;
+          if(!conforme) {
+              azione = prompt(`⚠️ ATTENZIONE: Temp ${val}°C fuori range.\nDescrivi azione correttiva:`, "");
+              if(!azione) return alert("Azione correttiva obbligatoria!");
+          }
+          val = val.toString();
+      } else {
+          val = "OFF"; conforme = true; azione = "Macchinario spento/inutilizzato in data odierna";
+      }
+
+      await fetch(`${API_URL}/api/haccp/logs`, {
+          method: 'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({
+              ristorante_id: info.id, asset_id: asset.id, operatore: 'Staff', 
+              tipo_log: 'temperatura', valore: val, 
+              conformita: conforme, azione_correttiva: azione, foto_prova_url: (tempInput[asset.id] || {}).photo || ''
+          })
+      });
+      setTempInput(prev => { const n = {...prev}; delete n[asset.id]; return n; }); 
+      ricaricaDati();
+      if(scanId) navigate(`/haccp/${slug}`); 
+  };
+  const abilitaNuovaMisurazione = (asset) => {
+      const logEsistente = getTodayLog(asset.id);
+      setTempInput(prev => ({ ...prev, [asset.id]: { val: logEsistente ? logEsistente.valore : '', photo: '' } }));
+  };
+
+  // --- MERCI ---
+  const handleMerciPhoto = async (e) => {
+      const f = e.target.files[0]; if(!f) return;
+      setUploadingMerci(true);
+      try { const url = await uploadFile(f); setMerciForm(prev => ({...prev, allegato_url: url})); } finally { setUploadingMerci(false); }
+  };
+  const salvaMerci = async (e) => {
+      e.preventDefault();
+      try {
+        const endpoint = merciForm.id ? `${API_URL}/api/haccp/merci/${merciForm.id}` : `${API_URL}/api/haccp/merci`;
+        const method = merciForm.id ? 'PUT' : 'POST';
+        const payload = { ...merciForm, ristorante_id: info.id, operatore: 'Staff' };
+        if (!payload.scadenza || payload.scadenza === "") payload.scadenza = null;
+        if (!payload.temperatura || payload.temperatura === "") payload.temperatura = null;
+        if (!payload.quantita || payload.quantita === "") payload.quantita = null;
+
+        const res = await fetch(endpoint, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const data = await res.json();
+        if (data.success) { resetMerciForm(); ricaricaDati(); alert("✅ Salvataggio riuscito!"); } 
+        else alert("❌ Errore Server: " + data.error);
+      } catch (err) { alert("❌ Errore Connessione"); }
+  };
+  const resetMerciForm = () => {
+      setMerciForm({
+        id: null, data_ricezione: new Date().toISOString().split('T')[0],
+        fornitore: '', prodotto: '', lotto: '', scadenza: '', temperatura: '', 
+        conforme: true, integro: true, note: '', quantita: '', allegato_url: '', destinazione: ''
+      });
+  };
+  const iniziaModificaMerci = (m) => {
+      setMerciForm({ ...m, data_ricezione: m.data_ricezione.split('T')[0], scadenza: m.scadenza ? m.scadenza.split('T')[0] : '' });
+      window.scrollTo(0,0);
+  };
+  const eliminaMerce = async (id) => { if(confirm("Eliminare riga?")) { await fetch(`${API_URL}/api/haccp/merci/${id}`, {method:'DELETE'}); ricaricaDati(); } };
+
+  // --- ASSETS ---
+  const apriModaleAsset = (asset = null) => {
+      if(asset) { setEditingAsset(asset); setAssetForm({ ...asset }); } 
+      else { setEditingAsset(null); setAssetForm({ nome:'', tipo:'frigo', range_min:0, range_max:4, marca:'', modello:'', serial_number:'', foto_url:'', etichetta_url:'', stato:'attivo' }); }
+      setShowAssetModal(true);
+  };
+  const salvaAsset = async (e) => {
+      e.preventDefault();
+      const endpoint = editingAsset ? `${API_URL}/api/haccp/assets/${editingAsset.id}` : `${API_URL}/api/haccp/assets`;
+      const method = editingAsset ? 'PUT' : 'POST';
+      await fetch(endpoint, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...assetForm, ristorante_id: info.id }) });
+      setShowAssetModal(false); ricaricaDati();
+  };
+  const handleAssetPhoto = async (e) => {
+      const f = e.target.files[0]; if(!f) return; setUploadingAsset(true);
+      try { const url = await uploadFile(f); setAssetForm(prev => ({...prev, foto_url: url})); } finally { setUploadingAsset(false); }
+  };
+  const handleAssetLabel = async (e) => {
+      const f = e.target.files[0]; if(!f) return; setUploadingLabel(true);
+      try { const url = await uploadFile(f); setAssetForm(prev => ({...prev, etichetta_url: url})); } finally { setUploadingLabel(false); }
+  };
+
+  // --- EXPORT ---
+  const openDownloadModal = (type) => { setDownloadType(type); setShowDownloadModal(true); setSelectedMonth(''); };
+  const executeDownload = (range) => {
+      let start = new Date(), end = new Date(), rangeName = "Tutto";
+      if(range === 'week') { start.setDate(end.getDate() - 7); rangeName="Ultima Settimana"; }
+      else if(range === 'month') { start.setMonth(end.getMonth() - 1); rangeName="Ultimo Mese"; }
+      else if (range === 'custom-month') {
+          if(!selectedMonth) return alert("Seleziona un mese!");
+          const [y, m] = selectedMonth.split('-'); start = new Date(y, m - 1, 1); end = new Date(y, m, 0, 23, 59, 59);
+          rangeName = `Mese di ${start.toLocaleString('it-IT', { month: 'long', year: 'numeric' })}`;
+      } else if(range === 'all') { start = new Date('2020-01-01'); rangeName="Storico Completo"; }
+      const query = `?start=${start.toISOString()}&end=${end.toISOString()}&rangeName=${rangeName}&format=${downloadFormat}`;
+      window.open(`${API_URL}/api/haccp/export/${downloadType}/${info.id}${query}`, '_blank');
+      setShowDownloadModal(false);
+  };
+
+  // --- LABELS ---
+  const handleLabelTypeChange = (e) => {
+      const type = e.target.value; let days = 3;
+      if (type === 'negativo') days = 180; if (type === 'sottovuoto') days = 10;
+      setLabelData({...labelData, tipo: type, giorni_scadenza: days});
+  };
   const handlePrintLabel = async (e) => {
       e.preventDefault();
       const scadenza = new Date(); scadenza.setDate(scadenza.getDate() + parseInt(labelData.giorni_scadenza));
       const res = await fetch(`${API_URL}/api/haccp/labels`, { 
           method:'POST', headers:{'Content-Type':'application/json'}, 
-          body: JSON.stringify({ ristorante_id: info.id, prodotto: labelData.prodotto, data_scadenza: scadenza, operatore: labelData.operatore, tipo_conservazione: labelData.tipo }) 
+          body: JSON.stringify({ ristorante_id: info.id, prodotto: labelData.prodotto, data_scadenza: scadenza, operatore: labelData.operatore || 'Chef', tipo_conservazione: labelData.tipo }) 
       });
       const data = await res.json(); 
       if(data.success) { setLastLabel(data.label); setPrintMode('label'); setTimeout(() => { window.print(); setPrintMode(null); }, 500); }
   };
 
+  // --- RENDER ---
   if(!info) return <div>Caricamento...</div>;
-  if(!isAuthorized) return <div style={{padding:50, textAlign:'center'}}><h1>🔒 HACCP Access</h1><form onSubmit={(e)=>{e.preventDefault(); setIsAuthorized(true); localStorage.setItem(`haccp_session_${slug}`, "true");}}><input type="password" onChange={e=>setPassword(e.target.value)} /><button>Login</button></form></div>;
-
-  const assetsToDisplay = scanId ? assets.filter(a => a.id.toString() === scanId) : assets;
+  if(!isAuthorized) return <div style={{padding:50, textAlign:'center'}}><h1>🔒 Password Required</h1><form onSubmit={handleLogin}><input type="password" value={password} onChange={e=>setPassword(e.target.value)} /><button>Login</button></form></div>;
+  const assetsToDisplay = scanId ? assets.filter(a => a.id.toString() === scanId) : assets.filter(a=>['frigo','cella','vetrina'].includes(a.tipo));
 
   return (
-    <div className="haccp-container" style={{minHeight:'100vh', background:'#ecf0f1', padding:20}}>
+    <div className="haccp-container" style={{minHeight:'100vh', background:'#ecf0f1', padding:20, fontFamily:'sans-serif'}}>
       
       {!scanId && (
-          <div className="no-print" style={{display:'flex', justifyContent:'space-between', marginBottom:20, alignItems:'center'}}>
-              <h2 style={{margin:0}}>🛡️ HACCP {info.ristorante}</h2>
-              <nav style={{display:'flex', gap:10}}>
-                  {['temperature', 'merci', 'pulizia', 'etichette', 'calendario', 'staff', 'setup'].map(t => (
-                      <button key={t} onClick={()=>setTab(t)} style={{
-                        padding:'10px 15px', borderRadius:5, border:'none', cursor:'pointer', fontWeight:'bold',
-                        background: tab === t ? '#2c3e50' : 'white', color: tab === t ? 'white' : '#333'
-                      }}>
-                          {t === 'merci' ? '📦 MERCI' : (t === 'pulizia' ? '🧼 PULIZIA' : t.toUpperCase())}
-                      </button>
+          <div className="no-print" style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20, flexWrap:'wrap', gap:10}}>
+              <div><h1 style={{margin:0, color:'#2c3e50'}}>🛡️ HACCP Control</h1></div>
+              <div style={{display:'flex', gap:10, alignItems:'center'}}>
+                  <div style={{marginRight:20, display:'flex', gap:5}}>
+                      <button onClick={()=>openDownloadModal('temperature')} style={{background:'#27ae60', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Temp</button>
+                      <button onClick={()=>openDownloadModal('merci')} style={{background:'#f39c12', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Merci</button>
+                      <button onClick={()=>openDownloadModal('assets')} style={{background:'#34495e', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Macchine</button>
+                  </div>
+                  {['temperature', 'merci', 'calendario', 'etichette', 'staff', 'setup'].map(t => (
+                    <button key={t} onClick={()=>setTab(t)} style={{padding:'10px 20px', borderRadius:5, border:'none', cursor:'pointer', fontWeight:'bold', textTransform:'uppercase', background: tab===t ? '#2c3e50' : 'white', color: tab===t ? 'white' : '#333'}}>
+                    {t==='merci' ? '📦 Merci' : (t==='setup' ? '⚙️ Macchine' : (t==='staff' ? '👥 Staff' : t))}
+                    </button>
                   ))}
-              </nav>
+                  <button onClick={()=>{localStorage.removeItem(`haccp_session_${slug}`); setIsAuthorized(false)}} style={{background:'#e74c3c', color:'white', border:'none', padding:'10px 20px', borderRadius:5}}>ESCI</button>
+              </div>
           </div>
       )}
 
-      {/* COMPONENTI REFACTORIZZATI */}
+      {/* --- TAB CONTENT --- */}
       {tab === 'temperature' && (
           <TempControl 
-            assetsToDisplay={assetsToDisplay} getTodayLog={(id)=>logs.find(l=>l.asset_id===id)}
-            tempInput={tempInput} setTempInput={setTempInput}
-            registraTemperatura={()=>{}} handleLogPhoto={()=>{}} 
-            abilitaNuovaMisurazione={(a)=>setTempInput({...tempInput, [a.id]:{val:''}})}
+            assetsToDisplay={assetsToDisplay}
+            getTodayLog={getTodayLog}
+            tempInput={tempInput}
+            setTempInput={setTempInput}
+            registraTemperatura={registraTemperatura}
+            handleLogPhoto={handleLogPhoto}
+            abilitaNuovaMisurazione={abilitaNuovaMisurazione}
+            logs={logs}
           />
       )}
 
-      {tab === 'merci' && (
+      {tab === 'merci' && !scanId && (
           <MerciManager 
-            merci={merci} merciForm={merciForm} setMerciForm={setMerciForm}
-            salvaMerci={()=>{}} handleMerciPhoto={()=>{}}
-            assets={assets} eliminaMerce={()=>{}} iniziaModificaMerci={(m)=>setMerciForm(m)}
-            resetMerciForm={()=>setMerciForm({})} handleFileView={handleFileView}
+             merci={merci}
+             merciForm={merciForm}
+             setMerciForm={setMerciForm}
+             salvaMerci={salvaMerci}
+             handleMerciPhoto={handleMerciPhoto}
+             uploadingMerci={uploadingMerci}
+             iniziaModificaMerci={iniziaModificaMerci}
+             eliminaMerce={eliminaMerce}
+             assets={assets}
+             resetMerciForm={resetMerciForm}
+             handleFileView={setPreviewImage} // Passa la funzione per l'anteprima
           />
       )}
 
-      {tab === 'pulizia' && (
-          <CleaningManager 
-            info={info} API_URL={API_URL} staffList={staffList}
+      {tab === 'calendario' && !scanId && (
+          <HaccpCalendar 
+            currentDate={currentDate}
+            cambiaMese={(d) => { const n = new Date(currentDate); n.setMonth(n.getMonth() + d); setCurrentDate(n); setSelectedDayLogs(null); }}
+            calendarLogs={calendarLogs}
+            merci={merci}
+            selectedDayLogs={selectedDayLogs}
+            setSelectedDayLogs={setSelectedDayLogs}
           />
       )}
 
-      {tab === 'calendario' && (
-          <HappCalendar 
-            currentDate={currentDate} cambiaMese={(d)=>{}}
-            calendarLogs={calendarLogs} merci={merci}
-            selectedDayLogs={selectedDayLogs} setSelectedDayLogs={setSelectedDayLogs}
-          />
-      )}
-
-      {tab === 'etichette' && (
-          <LabelGenerator 
-            labelData={labelData} setLabelData={setLabelData}
-            handleLabelTypeChange={(e)=>{}}
-            handlePrintLabel={handlePrintLabel} lastLabel={lastLabel}
-            setLastLabel={setLastLabel} info={info} API_URL={API_URL} 
-            staffList={staffList} handleFileView={handleFileView}
-          />
-      )}
-
-      {tab === 'staff' && (
+      {tab === 'staff' && !scanId && (
           <StaffManager 
-            staffList={staffList} selectedStaff={selectedStaff}
-            openStaffDocs={(u)=>{setSelectedStaff(u);}} setSelectedStaff={setSelectedStaff}
-            newDoc={newDoc} setNewDoc={setNewDoc} uploadStaffDoc={()=>{}}
-            staffDocs={staffDocs} deleteDoc={()=>{}} handleFileView={handleFileView}
+             staffList={staffList}
+             selectedStaff={selectedStaff}
+             openStaffDocs={openStaffDocs}
+             setSelectedStaff={setSelectedStaff}
+             newDoc={newDoc}
+             setNewDoc={setNewDoc}
+             uploadStaffDoc={uploadStaffDoc}
+             staffDocs={staffDocs}
+             deleteDoc={deleteDoc}
+             handleFileView={(url) => window.open(url, '_blank')}
           />
       )}
 
-      {tab === 'setup' && (
+      {tab === 'setup' && !scanId && (
           <AssetSetup 
-            assets={assets} apriModaleAsset={()=>{}}
-            setShowQRModal={setShowQRModal} setPreviewImage={setPreviewImage}
+             assets={assets}
+             apriModaleAsset={apriModaleAsset}
+             setShowQRModal={setShowQRModal}
+             setPreviewImage={setPreviewImage}
           />
       )}
 
-      {/* MODALI E POPUP */}
-      {previewImage && (
-          <div onClick={() => setPreviewImage(null)} style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.9)', zIndex:3000, display:'flex', alignItems:'center', justifyContent:'center'}}>
-              <img src={previewImage} alt="Anteprima" style={{maxWidth:'90%', maxHeight:'90%', borderRadius:10}} />
+      {tab === 'etichette' && !scanId && (
+          <LabelGenerator 
+             labelData={labelData}
+             setLabelData={setLabelData}
+             handleLabelTypeChange={handleLabelTypeChange}
+             handlePrintLabel={handlePrintLabel}
+             lastLabel={lastLabel}
+             info={info}
+             API_URL={API_URL}
+             staffList={staffList}
+          />
+      )}
+
+      {/* --- MODALI CONDIVISI --- */}
+      
+      {/* 1. Modale Download */}
+      {showDownloadModal && (
+          <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000}}>
+              <div style={{background:'white', padding:30, borderRadius:10, textAlign:'center', width:350}}>
+                  <h3 style={{marginTop:0}}>Scarica Report</h3>
+                  <div style={{marginBottom:20, background:'#f9f9f9', padding:10, borderRadius:5}}>
+                       <p style={{margin:'0 0 10px 0', fontSize:14, fontWeight:'bold'}}>Formato:</p>
+                       <div style={{display:'flex', justifyContent:'center', gap:10}}>
+                           <button onClick={()=>setDownloadFormat('excel')} style={{background: downloadFormat==='excel'?'#27ae60':'#eee', color:downloadFormat==='excel'?'white':'black', padding:'5px 15px', border:'none', borderRadius:20, cursor:'pointer'}}>Excel</button>
+                           <button onClick={()=>setDownloadFormat('pdf')} style={{background: downloadFormat==='pdf'?'#e74c3c':'#eee', color:downloadFormat==='pdf'?'white':'black', padding:'5px 15px', border:'none', borderRadius:20, cursor:'pointer'}}>PDF</button>
+                       </div>
+                  </div>
+                  <div style={{display:'flex', flexDirection:'column', gap:10}}>
+                      <div style={{display:'flex', gap:5}}>
+                          <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} style={{flex:1, padding:10, border:'1px solid #ccc', borderRadius:5}} />
+                          <button onClick={()=>executeDownload('custom-month')} style={{padding:'0 15px', background:'#8e44ad', color:'white', border:'none', borderRadius:5, cursor:'pointer', fontWeight:'bold'}}>SCARICA</button>
+                      </div>
+                      <button onClick={()=>executeDownload('week')} style={{padding:12, background:'#3498db', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Ultima Settimana</button>
+                      <button onClick={()=>executeDownload('month')} style={{padding:12, background:'#2980b9', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Ultimi 30 Giorni</button>
+                      <button onClick={()=>executeDownload('all')} style={{padding:12, background:'#2c3e50', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Tutto lo storico</button>
+                  </div>
+                  <button onClick={()=>setShowDownloadModal(false)} style={{marginTop:20, background:'transparent', border:'none', color:'#999', cursor:'pointer', textDecoration:'underline'}}>Annulla</button>
+              </div>
           </div>
       )}
 
-      {/* AREA DI STAMPA */}
-      {printMode === 'label' && lastLabel && (
-        <div className="print-area" style={{position:'fixed', top:0, left:0, width:'58mm', height:'40mm', background:'white', padding:'3mm', border:'1px solid black'}}>
-            <h2 style={{textAlign:'center', borderBottom:'2px solid black'}}>{lastLabel.prodotto}</h2>
-            <p>SCADENZA: <strong>{new Date(lastLabel.data_scadenza).toLocaleDateString()}</strong></p>
-            <p style={{fontSize:'10px'}}>Lotto: {lastLabel.lotto}</p>
+      {/* 2. Modale Preview Immagine */}
+      {previewImage && (
+          <div onClick={() => setPreviewImage(null)} style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.9)', zIndex:3000, display:'flex', alignItems:'center', justifyContent:'center', cursor:'zoom-out'}}>
+              <img src={previewImage} alt="Anteprima" style={{maxWidth:'90%', maxHeight:'90%', borderRadius:10, border:'2px solid white'}} />
+              <button style={{position:'absolute', top:20, right:20, background:'white', border:'none', borderRadius:'50%', width:40, height:40, fontWeight:'bold', cursor:'pointer'}}>X</button>
+          </div>
+      )}
+
+      {/* 3. Modale Asset Edit (Form) */}
+      {showAssetModal && (
+        <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000}}>
+            <div style={{background:'white', padding:30, borderRadius:10, width:400, maxHeight:'90vh', overflowY:'auto'}}>
+                <h3>{editingAsset ? 'Modifica Macchina' : 'Nuova Macchina'}</h3>
+                <form onSubmit={salvaAsset} style={{display:'flex', flexDirection:'column', gap:10}}>
+                    <input placeholder="Nome (es. Frigo Bibite)" value={assetForm.nome} onChange={e=>setAssetForm({...assetForm, nome:e.target.value})} style={{padding:10, border:'1px solid #ccc'}} required />
+                    <select value={assetForm.tipo} onChange={e=>setAssetForm({...assetForm, tipo:e.target.value})} style={{padding:10, border:'1px solid #ccc'}}>
+                        <option value="frigo">Frigorifero</option>
+                        <option value="cella">Cella Frigo</option>
+                        <option value="vetrina">Vetrina</option>
+                        <option value="forno">Forno</option>
+                        <option value="altro">Altro</option>
+                    </select>
+                    <div style={{display:'flex', gap:10}}>
+                        <input type="number" placeholder="Min °C" value={assetForm.range_min} onChange={e=>setAssetForm({...assetForm, range_min:e.target.value})} style={{flex:1, padding:10, border:'1px solid #ccc'}} required />
+                        <input type="number" placeholder="Max °C" value={assetForm.range_max} onChange={e=>setAssetForm({...assetForm, range_max:e.target.value})} style={{flex:1, padding:10, border:'1px solid #ccc'}} required />
+                    </div>
+                    <input placeholder="Marca" value={assetForm.marca} onChange={e=>setAssetForm({...assetForm, marca:e.target.value})} style={{padding:10, border:'1px solid #ccc'}} />
+                    <input placeholder="Modello" value={assetForm.modello} onChange={e=>setAssetForm({...assetForm, modello:e.target.value})} style={{padding:10, border:'1px solid #ccc'}} />
+                    <input placeholder="Serial Number / Matricola" value={assetForm.serial_number} onChange={e=>setAssetForm({...assetForm, serial_number:e.target.value})} style={{padding:10, border:'1px solid #ccc'}} />
+                    
+                    <label style={{border:'1px dashed #ccc', padding:10, cursor:'pointer', textAlign:'center'}}>
+                        {uploadingAsset ? "Caricamento..." : (assetForm.foto_url ? "✅ Foto Caricata" : "📸 Carica Foto Macchina")}
+                        <input type="file" onChange={handleAssetPhoto} style={{display:'none'}} />
+                    </label>
+                    <label style={{border:'1px dashed #ccc', padding:10, cursor:'pointer', textAlign:'center'}}>
+                        {uploadingLabel ? "Caricamento..." : (assetForm.etichetta_url ? "✅ Etichetta Caricata" : "📄 Carica Etichetta CE")}
+                        <input type="file" onChange={handleAssetLabel} style={{display:'none'}} />
+                    </label>
+
+                    <select value={assetForm.stato} onChange={e=>setAssetForm({...assetForm, stato:e.target.value})} style={{padding:10, border:'1px solid #ccc', fontWeight:'bold', background: assetForm.stato==='attivo' ? '#eafaf1' : '#f2f2f2'}}>
+                        <option value="attivo">ATTIVO (In uso)</option>
+                        <option value="spento">SPENTO (Non in uso)</option>
+                        <option value="manutenzione">IN MANUTENZIONE</option>
+                    </select>
+
+                    <button disabled={uploadingAsset || uploadingLabel} style={{marginTop:10, padding:15, background:'#27ae60', color:'white', border:'none', borderRadius:5, fontWeight:'bold', cursor:'pointer'}}>SALVA</button>
+                    <button type="button" onClick={()=>setShowAssetModal(false)} style={{background:'transparent', border:'none', color:'red', cursor:'pointer', textDecoration:'underline'}}>Annulla</button>
+                </form>
+            </div>
         </div>
       )}
 
-      <style>{`@media print { .no-print { display: none !important; } .print-area { display: block !important; } }`}</style>
+      {/* 4. Print Areas */}
+      {printMode === 'label' && lastLabel && (
+        <div className="print-area" style={{position:'fixed', top:0, left:0, width:'58mm', height:'40mm', background:'white', color:'black', display:'flex', flexDirection:'column', padding:'3mm', boxSizing:'border-box', fontFamily:'Arial', border:'1px solid black'}}>
+            <div style={{fontWeight:'900', fontSize:'14px', textAlign:'center', borderBottom:'2px solid black', paddingBottom:'2px', textTransform:'uppercase'}}>{lastLabel.prodotto}</div>
+            <div style={{display:'flex', justifyContent:'space-between', marginTop:'5px', fontSize:'10px'}}><span>PROD: <strong>{new Date(lastLabel.data_produzione).toLocaleDateString()}</strong></span><span>OP: {lastLabel.operatore}</span></div>
+            <div style={{marginTop:'5px', textAlign:'center'}}><div style={{fontSize:'10px'}}>SCADENZA</div><div style={{fontWeight:'900', fontSize:'16px'}}>{new Date(lastLabel.data_scadenza).toLocaleDateString()}</div></div>
+            <div style={{marginTop:'auto', fontSize:'9px', textAlign:'center', borderTop:'1px solid black', paddingTop:'2px'}}>Lotto: {lastLabel.lotto}</div>
+        </div>
+      )}
+      {printMode === 'qr' && showQRModal && (
+        <div className="print-area" style={{position:'fixed', top:0, left:0, width:'100%', height:'100%', background:'white', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'}}>
+             <h1 style={{fontSize:'40px', marginBottom:20}}>{showQRModal.nome}</h1>
+             <QRCode value={`${window.location.origin}/haccp/${slug}/scan/${showQRModal.id}`} size={400} />
+             <p style={{marginTop:20, fontSize:'20px'}}>Scansiona per registrare la temperatura</p>
+        </div>
+      )}
+      
+      <style>{`@media print { .no-print { display: none !important; } .print-area { z-index: 9999; display: flex !important; } body { margin: 0; padding: 0; } @page { margin: 0; size: auto; } }`}</style>
     </div>
   );
 }
-
 export default Haccp;

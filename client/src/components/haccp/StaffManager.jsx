@@ -10,7 +10,7 @@ const StaffManager = ({
     uploadStaffDoc, 
     staffDocs, 
     deleteDoc,
-    handleFileView // Prop aggiunta per la gestione intelligente dei file
+    handleFileView 
 }) => {
     return (
         <div className="no-print">
@@ -21,7 +21,7 @@ const StaffManager = ({
                 {/* LISTA STAFF */}
                 <div style={{flex:1, minWidth:300, background:'white', padding:20, borderRadius:10}}>
                     <h4>Staff Attivo</h4>
-                    {staffList.length === 0 && <p style={{fontSize:13, color:'#999'}}>Nessun dipendente trovato.</p>}
+                    {staffList.length === 0 && <p>Nessun dipendente trovato.</p>}
                     {staffList.map(u => (
                         <div key={u.id} onClick={()=>openStaffDocs(u)} 
                              style={{
@@ -34,22 +34,17 @@ const StaffManager = ({
                                  borderRadius: 5
                              }}>
                             <span style={{fontWeight:'bold'}}>{u.nome}</span>
-                            <span style={{fontSize:11, background:'#eee', padding:'2px 6px', borderRadius:4}}>{u.ruolo}</span>
+                            <span style={{fontSize:12, background:'#eee', padding:'2px 6px', borderRadius:4}}>{u.ruolo}</span>
                         </div>
                     ))}
                 </div>
 
                 {/* DETTAGLIO DOCUMENTI */}
                 {selectedStaff && (
-                    <div style={{flex:2, minWidth:300, background:'white', padding:20, borderRadius:10, borderLeft:'4px solid #3498db', boxShadow:'0 2px 5px rgba(0,0,0,0.05)'}}>
-                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                    <div style={{flex:2, minWidth:300, background:'white', padding:20, borderRadius:10, borderLeft:'4px solid #3498db'}}>
+                        <div style={{display:'flex', justifyContent:'space-between'}}>
                             <h3 style={{margin:0}}>📂 Documenti: {selectedStaff.nome}</h3>
-                            <button 
-                                onClick={()=>setSelectedStaff(null)} 
-                                style={{background:'#f1f2f6', border:'none', borderRadius:'50%', width:25, height:25, cursor:'pointer'}}
-                            >
-                                X
-                            </button>
+                            <button onClick={()=>setSelectedStaff(null)} style={{background:'#ccc', border:'none', padding:'2px 8px', borderRadius:4, cursor:'pointer'}}>X</button>
                         </div>
 
                         {/* FORM CARICAMENTO */}
@@ -57,7 +52,7 @@ const StaffManager = ({
                             <select 
                                 value={newDoc.tipo} 
                                 onChange={e=>setNewDoc({...newDoc, tipo:e.target.value})} 
-                                style={{padding:8, borderRadius:4, border:'1px solid #ddd', flex:1}}
+                                style={{padding:8, borderRadius:4, border:'1px solid #ddd'}}
                             >
                                 <option value="Contratto">Contratto</option>
                                 <option value="Busta Paga">Busta Paga</option>
@@ -65,7 +60,7 @@ const StaffManager = ({
                                 <option value="Attestato HACCP">Attestato HACCP</option>
                                 <option value="Altro">Altro</option>
                             </select>
-                            <label style={{background:'#3498db', color:'white', padding:'8px 15px', borderRadius:4, cursor:'pointer', fontSize:13, fontWeight:'bold'}}>
+                            <label style={{background:'#3498db', color:'white', padding:'8px 15px', borderRadius:4, cursor:'pointer', fontSize:13}}>
                                 ⬆ Carica File
                                 <input type="file" onChange={uploadStaffDoc} style={{display:'none'}} />
                             </label>
@@ -74,39 +69,35 @@ const StaffManager = ({
                         {/* TABELLA DOCUMENTI */}
                         <table style={{width:'100%', marginTop:20, fontSize:13, borderCollapse:'collapse'}}>
                             <thead>
-                                <tr style={{textAlign:'left', borderBottom:'2px solid #eee'}}>
+                                <tr style={{textAlign:'left', borderBottom:'2px solid #ddd'}}>
+                                    <th style={{padding:8}}>Data</th>
                                     <th style={{padding:8}}>Tipo</th>
                                     <th style={{padding:8}}>Nome File</th>
-                                    <th style={{padding:8, textAlign:'right'}}>Azioni</th>
+                                    <th style={{padding:8}}>Azioni</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {staffDocs.length === 0 ? (
-                                    <tr><td colSpan="3" style={{padding:20, textAlign:'center', color:'#999'}}>Nessun documento caricato.</td></tr>
-                                ) : (
-                                    staffDocs.map(d => (
-                                        <tr key={d.id} style={{borderBottom:'1px solid #f9f9f9'}}>
-                                            <td style={{padding:8}}>
-                                                <span style={{background:'#eee', padding:'2px 5px', borderRadius:3, fontSize:11}}>{d.tipo_doc}</span>
-                                            </td>
-                                            <td style={{padding:8}}>{d.nome_file}</td>
-                                            <td style={{padding:8, textAlign:'right', display:'flex', gap:5, justifyContent:'flex-end'}}>
-                                                <button 
-                                                    onClick={() => handleFileView(d.url)} 
-                                                    style={{background:'#27ae60', color:'white', border:'none', padding:'4px 10px', borderRadius:3, cursor:'pointer', fontSize:12}}
-                                                >
-                                                    Vedi
-                                                </button>
-                                                <button 
-                                                    onClick={()=>deleteDoc(d.id)} 
-                                                    style={{background:'#e74c3c', color:'white', border:'none', padding:'4px 10px', borderRadius:3, cursor:'pointer', fontSize:12}}
-                                                >
-                                                    X
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
+                                {staffDocs.map(d => (
+                                    <tr key={d.id} style={{borderBottom:'1px solid #eee'}}>
+                                        <td style={{padding:8}}>{new Date(d.data_caricamento).toLocaleDateString()}</td>
+                                        <td style={{padding:8}}><span style={{background:'#eee', padding:'2px 5px', borderRadius:3, fontSize:11}}>{d.tipo_doc}</span></td>
+                                        <td style={{padding:8}}>{d.nome_file}</td>
+                                        <td style={{padding:8, display:'flex', gap:5}}>
+                                            <button 
+                                                onClick={() => handleFileView(d.url)} 
+                                                style={{background:'#27ae60', color:'white', border:'none', padding:'3px 8px', borderRadius:3, fontSize:12, cursor:'pointer'}}
+                                            >
+                                                Vedi
+                                            </button>
+                                            <button 
+                                                onClick={()=>deleteDoc(d.id)} 
+                                                style={{background:'#e74c3c', color:'white', border:'none', padding:'3px 8px', borderRadius:3, cursor:'pointer', fontSize:12}}
+                                            >
+                                                X
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
                             </tbody>
                         </table>
                     </div>
