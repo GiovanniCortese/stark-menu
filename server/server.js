@@ -452,42 +452,39 @@ app.get('/api/haccp/labels/storico/:ristorante_id', async (req, res) => {
     } catch(e) { res.status(500).json({error: "Errore recupero storico"}); } 
 });
 
-// --- PROXY DOWNLOAD V4 (CON FIRMA AUTOMATICA PER PDF PRIVATI) ---
+// --- PROXY DOWNLOAD V5 (FIX 404 - FIRMA CORRETTA PER FILE UPLOAD) ---
 app.get('/api/proxy-download', (req, res) => {
     const fileUrl = req.query.url;
     const fileName = req.query.name || 'documento.pdf';
 
     if (!fileUrl) return res.status(400).send("URL mancante");
 
-    // Se è un PDF e dà 401, probabilmente serve un URL firmato.
-    // Proviamo a generarlo usando la libreria Cloudinary già presente.
     let targetUrl = fileUrl;
     
-    // Tenta di generare un URL firmato se è un file Cloudinary
+    // Se l'URL è di Cloudinary, generiamo la firma corretta
     if (fileUrl.includes('cloudinary.com')) {
         try {
-            // Estrae il public_id dall'URL (es: menu-app/xyz123)
-            // L'URL tipico è: .../upload/v12345/menu-app/filename.pdf
+            // Estrazione Public ID dall'URL originale
+            // Esempio URL: .../image/upload/v12345/menu-app/doc.pdf
             const parts = fileUrl.split('/upload/');
             if (parts.length === 2) {
-                // Prendi la parte dopo 'upload/', rimuovi la versione (v12345/) se c'è
                 let path = parts[1]; 
-                path = path.replace(/^v\d+\//, ''); // rimuove v1768.../
-                // Rimuove l'estensione per ottenere il public_id puro
+                // Rimuove la versione (es. v1768.../) per pulire l'ID
+                path = path.replace(/^v\d+\//, ''); 
+                // Rimuove l'estensione finale (.pdf)
                 const publicId = path.replace(/\.[^/.]+$/, ""); 
                 
-                // Genera l'URL firmato
+                // --- MODIFICA FONDAMENTALE QUI SOTTO ---
                 targetUrl = cloudinary.url(publicId, {
-                    resource_type: 'image', // Cloudinary tratta i PDF come immagini per la delivery
-                    type: 'authenticated', // Richiediamo l'accesso autenticato
-                    sign_url: true,
-                    format: 'pdf' // Forza formato PDF
+                    resource_type: 'image', // I PDF su Cloudinary sono trattati come immagini
+                    type: 'upload',         // <--- QUI: Usa 'upload', NON 'authenticated'
+                    sign_url: true,         // Questo aggiunge la parte 's--xxxxx--' all'URL
+                    format: 'pdf'
                 });
-                console.log("URL Firmato generato:", targetUrl);
+                console.log("URL Firmato (Upload Type):", targetUrl);
             }
         } catch (e) {
             console.error("Errore generazione firma:", e);
-            // In caso di errore, proseguiamo con l'URL originale
         }
     }
 
@@ -510,9 +507,9 @@ app.get('/api/proxy-download', (req, res) => {
             }
 
             if (response.statusCode !== 200) {
-                // Se fallisce anche con la firma, stampiamo l'errore
-                console.error(`Errore Proxy: ${response.statusCode} su ${url}`);
-                return res.status(response.statusCode).send(`Errore ${response.statusCode}: Impossibile accedere al file.`);
+                console.error(`Errore Proxy Finale: ${response.statusCode} su ${url}`);
+                // Messaggio dettagliato per il debug
+                return res.status(response.statusCode).send(`Errore ${response.statusCode}: File non trovato o firma non valida.`);
             }
 
             res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
