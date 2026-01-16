@@ -1,4 +1,4 @@
-// client/src/Haccp.jsx - VERSIONE FINAL FIX
+// client/src/Haccp.jsx - VERSIONE AGGIORNATA (FIX UI & DOWNLOAD MESE)
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import QRCode from 'react-qr-code'; 
@@ -17,12 +17,10 @@ function Haccp() {
   const [merci, setMerci] = useState([]); 
   const [calendarLogs, setCalendarLogs] = useState([]); 
   const [tab, setTab] = useState('temperature'); 
-  
-  // Staff & Documenti
   const [staffList, setStaffList] = useState([]);
-  const [selectedStaff, setSelectedStaff] = useState(null);
-  const [staffDocs, setStaffDocs] = useState([]);
-  const [newDoc, setNewDoc] = useState({ tipo: 'Contratto', url: '' });
+const [selectedStaff, setSelectedStaff] = useState(null);
+const [staffDocs, setStaffDocs] = useState([]);
+const [newDoc, setNewDoc] = useState({ tipo: 'Contratto', url: '' });
   
   // Stati Moduli
   const [tempInput, setTempInput] = useState({}); 
@@ -51,14 +49,14 @@ function Haccp() {
   const [uploadingLabel, setUploadingLabel] = useState(false); 
   const [showQRModal, setShowQRModal] = useState(null);
 
-  // Stati Anteprima Immagine (Popup)
+  // NUOVO: Stati Anteprima Immagine (Popup)
   const [previewImage, setPreviewImage] = useState(null);
 
   // Stati Download Excel/PDF
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [downloadType, setDownloadType] = useState(null); 
-  const [downloadFormat, setDownloadFormat] = useState('excel'); 
-  const [selectedMonth, setSelectedMonth] = useState(''); 
+  const [downloadFormat, setDownloadFormat] = useState('excel'); // 'excel' o 'pdf'
+  const [selectedMonth, setSelectedMonth] = useState(''); // Per il download mese specifico
 
   // Stati Etichette e Stampa
   const [labelData, setLabelData] = useState({ prodotto: '', giorni_scadenza: 3, operatore: '', tipo: 'positivo' });
@@ -92,12 +90,13 @@ function Haccp() {
       fetch(`${API_URL}/api/haccp/assets/${info.id}`).then(r=>r.json()).then(setAssets);
       fetch(`${API_URL}/api/haccp/logs/${info.id}`).then(r=>r.json()).then(setLogs);
       fetch(`${API_URL}/api/haccp/merci/${info.id}`).then(r=>r.json()).then(setMerci);
-      // Caricamento Staff con anti-cache
-      fetch(`${API_URL}/api/utenti?mode=staff&ristorante_id=${info.id}&t=${Date.now()}`)
+fetch(`${API_URL}/api/utenti?mode=staff&ristorante_id=${info.id}&t=${new Date().getTime()}`)
         .then(r=>r.json())
-        .then(data => setStaffList(Array.isArray(data) ? data : []))
-        .catch(err => console.error("Err staff loading", err));
-  };
+        .then(data => {
+            // Piccolo controllo di sicurezza: se arriva null o errore, metti array vuoto
+            setStaffList(Array.isArray(data) ? data : []); 
+        });
+};
 
   const ricaricaCalendario = async () => {
       if(tab !== 'calendario') return;
@@ -134,17 +133,17 @@ function Haccp() {
       const data = await res.json(); return data.url;
   };
   
-  // --- GESTIONE DOCUMENTI STAFF ---
-  const openStaffDocs = async (user) => {
+  // 3. FUNZIONI PER GESTIONE DOCUMENTI STAFF
+const openStaffDocs = async (user) => {
     setSelectedStaff(user);
     const r = await fetch(`${API_URL}/api/staff/docs/${user.id}`);
     const d = await r.json();
     setStaffDocs(d);
-  };
+};
 
-  const uploadStaffDoc = async (e) => {
+const uploadStaffDoc = async (e) => {
     const f = e.target.files[0]; if(!f) return;
-    const url = await uploadFile(f); 
+    const url = await uploadFile(f); // Usa la tua funzione upload esistente
     
     await fetch(`${API_URL}/api/staff/docs`, {
         method: 'POST', headers: {'Content-Type':'application/json'},
@@ -155,23 +154,24 @@ function Haccp() {
             url: url
         })
     });
+    // Ricarica lista
     const r = await fetch(`${API_URL}/api/staff/docs/${selectedStaff.id}`);
     setStaffDocs(await r.json());
     setNewDoc({...newDoc, url: ''});
-  };
+};
 
-  const deleteDoc = async (id) => {
+const deleteDoc = async (id) => {
     if(!confirm("Eliminare documento?")) return;
     await fetch(`${API_URL}/api/staff/docs/${id}`, {method:'DELETE'});
     const r = await fetch(`${API_URL}/api/staff/docs/${selectedStaff.id}`);
     setStaffDocs(await r.json());
-  };
+};
 
   // --- EXCEL/PDF DOWNLOAD ---
   const openDownloadModal = (type) => {
       setDownloadType(type);
       setShowDownloadModal(true);
-      setSelectedMonth(''); 
+      setSelectedMonth(''); // Reset selezione mese
   };
 
   const executeDownload = (range) => {
@@ -189,10 +189,11 @@ function Haccp() {
           start.setFullYear(end.getFullYear() - 1); 
           rangeName="Ultimo Anno"; 
       } else if (range === 'custom-month') {
+          // Logica per mese specifico
           if(!selectedMonth) return alert("Seleziona un mese!");
           const [y, m] = selectedMonth.split('-');
-          start = new Date(y, m - 1, 1); 
-          end = new Date(y, m, 0, 23, 59, 59); 
+          start = new Date(y, m - 1, 1); // Primo giorno
+          end = new Date(y, m, 0, 23, 59, 59); // Ultimo giorno
           const nomeMese = start.toLocaleString('it-IT', { month: 'long', year: 'numeric' });
           rangeName = `Mese di ${nomeMese}`;
       } else if(range === 'all') { 
@@ -270,27 +271,40 @@ function Haccp() {
       setUploadingMerci(true);
       try { const url = await uploadFile(f); setMerciForm(prev => ({...prev, allegato_url: url})); } finally { setUploadingMerci(false); }
   };
-  const salvaMerci = async (e) => {
+const salvaMerci = async (e) => {
       e.preventDefault();
       try {
         const endpoint = merciForm.id ? `${API_URL}/api/haccp/merci/${merciForm.id}` : `${API_URL}/api/haccp/merci`;
         const method = merciForm.id ? 'PUT' : 'POST';
         
+        // --- QUI DEVE ESSERCI LA MODIFICA (Payload Sanitization) ---
         const payload = { ...merciForm, ristorante_id: info.id, operatore: 'Staff' };
+
+        // Se questi campi sono stringhe vuote, Postgres dà errore 500. 
+        // Li trasformiamo in null per farli accettare dal database.
         if (!payload.scadenza || payload.scadenza === "") payload.scadenza = null;
         if (!payload.temperatura || payload.temperatura === "") payload.temperatura = null;
         if (!payload.quantita || payload.quantita === "") payload.quantita = null;
+        // -----------------------------------------------------------
 
         const res = await fetch(endpoint, {
-            method, headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            method, 
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload) // Inviato il payload pulito
         });
+        
         const data = await res.json();
         
         if (data.success) {
-            resetMerciForm(); ricaricaDati(); alert("✅ Salvataggio riuscito!");
-        } else { alert("❌ Errore Server: " + (data.error || "Sconosciuto")); }
-      } catch (err) { alert("❌ Errore Connessione: " + err.message); }
+            resetMerciForm(); 
+            ricaricaDati();
+            alert("✅ Salvataggio riuscito!");
+        } else {
+            alert("❌ Errore Server: " + (data.error || "Sconosciuto"));
+        }
+      } catch (err) {
+          alert("❌ Errore Connessione: " + err.message);
+      }
   };
   const resetMerciForm = () => {
       setMerciForm({
@@ -327,7 +341,7 @@ function Haccp() {
       try { const url = await uploadFile(f); setAssetForm(prev => ({...prev, etichetta_url: url})); } finally { setUploadingLabel(false); }
   };
 
-  // --- CALENDARIO ---
+  // --- CALENDARIO (MODIFICATO PER ANOMALIE ESTESE) ---
   const getDaysInMonth = (date) => { 
     const year = date.getFullYear(), month = date.getMonth();
     const days = new Date(year, month + 1, 0).getDate();
@@ -350,9 +364,11 @@ function Haccp() {
           const currentDayStr = new Date(currentDate.getFullYear(), currentDate.getMonth(), d).toDateString();
           const logsDelGiorno = calendarLogs.filter(l => new Date(l.data_ora).toDateString() === currentDayStr);
           const merciDelGiorno = merci.filter(m => new Date(m.data_ricezione).toDateString() === currentDayStr);
+
           const hasLogs = logsDelGiorno.length > 0;
           const hasMerci = merciDelGiorno.length > 0;
           const hasError = logsDelGiorno.some(l => !l.conformita) || merciDelGiorno.some(m => !m.conforme || !m.integro);
+          
           let bgColor = 'white'; 
           if (hasLogs || hasMerci) bgColor = hasError ? '#ffcccc' : '#ccffcc'; 
 
@@ -378,7 +394,9 @@ function Haccp() {
              {selectedDayLogs && (
                  <div style={{marginTop:20, borderTop:'2px solid #333', paddingTop:20}}>
                      <h2 style={{marginTop:0}}>Dettagli {selectedDayLogs.day} {monthNames[currentDate.getMonth()]}</h2>
+                     
                      <div style={{display:'flex', gap:20, flexWrap:'wrap'}}>
+                         {/* COLONNA TEMPERATURE */}
                          <div style={{flex:1, minWidth:300, background:'#f9f9f9', padding:15, borderRadius:5}}>
                              <h4 style={{marginTop:0, borderBottom:'2px solid #27ae60', color:'#27ae60'}}>🌡️ Temperature</h4>
                              {selectedDayLogs.logs.length === 0 ? <p style={{color:'#999'}}>Nessuna registrazione.</p> : (
@@ -390,13 +408,19 @@ function Haccp() {
                                                 <td style={{padding:5}}>{new Date(l.data_ora).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'})}</td>
                                                 <td style={{padding:5}}><strong>{l.nome_asset}</strong></td>
                                                 <td style={{padding:5}}>{l.valore}</td>
-                                                <td style={{padding:5}}>{l.conformita ? <span style={{color:'green', fontWeight:'bold'}}>OK</span> : <span style={{color:'red', fontWeight:'bold'}}>❌ ERR</span>}</td>
+                                                <td style={{padding:5}}>
+                                                    {l.conformita 
+                                                        ? <span style={{color:'green', fontWeight:'bold'}}>OK</span> 
+                                                        : <span style={{color:'red', fontWeight:'bold'}}>❌ ERR - {l.azione_correttiva}</span>}
+                                                </td>
                                             </tr>
                                         ))}
                                      </tbody>
                                  </table>
                              )}
                          </div>
+
+                         {/* COLONNA MERCI */}
                          <div style={{flex:1, minWidth:300, background:'#f9f9f9', padding:15, borderRadius:5}}>
                              <h4 style={{marginTop:0, borderBottom:'2px solid #f39c12', color:'#f39c12'}}>📦 Arrivo Merci</h4>
                              {selectedDayLogs.merci.length === 0 ? <p style={{color:'#999'}}>Nessun arrivo.</p> : (
@@ -405,6 +429,11 @@ function Haccp() {
                                          <div key={m.id} style={{background:'white', padding:10, border:'1px solid #ddd', borderRadius:5}}>
                                              <div style={{fontWeight:'bold'}}>{m.prodotto}</div>
                                              <div style={{fontSize:12, color:'#555'}}>{m.fornitore} | Qty: {m.quantita}</div>
+                                             <div style={{fontSize:12}}>Lotto: {m.lotto} | Scad: {new Date(m.scadenza).toLocaleDateString()}</div>
+                                             <div style={{marginTop:5}}>
+                                                 {m.conforme ? <span style={{background:'#eafaf1', color:'green', padding:'2px 5px', borderRadius:3, fontSize:10}}>OK</span> : <span style={{background:'#fadbd8', color:'red', padding:'2px 5px', borderRadius:3, fontSize:10}}>NO</span>}
+                                                 {m.allegato_url && <a href={m.allegato_url} target="_blank" style={{marginLeft:10, fontSize:12}}>📎 Bolla</a>}
+                                             </div>
                                          </div>
                                      ))}
                                  </div>
@@ -421,7 +450,7 @@ function Haccp() {
   const handleLabelTypeChange = (e) => {
       const type = e.target.value;
       let days = 3;
-      if (type === 'negativo') days = 180;
+      if (type === 'negativo') days = 180; // 6 mesi
       if (type === 'sottovuoto') days = 10;
       setLabelData({...labelData, tipo: type, giorni_scadenza: days});
   };
@@ -450,6 +479,7 @@ function Haccp() {
           <div className="no-print" style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20, flexWrap:'wrap', gap:10}}>
               <div><h1 style={{margin:0, color:'#2c3e50'}}>🛡️ HACCP Control</h1></div>
               <div style={{display:'flex', gap:10, alignItems:'center'}}>
+                  {/* PULSANTI DOWNLOAD EXCEL */}
                   <div style={{marginRight:20, display:'flex', gap:5}}>
                       <button onClick={()=>openDownloadModal('temperature')} style={{background:'#27ae60', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Temp</button>
                       <button onClick={()=>openDownloadModal('merci')} style={{background:'#f39c12', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Merci</button>
@@ -457,10 +487,10 @@ function Haccp() {
                   </div>
 
                   {['temperature', 'merci', 'calendario', 'etichette', 'staff', 'setup'].map(t => (
-                    <button key={t} onClick={()=>setTab(t)} style={{padding:'10px 20px', borderRadius:5, border:'none', cursor:'pointer', fontWeight:'bold', textTransform:'uppercase', background: tab===t ? '#2c3e50' : 'white', color: tab===t ? 'white' : '#333'}}>
-                       {t==='merci' ? '📦 Merci' : (t==='setup' ? '⚙️ Macchine' : (t==='staff' ? '👥 Staff' : t))}
-                    </button>
-                  ))}
+    <button key={t} onClick={()=>setTab(t)} style={{padding:'10px 20px', borderRadius:5, border:'none', cursor:'pointer', fontWeight:'bold', textTransform:'uppercase', background: tab===t ? '#2c3e50' : 'white', color: tab===t ? 'white' : '#333'}}>
+       {t==='merci' ? '📦 Merci' : (t==='setup' ? '⚙️ Macchine' : (t==='staff' ? '👥 Staff' : t))}
+    </button>
+))}
                   <button onClick={()=>{localStorage.removeItem(`haccp_session_${slug}`); setIsAuthorized(false)}} style={{background:'#e74c3c', color:'white', border:'none', padding:'10px 20px', borderRadius:5}}>ESCI</button>
               </div>
           </div>
@@ -471,43 +501,59 @@ function Haccp() {
           <div className="no-print" style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(350px, 1fr))', gap:20}}>
               {assetsToDisplay.map(asset => {
                   const todayLog = getTodayLog(asset.id);
+                  
                   if(asset.stato === 'spento') {
                       return (
                           <div key={asset.id} style={{background:'#e0e0e0', padding:20, borderRadius:10, border:'2px solid #999', opacity:0.7, position:'relative'}}>
                               <div style={{position:'absolute', top:10, right:10, background:'#555', color:'white', padding:'2px 8px', borderRadius:4, fontSize:10, fontWeight:'bold'}}>OFF</div>
                               <h3 style={{margin:0, color:'#555'}}>🚫 {asset.nome}</h3>
                               <p style={{margin:'5px 0', fontSize:12}}>Macchinario Spento</p>
-                              <div style={{height:40, background:'#ccc', borderRadius:5, display:'flex', alignItems:'center', justifyContent:'center', color:'#777', fontWeight:'bold', fontSize:12}}>NESSUNA RILEVAZIONE</div>
+                              <div style={{height:40, background:'#ccc', borderRadius:5, display:'flex', alignItems:'center', justifyContent:'center', color:'#777', fontWeight:'bold', fontSize:12}}>
+                                  NESSUNA RILEVAZIONE
+                              </div>
                           </div>
                       );
                   }
+
                   const isInputActive = !!tempInput[asset.id];
                   const currentData = tempInput[asset.id] || {};
                   
                   if (todayLog && !isInputActive) {
-                    const timeStr = new Date(todayLog.data_ora).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'});
-                    const logsDiOggi = logs.filter(l => l.asset_id === asset.id && new Date(l.data_ora).toDateString() === new Date().toDateString());
-                    const isModificato = logsDiOggi.length > 1;
+    const timeStr = new Date(todayLog.data_ora).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'});
+    
+    // CALCOLA SE È STATO MODIFICATO (più di 1 log oggi per questo asset)
+    const logsDiOggi = logs.filter(l => l.asset_id === asset.id && new Date(l.data_ora).toDateString() === new Date().toDateString());
+    const isModificato = logsDiOggi.length > 1;
 
-                    return (
-                        <div key={asset.id} style={{background:'#eafaf1', padding:20, borderRadius:10, border:'2px solid #27ae60', boxShadow:'0 2px 5px rgba(0,0,0,0.1)'}}>
-                            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                                <h3 style={{margin:0, color:'#27ae60'}}>✅ {asset.nome}</h3>
-                                <span style={{fontSize:'24px', fontWeight:'bold'}}>{todayLog.valore === 'OFF' ? 'SPENTO' : todayLog.valore + '°C'}</span>
-                            </div>
-                            <div style={{fontSize:'12px', color:'#555', marginTop:5}}>
-                                {todayLog.conformita ? (isModificato ? `📝 Modificato alle ${timeStr}` : `Registrato alle ${timeStr}`) : `⚠️ ANOMALIA - ${todayLog.azione_correttiva}`}
-                            </div>
-                            <button onClick={() => abilitaNuovaMisurazione(asset)} style={{marginTop:15, width:'100%', background:'#f39c12', color:'white', border:'none', padding:10, borderRadius:5, cursor:'pointer', fontWeight:'bold'}}>✏️ MODIFICA</button>
-                        </div>
-                    );
-                }
+    return (
+        <div key={asset.id} style={{background:'#eafaf1', padding:20, borderRadius:10, border:'2px solid #27ae60', boxShadow:'0 2px 5px rgba(0,0,0,0.1)'}}>
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                <h3 style={{margin:0, color:'#27ae60'}}>✅ {asset.nome}</h3>
+                <span style={{fontSize:'24px', fontWeight:'bold'}}>{todayLog.valore === 'OFF' ? 'SPENTO' : todayLog.valore + '°C'}</span>
+            </div>
+            
+            {/* --- QUI LA MODIFICA DELLA LABEL --- */}
+            <div style={{fontSize:'12px', color:'#555', marginTop:5}}>
+                {todayLog.conformita 
+                    ? (isModificato ? `📝 Modificato alle ${timeStr}` : `Registrato alle ${timeStr}`) 
+                    : `⚠️ ANOMALIA - ${todayLog.azione_correttiva}`}
+            </div>
+            {/* ----------------------------------- */}
+
+            <button onClick={() => abilitaNuovaMisurazione(asset)} style={{marginTop:15, width:'100%', background:'#f39c12', color:'white', border:'none', padding:10, borderRadius:5, cursor:'pointer', fontWeight:'bold'}}>✏️ MODIFICA</button>
+        </div>
+    );
+}
+                  
+                  // --- FIX GRAFICO INPUT TEMPERATURE ---
                   return (
                       <div key={asset.id} style={{background:'white', padding:15, borderRadius:10, boxShadow:'0 2px 5px rgba(0,0,0,0.1)', borderTop:'5px solid #bdc3c7'}}>
                            <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:15}}>
                                 <div><h3 style={{margin:0, fontSize:'16px'}}>{asset.nome}</h3><span style={{fontSize:'11px', color:'#999'}}>{asset.marca}</span></div>
                                 <span style={{background:'#eee', padding:'2px 6px', borderRadius:4, fontSize:10}}>Range: {asset.range_min}°/{asset.range_max}°</span>
                            </div>
+                           
+                           {/* Intestazione Colonne */}
                            <div style={{display:'flex', fontSize:'11px', fontWeight:'bold', color:'#7f8c8d', marginBottom:5}}>
                                 <div style={{flex:1}}>TEMPERATURA</div>
                                 <div style={{width:160, display:'flex', justifyContent:'space-between'}}>
@@ -515,21 +561,33 @@ function Haccp() {
                                     <span style={{width:100, textAlign:'center'}}>AZIONE</span>
                                 </div>
                            </div>
+
+                           {/* Flexbox Row: Input e Bottoni Allineati */}
                            <div style={{display:'flex', alignItems:'stretch', gap:10, height:45}}>
                               <input type="number" step="0.1" placeholder="°C" 
                                    value={currentData.val || ''} 
                                    onChange={e=>setTempInput({...tempInput, [asset.id]: {...currentData, val: e.target.value}})} 
                                    style={{flex:1, borderRadius:5, border:'1px solid #ddd', fontSize:18, textAlign:'center', fontWeight:'bold'}} 
                               />
+                              
                               <div style={{display:'flex', gap:5}}>
-                                  <button onClick={()=>registraTemperatura(asset, true)} title="Segna come SPENTO" style={{width:50, background:'#95a5a6', color:'white', border:'none', borderRadius:5, cursor:'pointer', fontWeight:'bold', fontSize:'11px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'}}><span>OFF</span></button>
+                                  <button onClick={()=>registraTemperatura(asset, true)} title="Segna come SPENTO"
+                                          style={{width:50, background:'#95a5a6', color:'white', border:'none', borderRadius:5, cursor:'pointer', fontWeight:'bold', fontSize:'11px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'}}>
+                                      <span>OFF</span>
+                                  </button>
+
                                   <label style={{width:50, cursor:'pointer', background: currentData.photo ? '#2ecc71' : '#f1f2f6', borderRadius:5, display:'flex', alignItems:'center', justifyContent:'center', border:'1px solid #ddd'}}>
                                       <span style={{fontSize:'20px'}}>📷</span>
                                       <input type="file" accept="image/*" onChange={(e)=>handleLogPhoto(e, asset.id)} style={{display:'none'}} />
                                   </label>
-                                  <button onClick={()=>registraTemperatura(asset, false)} style={{width:60, background:'#2c3e50', color:'white', border:'none', borderRadius:5, cursor:'pointer', fontWeight:'bold', fontSize:'12px'}}>SALVA</button>
+                                  
+                                  <button onClick={()=>registraTemperatura(asset, false)} 
+                                          style={{width:60, background:'#2c3e50', color:'white', border:'none', borderRadius:5, cursor:'pointer', fontWeight:'bold', fontSize:'12px'}}>
+                                      SALVA
+                                  </button>
                               </div>
                            </div>
+
                            {isInputActive && getTodayLog(asset.id) && <button onClick={()=>{const n={...tempInput}; delete n[asset.id]; setTempInput(n);}} style={{marginTop:5, width:'100%', fontSize:10, background:'transparent', border:'none', color:'#999', cursor:'pointer'}}>Annulla Modifica</button>}
                       </div>
                   );
@@ -553,23 +611,28 @@ function Haccp() {
                       <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Lotto</label><input value={merciForm.lotto} onChange={e=>setMerciForm({...merciForm, lotto:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
                       <div style={{flex:1, minWidth:120}}><label style={{fontSize:11}}>Scadenza</label><input type="date" value={merciForm.scadenza} onChange={e=>setMerciForm({...merciForm, scadenza:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
                       <div style={{flex:1, minWidth:80}}><label style={{fontSize:11}}>Temp °C</label><input type="number" step="0.1" value={merciForm.temperatura} onChange={e=>setMerciForm({...merciForm, temperatura:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
+                      
                       <div style={{flex:1, minWidth:150}}><label style={{fontSize:11}}>Destinazione</label>
                         <select value={merciForm.destinazione} onChange={e=>setMerciForm({...merciForm, destinazione:e.target.value})} style={{width:'100%', padding:9, border:'1px solid #ddd'}}>
                             <option value="">-- Seleziona --</option>
                             {assets.map(a => <option key={a.id} value={a.nome}>{a.nome}</option>)}
                         </select>
                       </div>
+
                       <div style={{flex:2, minWidth:200}}><label style={{fontSize:11}}>Note</label><input value={merciForm.note} onChange={e=>setMerciForm({...merciForm, note:e.target.value})} placeholder="Es. Fattura 42..." style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
+                      
                       <div style={{display:'flex', alignItems:'center', gap:5}}>
                         <label style={{cursor:'pointer', background: merciForm.allegato_url ? '#2ecc71' : '#ecf0f1', padding:'10px', borderRadius:5, border:'1px solid #ccc', fontSize:12, whiteSpace:'nowrap'}}>
                             {uploadingMerci ? "Caricamento..." : (merciForm.allegato_url ? "📎 Bolla Allegata" : "📎 Allega Bolla")}
                             <input type="file" accept="image/*,.pdf" onChange={handleMerciPhoto} style={{display:'none'}} />
                         </label>
                       </div>
+
                       <div style={{display:'flex', flexDirection:'column', gap:5, minWidth:100}}>
                           <label style={{fontSize:11}}><input type="checkbox" checked={merciForm.conforme} onChange={e=>setMerciForm({...merciForm, conforme:e.target.checked})} /> Conforme</label>
                           <label style={{fontSize:11}}><input type="checkbox" checked={merciForm.integro} onChange={e=>setMerciForm({...merciForm, integro:e.target.checked})} /> Integro</label>
                       </div>
+                      
                       <button style={{background: merciForm.id ? '#f39c12' : '#27ae60', color:'white', border:'none', padding:'10px 20px', borderRadius:5, cursor:'pointer', height:40, fontWeight:'bold'}}>
                           {merciForm.id ? 'AGGIORNA' : 'REGISTRA'}
                       </button>
@@ -579,40 +642,49 @@ function Haccp() {
               <div style={{background:'white', padding:20, borderRadius:10}}>
                   <h3>📦 Storico Arrivi</h3>
                   <table style={{width:'100%', borderCollapse:'collapse', fontSize:13}}>
-                      <thead>
-                          <tr style={{background:'#f0f0f0', textAlign:'left'}}>
-                              <th style={{padding:8}}>Data</th>
-                              <th style={{padding:8}}>Fornitore / Prodotto</th>
-                              <th style={{padding:8}}>Condizione Prodotti</th> 
-                              <th style={{padding:8}}>Lotto / Scadenza</th>
-                              <th style={{padding:8}}>Note / Dest.</th>
-                              <th style={{padding:8}}>Azioni</th>
-                          </tr>
-                      </thead>
-                      <tbody>
-                          {merci.map(m => (
-                              <tr key={m.id} style={{borderBottom:'1px solid #eee'}}>
-                                  <td style={{padding:8}}>{new Date(m.data_ricezione).toLocaleDateString()}</td>
-                                  <td style={{padding:8}}><strong>{m.fornitore}</strong><br/>{m.prodotto} ({m.quantita})</td>
-                                  <td style={{padding:8}}>
-                                      {!m.conforme ? <span style={{color:'red', fontWeight:'bold'}}>TEMP KO</span> : 
-                                      (!m.integro ? <span style={{color:'orange', fontWeight:'bold'}}>DANNEGGIATO</span> : 
-                                      <span style={{color:'green', fontWeight:'bold'}}>CONFORME</span>)}
-                                  </td>
-                                  <td style={{padding:8}}>L: {m.lotto}<br/>S: {m.scadenza ? new Date(m.scadenza).toLocaleDateString() : '-'}</td>
-                                  <td style={{padding:8}}>
-                                      {m.destinazione && <div>📍 {m.destinazione}</div>}
-                                      {m.note && <div style={{fontStyle:'italic'}}>{m.note}</div>}
-                                  </td>
-                                  <td style={{padding:8, display:'flex', gap:5}}>
-                                      {m.allegato_url && <a href={m.allegato_url} target="_blank" style={{background:'#3498db', color:'white', border:'none', borderRadius:3, padding:'2px 5px', textDecoration:'none'}}>📎</a>}
-                                      <button onClick={()=>iniziaModificaMerci(m)} style={{background:'#f39c12', color:'white', border:'none', borderRadius:3, cursor:'pointer', padding:'2px 5px'}}>✏️</button>
-                                      <button onClick={()=>eliminaMerce(m.id)} style={{background:'#e74c3c', color:'white', border:'none', borderRadius:3, cursor:'pointer', padding:'2px 5px'}}>🗑️</button>
-                                  </td>
-                              </tr>
-                          ))}
-                      </tbody>
-                  </table>
+      <thead>
+          <tr style={{background:'#f0f0f0', textAlign:'left'}}>
+              <th style={{padding:8}}>Data</th>
+              <th style={{padding:8}}>Fornitore / Prodotto</th>
+              {/* RINOMINATO */}
+              <th style={{padding:8}}>Condizione Prodotti</th> 
+              {/* SCADENZA PRIMA DELLE NOTE */}
+              <th style={{padding:8}}>Lotto / Scadenza</th>
+              <th style={{padding:8}}>Note / Dest.</th>
+              <th style={{padding:8}}>Azioni</th>
+          </tr>
+      </thead>
+      <tbody>
+          {merci.map(m => (
+              <tr key={m.id} style={{borderBottom:'1px solid #eee'}}>
+                  <td style={{padding:8}}>{new Date(m.data_ricezione).toLocaleDateString()}</td>
+                  <td style={{padding:8}}><strong>{m.fornitore}</strong><br/>{m.prodotto} ({m.quantita})</td>
+                  <td style={{padding:8}}>
+                      {/* LOGICA VISIVA CONDIZIONE */}
+                      {!m.conforme ? <span style={{color:'red', fontWeight:'bold'}}>TEMP KO</span> : 
+                       (!m.integro ? <span style={{color:'orange', fontWeight:'bold'}}>DANNEGGIATO</span> : 
+                       <span style={{color:'green', fontWeight:'bold'}}>CONFORME</span>)}
+                  </td>
+                  {/* SCAMBIO ORDINE: SCADENZA/LOTTO QUI */}
+                  <td style={{padding:8}}>
+                       L: {m.lotto}<br/>
+                       S: {m.scadenza ? new Date(m.scadenza).toLocaleDateString() : '-'}
+                  </td>
+                  {/* NOTE E DESTINAZIONE QUI */}
+                  <td style={{padding:8}}>
+                       {m.destinazione && <div>📍 {m.destinazione}</div>}
+                       {m.note && <div style={{fontStyle:'italic'}}>{m.note}</div>}
+                  </td>
+                  <td style={{padding:8, display:'flex', gap:5}}>
+                      {/* ... Bottoni esistenti ... */}
+                      {m.allegato_url && <a href={m.allegato_url} target="_blank" style={{background:'#3498db', color:'white', border:'none', borderRadius:3, padding:'2px 5px', textDecoration:'none'}}>📎</a>}
+                      <button onClick={()=>iniziaModificaMerci(m)} style={{background:'#f39c12', color:'white', border:'none', borderRadius:3, cursor:'pointer', padding:'2px 5px'}}>✏️</button>
+                      <button onClick={()=>eliminaMerce(m.id)} style={{background:'#e74c3c', color:'white', border:'none', borderRadius:3, cursor:'pointer', padding:'2px 5px'}}>🗑️</button>
+                  </td>
+              </tr>
+          ))}
+      </tbody>
+    </table>
               </div>
           </div>
       )}
@@ -689,27 +761,25 @@ function Haccp() {
           </div>
       )}
 
-      {/* 6. STAFF (VISTA FIXATA) */}
+      {/* 6. STAFF (DOPO IL TAB SETUP, NON DENTRO) */}
       {tab === 'staff' && !scanId && (
           <div className="no-print">
               <h3>Gestione Personale & Documenti</h3>
               <p style={{fontSize:12, color:'#666'}}>Seleziona un membro dello staff per gestire i suoi documenti.</p>
               
               <div style={{display:'flex', gap:20, flexWrap:'wrap'}}>
-                  {/* LISTA STAFF */}
                   <div style={{flex:1, minWidth:300, background:'white', padding:20, borderRadius:10}}>
                       <h4>Staff Attivo</h4>
                       {staffList.length === 0 && <p>Nessun dipendente trovato.</p>}
                       {staffList.map(u => (
                           <div key={u.id} onClick={()=>openStaffDocs(u)} 
-                              style={{padding:10, borderBottom:'1px solid #eee', cursor:'pointer', background: selectedStaff?.id===u.id ? '#eafaf1' : 'white', display:'flex', justifyContent:'space-between'}}>
+                               style={{padding:10, borderBottom:'1px solid #eee', cursor:'pointer', background: selectedStaff?.id===u.id ? '#eafaf1' : 'white', display:'flex', justifyContent:'space-between'}}>
                               <span style={{fontWeight:'bold'}}>{u.nome}</span>
                               <span style={{fontSize:12, background:'#eee', padding:'2px 6px', borderRadius:4}}>{u.ruolo}</span>
                           </div>
                       ))}
                   </div>
 
-                  {/* DOCUMENTI UTENTE SELEZIONATO */}
                   {selectedStaff && (
                       <div style={{flex:2, minWidth:300, background:'white', padding:20, borderRadius:10, borderLeft:'4px solid #3498db'}}>
                           <div style={{display:'flex', justifyContent:'space-between'}}>
@@ -754,65 +824,19 @@ function Haccp() {
                                   ))}
                               </tbody>
                           </table>
-                          {staffDocs.length === 0 && <p style={{color:'#999', marginTop:20, textAlign:'center'}}>Nessun documento caricato per questo utente.</p>}
                       </div>
                   )}
               </div>
           </div>
       )}
-              
-      {/* MODALI ESISTENTI (QR, EDIT) */}
-      {showQRModal && (
-          <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center'}}>
-              <div style={{background:'white', padding:30, textAlign:'center', borderRadius:10}}>
-                  <h3>QR: {showQRModal.nome}</h3>
-                  <QRCode value={`${window.location.origin}/haccp/${slug}/scan/${showQRModal.id}`} size={150} />
-                  <br/><br/><button onClick={executePrintQR}>STAMPA QR</button><button onClick={()=>setShowQRModal(null)} style={{marginLeft:10}}>CHIUDI</button>
-              </div>
-          </div>
-      )}
-      {showAssetModal && (
-          <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000}}>
-              <div style={{background:'white', padding:25, width:400, borderRadius:10, maxHeight:'90vh', overflowY:'auto'}}>
-                <h3 style={{marginTop:0}}>{editingAsset ? 'Modifica Asset' : 'Nuovo Asset'}</h3>
-                <form onSubmit={salvaAsset} style={{display:'flex', flexDirection:'column', gap:10}}>
-                    <input value={assetForm.nome} onChange={e=>setAssetForm({...assetForm, nome:e.target.value})} placeholder="Nome (es. Frigo 1)" style={{padding:8, border:'1px solid #ccc'}} required />
-                    <select value={assetForm.stato} onChange={e=>setAssetForm({...assetForm, stato:e.target.value})} style={{padding:5, borderRadius:3}}>
-                        <option value="attivo">✅ ATTIVA (Accesa)</option>
-                        <option value="spento">⛔ SPENTA (Non in uso)</option>
-                    </select>
-                    <select value={assetForm.tipo} onChange={e=>setAssetForm({...assetForm, tipo:e.target.value})} style={{padding:8, border:'1px solid #ccc'}}>
-                        <option value="frigo">Frigorifero</option><option value="cella">Cella Frigo</option><option value="vetrina">Vetrina</option><option value="congelatore">Congelatore</option><option value="magazzino">Magazzino Secco</option><option value="abbattitore">Abbattitore</option>
-                    </select>
-                    <div style={{display:'flex', gap:5}}>
-                        <input type="number" value={assetForm.range_min} onChange={e=>setAssetForm({...assetForm, range_min:e.target.value})} placeholder="Min" style={{flex:1, padding:8, border:'1px solid #ccc'}} />
-                        <input type="number" value={assetForm.range_max} onChange={e=>setAssetForm({...assetForm, range_max:e.target.value})} placeholder="Max" style={{flex:1, padding:8, border:'1px solid #ccc'}} />
-                    </div>
-                    <input value={assetForm.marca} onChange={e=>setAssetForm({...assetForm, marca:e.target.value})} placeholder="Marca" style={{padding:8, border:'1px solid #ccc'}} />
-                    <input value={assetForm.modello} onChange={e=>setAssetForm({...assetForm, modello:e.target.value})} placeholder="Modello" style={{padding:8, border:'1px solid #ccc'}} />
-                    <input value={assetForm.serial_number} onChange={e=>setAssetForm({...assetForm, serial_number:e.target.value})} placeholder="Numero Seriale" style={{padding:8, border:'1px solid #ccc'}} />
-                    <div style={{display:'flex', gap:10}}>
-                        <label style={{flex:1, cursor:'pointer', background: assetForm.foto_url ? '#eafaf1' : '#f0f0f0', padding:10, textAlign:'center', borderRadius:5, fontSize:12, border:'1px solid #ccc'}}>
-                            {uploadingAsset ? '...' : (assetForm.foto_url ? '✅ Foto OK' : '📸 Foto Frigo')}
-                            <input type="file" onChange={handleAssetPhoto} style={{display:'none'}} />
-                        </label>
-                        <label style={{flex:1, cursor:'pointer', background: assetForm.etichetta_url ? '#eafaf1' : '#f0f0f0', padding:10, textAlign:'center', borderRadius:5, fontSize:12, border:'1px solid #ccc'}}>
-                            {uploadingLabel ? '...' : (assetForm.etichetta_url ? '✅ Etic. OK' : '📄 Etic. Frigo')}
-                            <input type="file" onChange={handleAssetLabel} style={{display:'none'}} />
-                        </label>
-                    </div>
-                    <button style={{background:'#27ae60', color:'white', border:'none', padding:10, borderRadius:5}}>SALVA</button>
-                    <button type="button" onClick={()=>setShowAssetModal(false)} style={{background:'#95a5a6', color:'white', border:'none', padding:10, borderRadius:5}}>Annulla</button>
-                </form>
-              </div>
-          </div>
-      )}
 
-      {/* MODALE DOWNLOAD */}
+      {/* --- MODALE DOWNLOAD EXCEL/PDF (AGGIORNATA CON MESE SPECIFICO) --- */}
       {showDownloadModal && (
           <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000}}>
               <div style={{background:'white', padding:30, borderRadius:10, textAlign:'center', width:350}}>
                   <h3 style={{marginTop:0}}>Scarica Report: {downloadType === 'temperature' ? 'Temperature' : (downloadType === 'merci' ? 'Merci' : 'Macchine')}</h3>
+                  
+                  {/* SELEZIONE FORMATO */}
                   <div style={{marginBottom:20, background:'#f9f9f9', padding:10, borderRadius:5}}>
                        <p style={{margin:'0 0 10px 0', fontSize:14, fontWeight:'bold'}}>Formato:</p>
                        <div style={{display:'flex', justifyContent:'center', gap:10}}>
@@ -820,23 +844,36 @@ function Haccp() {
                            <button onClick={()=>setDownloadFormat('pdf')} style={{background: downloadFormat==='pdf'?'#e74c3c':'#eee', color:downloadFormat==='pdf'?'white':'black', padding:'5px 15px', border:'none', borderRadius:20, cursor:'pointer'}}>PDF</button>
                        </div>
                   </div>
+
                   <p style={{color:'#666', fontSize:14}}>Seleziona il periodo:</p>
+                  
                   <div style={{display:'flex', flexDirection:'column', gap:10, marginTop:10}}>
+                      {/* NUOVO: SELETTORE MESE SPECIFICO */}
                       <div style={{display:'flex', gap:5}}>
-                          <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} style={{flex:1, padding:10, border:'1px solid #ccc', borderRadius:5}} />
-                          <button onClick={()=>executeDownload('custom-month')} style={{padding:'0 15px', background:'#8e44ad', color:'white', border:'none', borderRadius:5, cursor:'pointer', fontWeight:'bold'}}>SCARICA</button>
+                          <input type="month" 
+                                 value={selectedMonth} 
+                                 onChange={(e) => setSelectedMonth(e.target.value)}
+                                 style={{flex:1, padding:10, border:'1px solid #ccc', borderRadius:5}} 
+                          />
+                          <button onClick={()=>executeDownload('custom-month')} 
+                                  style={{padding:'0 15px', background:'#8e44ad', color:'white', border:'none', borderRadius:5, cursor:'pointer', fontWeight:'bold'}}>
+                              SCARICA
+                          </button>
                       </div>
+
                       <div style={{borderTop:'1px solid #eee', margin:'5px 0'}}></div>
+
                       <button onClick={()=>executeDownload('week')} style={{padding:12, background:'#3498db', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Ultima Settimana</button>
                       <button onClick={()=>executeDownload('month')} style={{padding:12, background:'#2980b9', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Ultimi 30 Giorni</button>
                       <button onClick={()=>executeDownload('all')} style={{padding:12, background:'#2c3e50', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Tutto lo storico</button>
                   </div>
+                  
                   <button onClick={()=>setShowDownloadModal(false)} style={{marginTop:20, background:'transparent', border:'none', color:'#999', cursor:'pointer', textDecoration:'underline'}}>Annulla</button>
               </div>
           </div>
       )}
 
-      {/* ANTEPRIMA IMMAGINE */}
+      {/* --- NUOVA MODALE ANTEPRIMA IMMAGINE --- */}
       {previewImage && (
           <div onClick={() => setPreviewImage(null)} style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.9)', zIndex:3000, display:'flex', alignItems:'center', justifyContent:'center', cursor:'zoom-out'}}>
               <img src={previewImage} alt="Anteprima" style={{maxWidth:'90%', maxHeight:'90%', borderRadius:10, border:'2px solid white'}} />
@@ -844,7 +881,7 @@ function Haccp() {
           </div>
       )}
 
-      {/* PRINT AREA */}
+      {/* --- PRINT AREA --- */}
       {printMode === 'label' && lastLabel && (
         <div className="print-area" style={{position:'fixed', top:0, left:0, width:'58mm', height:'40mm', background:'white', color:'black', display:'flex', flexDirection:'column', padding:'3mm', boxSizing:'border-box', fontFamily:'Arial', border:'1px solid black'}}>
             <div style={{fontWeight:'900', fontSize:'14px', textAlign:'center', borderBottom:'2px solid black', paddingBottom:'2px', textTransform:'uppercase'}}>{lastLabel.prodotto}</div>
