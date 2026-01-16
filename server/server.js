@@ -455,31 +455,51 @@ app.get('/api/haccp/labels/storico/:ristorante_id', async (req, res) => {
 // --- NUOVA ROUTE PER DOWNLOAD SICURO STAFF ---
 app.get('/api/proxy-download', (req, res) => {
     const fileUrl = req.query.url;
-    // Decodifichiamo il nome per evitare caratteri strani
     const fileName = req.query.name || 'documento.pdf';
 
     if (!fileUrl) return res.status(400).send("URL mancante");
 
-    const https = require('https'); // Modulo nativo
-    
-    https.get(fileUrl, (stream) => {
-        // Forziamo il browser a capire che è un file da gestire (attachment = scarica, inline = apri)
-        // Se vuoi che si apra nel browser (popup), usa 'inline'. Se vuoi forzare download, usa 'attachment'.
-        // Qui usiamo 'inline' per i PDF così si aprono nell'anteprima del browser.
-        res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
-        
-        if(fileName.toLowerCase().endsWith('.pdf')) {
-            res.setHeader('Content-Type', 'application/pdf');
-        } else {
-            // Fallback per immagini
-            res.setHeader('Content-Type', 'image/jpeg'); 
+    const http = require('http');
+    const https = require('https');
+
+    // Funzione ricorsiva per gestire i redirect
+    const downloadLoop = (url, redirectCount = 0) => {
+        if (redirectCount > 5) {
+            return res.status(500).send("Troppi reindirizzamenti.");
         }
-        
-        stream.pipe(res);
-    }).on('error', (err) => {
-        console.error("Errore Proxy:", err);
-        res.status(500).send("Errore nel download del file");
-    });
+
+        const client = url.startsWith('https') ? https : http;
+
+        client.get(url, (response) => {
+            // 1. Gestione Redirect (301, 302, 303, 307, 308)
+            if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+                return downloadLoop(response.headers.location, redirectCount + 1);
+            }
+
+            // 2. Se non è 200 OK, è un errore
+            if (response.statusCode !== 200) {
+                return res.status(response.statusCode).send("Errore nel recupero del file remoto.");
+            }
+
+            // 3. Successo: inviamo gli header e il file
+            res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+            
+            if (fileName.toLowerCase().endsWith('.pdf')) {
+                res.setHeader('Content-Type', 'application/pdf');
+            } else if (fileName.match(/\.(jpg|jpeg|png)$/i)) {
+                // Mantiene il content type originale per le immagini o forza jpeg
+                res.setHeader('Content-Type', response.headers['content-type'] || 'image/jpeg');
+            }
+
+            response.pipe(res);
+
+        }).on('error', (err) => {
+            console.error("Errore Proxy:", err);
+            res.status(500).send("Errore di connessione al file server.");
+        });
+    };
+
+    downloadLoop(fileUrl);
 });
 
 app.listen(port, () => console.log(`🚀 SERVER V12.2 (Porta ${port}) - TIMEZONE: ROME`));
