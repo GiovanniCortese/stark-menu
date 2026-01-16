@@ -427,29 +427,94 @@ app.get('/api/haccp/assets/:ristorante_id', async (req, res) => {
 // 2. CREA ASSET
 app.post('/api/haccp/assets', async (req, res) => {
     try {
-        const { ristorante_id, nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url } = req.body;
+        // Aggiunto etichetta_url nei parametri
+        const { ristorante_id, nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url } = req.body;
         await pool.query(
             `INSERT INTO haccp_assets 
-            (ristorante_id, nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url) 
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, 
-            [ristorante_id, nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url]
+            (ristorante_id, nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url) 
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, 
+            [ristorante_id, nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url]
         );
         res.json({success:true});
     } catch(e) { res.status(500).json({error:e.message}); }
 });
 
-// 3. MODIFICA ASSET
 app.put('/api/haccp/assets/:id', async (req, res) => {
     try {
-        const { nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url } = req.body;
+        const { nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url } = req.body;
         await pool.query(
             `UPDATE haccp_assets 
-             SET nome=$1, tipo=$2, range_min=$3, range_max=$4, marca=$5, modello=$6, serial_number=$7, foto_url=$8 
-             WHERE id=$9`, 
-            [nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, req.params.id]
+             SET nome=$1, tipo=$2, range_min=$3, range_max=$4, marca=$5, modello=$6, serial_number=$7, foto_url=$8, etichetta_url=$9
+             WHERE id=$10`, 
+            [nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url, req.params.id]
         );
         res.json({success:true});
     } catch(e) { res.status(500).json({error:e.message}); }
+});
+
+// --- NUOVA API: EXPORT EXCEL ---
+app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
+    try {
+        const { tipo, ristorante_id } = req.params;
+        const workbook = xlsx.utils.book_new();
+        let data = [];
+        let sheetName = "Export";
+
+        if (tipo === 'temperature') {
+            const r = await pool.query(`SELECT l.data_ora, a.nome as asset, l.valore as temperatura, l.conformita, l.azione_correttiva, l.operatore FROM haccp_logs l JOIN haccp_assets a ON l.asset_id = a.id WHERE l.ristorante_id = $1 ORDER BY l.data_ora DESC`, [ristorante_id]);
+            data = r.rows.map(row => ({
+                "Data/Ora": new Date(row.data_ora).toLocaleString('it-IT'),
+                "Macchina": row.asset,
+                "Temp (°C)": row.temperatura,
+                "Esito": row.conformita ? "OK" : "ANOMALIA",
+                "Azioni": row.azione_correttiva || "",
+                "Operatore": row.operatore
+            }));
+            sheetName = "Temperature";
+        } 
+        else if (tipo === 'merci') {
+            const r = await pool.query(`SELECT * FROM haccp_merci WHERE ristorante_id = $1 ORDER BY data_ricezione DESC`, [ristorante_id]);
+            data = r.rows.map(row => ({
+                "Data Ricezione": new Date(row.data_ricezione).toLocaleDateString('it-IT'),
+                "Fornitore": row.fornitore,
+                "Prodotto": row.prodotto,
+                "Quantità": row.quantita,
+                "Lotto": row.lotto,
+                "Scadenza": row.scadenza ? new Date(row.scadenza).toLocaleDateString('it-IT') : "",
+                "Temp Arrivo": row.temperatura,
+                "Conforme": row.conforme ? "SI" : "NO",
+                "Integro": row.integro ? "SI" : "NO",
+                "Note": row.note,
+                "Destinazione": row.destinazione
+            }));
+            sheetName = "Merci";
+        }
+        else if (tipo === 'assets') {
+            const r = await pool.query(`SELECT * FROM haccp_assets WHERE ristorante_id = $1`, [ristorante_id]);
+            data = r.rows.map(row => ({
+                "Nome": row.nome,
+                "Tipo": row.tipo,
+                "Marca": row.marca,
+                "Modello": row.modello,
+                "Seriale": row.serial_number,
+                "Range Min": row.range_min,
+                "Range Max": row.range_max
+            }));
+            sheetName = "Macchine";
+        }
+
+        const worksheet = xlsx.utils.json_to_sheet(data);
+        xlsx.utils.book_append_sheet(workbook, worksheet, sheetName);
+        const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+        
+        res.setHeader('Content-Disposition', `attachment; filename="haccp_${tipo}.xlsx"`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(buffer);
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Errore Export Excel" });
+    }
 });
 
 // 4. ELIMINA ASSET

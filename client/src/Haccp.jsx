@@ -1,4 +1,4 @@
-// client/src/Haccp.jsx - VERSIONE V7 (MERCI COMPLETA + CALENDARIO MERCI + FIX SETUP)
+// client/src/Haccp.jsx - VERSIONE V8 (FINAL: EXPORT + ASSET FIELDS + NEW LABELS + CALENDAR UI)
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import QRCode from 'react-qr-code'; 
@@ -24,7 +24,7 @@ function Haccp() {
   
   // Stati Merci (Form)
   const [merciForm, setMerciForm] = useState({
-      id: null, // Se presente, siamo in edit mode
+      id: null,
       data_ricezione: new Date().toISOString().split('T')[0],
       fornitore: '', prodotto: '', lotto: '', scadenza: '',
       temperatura: '', conforme: true, integro: true, note: '',
@@ -35,8 +35,13 @@ function Haccp() {
   // Stati Asset Edit & QR
   const [showAssetModal, setShowAssetModal] = useState(false);
   const [editingAsset, setEditingAsset] = useState(null); 
-  const [assetForm, setAssetForm] = useState({ nome:'', tipo:'frigo', range_min:0, range_max:4, marca:'', modello:'', serial_number:'', foto_url:'' });
-  const [uploadingAsset, setUploadingAsset] = useState(false);
+  const [assetForm, setAssetForm] = useState({ 
+      nome:'', tipo:'frigo', range_min:0, range_max:4, 
+      marca:'', modello:'', serial_number:'', // AGGIUNTO SERIALE
+      foto_url:'', etichetta_url:'' // AGGIUNTO ETICHETTA URL
+  });
+  const [uploadingAsset, setUploadingAsset] = useState(false); // Per foto macchina
+  const [uploadingLabel, setUploadingLabel] = useState(false); // Per etichetta file
   const [showQRModal, setShowQRModal] = useState(null);
 
   // Stati Etichette e Stampa
@@ -78,7 +83,6 @@ function Haccp() {
       const start = new Date(year, month, 1).toISOString();
       const end = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
       try {
-          // Logs temperatura
           const res = await fetch(`${API_URL}/api/haccp/logs/${info.id}?start=${start}&end=${end}`);
           const dataLogs = await res.json();
           setCalendarLogs(dataLogs);
@@ -105,6 +109,11 @@ function Haccp() {
       const fd = new FormData(); fd.append('photo', file);
       const res = await fetch(`${API_URL}/api/upload`, { method:'POST', body:fd });
       const data = await res.json(); return data.url;
+  };
+
+  // --- EXPORT EXCEL ---
+  const downloadExcel = (tipo) => {
+      window.open(`${API_URL}/api/haccp/export/${tipo}/${info.id}`, '_blank');
   };
 
   // --- TEMPERATURE ---
@@ -158,44 +167,33 @@ function Haccp() {
       setUploadingMerci(true);
       try { const url = await uploadFile(f); setMerciForm(prev => ({...prev, allegato_url: url})); } finally { setUploadingMerci(false); }
   };
-
   const salvaMerci = async (e) => {
       e.preventDefault();
       const endpoint = merciForm.id ? `${API_URL}/api/haccp/merci/${merciForm.id}` : `${API_URL}/api/haccp/merci`;
       const method = merciForm.id ? 'PUT' : 'POST';
-      
       await fetch(endpoint, {
           method, headers:{'Content-Type':'application/json'},
           body: JSON.stringify({...merciForm, ristorante_id: info.id, operatore: 'Staff'})
       });
-      
-      resetMerciForm();
-      ricaricaDati();
+      resetMerciForm(); ricaricaDati();
   };
-  
   const resetMerciForm = () => {
       setMerciForm({
-        id: null,
-        data_ricezione: new Date().toISOString().split('T')[0],
-        fornitore: '', prodotto: '', lotto: '', scadenza: '',
-        temperatura: '', conforme: true, integro: true, note: '',
-        quantita: '', allegato_url: '', destinazione: ''
+        id: null, data_ricezione: new Date().toISOString().split('T')[0],
+        fornitore: '', prodotto: '', lotto: '', scadenza: '', temperatura: '', 
+        conforme: true, integro: true, note: '', quantita: '', allegato_url: '', destinazione: ''
       });
   };
-
   const iniziaModificaMerci = (m) => {
       setMerciForm({ ...m, data_ricezione: m.data_ricezione.split('T')[0], scadenza: m.scadenza ? m.scadenza.split('T')[0] : '' });
       window.scrollTo(0,0);
   };
+  const eliminaMerce = async (id) => { if(confirm("Eliminare riga?")) { await fetch(`${API_URL}/api/haccp/merci/${id}`, {method:'DELETE'}); ricaricaDati(); } };
 
-  const eliminaMerce = async (id) => {
-      if(confirm("Eliminare riga?")) { await fetch(`${API_URL}/api/haccp/merci/${id}`, {method:'DELETE'}); ricaricaDati(); }
-  };
-
-  // --- ASSET CRUD ---
+  // --- ASSET CRUD (MODIFICATO: SERIALE, FOTO, ETICHETTA) ---
   const apriModaleAsset = (asset = null) => {
       if(asset) { setEditingAsset(asset); setAssetForm({ ...asset }); } 
-      else { setEditingAsset(null); setAssetForm({ nome:'', tipo:'frigo', range_min:0, range_max:4, marca:'', modello:'', serial_number:'', foto_url:'' }); }
+      else { setEditingAsset(null); setAssetForm({ nome:'', tipo:'frigo', range_min:0, range_max:4, marca:'', modello:'', serial_number:'', foto_url:'', etichetta_url:'' }); }
       setShowAssetModal(true);
   };
   const salvaAsset = async (e) => {
@@ -209,9 +207,13 @@ function Haccp() {
       const f = e.target.files[0]; if(!f) return; setUploadingAsset(true);
       try { const url = await uploadFile(f); setAssetForm(prev => ({...prev, foto_url: url})); } finally { setUploadingAsset(false); }
   };
+  const handleAssetLabel = async (e) => {
+      const f = e.target.files[0]; if(!f) return; setUploadingLabel(true);
+      try { const url = await uploadFile(f); setAssetForm(prev => ({...prev, etichetta_url: url})); } finally { setUploadingLabel(false); }
+  };
 
-  // --- CALENDARIO (CON MERCI) ---
-  const getDaysInMonth = (date) => { /* ... */ 
+  // --- CALENDARIO ---
+  const getDaysInMonth = (date) => { 
     const year = date.getFullYear(), month = date.getMonth();
     const days = new Date(year, month + 1, 0).getDate();
     const firstDay = new Date(year, month, 1).getDay(); 
@@ -222,7 +224,6 @@ function Haccp() {
       const newDate = new Date(currentDate); newDate.setMonth(newDate.getMonth() + delta);
       setCurrentDate(newDate); setSelectedDayLogs(null);
   };
-
   const renderCalendario = () => {
       const { days, emptySlots } = getDaysInMonth(currentDate);
       const grid = [];
@@ -232,10 +233,7 @@ function Haccp() {
       
       for (let d = 1; d <= days; d++) {
           const currentDayStr = new Date(currentDate.getFullYear(), currentDate.getMonth(), d).toDateString();
-          
-          // Filtra Logs Temp
           const logsDelGiorno = calendarLogs.filter(l => new Date(l.data_ora).toDateString() === currentDayStr);
-          // Filtra Merci
           const merciDelGiorno = merci.filter(m => new Date(m.data_ricezione).toDateString() === currentDayStr);
 
           const hasLogs = logsDelGiorno.length > 0;
@@ -250,8 +248,8 @@ function Haccp() {
                  style={{background: bgColor, border:'1px solid #ddd', minHeight:'80px', padding:'5px', cursor:'pointer', position:'relative'}}>
                   <div style={{fontWeight:'bold'}}>{d}</div>
                   <div style={{fontSize:'10px', marginTop:5}}>
-                      {hasLogs && <div>🌡️ {logsDelGiorno.length} Controlli</div>}
-                      {hasMerci && <div>📦 {merciDelGiorno.length} Arrivi</div>}
+                      {hasLogs && <div>🌡️ {logsDelGiorno.length}</div>}
+                      {hasMerci && <div>📦 {merciDelGiorno.length}</div>}
                   </div>
             </div>
           );
@@ -265,40 +263,65 @@ function Haccp() {
              </div>
              <div style={{display:'grid', gridTemplateColumns:'repeat(7, 1fr)', gap:5}}>{grid}</div>
              {selectedDayLogs && (
-                 <div style={{marginTop:20, borderTop:'1px solid #ccc', paddingTop:10}}>
-                     <h4>Dettagli Giorno {selectedDayLogs.day}</h4>
+                 <div style={{marginTop:20, borderTop:'2px solid #333', paddingTop:20}}>
+                     <h2 style={{marginTop:0}}>Dettagli {selectedDayLogs.day} {monthNames[currentDate.getMonth()]}</h2>
                      
-                     {selectedDayLogs.logs.length > 0 && (
-                       <>
-                         <h5>🌡️ Temperature</h5>
-                         {selectedDayLogs.logs.map(l => (
-                             <div key={'l'+l.id} style={{borderBottom:'1px solid #eee', padding:5}}>
-                                {new Date(l.data_ora).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'})} - <strong>{l.nome_asset}</strong>: {l.valore}°C 
-                                {l.azione_correttiva && <span style={{color:'red'}}> (Correzi: {l.azione_correttiva})</span>}
-                             </div>
-                         ))}
-                       </>
-                     )}
+                     <div style={{display:'flex', gap:20, flexWrap:'wrap'}}>
+                         {/* COLONNA TEMPERATURE */}
+                         <div style={{flex:1, minWidth:300, background:'#f9f9f9', padding:15, borderRadius:5}}>
+                             <h4 style={{marginTop:0, borderBottom:'2px solid #27ae60', color:'#27ae60'}}>🌡️ Temperature</h4>
+                             {selectedDayLogs.logs.length === 0 ? <p style={{color:'#999'}}>Nessuna registrazione.</p> : (
+                                 <table style={{width:'100%', fontSize:13, borderCollapse:'collapse'}}>
+                                     <thead><tr style={{textAlign:'left'}}><th>Ora</th><th>Macchina</th><th>°C</th><th>Stato</th></tr></thead>
+                                     <tbody>
+                                        {selectedDayLogs.logs.map(l => (
+                                            <tr key={l.id} style={{borderBottom:'1px solid #eee'}}>
+                                                <td style={{padding:5}}>{new Date(l.data_ora).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'})}</td>
+                                                <td style={{padding:5}}><strong>{l.nome_asset}</strong></td>
+                                                <td style={{padding:5}}>{l.valore}</td>
+                                                <td style={{padding:5}}>{l.conformita ? '✅' : '❌'}</td>
+                                            </tr>
+                                        ))}
+                                     </tbody>
+                                 </table>
+                             )}
+                         </div>
 
-                     {selectedDayLogs.merci && selectedDayLogs.merci.length > 0 && (
-                        <>
-                          <h5>📦 Merci Ricevute</h5>
-                          {selectedDayLogs.merci.map(m => (
-                              <div key={'m'+m.id} style={{borderBottom:'1px solid #eee', padding:5, fontSize:'13px'}}>
-                                  <strong>{m.prodotto}</strong> da {m.fornitore} <br/>
-                                  Quantità: {m.quantita || '-'} | Lotto: {m.lotto || '-'}
-                                  {m.allegato_url && <span> | <a href={m.allegato_url} target="_blank">📎 Foto Bolla</a></span>}
-                              </div>
-                          ))}
-                        </>
-                     )}
+                         {/* COLONNA MERCI */}
+                         <div style={{flex:1, minWidth:300, background:'#f9f9f9', padding:15, borderRadius:5}}>
+                             <h4 style={{marginTop:0, borderBottom:'2px solid #f39c12', color:'#f39c12'}}>📦 Arrivo Merci</h4>
+                             {selectedDayLogs.merci.length === 0 ? <p style={{color:'#999'}}>Nessun arrivo.</p> : (
+                                 <div style={{display:'flex', flexDirection:'column', gap:10}}>
+                                     {selectedDayLogs.merci.map(m => (
+                                         <div key={m.id} style={{background:'white', padding:10, border:'1px solid #ddd', borderRadius:5}}>
+                                             <div style={{fontWeight:'bold'}}>{m.prodotto}</div>
+                                             <div style={{fontSize:12, color:'#555'}}>{m.fornitore} | Qty: {m.quantita}</div>
+                                             <div style={{fontSize:12}}>Lotto: {m.lotto} | Scad: {new Date(m.scadenza).toLocaleDateString()}</div>
+                                             <div style={{marginTop:5}}>
+                                                 {m.conforme ? <span style={{background:'#eafaf1', color:'green', padding:'2px 5px', borderRadius:3, fontSize:10}}>OK</span> : <span style={{background:'#fadbd8', color:'red', padding:'2px 5px', borderRadius:3, fontSize:10}}>NO</span>}
+                                                 {m.allegato_url && <a href={m.allegato_url} target="_blank" style={{marginLeft:10, fontSize:12}}>📎 Bolla</a>}
+                                             </div>
+                                         </div>
+                                     ))}
+                                 </div>
+                             )}
+                         </div>
+                     </div>
                  </div>
              )}
           </div>
       );
   };
 
-  // --- STAMPA ---
+  // --- ETICHETTE (LOGICA AUTOMATICA GIORNI) ---
+  const handleLabelTypeChange = (e) => {
+      const type = e.target.value;
+      let days = 3;
+      if (type === 'negativo') days = 180; // 6 mesi
+      if (type === 'sottovuoto') days = 10;
+      setLabelData({...labelData, tipo: type, giorni_scadenza: days});
+  };
+
   const handlePrintLabel = async (e) => {
       e.preventDefault();
       const scadenza = new Date(); scadenza.setDate(scadenza.getDate() + parseInt(labelData.giorni_scadenza));
@@ -311,17 +334,25 @@ function Haccp() {
   };
   const executePrintQR = () => { setPrintMode('qr'); setTimeout(() => { window.print(); setPrintMode(null); }, 500); };
 
-  // --- UI ---
+  // --- UI RENDER ---
   if(!info) return <div>Caricamento...</div>;
   if(!isAuthorized) return <div style={{padding:50, textAlign:'center'}}><h1>🔒 Password Required</h1><form onSubmit={handleLogin}><input type="password" value={password} onChange={e=>setPassword(e.target.value)} /><button>Login</button></form></div>;
   const assetsToDisplay = scanId ? assets.filter(a => a.id.toString() === scanId) : assets.filter(a=>['frigo','cella','vetrina'].includes(a.tipo));
 
   return (
     <div className="haccp-container" style={{minHeight:'100vh', background:'#ecf0f1', padding:20, fontFamily:'sans-serif'}}>
+      
       {!scanId && (
           <div className="no-print" style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20, flexWrap:'wrap', gap:10}}>
               <div><h1 style={{margin:0, color:'#2c3e50'}}>🛡️ HACCP Control</h1></div>
-              <div style={{display:'flex', gap:10}}>
+              <div style={{display:'flex', gap:10, alignItems:'center'}}>
+                  {/* PULSANTI DOWNLOAD EXCEL */}
+                  <div style={{marginRight:20, display:'flex', gap:5}}>
+                      <button onClick={()=>downloadExcel('temperature')} style={{background:'#27ae60', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Temp</button>
+                      <button onClick={()=>downloadExcel('merci')} style={{background:'#f39c12', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Merci</button>
+                      <button onClick={()=>downloadExcel('assets')} style={{background:'#34495e', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Macchine</button>
+                  </div>
+
                   {['temperature', 'merci', 'calendario', 'etichette', 'setup'].map(t => (
                       <button key={t} onClick={()=>setTab(t)} style={{padding:'10px 20px', borderRadius:5, border:'none', cursor:'pointer', fontWeight:'bold', textTransform:'uppercase', background: tab===t ? '#2c3e50' : 'white', color: tab===t ? 'white' : '#333'}}>
                         {t==='merci' ? '📦 Merci' : (t==='setup' ? '⚙️ Macchine' : t)}
@@ -332,7 +363,7 @@ function Haccp() {
           </div>
       )}
 
-      {/* 1. TEMPERATURE (UI RIFINITA) */}
+      {/* 1. TEMPERATURE */}
       {tab === 'temperature' && (
           <div className="no-print" style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(350px, 1fr))', gap:20}}>
               {assetsToDisplay.map(asset => {
@@ -378,7 +409,7 @@ function Haccp() {
           </div>
       )}
 
-      {/* 2. RICEVIMENTO MERCI (AGGIORNATO) */}
+      {/* 2. RICEVIMENTO MERCI (TABELLA + FORM) */}
       {tab === 'merci' && !scanId && (
           <div className="no-print">
               <div style={{background:'white', padding:20, borderRadius:10, marginBottom:20, borderLeft: merciForm.id ? '5px solid #f39c12' : '5px solid #27ae60'}}>
@@ -390,24 +421,19 @@ function Haccp() {
                       <div style={{flex:1, minWidth:120}}><label style={{fontSize:11}}>Data Arrivo</label><input type="date" value={merciForm.data_ricezione} onChange={e=>setMerciForm({...merciForm, data_ricezione:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required /></div>
                       <div style={{flex:2, minWidth:150}}><label style={{fontSize:11}}>Fornitore</label><input value={merciForm.fornitore} onChange={e=>setMerciForm({...merciForm, fornitore:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required /></div>
                       <div style={{flex:2, minWidth:150}}><label style={{fontSize:11}}>Prodotto</label><input value={merciForm.prodotto} onChange={e=>setMerciForm({...merciForm, prodotto:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required /></div>
-                      
-                      {/* NUOVI CAMPI */}
                       <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Quantità (KG/Colli)</label><input value={merciForm.quantita} onChange={e=>setMerciForm({...merciForm, quantita:e.target.value})} placeholder="Es. 10kg" style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
-                      
                       <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Lotto</label><input value={merciForm.lotto} onChange={e=>setMerciForm({...merciForm, lotto:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
                       <div style={{flex:1, minWidth:120}}><label style={{fontSize:11}}>Scadenza</label><input type="date" value={merciForm.scadenza} onChange={e=>setMerciForm({...merciForm, scadenza:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
                       <div style={{flex:1, minWidth:80}}><label style={{fontSize:11}}>Temp °C</label><input type="number" step="0.1" value={merciForm.temperatura} onChange={e=>setMerciForm({...merciForm, temperatura:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
                       
-                      {/* DESTINAZIONE (Macchine) */}
-                      <div style={{flex:1, minWidth:150}}><label style={{fontSize:11}}>Destinazione (Opzionale)</label>
+                      <div style={{flex:1, minWidth:150}}><label style={{fontSize:11}}>Destinazione</label>
                         <select value={merciForm.destinazione} onChange={e=>setMerciForm({...merciForm, destinazione:e.target.value})} style={{width:'100%', padding:9, border:'1px solid #ddd'}}>
                             <option value="">-- Seleziona --</option>
                             {assets.map(a => <option key={a.id} value={a.nome}>{a.nome}</option>)}
                         </select>
                       </div>
 
-                      {/* FILE UPLOAD & NOTE */}
-                      <div style={{flex:2, minWidth:200}}><label style={{fontSize:11}}>Note (Rif. Bolla/Fattura)</label><input value={merciForm.note} onChange={e=>setMerciForm({...merciForm, note:e.target.value})} placeholder="Es. Fattura 42 del..." style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
+                      <div style={{flex:2, minWidth:200}}><label style={{fontSize:11}}>Note</label><input value={merciForm.note} onChange={e=>setMerciForm({...merciForm, note:e.target.value})} placeholder="Es. Fattura 42..." style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
                       
                       <div style={{display:'flex', alignItems:'center', gap:5}}>
                         <label style={{cursor:'pointer', background: merciForm.allegato_url ? '#2ecc71' : '#ecf0f1', padding:'10px', borderRadius:5, border:'1px solid #ccc', fontSize:12, whiteSpace:'nowrap'}}>
@@ -434,9 +460,8 @@ function Haccp() {
                           <tr style={{background:'#f0f0f0', textAlign:'left'}}>
                               <th style={{padding:8}}>Data</th>
                               <th style={{padding:8}}>Fornitore / Prodotto</th>
-                              <th style={{padding:8}}>Dettagli (Qty, Lotto, Scad)</th>
+                              <th style={{padding:8}}>Dettagli</th>
                               <th style={{padding:8}}>Stato</th>
-                              <th style={{padding:8}}>Doc</th>
                               <th style={{padding:8}}>Azioni</th>
                           </tr>
                       </thead>
@@ -451,9 +476,9 @@ function Haccp() {
                                       {m.destinazione && <div style={{fontSize:11, color:'#666'}}>📍 {m.destinazione}</div>}
                                       {m.note && <div style={{fontSize:11, fontStyle:'italic'}}>Note: {m.note}</div>}
                                   </td>
-                                  <td style={{padding:8}}>{m.conforme && m.integro ? <span style={{color:'green', fontWeight:'bold'}}>OK</span> : <span style={{color:'red', fontWeight:'bold'}}>NON CONF.</span>}</td>
-                                  <td style={{padding:8}}>{m.allegato_url ? <a href={m.allegato_url} target="_blank" style={{textDecoration:'none'}}>📎 Vedi</a> : '-'}</td>
+                                  <td style={{padding:8}}>{m.conforme && m.integro ? <span style={{color:'green', fontWeight:'bold'}}>OK</span> : <span style={{color:'red', fontWeight:'bold'}}>NO</span>}</td>
                                   <td style={{padding:8, display:'flex', gap:5}}>
+                                      {m.allegato_url && <a href={m.allegato_url} target="_blank" style={{background:'#3498db', color:'white', border:'none', borderRadius:3, padding:'2px 5px', textDecoration:'none'}}>📎</a>}
                                       <button onClick={()=>iniziaModificaMerci(m)} style={{background:'#f39c12', color:'white', border:'none', borderRadius:3, cursor:'pointer', padding:'2px 5px'}}>✏️</button>
                                       <button onClick={()=>eliminaMerce(m.id)} style={{background:'#e74c3c', color:'white', border:'none', borderRadius:3, cursor:'pointer', padding:'2px 5px'}}>🗑️</button>
                                   </td>
@@ -468,30 +493,41 @@ function Haccp() {
       {/* 3. CALENDARIO */}
       {tab === 'calendario' && !scanId && renderCalendario()}
 
-      {/* 4. ETICHETTE */}
-      {tab === 'etichette' && !scanId && ( /* ... invariato ... */ 
+      {/* 4. ETICHETTE (AUTO-DATE & GRAFICA) */}
+      {tab === 'etichette' && !scanId && (
           <div className="no-print" style={{display:'flex', gap:20}}>
              <div style={{background:'white', padding:20, borderRadius:10, flex:1}}>
                  <h3>Genera Etichetta Interna</h3>
                  <form onSubmit={handlePrintLabel} style={{display:'flex', flexDirection:'column', gap:10}}>
                     <input placeholder="Prodotto" required value={labelData.prodotto} onChange={e=>setLabelData({...labelData, prodotto:e.target.value})} style={{padding:10, border:'1px solid #ccc'}} />
-                    <select value={labelData.tipo} onChange={e=>setLabelData({...labelData, tipo:e.target.value})} style={{padding:10, border:'1px solid #ccc'}}>
-                        <option value="positivo">Positivo (+3°C)</option><option value="negativo">Negativo (-18°C)</option><option value="sottovuoto">Sottovuoto</option>
+                    <select value={labelData.tipo} onChange={handleLabelTypeChange} style={{padding:10, border:'1px solid #ccc'}}>
+                        <option value="positivo">Positivo (+3°C) - 3gg</option>
+                        <option value="negativo">Negativo (-18°C) - 180gg</option>
+                        <option value="sottovuoto">Sottovuoto - 10gg</option>
                     </select>
-                    <input type="number" placeholder="Giorni scadenza" value={labelData.giorni_scadenza} onChange={e=>setLabelData({...labelData, giorni_scadenza:e.target.value})} style={{padding:10, border:'1px solid #ccc'}} />
+                    <div style={{fontSize:12, color:'#666'}}>Giorni scadenza (Modificabile):</div>
+                    <input type="number" value={labelData.giorni_scadenza} onChange={e=>setLabelData({...labelData, giorni_scadenza:e.target.value})} style={{padding:10, border:'1px solid #ccc'}} />
                     <input placeholder="Operatore" value={labelData.operatore} onChange={e=>setLabelData({...labelData, operatore:e.target.value})} style={{padding:10, border:'1px solid #ccc'}} />
                     <button style={{background:'#2980b9', color:'white', border:'none', padding:10, marginTop:10, borderRadius:5}}>STAMPA</button>
                  </form>
              </div>
              <div style={{flex:1, background:'#eee', display:'flex', alignItems:'center', justifyContent:'center'}}>
-                 {lastLabel && <div style={{background:'white', padding:10, border:'1px solid black', width:200, height:120}}>
-                     <strong>{lastLabel.prodotto}</strong><br/><small>Scad: {new Date(lastLabel.data_scadenza).toLocaleDateString()}</small><br/><small>Lotto: {lastLabel.lotto}</small>
+                 {lastLabel && <div style={{background:'white', padding:15, border:'2px solid black', width:300}}>
+                     <h2 style={{margin:'0 0 10px 0', borderBottom:'1px solid black'}}>{lastLabel.prodotto}</h2>
+                     <div style={{display:'flex', justifyContent:'space-between'}}>
+                        <span>📅 Prod: {new Date(lastLabel.data_produzione).toLocaleDateString()}</span>
+                        <span>👨‍🍳 {lastLabel.operatore}</span>
+                     </div>
+                     <div style={{marginTop:10, fontWeight:'bold', fontSize:18}}>
+                        SCAD: {new Date(lastLabel.data_scadenza).toLocaleDateString()}
+                     </div>
+                     <div style={{marginTop:10, fontSize:12, color:'#555'}}>Lotto: {lastLabel.lotto}</div>
                  </div>}
              </div>
           </div>
       )}
 
-      {/* 5. SETUP (FIXATO: AGGIUNTO MENU A TENDINA TIPO) */}
+      {/* 5. SETUP (ASSET UPDATE) */}
       {tab === 'setup' && !scanId && (
           <div className="no-print">
               <div style={{display:'flex', justifyContent:'space-between', marginBottom:20}}>
@@ -501,15 +537,27 @@ function Haccp() {
               <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(300px, 1fr))', gap:20}}>
                   {assets.map(a => (
                       <div key={a.id} style={{background:'white', padding:15, borderRadius:10, borderLeft:'4px solid #34495e'}}>
-                          <strong>{a.nome}</strong> <span style={{fontSize:12, color:'#666'}}>({a.tipo})</span>
-                          <div style={{marginTop:10, display:'flex', gap:5}}>
-                              <button onClick={()=>setShowQRModal(a)} style={{background:'#34495e', color:'white', border:'none', padding:'5px 10px', borderRadius:3}}>QR Code</button>
-                              <button onClick={()=>apriModaleAsset(a)} style={{background:'#f39c12', color:'white', border:'none', padding:'5px 10px', borderRadius:3}}>Modifica</button>
+                          <div style={{display:'flex', justifyContent:'space-between'}}>
+                              <strong>{a.nome}</strong> 
+                              <span style={{fontSize:12, color:'#666'}}>{a.tipo}</span>
+                          </div>
+                          <div style={{fontSize:12, color:'#7f8c8d', margin:'5px 0'}}>
+                             {a.marca} {a.modello} <br/>
+                             SN: {a.serial_number || '-'}
+                          </div>
+                          
+                          <div style={{marginTop:10, display:'flex', gap:5, flexWrap:'wrap'}}>
+                              <button onClick={()=>setShowQRModal(a)} style={{background:'#34495e', color:'white', border:'none', padding:'5px 10px', borderRadius:3, flex:1}}>QR Code</button>
+                              <button onClick={()=>apriModaleAsset(a)} style={{background:'#f39c12', color:'white', border:'none', padding:'5px 10px', borderRadius:3, flex:1}}>Modifica</button>
+                          </div>
+                          <div style={{marginTop:5, display:'flex', gap:5}}>
+                                {a.foto_url && <a href={a.foto_url} target="_blank" style={{fontSize:11, textDecoration:'none', color:'#3498db'}}>📸 Foto</a>}
+                                {a.etichetta_url && <a href={a.etichetta_url} target="_blank" style={{fontSize:11, textDecoration:'none', color:'#e67e22'}}>📄 Etichetta</a>}
                           </div>
                       </div>
                   ))}
               </div>
-              {/* MODALE QR */}
+              
               {showQRModal && (
                   <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center'}}>
                       <div style={{background:'white', padding:30, textAlign:'center', borderRadius:10}}>
@@ -519,30 +567,36 @@ function Haccp() {
                       </div>
                   </div>
               )}
-              {/* MODALE ASSET (FIX: AGGIUNTO SELECT TIPO) */}
+              
               {showAssetModal && (
-                  <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center'}}>
-                     <div style={{background:'white', padding:25, width:350, borderRadius:10}}>
+                  <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000}}>
+                     <div style={{background:'white', padding:25, width:400, borderRadius:10, maxHeight:'90vh', overflowY:'auto'}}>
                         <h3 style={{marginTop:0}}>{editingAsset ? 'Modifica Asset' : 'Nuovo Asset'}</h3>
                         <form onSubmit={salvaAsset} style={{display:'flex', flexDirection:'column', gap:10}}>
                            <input value={assetForm.nome} onChange={e=>setAssetForm({...assetForm, nome:e.target.value})} placeholder="Nome (es. Frigo 1)" style={{padding:8, border:'1px solid #ccc'}} required />
-                           
-                           {/* ECCO LA SELECT CHE MANCAVA! */}
                            <select value={assetForm.tipo} onChange={e=>setAssetForm({...assetForm, tipo:e.target.value})} style={{padding:8, border:'1px solid #ccc'}}>
-                               <option value="frigo">Frigorifero</option>
-                               <option value="cella">Cella Frigo</option>
-                               <option value="vetrina">Vetrina</option>
-                               <option value="congelatore">Congelatore</option>
-                               <option value="magazzino">Magazzino Secco</option>
-                               <option value="abbattitore">Abbattitore</option>
+                               <option value="frigo">Frigorifero</option><option value="cella">Cella Frigo</option><option value="vetrina">Vetrina</option><option value="congelatore">Congelatore</option><option value="magazzino">Magazzino Secco</option><option value="abbattitore">Abbattitore</option>
                            </select>
-
                            <div style={{display:'flex', gap:5}}>
                                <input type="number" value={assetForm.range_min} onChange={e=>setAssetForm({...assetForm, range_min:e.target.value})} placeholder="Min" style={{flex:1, padding:8, border:'1px solid #ccc'}} />
                                <input type="number" value={assetForm.range_max} onChange={e=>setAssetForm({...assetForm, range_max:e.target.value})} placeholder="Max" style={{flex:1, padding:8, border:'1px solid #ccc'}} />
                            </div>
                            <input value={assetForm.marca} onChange={e=>setAssetForm({...assetForm, marca:e.target.value})} placeholder="Marca" style={{padding:8, border:'1px solid #ccc'}} />
                            <input value={assetForm.modello} onChange={e=>setAssetForm({...assetForm, modello:e.target.value})} placeholder="Modello" style={{padding:8, border:'1px solid #ccc'}} />
+                           <input value={assetForm.serial_number} onChange={e=>setAssetForm({...assetForm, serial_number:e.target.value})} placeholder="Numero Seriale" style={{padding:8, border:'1px solid #ccc'}} />
+
+                           {/* UPLOAD FOTO E ETICHETTA */}
+                           <div style={{display:'flex', gap:10}}>
+                                <label style={{flex:1, cursor:'pointer', background: assetForm.foto_url ? '#eafaf1' : '#f0f0f0', padding:10, textAlign:'center', borderRadius:5, fontSize:12, border:'1px solid #ccc'}}>
+                                    {uploadingAsset ? '...' : (assetForm.foto_url ? '✅ Foto OK' : '📸 Foto Frigo')}
+                                    <input type="file" onChange={handleAssetPhoto} style={{display:'none'}} />
+                                </label>
+                                <label style={{flex:1, cursor:'pointer', background: assetForm.etichetta_url ? '#eafaf1' : '#f0f0f0', padding:10, textAlign:'center', borderRadius:5, fontSize:12, border:'1px solid #ccc'}}>
+                                    {uploadingLabel ? '...' : (assetForm.etichetta_url ? '✅ Etic. OK' : '📄 Etic. Frigo')}
+                                    <input type="file" onChange={handleAssetLabel} style={{display:'none'}} />
+                                </label>
+                           </div>
+
                            <button style={{background:'#27ae60', color:'white', border:'none', padding:10, borderRadius:5}}>SALVA</button>
                            <button type="button" onClick={()=>setShowAssetModal(false)} style={{background:'#95a5a6', color:'white', border:'none', padding:10, borderRadius:5}}>Annulla</button>
                         </form>
@@ -552,15 +606,27 @@ function Haccp() {
           </div>
       )}
 
-      {/* --- PRINT AREA --- */}
+      {/* --- PRINT AREA (ETICHETTA MIGLIORATA GRAFICAMENTE) --- */}
       {printMode === 'label' && lastLabel && (
-        <div className="print-area" style={{position:'fixed', top:0, left:0, width:'58mm', height:'40mm', background:'white', color:'black', display:'flex', flexDirection:'column', padding:'2mm', boxSizing:'border-box', fontSize:'10px', fontFamily:'Arial'}}>
-            <div style={{fontWeight:'bold', fontSize:'12px', textAlign:'center', borderBottom:'1px solid black', paddingBottom:'2px'}}>{lastLabel.prodotto}</div>
-            <div style={{display:'flex', justifyContent:'space-between', marginTop:'2px'}}><span>PROD: {new Date(lastLabel.data_produzione).toLocaleDateString()}</span><span>OP: {lastLabel.operatore}</span></div>
-            <div style={{fontWeight:'bold', fontSize:'11px', marginTop:'2px'}}>SCAD: {new Date(lastLabel.data_scadenza).toLocaleDateString()}</div>
-            <div style={{marginTop:'auto', fontSize:'9px', textAlign:'center'}}>Lotto: {lastLabel.lotto}</div>
+        <div className="print-area" style={{position:'fixed', top:0, left:0, width:'58mm', height:'40mm', background:'white', color:'black', display:'flex', flexDirection:'column', padding:'3mm', boxSizing:'border-box', fontFamily:'Arial', border:'1px solid black'}}>
+            <div style={{fontWeight:'900', fontSize:'14px', textAlign:'center', borderBottom:'2px solid black', paddingBottom:'2px', textTransform:'uppercase'}}>{lastLabel.prodotto}</div>
+            
+            <div style={{display:'flex', justifyContent:'space-between', marginTop:'5px', fontSize:'10px'}}>
+                <span>PROD: <strong>{new Date(lastLabel.data_produzione).toLocaleDateString()}</strong></span>
+                <span>OP: {lastLabel.operatore}</span>
+            </div>
+            
+            <div style={{marginTop:'5px', textAlign:'center'}}>
+                <div style={{fontSize:'10px'}}>SCADENZA</div>
+                <div style={{fontWeight:'900', fontSize:'16px'}}>{new Date(lastLabel.data_scadenza).toLocaleDateString()}</div>
+            </div>
+
+            <div style={{marginTop:'auto', fontSize:'9px', textAlign:'center', borderTop:'1px solid black', paddingTop:'2px'}}>
+                Lotto: {lastLabel.lotto}
+            </div>
         </div>
       )}
+      
       {printMode === 'qr' && showQRModal && (
         <div className="print-area" style={{position:'fixed', top:0, left:0, width:'100%', height:'100%', background:'white', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'}}>
              <h1 style={{fontSize:'40px', marginBottom:20}}>{showQRModal.nome}</h1>
