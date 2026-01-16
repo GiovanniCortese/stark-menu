@@ -1,4 +1,4 @@
-// client/src/Haccp.jsx - V13 (Mobile Fix, Logic Modificato, Fix Merci)
+// client/src/Haccp.jsx - V14 (PRO UI + FIX ERROR 500)
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import QRCode from 'react-qr-code'; 
@@ -82,10 +82,7 @@ function Haccp() {
 
   const ricaricaDati = () => {
       fetch(`${API_URL}/api/haccp/assets/${info.id}`).then(r=>r.json()).then(setAssets);
-      // Ordiniamo i logs per data decrescente per sicurezza
-      fetch(`${API_URL}/api/haccp/logs/${info.id}`).then(r=>r.json()).then(data => {
-          setLogs(data); // Il backend già li manda ordinati, ma ci fidiamo
-      });
+      fetch(`${API_URL}/api/haccp/logs/${info.id}`).then(r=>r.json()).then(setLogs);
       fetch(`${API_URL}/api/haccp/merci/${info.id}`).then(r=>r.json()).then(setMerci);
   };
 
@@ -142,20 +139,16 @@ function Haccp() {
       setShowDownloadModal(false);
   };
 
-  // --- TEMPERATURE (LOGICA MODIFICATO) ---
+  // --- TEMPERATURE ---
   const getTodayLog = (assetId) => {
       const today = new Date().toDateString();
-      // Trova l'ultimo log di oggi
       return logs.find(l => l.asset_id === assetId && new Date(l.data_ora).toDateString() === today);
   };
-
-  // Controlla se ci sono più logs oggi per capire se è stato "modificato"
   const isLogModifiedToday = (assetId) => {
       const today = new Date().toDateString();
       const logsToday = logs.filter(l => l.asset_id === assetId && new Date(l.data_ora).toDateString() === today);
       return logsToday.length > 1; 
   };
-
   const handleLogPhoto = async (e, assetId) => {
       const f = e.target.files[0]; if(!f) return;
       setUploadingLog(assetId);
@@ -198,7 +191,7 @@ function Haccp() {
       setTempInput(prev => ({ ...prev, [asset.id]: { val: logEsistente ? logEsistente.valore : '', photo: '' } }));
   };
 
-  // --- MERCI (FIX SALVATAGGIO) ---
+  // --- MERCI (FIX ERROR 500) ---
   const handleMerciPhoto = async (e) => {
       const f = e.target.files[0]; if(!f) return;
       setUploadingMerci(true);
@@ -211,9 +204,16 @@ function Haccp() {
         const endpoint = merciForm.id ? `${API_URL}/api/haccp/merci/${merciForm.id}` : `${API_URL}/api/haccp/merci`;
         const method = merciForm.id ? 'PUT' : 'POST';
         
+        // --- FIX CRUCIALE: CLEANUP DATI ---
+        const payload = { ...merciForm, ristorante_id: info.id, operatore: 'Staff' };
+        // Se la scadenza è stringa vuota, mandiamo null (Postgres odia le date vuote)
+        if (!payload.scadenza) payload.scadenza = null;
+        if (!payload.temperatura) payload.temperatura = null;
+        if (!payload.quantita) payload.quantita = null;
+
         const res = await fetch(endpoint, {
             method, headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({...merciForm, ristorante_id: info.id, operatore: 'Staff'})
+            body: JSON.stringify(payload)
         });
         
         const data = await res.json();
@@ -223,12 +223,10 @@ function Haccp() {
             ricaricaDati();
             alert("✅ Salvataggio riuscito!");
         } else {
-            // MOSTRA L'ERRORE REALE SE NON SALVA
-            alert("❌ Errore Salvataggio: " + (data.error || "Errore sconosciuto"));
-            console.error("Errore server merci:", data);
+            alert("❌ Errore Server: " + (data.error || "Sconosciuto"));
         }
       } catch (err) {
-          alert("❌ Errore di connessione: " + err.message);
+          alert("❌ Errore Connessione: " + err.message);
       }
   };
 
@@ -261,29 +259,35 @@ function Haccp() {
   const handleAssetPhoto = async (e) => { const f = e.target.files[0]; if(!f)return; setUploadingAsset(true); try{const u=await uploadFile(f);setAssetForm(p=>({...p,foto_url:u}))}finally{setUploadingAsset(false)} };
   const handleAssetLabel = async (e) => { const f = e.target.files[0]; if(!f)return; setUploadingLabel(true); try{const u=await uploadFile(f);setAssetForm(p=>({...p,etichetta_url:u}))}finally{setUploadingLabel(false)} };
 
-  // --- UI CALENDARIO & ETICHETTE (Invariati nella logica, solo rendering) ---
+  // --- UI CALENDARIO ---
   const getDaysInMonth = (d) => { const y=d.getFullYear(),m=d.getMonth(); return { days:new Date(y,m+1,0).getDate(), emptySlots: new Date(y,m,1).getDay()===0?6:new Date(y,m,1).getDay()-1 }; };
   const renderCalendario = () => {
-     // ... codice calendario invariato per brevità (utilizza la stessa logica di prima)
-     // Ho mantenuto la logica ma rimosso per brevità qui, la logica UI non cambia
      const { days, emptySlots } = getDaysInMonth(currentDate);
      const grid = [];
-     for (let i = 0; i < emptySlots; i++) grid.push(<div key={`e-${i}`} style={{background:'#f0f0f0'}}></div>);
+     for (let i = 0; i < emptySlots; i++) grid.push(<div key={`e-${i}`} style={{background:'#f8fafc'}}></div>);
      for (let d = 1; d <= days; d++) {
          const dStr = new Date(currentDate.getFullYear(), currentDate.getMonth(), d).toDateString();
          const lG = calendarLogs.filter(l => new Date(l.data_ora).toDateString() === dStr);
          const mG = merci.filter(m => new Date(m.data_ricezione).toDateString() === dStr);
          const hasLogs=lG.length>0, hasMerci=mG.length>0, hasErr=lG.some(l=>!l.conformita)||mG.some(m=>!m.conforme||!m.integro);
-         grid.push(<div key={d} onClick={()=>setSelectedDayLogs({day:d,logs:lG,merci:mG})} style={{background: (hasLogs||hasMerci)?(hasErr?'#ffcccc':'#ccffcc'):'white', border:'1px solid #ddd', minHeight:60, padding:2, fontSize:12, cursor:'pointer'}}><div style={{fontWeight:'bold'}}>{d}</div>{hasLogs&&'🌡️'}{hasMerci&&'📦'}</div>);
+         
+         let bg = 'white';
+         if(hasLogs||hasMerci) bg = hasErr ? '#fecaca' : '#d1fae5';
+
+         grid.push(<div key={d} onClick={()=>setSelectedDayLogs({day:d,logs:lG,merci:mG})} style={{background: bg, border:'1px solid #e2e8f0', minHeight:60, padding:4, borderRadius:6, fontSize:12, cursor:'pointer'}}><div style={{fontWeight:'bold', color:'#334155'}}>{d}</div><div style={{display:'flex', gap:2, marginTop:2}}>{hasLogs&&<span>🌡️</span>}{hasMerci&&<span>📦</span>}</div></div>);
      }
-     return <div style={{background:'white', padding:10, borderRadius:10}}>
-         <div style={{display:'flex',justifyContent:'space-between',marginBottom:10}}><button onClick={()=>setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth()-1)))}>◀</button><b>{currentDate.toLocaleString('it-IT',{month:'long',year:'numeric'})}</b><button onClick={()=>setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth()+1)))}>▶</button></div>
-         <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:5}}>{grid}</div>
-         {selectedDayLogs && <div style={{marginTop:20,borderTop:'1px solid #ccc',paddingTop:10}}>
-            <strong>Dettagli {selectedDayLogs.day}:</strong>
-            <div style={{marginTop:5}}>
-                {selectedDayLogs.logs.map(l=><div key={l.id} style={{fontSize:11,borderBottom:'1px solid #eee'}}>🌡️ {l.nome_asset}: {l.valore} ({l.conformita?'OK':'ERR'})</div>)}
-                {selectedDayLogs.merci.map(m=><div key={m.id} style={{fontSize:11,borderBottom:'1px solid #eee'}}>📦 {m.fornitore} - {m.prodotto}</div>)}
+     return <div className="card-container">
+         <div style={{display:'flex',justifyContent:'space-between',marginBottom:15, alignItems:'center'}}>
+             <button className="btn-secondary small" onClick={()=>setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth()-1)))}>◀</button>
+             <b style={{fontSize:18, color:'#1e293b'}}>{currentDate.toLocaleString('it-IT',{month:'long',year:'numeric'})}</b>
+             <button className="btn-secondary small" onClick={()=>setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth()+1)))}>▶</button>
+         </div>
+         <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:6}}>{grid}</div>
+         {selectedDayLogs && <div style={{marginTop:20,borderTop:'1px solid #e2e8f0',paddingTop:15}}>
+            <strong style={{color:'#0f172a', fontSize:16}}>Dettagli {selectedDayLogs.day}:</strong>
+            <div style={{marginTop:10, display:'grid', gap:10}}>
+                {selectedDayLogs.logs.map(l=><div key={l.id} className="log-item"><span>🌡️ <b>{l.nome_asset}</b></span> <span>{l.valore}°C ({l.conformita?'OK':'ERR'})</span></div>)}
+                {selectedDayLogs.merci.map(m=><div key={m.id} className="log-item"><span>📦 <b>{m.fornitore}</b></span> <span>{m.prodotto}</span></div>)}
             </div>
          </div>}
      </div>
@@ -296,431 +300,393 @@ function Haccp() {
       const d = await res.json(); if(d.success) { setLastLabel(d.label); setPrintMode('label'); setTimeout(() => { window.print(); setPrintMode(null); }, 500); }
   };
 
-  if(!info) return <div>Caricamento...</div>;
-  if(!isAuthorized) return <div style={{padding:50, textAlign:'center'}}><h1>🔒 Password Required</h1><form onSubmit={handleLogin}><input type="password" value={password} onChange={e=>setPassword(e.target.value)} /><button>Login</button></form></div>;
+  if(!info) return <div className="loading-screen">Caricamento...</div>;
+  if(!isAuthorized) return <div className="auth-screen"><h1>🔒 Accesso HACCP</h1><form onSubmit={handleLogin}><input type="password" placeholder="Password Reparto" value={password} onChange={e=>setPassword(e.target.value)} /><button>Entra</button></form></div>;
   
   const assetsToDisplay = scanId ? assets.filter(a => a.id.toString() === scanId) : assets.filter(a=>['frigo','cella','vetrina'].includes(a.tipo));
 
   return (
-    <div className="haccp-container" style={{minHeight:'100vh', background:'#ecf0f1', padding:'10px', fontFamily:'sans-serif'}}>
+    <div className="haccp-wrapper">
       
-      {/* HEADER RESPONSIVE */}
+      {/* HEADER PROFESSIONALE */}
       {!scanId && (
-          <div className="no-print header-container">
-              <h1 style={{margin:0, color:'#2c3e50', fontSize:'24px'}}>🛡️ HACCP</h1>
-              <div className="nav-buttons">
-                  <div className="download-group">
-                      <button onClick={()=>openDownloadModal('temperature')} className="btn-down">🌡️</button>
-                      <button onClick={()=>openDownloadModal('merci')} className="btn-down">📦</button>
+          <div className="no-print app-header">
+              <div className="brand">
+                  <span className="icon">🛡️</span>
+                  <h1>HACCP <small>Manager</small></h1>
+              </div>
+              <div className="actions">
+                  <div className="dropdown">
+                    <button className="btn-secondary" onClick={()=>openDownloadModal('temperature')}>📊 Report</button>
                   </div>
-                  <div className="nav-group">
-                      {['temperature', 'merci', 'calendario', 'etichette', 'setup'].map(t => (
-                          <button key={t} onClick={()=>setTab(t)} className={`btn-nav ${tab===t?'active':''}`}>
-                            {t==='temperature' ? '🌡️' : (t==='merci' ? '📦' : (t==='setup' ? '⚙️' : (t==='etichette'?'🏷️':'📅')))}
-                          </button>
-                      ))}
-                      <button onClick={()=>{localStorage.removeItem(`haccp_session_${slug}`); setIsAuthorized(false)}} className="btn-exit">❌</button>
-                  </div>
+                  <button onClick={()=>{localStorage.removeItem(`haccp_session_${slug}`); setIsAuthorized(false)}} className="btn-logout">Esci</button>
               </div>
           </div>
       )}
 
-      {/* 1. TEMPERATURE */}
-      {tab === 'temperature' && (
-          <div className="no-print card-grid">
-              {assetsToDisplay.map(asset => {
-                  const todayLog = getTodayLog(asset.id);
-                  const modified = isLogModifiedToday(asset.id); // Check modifica
-
-                  if(asset.stato === 'spento') return (
-                      <div key={asset.id} className="asset-card spento">
-                          <span className="badge-off">OFF</span>
-                          <h3>🚫 {asset.nome}</h3>
-                          <div className="status-bar off">SPENTO</div>
-                      </div>
-                  );
-
-                  const isInputActive = !!tempInput[asset.id];
-                  const currentData = tempInput[asset.id] || {};
-                  
-                  if (todayLog && !isInputActive) {
-                      const timeStr = new Date(todayLog.data_ora).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'});
-                      return (
-                          <div key={asset.id} className="asset-card ok">
-                              <div className="card-header">
-                                  <h3>✅ {asset.nome}</h3>
-                                  <span className="temp-display">{todayLog.valore === 'OFF' ? 'OFF' : todayLog.valore + '°C'}</span>
-                              </div>
-                              <div className="log-info">
-                                  {todayLog.conformita 
-                                    ? (modified ? `✏️ Modificato alle ${timeStr}` : `Registrato alle ${timeStr}`) 
-                                    : `⚠️ ANOMALIA - ${todayLog.azione_correttiva}`}
-                              </div>
-                              <button onClick={() => abilitaNuovaMisurazione(asset)} className="btn-edit">✏️ MODIFICA</button>
-                          </div>
-                      );
-                  }
-                  
-                  return (
-                      <div key={asset.id} className="asset-card input-mode">
-                           <div className="card-header">
-                                <h3>{asset.nome}</h3>
-                                <span className="range-badge">{asset.range_min}° / {asset.range_max}°</span>
-                           </div>
-                           
-                           <div className="input-row">
-                              <input type="number" step="0.1" placeholder="°C" className="temp-input"
-                                   value={currentData.val || ''} 
-                                   onChange={e=>setTempInput({...tempInput, [asset.id]: {...currentData, val: e.target.value}})} 
-                              />
-                              
-                              <div className="action-buttons">
-                                  <button onClick={()=>registraTemperatura(asset, true)} className="btn-off">OFF</button>
-                                  <label className={`btn-cam ${currentData.photo ? 'has-photo' : ''}`}>
-                                      📷 <input type="file" accept="image/*" onChange={(e)=>handleLogPhoto(e, asset.id)} hidden />
-                                  </label>
-                                  <button onClick={()=>registraTemperatura(asset, false)} className="btn-save">SALVA</button>
-                              </div>
-                           </div>
-                           {isInputActive && <button onClick={()=>{const n={...tempInput}; delete n[asset.id]; setTempInput(n);}} className="btn-cancel">Annulla</button>}
-                      </div>
-                  );
-              })}
+      {/* NAVIGATION TABS (Bottom su mobile, Top su desktop) */}
+      {!scanId && (
+          <div className="no-print nav-tabs">
+             {['temperature', 'merci', 'calendario', 'etichette', 'setup'].map(t => (
+                <button key={t} onClick={()=>setTab(t)} className={`tab-item ${tab===t?'active':''}`}>
+                   <span className="tab-icon">{t==='temperature' ? '🌡️' : (t==='merci' ? '📦' : (t==='setup' ? '⚙️' : (t==='etichette'?'🏷️':'📅')))}</span>
+                   <span className="tab-label">{t.charAt(0).toUpperCase() + t.slice(1)}</span>
+                </button>
+             ))}
           </div>
       )}
 
-      {/* 2. MERCI */}
-      {tab === 'merci' && !scanId && (
-          <div className="no-print">
-              <div className="form-card">
-                  <div className="form-header">
-                      <h3>{merciForm.id ? '✏️ Modifica Arrivo' : '📥 Nuovo Arrivo'}</h3>
-                      {merciForm.id && <button onClick={resetMerciForm} className="btn-cancel-small">Annulla</button>}
-                  </div>
-                  <form onSubmit={salvaMerci} className="merci-form">
-                      {/* Grid responsive fields */}
-                      <div className="field-group">
-                          <label>Data</label>
-                          <input type="date" value={merciForm.data_ricezione} onChange={e=>setMerciForm({...merciForm, data_ricezione:e.target.value})} required />
-                      </div>
-                      <div className="field-group grow">
-                          <label>Fornitore</label>
-                          <input value={merciForm.fornitore} onChange={e=>setMerciForm({...merciForm, fornitore:e.target.value})} required />
-                      </div>
-                      <div className="field-group grow">
-                          <label>Prodotto</label>
-                          <input value={merciForm.prodotto} onChange={e=>setMerciForm({...merciForm, prodotto:e.target.value})} required />
-                      </div>
-                      <div className="field-group">
-                          <label>Qty (Kg/Colli)</label>
-                          <input value={merciForm.quantita} onChange={e=>setMerciForm({...merciForm, quantita:e.target.value})} />
-                      </div>
-                      <div className="field-group">
-                          <label>Lotto</label>
-                          <input value={merciForm.lotto} onChange={e=>setMerciForm({...merciForm, lotto:e.target.value})} />
-                      </div>
-                      <div className="field-group">
-                          <label>Scadenza</label>
-                          <input type="date" value={merciForm.scadenza} onChange={e=>setMerciForm({...merciForm, scadenza:e.target.value})} />
-                      </div>
-                      <div className="field-group small">
-                          <label>Temp °C</label>
-                          <input type="number" step="0.1" value={merciForm.temperatura} onChange={e=>setMerciForm({...merciForm, temperatura:e.target.value})} />
-                      </div>
-                      <div className="field-group">
-                          <label>Destinazione</label>
-                          <select value={merciForm.destinazione} onChange={e=>setMerciForm({...merciForm, destinazione:e.target.value})}>
-                            <option value="">-- Seleziona --</option>
-                            {assets.map(a => <option key={a.id} value={a.nome}>{a.nome}</option>)}
-                          </select>
-                      </div>
-                      <div className="field-group full">
-                          <label>Note</label>
-                          <input value={merciForm.note} onChange={e=>setMerciForm({...merciForm, note:e.target.value})} />
-                      </div>
-                      
-                      <div className="form-actions">
-                        <label className={`btn-upload ${merciForm.allegato_url ? 'done' : ''}`}>
-                            {uploadingMerci ? "..." : "📎 Bolla"}
-                            <input type="file" accept="image/*,.pdf" onChange={handleMerciPhoto} hidden />
-                        </label>
-                        <div className="checkbox-group">
-                            <label><input type="checkbox" checked={merciForm.conforme} onChange={e=>setMerciForm({...merciForm, conforme:e.target.checked})} /> OK</label>
-                            <label><input type="checkbox" checked={merciForm.integro} onChange={e=>setMerciForm({...merciForm, integro:e.target.checked})} /> Integro</label>
+      <div className="content-area">
+        {/* 1. TEMPERATURE */}
+        {tab === 'temperature' && (
+            <div className="no-print grid-layout">
+                {assetsToDisplay.map(asset => {
+                    const todayLog = getTodayLog(asset.id);
+                    const modified = isLogModifiedToday(asset.id);
+
+                    if(asset.stato === 'spento') return (
+                        <div key={asset.id} className="card asset-off">
+                            <div className="card-status badge-gray">OFF</div>
+                            <h3>{asset.nome}</h3>
+                            <p>Macchinario Spento</p>
                         </div>
-                        <button className="btn-submit">{merciForm.id ? 'AGGIORNA' : 'REGISTRA'}</button>
-                      </div>
-                  </form>
-              </div>
+                    );
 
-              {/* LISTA MERCI RESPONSIVE (Cards su Mobile, Table su Desktop) */}
-              <div className="merci-list">
-                  <h3>📦 Storico Arrivi</h3>
-                  {/* Vista Desktop */}
-                  <table className="desktop-table">
-                      <thead>
-                          <tr><th>Data</th><th>Fornitore/Prod</th><th>Dettagli</th><th>Stato</th><th>Azioni</th></tr>
-                      </thead>
-                      <tbody>
-                          {merci.map(m => (
-                              <tr key={m.id}>
-                                  <td>{new Date(m.data_ricezione).toLocaleDateString()}</td>
-                                  <td><b>{m.fornitore}</b><br/>{m.prodotto}</td>
-                                  <td>Qty: {m.quantita}<br/>Lotto: {m.lotto}<br/>{m.destinazione && <small>📍 {m.destinazione}</small>}</td>
-                                  <td>{m.conforme && m.integro ? <span className="tag ok">OK</span> : <span className="tag err">NO</span>}</td>
-                                  <td>
-                                      <div className="actions">
-                                        {m.allegato_url && <a href={m.allegato_url} target="_blank" className="btn-icon blue">📎</a>}
-                                        <button onClick={()=>iniziaModificaMerci(m)} className="btn-icon orange">✏️</button>
-                                        <button onClick={()=>eliminaMerce(m.id)} className="btn-icon red">🗑️</button>
-                                      </div>
-                                  </td>
-                              </tr>
-                          ))}
-                      </tbody>
-                  </table>
+                    const isInputActive = !!tempInput[asset.id];
+                    const currentData = tempInput[asset.id] || {};
+                    
+                    if (todayLog && !isInputActive) {
+                        const timeStr = new Date(todayLog.data_ora).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'});
+                        return (
+                            <div key={asset.id} className="card asset-ok">
+                                <div className="card-header">
+                                    <h3>{asset.nome}</h3>
+                                    <div className="temp-badge">{todayLog.valore === 'OFF' ? 'OFF' : todayLog.valore + '°C'}</div>
+                                </div>
+                                <div className="card-body">
+                                    <div className={`status-text ${todayLog.conformita ? 'text-green' : 'text-red'}`}>
+                                        {todayLog.conformita 
+                                            ? (modified ? `✏️ Modificato: ${timeStr}` : `✅ Registrato: ${timeStr}`) 
+                                            : `⚠️ ANOMALIA: ${todayLog.azione_correttiva}`}
+                                    </div>
+                                    <button onClick={() => abilitaNuovaMisurazione(asset)} className="btn-outline">Modifica</button>
+                                </div>
+                            </div>
+                        );
+                    }
+                    
+                    return (
+                        <div key={asset.id} className="card asset-input">
+                            <div className="card-header">
+                                <h3>{asset.nome}</h3>
+                                <span className="badge-light">{asset.range_min}° / {asset.range_max}°</span>
+                            </div>
+                            <div className="input-group">
+                                <input type="number" step="0.1" placeholder="°C" 
+                                    value={currentData.val || ''} 
+                                    onChange={e=>setTempInput({...tempInput, [asset.id]: {...currentData, val: e.target.value}})} 
+                                />
+                                <div className="input-actions">
+                                    <button onClick={()=>registraTemperatura(asset, true)} className="btn-small btn-gray">OFF</button>
+                                    <label className={`btn-small btn-icon ${currentData.photo ? 'btn-green' : 'btn-light'}`}>
+                                        📷 <input type="file" accept="image/*" onChange={(e)=>handleLogPhoto(e, asset.id)} hidden />
+                                    </label>
+                                    <button onClick={()=>registraTemperatura(asset, false)} className="btn-small btn-primary">SALVA</button>
+                                </div>
+                            </div>
+                            {isInputActive && <button onClick={()=>{const n={...tempInput}; delete n[asset.id]; setTempInput(n);}} className="btn-link">Annulla</button>}
+                        </div>
+                    );
+                })}
+            </div>
+        )}
 
-                  {/* Vista Mobile (Cards) */}
-                  <div className="mobile-list">
-                      {merci.map(m => (
-                          <div key={m.id} className="mobile-card">
-                              <div className="mc-header">
-                                  <span>📅 {new Date(m.data_ricezione).toLocaleDateString()}</span>
-                                  {m.conforme && m.integro ? <span className="tag ok">OK</span> : <span className="tag err">NO</span>}
-                              </div>
-                              <div className="mc-body">
-                                  <strong>{m.prodotto}</strong>
-                                  <div className="mc-sub">{m.fornitore}</div>
-                                  <div className="mc-details">
-                                      <span>Qty: {m.quantita || '-'}</span>
-                                      <span>Lotto: {m.lotto || '-'}</span>
-                                  </div>
-                                  {m.destinazione && <div className="mc-loc">📍 {m.destinazione}</div>}
-                              </div>
-                              <div className="mc-footer">
-                                   {m.allegato_url && <a href={m.allegato_url} target="_blank" className="btn-link">📎 Bolla</a>}
-                                   <div className="mc-actions">
-                                       <button onClick={()=>iniziaModificaMerci(m)}>✏️ Modifica</button>
-                                       <button onClick={()=>eliminaMerce(m.id)} className="text-red">Elimina</button>
-                                   </div>
-                              </div>
-                          </div>
-                      ))}
-                  </div>
-              </div>
-          </div>
-      )}
-
-      {/* 3. CALENDARIO */}
-      {tab === 'calendario' && !scanId && renderCalendario()}
-
-      {/* 4. ETICHETTE */}
-      {tab === 'etichette' && !scanId && (
-          <div className="no-print form-card">
-                 <h3>Genera Etichetta</h3>
-                 <form onSubmit={handlePrintLabel} className="label-form">
-                    <input placeholder="Prodotto" required value={labelData.prodotto} onChange={e=>setLabelData({...labelData, prodotto:e.target.value})} className="full-width" />
-                    <select value={labelData.tipo} onChange={e=>{
-                        let d=3; if(e.target.value==='negativo')d=180; if(e.target.value==='sottovuoto')d=10;
-                        setLabelData({...labelData, tipo:e.target.value, giorni_scadenza:d});
-                    }} className="full-width">
-                        <option value="positivo">Positivo (+3°C)</option>
-                        <option value="negativo">Negativo (-18°C)</option>
-                        <option value="sottovuoto">Sottovuoto</option>
-                    </select>
-                    <div className="row-inputs">
-                        <input type="number" value={labelData.giorni_scadenza} onChange={e=>setLabelData({...labelData, giorni_scadenza:e.target.value})} placeholder="Giorni" />
-                        <input placeholder="Operatore" value={labelData.operatore} onChange={e=>setLabelData({...labelData, operatore:e.target.value})} />
+        {/* 2. MERCI */}
+        {tab === 'merci' && !scanId && (
+            <div className="no-print">
+                <div className="card form-container">
+                    <div className="card-header-simple">
+                        <h3>{merciForm.id ? '✏️ Modifica Arrivo' : '📥 Nuovo Arrivo Merce'}</h3>
+                        {merciForm.id && <button onClick={resetMerciForm} className="btn-link">Annulla</button>}
                     </div>
-                    <button className="btn-submit">STAMPA</button>
-                 </form>
-          </div>
-      )}
+                    <form onSubmit={salvaMerci} className="modern-form">
+                        <div className="form-row">
+                            <div className="form-group"><label>Data</label><input type="date" value={merciForm.data_ricezione} onChange={e=>setMerciForm({...merciForm, data_ricezione:e.target.value})} required /></div>
+                            <div className="form-group grow"><label>Fornitore</label><input value={merciForm.fornitore} onChange={e=>setMerciForm({...merciForm, fornitore:e.target.value})} required placeholder="Es. Metro" /></div>
+                            <div className="form-group grow"><label>Prodotto</label><input value={merciForm.prodotto} onChange={e=>setMerciForm({...merciForm, prodotto:e.target.value})} required placeholder="Es. Salmone" /></div>
+                        </div>
+                        <div className="form-row">
+                            <div className="form-group"><label>Quantità</label><input value={merciForm.quantita} onChange={e=>setMerciForm({...merciForm, quantita:e.target.value})} placeholder="Kg/Pz" /></div>
+                            <div className="form-group"><label>Lotto</label><input value={merciForm.lotto} onChange={e=>setMerciForm({...merciForm, lotto:e.target.value})} placeholder="L-123" /></div>
+                            <div className="form-group"><label>Scadenza</label><input type="date" value={merciForm.scadenza} onChange={e=>setMerciForm({...merciForm, scadenza:e.target.value})} /></div>
+                            <div className="form-group small"><label>Temp °C</label><input type="number" step="0.1" value={merciForm.temperatura} onChange={e=>setMerciForm({...merciForm, temperatura:e.target.value})} /></div>
+                        </div>
+                        <div className="form-row">
+                            <div className="form-group"><label>Destinazione</label>
+                                <select value={merciForm.destinazione} onChange={e=>setMerciForm({...merciForm, destinazione:e.target.value})}>
+                                    <option value="">-- Seleziona --</option>
+                                    {assets.map(a => <option key={a.id} value={a.nome}>{a.nome}</option>)}
+                                </select>
+                            </div>
+                            <div className="form-group grow"><label>Note</label><input value={merciForm.note} onChange={e=>setMerciForm({...merciForm, note:e.target.value})} /></div>
+                        </div>
+                        <div className="form-footer">
+                            <div className="checks">
+                                <label className="check-label"><input type="checkbox" checked={merciForm.conforme} onChange={e=>setMerciForm({...merciForm, conforme:e.target.checked})} /> Conforme</label>
+                                <label className="check-label"><input type="checkbox" checked={merciForm.integro} onChange={e=>setMerciForm({...merciForm, integro:e.target.checked})} /> Integro</label>
+                            </div>
+                            <div className="actions">
+                                <label className={`btn-secondary ${merciForm.allegato_url ? 'active' : ''}`}>
+                                    {uploadingMerci ? "..." : (merciForm.allegato_url ? "📎 Bolla OK" : "📎 Allega Bolla")}
+                                    <input type="file" accept="image/*,.pdf" onChange={handleMerciPhoto} hidden />
+                                </label>
+                                <button className="btn-primary large">{merciForm.id ? 'Aggiorna' : 'Registra Arrivo'}</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
 
-      {/* 5. SETUP */}
-      {tab === 'setup' && !scanId && (
-          <div className="no-print">
-              <div style={{display:'flex',justifyContent:'space-between',marginBottom:15}}>
-                  <h2>Macchinari</h2>
-                  <button onClick={()=>apriModaleAsset()} className="btn-add">+ Agg.</button>
-              </div>
-              <div className="card-grid">
-                  {assets.map(a => (
-                      <div key={a.id} className="asset-card setup-mode">
-                          <div className="card-header"><strong>{a.nome}</strong> <small>{a.tipo}</small></div>
-                          <div className="card-body">
-                              <div>SN: {a.serial_number || '-'}</div>
-                              <div className="btn-row">
-                                  <button onClick={()=>setShowQRModal(a)} className="btn-qr">QR</button>
-                                  <button onClick={()=>apriModaleAsset(a)} className="btn-edit">Modifica</button>
-                              </div>
-                              <div className="link-row">
-                                    {a.foto_url && <button onClick={() => setPreviewImage(a.foto_url)}>📸 Foto</button>}
-                                    {a.etichetta_url && <button onClick={() => setPreviewImage(a.etichetta_url)}>📄 Etichetta</button>}
-                              </div>
-                          </div>
-                      </div>
-                  ))}
-              </div>
-              {showAssetModal && (
+                <div className="list-container">
+                    <h3>📦 Ultimi Arrivi</h3>
+                    <div className="responsive-table">
+                        <div className="table-header">
+                            <div>Data</div><div>Fornitore</div><div>Prodotto</div><div>Stato</div><div>Azioni</div>
+                        </div>
+                        {merci.map(m => (
+                            <div key={m.id} className="table-row">
+                                <div className="col-date">{new Date(m.data_ricezione).toLocaleDateString()}</div>
+                                <div className="col-main"><b>{m.fornitore}</b></div>
+                                <div className="col-desc">
+                                    {m.prodotto}
+                                    <span className="sub-info">Qty: {m.quantita} • Lotto: {m.lotto}</span>
+                                </div>
+                                <div className="col-status">
+                                    {m.conforme && m.integro ? <span className="badge-green">OK</span> : <span className="badge-red">NO</span>}
+                                </div>
+                                <div className="col-actions">
+                                    {m.allegato_url && <a href={m.allegato_url} target="_blank" className="btn-icon">📎</a>}
+                                    <button onClick={()=>iniziaModificaMerci(m)} className="btn-icon">✏️</button>
+                                    <button onClick={()=>eliminaMerce(m.id)} className="btn-icon danger">🗑️</button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* 3. CALENDARIO */}
+        {tab === 'calendario' && !scanId && renderCalendario()}
+
+        {/* 4. ETICHETTE */}
+        {tab === 'etichette' && !scanId && (
+            <div className="no-print grid-layout two-col">
+                <div className="card">
+                    <h3>Genera Etichetta</h3>
+                    <form onSubmit={handlePrintLabel} className="modern-form">
+                        <div className="form-group"><label>Prodotto</label><input required value={labelData.prodotto} onChange={e=>setLabelData({...labelData, prodotto:e.target.value})} placeholder="Nome prodotto" /></div>
+                        <div className="form-group"><label>Tipo Conservazione</label>
+                            <select value={labelData.tipo} onChange={e=>{
+                                let d=3; if(e.target.value==='negativo')d=180; if(e.target.value==='sottovuoto')d=10;
+                                setLabelData({...labelData, tipo:e.target.value, giorni_scadenza:d});
+                            }}>
+                                <option value="positivo">Positivo (+3°C)</option>
+                                <option value="negativo">Negativo (-18°C)</option>
+                                <option value="sottovuoto">Sottovuoto</option>
+                            </select>
+                        </div>
+                        <div className="form-row">
+                            <div className="form-group"><label>Giorni Scad.</label><input type="number" value={labelData.giorni_scadenza} onChange={e=>setLabelData({...labelData, giorni_scadenza:e.target.value})} /></div>
+                            <div className="form-group"><label>Operatore</label><input value={labelData.operatore} onChange={e=>setLabelData({...labelData, operatore:e.target.value})} /></div>
+                        </div>
+                        <button className="btn-primary full">STAMPA</button>
+                    </form>
+                </div>
+            </div>
+        )}
+
+        {/* 5. SETUP */}
+        {tab === 'setup' && !scanId && (
+            <div className="no-print">
+                <div className="flex-header">
+                    <h2>Macchinari</h2>
+                    <button onClick={()=>apriModaleAsset()} className="btn-primary small">+ Aggiungi</button>
+                </div>
+                <div className="grid-layout">
+                    {assets.map(a => (
+                        <div key={a.id} className="card asset-setup">
+                            <div className="setup-header">
+                                <strong>{a.nome}</strong> 
+                                <span className="type-badge">{a.tipo}</span>
+                            </div>
+                            <div className="setup-body">
+                                <p>SN: {a.serial_number || '-'}</p>
+                                <div className="setup-actions">
+                                    <button onClick={()=>setShowQRModal(a)} className="btn-secondary small">QR</button>
+                                    <button onClick={()=>apriModaleAsset(a)} className="btn-outline small">Edit</button>
+                                </div>
+                                <div className="setup-links">
+                                    {a.foto_url && <span onClick={() => setPreviewImage(a.foto_url)}>📷 Foto</span>}
+                                    {a.etichetta_url && <span onClick={() => setPreviewImage(a.etichetta_url)}>📄 Etichetta</span>}
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                
+                {/* Modal Setup */}
+                {showAssetModal && (
                   <div className="modal-overlay">
-                     <div className="modal-content">
+                     <div className="modal-card">
                         <h3>{editingAsset ? 'Modifica' : 'Nuovo'} Asset</h3>
-                        <form onSubmit={salvaAsset} className="modal-form">
-                           <input value={assetForm.nome} onChange={e=>setAssetForm({...assetForm, nome:e.target.value})} placeholder="Nome" required />
-                           <select value={assetForm.stato} onChange={e=>setAssetForm({...assetForm, stato:e.target.value})}>
-                               <option value="attivo">✅ ATTIVA</option><option value="spento">⛔ SPENTA</option>
-                           </select>
-                           <select value={assetForm.tipo} onChange={e=>setAssetForm({...assetForm, tipo:e.target.value})}>
-                               <option value="frigo">Frigorifero</option><option value="cella">Cella</option><option value="congelatore">Congelatore</option><option value="magazzino">Magazzino</option>
-                           </select>
-                           <div className="row-inputs">
-                               <input value={assetForm.range_min} onChange={e=>setAssetForm({...assetForm, range_min:e.target.value})} placeholder="Min" />
-                               <input value={assetForm.range_max} onChange={e=>setAssetForm({...assetForm, range_max:e.target.value})} placeholder="Max" />
+                        <form onSubmit={salvaAsset} className="modern-form">
+                           <div className="form-group"><label>Nome</label><input value={assetForm.nome} onChange={e=>setAssetForm({...assetForm, nome:e.target.value})} required /></div>
+                           <div className="form-row">
+                               <div className="form-group"><label>Stato</label><select value={assetForm.stato} onChange={e=>setAssetForm({...assetForm, stato:e.target.value})}><option value="attivo">Attivo</option><option value="spento">Spento</option></select></div>
+                               <div className="form-group"><label>Tipo</label><select value={assetForm.tipo} onChange={e=>setAssetForm({...assetForm, tipo:e.target.value})}><option value="frigo">Frigo</option><option value="cella">Cella</option><option value="congelatore">Congelatore</option><option value="magazzino">Magazzino</option></select></div>
                            </div>
-                           <button className="btn-submit">SALVA</button>
-                           <button type="button" onClick={()=>setShowAssetModal(false)} className="btn-cancel">Chiudi</button>
+                           <div className="form-row">
+                               <div className="form-group"><label>Min °C</label><input value={assetForm.range_min} onChange={e=>setAssetForm({...assetForm, range_min:e.target.value})} /></div>
+                               <div className="form-group"><label>Max °C</label><input value={assetForm.range_max} onChange={e=>setAssetForm({...assetForm, range_max:e.target.value})} /></div>
+                           </div>
+                           <div className="modal-actions">
+                               <button type="button" onClick={()=>setShowAssetModal(false)} className="btn-link">Annulla</button>
+                               <button className="btn-primary">Salva</button>
+                           </div>
                         </form>
                      </div>
                   </div>
-              )}
-          </div>
-      )}
+                )}
+            </div>
+        )}
+      </div>
 
       {/* MODALS HELPERS */}
       {showDownloadModal && (
           <div className="modal-overlay">
-              <div className="modal-content small">
+              <div className="modal-card small">
                   <h3>Scarica Report</h3>
-                  <div className="btn-group-row">
+                  <div className="tab-switch">
                       <button onClick={()=>setDownloadFormat('excel')} className={downloadFormat==='excel'?'active':''}>Excel</button>
                       <button onClick={()=>setDownloadFormat('pdf')} className={downloadFormat==='pdf'?'active':''}>PDF</button>
                   </div>
-                  <div className="download-options">
-                      <div className="month-picker">
-                          <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} />
-                          <button onClick={()=>executeDownload('custom-month')}>Scarica Mese</button>
-                      </div>
-                      <hr/>
-                      <button onClick={()=>executeDownload('week')}>Ultima Settimana</button>
-                      <button onClick={()=>executeDownload('month')}>Ultimi 30 Giorni</button>
+                  <div className="download-list">
+                      <div className="dl-item"><input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} /><button onClick={()=>executeDownload('custom-month')}>Scarica Mese</button></div>
+                      <button className="dl-btn" onClick={()=>executeDownload('week')}>Ultima Settimana</button>
+                      <button className="dl-btn" onClick={()=>executeDownload('month')}>Ultimi 30 Giorni</button>
                   </div>
-                  <button onClick={()=>setShowDownloadModal(false)} className="link-close">Chiudi</button>
+                  <button onClick={()=>setShowDownloadModal(false)} className="btn-link center">Chiudi</button>
               </div>
           </div>
       )}
-      {previewImage && <div className="modal-overlay" onClick={()=>setPreviewImage(null)}><img src={previewImage} className="preview-img" /><button className="close-preview">X</button></div>}
-      {showQRModal && <div className="modal-overlay"><div className="modal-content text-center"><QRCode value={`${window.location.origin}/haccp/${slug}/scan/${showQRModal.id}`} size={150} /><br/><button onClick={()=>window.print()}>STAMPA</button><button onClick={()=>setShowQRModal(null)}>CHIUDI</button></div></div>}
+      {previewImage && <div className="modal-overlay" onClick={()=>setPreviewImage(null)}><img src={previewImage} className="preview-img" /><button className="close-preview">✕</button></div>}
+      {showQRModal && <div className="modal-overlay"><div className="modal-card center"><QRCode value={`${window.location.origin}/haccp/${slug}/scan/${showQRModal.id}`} size={200} /><div style={{marginTop:20}}><button className="btn-primary" onClick={()=>window.print()}>Stampa</button><button className="btn-link" onClick={()=>setShowQRModal(null)}>Chiudi</button></div></div></div>}
 
-      {/* --- CSS STYLE BLOCK --- */}
+      {/* --- CSS STYLE BLOCK (PROFESSIONAL THEME) --- */}
       <style>{`
-        /* RESET & BASICS */
-        * { box-sizing: border-box; }
-        .haccp-container { padding-bottom: 50px; }
-        input, select, button { font-size: 14px; }
-
+        :root {
+            --primary: #2563eb; --primary-dark: #1e40af;
+            --secondary: #64748b; --bg: #f1f5f9; --surface: #ffffff;
+            --text: #0f172a; --text-light: #64748b;
+            --success: #10b981; --danger: #ef4444; --warning: #f59e0b;
+            --radius: 12px; --shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+        }
+        * { box-sizing: border-box; font-family: 'Inter', -apple-system, sans-serif; }
+        .haccp-wrapper { background: var(--bg); min-height: 100vh; padding-bottom: 80px; color: var(--text); }
+        
         /* HEADER */
-        .header-container { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 20px; }
-        .nav-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
-        .download-group { display: flex; gap: 5px; margin-right: 10px; }
-        .nav-group { display: flex; gap: 5px; }
-        .btn-down { background: #34495e; color: white; border: none; padding: 8px; border-radius: 4px; cursor: pointer; }
-        .btn-nav { background: white; border: none; padding: 10px 15px; border-radius: 5px; font-size: 18px; cursor: pointer; }
-        .btn-nav.active { background: #2c3e50; color: white; }
-        .btn-exit { background: #e74c3c; color: white; border: none; padding: 10px; border-radius: 5px; cursor: pointer; }
-
-        /* CARDS GRID (TEMPERATURE & SETUP) */
-        .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; }
-        .asset-card { background: white; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 10px; position: relative; }
-        .asset-card.spento { background: #ecf0f1; border: 2px solid #bdc3c7; opacity: 0.8; }
-        .asset-card.ok { background: #eafaf1; border: 2px solid #27ae60; }
-        .asset-card.input-mode { border-top: 4px solid #3498db; }
+        .app-header { background: var(--surface); padding: 15px 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 50; }
+        .brand { display: flex; align-items: center; gap: 10px; }
+        .brand h1 { font-size: 20px; margin: 0; font-weight: 700; color: var(--text); }
+        .brand h1 small { color: var(--text-light); font-weight: 400; font-size: 14px; }
+        .actions { display: flex; gap: 10px; }
         
-        .card-header { display: flex; justify-content: space-between; align-items: center; }
-        .card-header h3 { margin: 0; font-size: 16px; }
-        .temp-display { font-size: 24px; font-weight: bold; color: #27ae60; }
-        .range-badge { background: #eee; padding: 2px 6px; border-radius: 4px; font-size: 11px; }
-        .badge-off { position: absolute; top: 10px; right: 10px; background: #7f8c8d; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; }
-        .status-bar { text-align: center; font-weight: bold; padding: 5px; border-radius: 4px; }
-        .status-bar.off { background: #bdc3c7; color: #7f8c8d; }
-        .log-info { font-size: 12px; color: #555; }
-
-        /* INPUT ROW */
-        .input-row { display: flex; gap: 10px; align-items: stretch; height: 45px; }
-        .temp-input { flex: 1; text-align: center; font-size: 20px; font-weight: bold; border: 1px solid #ddd; border-radius: 5px; width: 100px; }
-        .action-buttons { display: flex; gap: 5px; }
-        .btn-off { background: #95a5a6; color: white; border: none; padding: 0 10px; border-radius: 5px; font-size: 11px; font-weight: bold; }
-        .btn-cam { background: #ecf0f1; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; padding: 0 10px; border-radius: 5px; cursor: pointer; font-size: 20px; }
-        .btn-cam.has-photo { background: #2ecc71; border-color: #27ae60; color: white; }
-        .btn-save { background: #2c3e50; color: white; border: none; padding: 0 15px; border-radius: 5px; font-weight: bold; }
-        .btn-cancel { background: transparent; border: none; color: #999; font-size: 12px; cursor: pointer; text-align: right; }
-        .btn-edit { background: #f39c12; color: white; border: none; padding: 8px; border-radius: 5px; font-weight: bold; cursor: pointer; width: 100%; margin-top: auto; }
-
-        /* MERCI FORM */
-        .form-card { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
-        .form-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-        .merci-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
-        .field-group { display: flex; flex-direction: column; flex: 1; min-width: 140px; }
-        .field-group.grow { flex: 2; min-width: 200px; }
-        .field-group.small { min-width: 80px; }
-        .field-group.full { width: 100%; flex: 100%; }
-        .field-group label { font-size: 11px; margin-bottom: 2px; color: #666; }
-        .field-group input, .field-group select { padding: 8px; border: 1px solid #ddd; border-radius: 4px; width: 100%; }
+        /* TABS - MOBILE BOTTOM BAR */
+        .nav-tabs { position: fixed; bottom: 0; left: 0; width: 100%; background: var(--surface); display: flex; justify-content: space-around; padding: 10px 0; border-top: 1px solid #e2e8f0; z-index: 100; box-shadow: 0 -4px 6px -1px rgba(0,0,0,0.05); }
+        .tab-item { background: none; border: none; display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--text-light); font-size: 10px; cursor: pointer; flex: 1; }
+        .tab-item.active { color: var(--primary); }
+        .tab-icon { font-size: 20px; }
         
-        .form-actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; width: 100%; justify-content: space-between; flex-wrap: wrap; }
-        .btn-upload { background: #ecf0f1; border: 1px solid #ccc; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-size: 12px; display: inline-block; }
-        .btn-upload.done { background: #2ecc71; color: white; border-color: #27ae60; }
-        .checkbox-group { display: flex; gap: 15px; font-size: 12px; }
-        .btn-submit { background: #27ae60; color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; flex: 1; min-width: 120px; }
+        /* CONTENT */
+        .content-area { padding: 20px; max-width: 1200px; margin: 0 auto; }
+        .grid-layout { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+        .two-col { grid-template-columns: 1fr 1fr; }
+        
+        /* CARDS */
+        .card { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; transition: transform 0.2s; border: 1px solid #f0f0f0; }
+        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .card-header h3 { margin: 0; font-size: 16px; font-weight: 600; }
+        
+        /* ASSETS STATUS */
+        .asset-off { opacity: 0.7; border: 2px dashed #cbd5e1; box-shadow: none; }
+        .asset-ok { border-left: 5px solid var(--success); }
+        .asset-input { border-left: 5px solid var(--primary); }
+        .temp-badge { font-size: 24px; font-weight: 700; color: var(--text); }
+        .status-text { font-size: 13px; margin-bottom: 15px; font-weight: 500; }
+        .text-green { color: var(--success); } .text-red { color: var(--danger); }
+        
+        /* INPUTS */
+        .input-group { display: flex; flex-direction: column; gap: 10px; }
+        .input-group input { font-size: 24px; text-align: center; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px; font-weight: 600; color: var(--primary); }
+        .input-group input:focus { border-color: var(--primary); outline: none; }
+        .input-actions { display: flex; gap: 8px; }
+        
+        /* BUTTONS */
+        button, .btn-icon { cursor: pointer; transition: 0.2s; font-family: inherit; }
+        .btn-primary { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; }
+        .btn-primary:hover { background: var(--primary-dark); }
+        .btn-secondary { background: #e2e8f0; color: var(--text); border: none; padding: 8px 16px; border-radius: 6px; font-weight: 500; }
+        .btn-logout { background: #fee2e2; color: var(--danger); border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; }
+        .btn-small { flex: 1; padding: 8px; border: none; border-radius: 6px; font-weight: 600; font-size: 12px; }
+        .btn-gray { background: #f1f5f9; color: var(--text-light); }
+        .btn-green { background: #d1fae5; color: var(--success); border: 1px solid var(--success); }
+        .btn-light { background: #f8fafc; border: 1px solid #e2e8f0; }
+        .btn-link { background: none; border: none; color: var(--text-light); text-decoration: underline; font-size: 13px; }
+        .btn-outline { background: none; border: 1px solid #e2e8f0; padding: 6px 12px; border-radius: 6px; color: var(--text); font-size: 12px; width: 100%; }
 
-        /* MERCI LIST - DESKTOP vs MOBILE */
-        .desktop-table { width: 100%; border-collapse: collapse; font-size: 13px; background: white; border-radius: 10px; overflow: hidden; }
-        .desktop-table th { background: #f8f9fa; padding: 10px; text-align: left; }
-        .desktop-table td { padding: 10px; border-bottom: 1px solid #eee; vertical-align: top; }
-        .tag { padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; }
-        .tag.ok { background: #eafaf1; color: #27ae60; }
-        .tag.err { background: #fadbd8; color: #c0392b; }
-        .actions { display: flex; gap: 5px; }
-        .btn-icon { border: none; color: white; border-radius: 3px; padding: 4px 6px; cursor: pointer; font-size: 12px; }
-        .btn-icon.blue { background: #3498db; text-decoration: none; }
-        .btn-icon.orange { background: #f39c12; }
-        .btn-icon.red { background: #e74c3c; }
-
-        .mobile-list { display: none; } /* Hidden by default */
-        .mobile-card { background: white; padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #ddd; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-        .mc-header { display: flex; justify-content: space-between; font-size: 12px; color: #666; margin-bottom: 5px; }
-        .mc-body strong { font-size: 15px; display: block; }
-        .mc-sub { font-size: 13px; color: #555; margin-bottom: 5px; }
-        .mc-details { display: flex; gap: 10px; font-size: 12px; color: #777; background: #f9f9f9; padding: 5px; border-radius: 4px; }
-        .mc-loc { font-size: 11px; margin-top: 5px; color: #2980b9; }
-        .mc-footer { margin-top: 10px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #eee; padding-top: 8px; }
-        .mc-actions button { background: transparent; border: none; font-size: 12px; cursor: pointer; color: #666; text-decoration: underline; margin-left: 10px; }
-        .text-red { color: #e74c3c !important; }
+        /* FORMS */
+        .modern-form { display: flex; flex-direction: column; gap: 15px; }
+        .form-row { display: flex; gap: 15px; flex-wrap: wrap; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 120px; }
+        .form-group.grow { flex: 2; }
+        .form-group.small { max-width: 100px; }
+        .form-group label { font-size: 12px; font-weight: 600; color: var(--text-light); text-transform: uppercase; }
+        .form-group input, .form-group select { padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; }
+        .form-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; border-top: 1px solid #f1f5f9; padding-top: 15px; flex-wrap: wrap; gap: 10px; }
+        .checks { display: flex; gap: 15px; }
+        
+        /* TABLE RESPONSIVE */
+        .responsive-table { display: flex; flex-direction: column; gap: 10px; margin-top: 15px; }
+        .table-header { display: grid; grid-template-columns: 1fr 1.5fr 2fr 0.5fr 0.8fr; font-size: 12px; font-weight: 600; color: var(--text-light); padding: 0 10px; margin-bottom: 5px; }
+        .table-row { background: var(--surface); padding: 15px; border-radius: 8px; display: grid; grid-template-columns: 1fr 1.5fr 2fr 0.5fr 0.8fr; align-items: center; border: 1px solid #f1f5f9; font-size: 14px; gap: 10px; }
+        .sub-info { display: block; font-size: 11px; color: var(--text-light); margin-top: 2px; }
+        .badge-green { background: #d1fae5; color: #065f46; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+        .badge-red { background: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+        .col-actions { display: flex; gap: 5px; justify-content: flex-end; }
+        .btn-icon { background: #f1f5f9; border: none; width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+        .btn-icon.danger { color: var(--danger); background: #fef2f2; }
 
         /* MODALS */
-        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 2000; }
-        .modal-content { background: white; padding: 25px; border-radius: 10px; width: 90%; max-width: 400px; max-height: 90vh; overflow-y: auto; }
-        .modal-form { display: flex; flex-direction: column; gap: 10px; }
-        .modal-form input, .modal-form select { padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
-        .row-inputs { display: flex; gap: 10px; }
-        .row-inputs input { flex: 1; }
-        .preview-img { max-width: 90%; max-height: 90%; border-radius: 5px; border: 2px solid white; }
-        .close-preview { position: absolute; top: 20px; right: 20px; width: 40px; height: 40px; border-radius: 50%; border: none; background: white; font-weight: bold; cursor: pointer; }
+        .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); display: flex; justify-content: center; align-items: center; z-index: 200; backdrop-filter: blur(2px); }
+        .modal-card { background: var(--surface); padding: 25px; border-radius: 16px; width: 90%; max-width: 450px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+        .modal-card h3 { margin-top: 0; }
+        .preview-img { max-width: 90%; max-height: 80vh; border-radius: 8px; }
+        .close-preview { position: absolute; top: 20px; right: 20px; background: white; border: none; width: 40px; height: 40px; border-radius: 50%; font-weight: bold; }
+        
+        /* UTILS */
+        .loading-screen, .auth-screen { height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--bg); color: var(--text); gap: 20px; }
+        .auth-screen input { padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1; width: 250px; text-align: center; }
+        .no-print { }
 
-        /* ETICHETTE FORM */
-        .label-form { display: flex; flex-direction: column; gap: 10px; }
-        .full-width { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
-
-        /* MEDIA QUERIES FOR MOBILE */
         @media (max-width: 768px) {
-            .desktop-table { display: none; }
-            .mobile-list { display: block; }
-            .card-grid { grid-template-columns: 1fr; } 
-            .header-container h1 { font-size: 20px; }
-            .field-group { min-width: 48%; }
-            .btn-nav { font-size: 16px; padding: 8px 12px; }
+            .table-header { display: none; }
+            .table-row { grid-template-columns: 1fr; gap: 5px; }
+            .col-actions { justify-content: flex-start; margin-top: 10px; border-top: 1px solid #f1f5f9; padding-top: 10px; }
+            .nav-tabs { padding-bottom: 20px; } /* Space for iPhone home bar */
+            .app-header .brand h1 { font-size: 18px; }
+            .content-area { padding-bottom: 100px; }
         }
-        @media print { .no-print { display: none !important; } }
+        @media print { .no-print { display: none !important; } .haccp-wrapper { background: white; } .card { box-shadow: none; border: 1px solid #000; } }
       `}</style>
     </div>
   );
