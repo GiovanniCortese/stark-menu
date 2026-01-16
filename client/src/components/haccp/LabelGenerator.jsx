@@ -8,10 +8,7 @@ const LabelGenerator = ({
     merciList = [] 
 }) => {
     const [storicoLabels, setStoricoLabels] = useState([]);
-    
-    // NUOVO STATO: Lista degli ingredienti selezionati per il piatto corrente
     const [selectedIngredients, setSelectedIngredients] = useState([]);
-    // NUOVO STATO: Ingrediente attualmente selezionato nel dropdown (prima di premere +)
     const [currentIngredient, setCurrentIngredient] = useState("");
 
     const caricaStorico = async () => {
@@ -24,7 +21,6 @@ const LabelGenerator = ({
 
     useEffect(() => { caricaStorico(); }, [lastLabel, info.id]);
 
-    // Gestione date (uguale a prima)
     const handleDateChange = (e) => {
         const dateStr = e.target.value;
         if(!dateStr) return;
@@ -51,6 +47,9 @@ const LabelGenerator = ({
         const scadenzaZero = new Date(scadenzaDate.getFullYear(), scadenzaDate.getMonth(), scadenzaDate.getDate());
         return scadenzaZero >= todayZero; 
     }).sort((a,b) => {
+        // Ordina prima per nome prodotto, poi per scadenza
+        if (a.prodotto < b.prodotto) return -1;
+        if (a.prodotto > b.prodotto) return 1;
         if(!a.scadenza) return 1; 
         if(!b.scadenza) return -1;
         return new Date(a.scadenza) - new Date(b.scadenza);
@@ -65,26 +64,20 @@ const LabelGenerator = ({
         return 'black';
     };
 
-    // Funzione per AGGIUNGERE un ingrediente alla lista temporanea
     const addIngredient = () => {
         if (!currentIngredient) return;
         if (selectedIngredients.includes(currentIngredient)) return alert("Ingrediente già inserito!");
         setSelectedIngredients([...selectedIngredients, currentIngredient]);
-        setCurrentIngredient(""); // Resetta il dropdown
+        setCurrentIngredient(""); 
     };
 
-    // Funzione per RIMUOVERE un ingrediente dalla lista
     const removeIngredient = (indexToRemove) => {
         setSelectedIngredients(selectedIngredients.filter((_, index) => index !== indexToRemove));
     };
 
-    // --- NUOVA FUNZIONE DI SALVATAGGIO (SENZA STAMPA AUTOMATICA) ---
     const handleCreateOnly = async (e) => {
         e.preventDefault();
-        
-        // Unisce gli ingredienti in una stringa unica per il database
-        const ingredientiString = selectedIngredients.join(', ');
-
+        const ingredientiString = selectedIngredients.join(', '); // Crea stringa unica
         const scadenza = labelData.scadenza_manuale ? new Date(labelData.scadenza_manuale) : new Date();
         if(!labelData.scadenza_manuale) scadenza.setDate(scadenza.getDate() + parseInt(labelData.giorni_scadenza));
 
@@ -97,44 +90,29 @@ const LabelGenerator = ({
                     data_scadenza: scadenza, 
                     operatore: labelData.operatore || 'Chef', 
                     tipo_conservazione: labelData.tipo,
-                    ingredienti: ingredientiString // Passiamo la stringa combinata
+                    ingredienti: ingredientiString 
                 }) 
             });
             const data = await res.json(); 
-            
             if(data.success) { 
-                // 1. Ricarica lo storico (così appare nella tabella)
                 caricaStorico();
-                // 2. Resetta il form
                 setLabelData({ ...labelData, prodotto: '' });
                 setSelectedIngredients([]);
-                // 3. NESSUNA chiamata a window.print() qui.
-                // L'utente stamperà cliccando il tasto nella tabella.
-            } else {
-                alert("Errore creazione: " + data.error);
-            }
-        } catch (err) {
-            console.error(err);
-            alert("Errore di connessione");
-        }
+            } else { alert("Errore creazione: " + data.error); }
+        } catch (err) { alert("Errore di connessione"); }
     };
 
     return (
         <div className="no-print">
             <div style={{background:'white', padding:20, borderRadius:10, marginBottom:20, borderLeft:'5px solid #2980b9'}}>
                 <h3>🏭 Produzione / Abbattimento</h3>
-                
-                {/* Nota: Usiamo handleCreateOnly invece di handlePrintLabel passato dalle props */}
                 <form onSubmit={handleCreateOnly} style={{display:'flex', flexWrap:'wrap', gap:10, alignItems:'flex-end'}}>
-                    
-                    {/* CAMPO PRODOTTO */}
                     <div style={{flex:2, minWidth:200}}><label style={{fontSize:11}}>Prodotto / Piatto</label>
                         <input value={labelData.prodotto} onChange={e=>setLabelData({...labelData, prodotto:e.target.value})} placeholder="Es. Lasagna" style={{width:'100%', padding:8, border:'1px solid #ddd'}} required />
                     </div>
 
-                    {/* SELEZIONE INGREDIENTI MULTIPLI */}
                     <div style={{flex:3, minWidth:300, background:'#f9f9f9', padding:10, borderRadius:5, border:'1px solid #eee'}}>
-                        <label style={{fontSize:11, fontWeight:'bold', display:'block', marginBottom:5}}>Componi Ingredienti (Opzionale)</label>
+                        <label style={{fontSize:11, fontWeight:'bold', display:'block', marginBottom:5}}>Componi Ingredienti (con Produttore)</label>
                         <div style={{display:'flex', gap:5}}>
                             <select 
                                 value={currentIngredient} 
@@ -143,22 +121,21 @@ const LabelGenerator = ({
                             >
                                 <option value="">-- Seleziona Ingrediente --</option>
                                 {merciDisponibili.map(m => (
+                                    // MODIFICA QUI: Aggiunto Fornitore nel value e nel testo
                                     <option 
                                         key={m.id} 
-                                        value={`${m.prodotto} (L:${m.lotto})`} 
+                                        value={`${m.prodotto} - ${m.fornitore} (L:${m.lotto})`} 
                                         style={{
                                             color: getExpiryColor(m.scadenza), 
                                             fontWeight: getExpiryColor(m.scadenza)!=='black' ? 'bold' : 'normal'
                                         }}
                                     >
-                                        {m.prodotto} [L:{m.lotto}] {m.scadenza ? `(Scad: ${new Date(m.scadenza).toLocaleDateString()})` : ''}
+                                        {m.prodotto} - {m.fornitore} [L:{m.lotto}] {m.scadenza ? `(Scad: ${new Date(m.scadenza).toLocaleDateString()})` : ''}
                                     </option>
                                 ))}
                             </select>
                             <button type="button" onClick={addIngredient} style={{background:'#27ae60', color:'white', border:'none', borderRadius:4, width:40, fontSize:20, cursor:'pointer'}}>+</button>
                         </div>
-                        
-                        {/* LISTA INGREDIENTI AGGIUNTI */}
                         <div style={{marginTop:10, display:'flex', flexWrap:'wrap', gap:5}}>
                             {selectedIngredients.map((ing, idx) => (
                                 <span key={idx} style={{background:'#dfe6e9', padding:'2px 8px', borderRadius:10, fontSize:11, display:'flex', alignItems:'center', gap:5}}>
@@ -177,14 +154,12 @@ const LabelGenerator = ({
                             <option value="sottovuoto">Sottovuoto</option>
                         </select>
                     </div>
-
                     <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Giorni Scad.</label>
                         <input type="number" value={labelData.giorni_scadenza} onChange={handleDaysChange} style={{width:'100%', padding:8, border:'1px solid #ddd'}} />
                     </div>
                     <div style={{flex:1, minWidth:120}}><label style={{fontSize:11}}>Data Scadenza</label>
                         <input type="date" value={labelData.scadenza_manuale} onChange={handleDateChange} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required />
                     </div>
-
                     <div style={{flex:1, minWidth:150}}><label style={{fontSize:11}}>Operatore</label>
                         <select value={labelData.operatore} onChange={e=>setLabelData({...labelData, operatore:e.target.value})} style={{width:'100%', padding:9, border:'1px solid #ddd'}} required>
                             <option value="">-- Seleziona --</option>
@@ -192,10 +167,7 @@ const LabelGenerator = ({
                         </select>
                     </div>
 
-                    {/* TASTO MODIFICATO: SOLO CREA (Niente Stampa Automatica) */}
-                    <button type="submit" style={{background:'#2980b9', color:'white', border:'none', padding:'10px 20px', borderRadius:5, cursor:'pointer', height:40, fontWeight:'bold', width:'100%'}}>
-                        CREA PRODOTTO
-                    </button>
+                    <button type="submit" style={{background:'#2980b9', color:'white', border:'none', padding:'10px 20px', borderRadius:5, cursor:'pointer', height:40, fontWeight:'bold', width:'100%'}}>CREA PRODOTTO</button>
                 </form>
             </div>
 
@@ -222,13 +194,10 @@ const LabelGenerator = ({
                                 <td style={{padding:8}}>{new Date(l.data_produzione).toLocaleDateString()}</td>
                                 <td style={{padding:8}}>
                                     <strong>{l.prodotto}</strong>
-                                    {/* VISUALIZZAZIONE INGREDIENTI MULTIPLI NELLO STORICO */}
                                     {l.ingredienti && (
                                         <div style={{fontSize:11, color:'#555', marginTop:4, lineHeight:'1.4em'}}>
                                             {l.ingredienti.split(', ').map((ing, i) => (
-                                                <span key={i} style={{background:'#eee', padding:'1px 4px', borderRadius:3, marginRight:4, display:'inline-block'}}>
-                                                    🔗 {ing}
-                                                </span>
+                                                <span key={i} style={{background:'#eee', padding:'1px 4px', borderRadius:3, marginRight:4, display:'inline-block'}}>🔗 {ing}</span>
                                             ))}
                                         </div>
                                     )}
@@ -236,10 +205,7 @@ const LabelGenerator = ({
                                 <td style={{padding:8}}><code>{l.lotto}</code></td>
                                 <td style={{padding:8, color:'#c0392b', fontWeight:'bold'}}>{new Date(l.data_scadenza).toLocaleDateString()}</td>
                                 <td style={{padding:8}}>
-                                    {/* TASTO STAMPA MANUALE */}
-                                    <button onClick={() => handleReprint(l)} style={{background:'#34495e', color:'white', border:'none', borderRadius:3, padding:'6px 12px', cursor:'pointer', fontWeight:'bold'}}>
-                                        Stampa 🖨️
-                                    </button>
+                                    <button onClick={() => handleReprint(l)} style={{background:'#34495e', color:'white', border:'none', borderRadius:3, padding:'6px 12px', cursor:'pointer', fontWeight:'bold'}}>Stampa 🖨️</button>
                                 </td>
                             </tr>
                         ))}
