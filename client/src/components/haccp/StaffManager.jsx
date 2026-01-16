@@ -7,7 +7,6 @@ const StaffManager = ({
     setSelectedStaff, 
     newDoc, 
     setNewDoc, 
-    uploadStaffDoc: originalUploadStaffDoc,
     uploadFile,
     staffDocs, 
     deleteDoc,
@@ -34,6 +33,23 @@ const StaffManager = ({
             alert("❌ Errore durante il caricamento.");
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    // --- FUNZIONE PER GESTIRE APERTURA FILE ---
+    const handleViewFile = (doc) => {
+        const isPdf = doc.url.toLowerCase().includes('.pdf') || doc.nome_file.toLowerCase().endsWith('.pdf');
+        
+        if (isPdf) {
+            // 💡 SOLUZIONE: Passiamo tramite il proxy del tuo server
+            // Usiamo encodeURIComponent per evitare che caratteri speciali rompano l'URL
+            const proxyUrl = `${API_URL}/api/proxy-download?url=${encodeURIComponent(doc.url)}&name=${encodeURIComponent(doc.nome_file)}`;
+            
+            // Apriamo in una nuova finestra (popup del browser)
+            window.open(proxyUrl, '_blank', 'noopener,noreferrer');
+        } else {
+            // Se è un'immagine, Cloudinary va bene diretto
+            window.open(doc.url, '_blank');
         }
     };
 
@@ -116,15 +132,14 @@ const StaffManager = ({
                                             <td style={{padding:8}}>{d.nome_file}</td>
                                             <td style={{padding:8, display:'flex', gap:5}}>
                                                 
-                                                {/* MODIFICA: TASTO ANTEPRIMA (Stile Admin Menu) */}
-                                                <a 
-                                                    href={d.url} 
-                                                    target="_blank" 
-                                                    rel="noopener noreferrer"
+                                                {/* MODIFICA QUI: Usiamo un button che chiama la funzione intelligente */}
+                                                <button
+                                                    onClick={() => handleViewFile(d)}
                                                     style={{
                                                         background:'#3498db', 
                                                         color:'white', 
-                                                        textDecoration:'none', 
+                                                        border: 'none',
+                                                        cursor: 'pointer',
                                                         padding:'4px 10px', 
                                                         borderRadius:3, 
                                                         fontSize:12, 
@@ -135,7 +150,7 @@ const StaffManager = ({
                                                     }}
                                                 >
                                                     👁️ Visualizza
-                                                </a>
+                                                </button>
                                                 
                                                 <button 
                                                     onClick={()=>deleteDoc(d.id)} 

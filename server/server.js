@@ -455,21 +455,29 @@ app.get('/api/haccp/labels/storico/:ristorante_id', async (req, res) => {
 // --- NUOVA ROUTE PER DOWNLOAD SICURO STAFF ---
 app.get('/api/proxy-download', (req, res) => {
     const fileUrl = req.query.url;
+    // Decodifichiamo il nome per evitare caratteri strani
     const fileName = req.query.name || 'documento.pdf';
 
     if (!fileUrl) return res.status(400).send("URL mancante");
 
-    // Usa il modulo nativo HTTPS per scaricare il file e passarlo al client
-    const https = require('https');
+    const https = require('https'); // Modulo nativo
     
     https.get(fileUrl, (stream) => {
-        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-        // Se è un PDF, forza il tipo corretto, altrimenti lascia generico
+        // Forziamo il browser a capire che è un file da gestire (attachment = scarica, inline = apri)
+        // Se vuoi che si apra nel browser (popup), usa 'inline'. Se vuoi forzare download, usa 'attachment'.
+        // Qui usiamo 'inline' per i PDF così si aprono nell'anteprima del browser.
+        res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+        
         if(fileName.toLowerCase().endsWith('.pdf')) {
             res.setHeader('Content-Type', 'application/pdf');
+        } else {
+            // Fallback per immagini
+            res.setHeader('Content-Type', 'image/jpeg'); 
         }
+        
         stream.pipe(res);
     }).on('error', (err) => {
+        console.error("Errore Proxy:", err);
         res.status(500).send("Errore nel download del file");
     });
 });
