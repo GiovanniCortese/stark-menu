@@ -1,13 +1,18 @@
 import React, { useState, useEffect } from 'react';
 
 const LabelGenerator = ({ 
-    labelData, setLabelData, handleLabelTypeChange, handlePrintLabel, 
+    labelData, setLabelData, handleLabelTypeChange, handlePrintLabel: originalHandlePrintLabel, 
     lastLabel, info, API_URL, staffList,
     handleReprint,
     openDownloadModal,
-    merciList = [] // Nuova prop per ricevere la lista della dispensa
+    merciList = [] 
 }) => {
     const [storicoLabels, setStoricoLabels] = useState([]);
+    
+    // NUOVO STATO: Lista degli ingredienti selezionati per il piatto corrente
+    const [selectedIngredients, setSelectedIngredients] = useState([]);
+    // NUOVO STATO: Ingrediente attualmente selezionato nel dropdown (prima di premere +)
+    const [currentIngredient, setCurrentIngredient] = useState("");
 
     const caricaStorico = async () => {
         try {
@@ -19,7 +24,7 @@ const LabelGenerator = ({
 
     useEffect(() => { caricaStorico(); }, [lastLabel, info.id]);
 
-    // Funzione per sincronizzare i giorni quando cambio la data nel calendario
+    // Gestione date (uguale a prima)
     const handleDateChange = (e) => {
         const dateStr = e.target.value;
         if(!dateStr) return;
@@ -30,7 +35,6 @@ const LabelGenerator = ({
         setLabelData({ ...labelData, scadenza_manuale: dateStr, giorni_scadenza: diffDays });
     };
 
-    // Funzione per sincronizzare la data quando cambio i giorni numerici
     const handleDaysChange = (e) => {
         const days = parseInt(e.target.value) || 0;
         const newDate = new Date();
@@ -38,65 +42,132 @@ const LabelGenerator = ({
         setLabelData({ ...labelData, giorni_scadenza: days, scadenza_manuale: newDate.toISOString().split('T')[0] });
     };
 
-    // --- LOGICA FILTRO MERCI (ALIMENTI) ---
+    // --- LOGICA INGREDIENTI ---
     const today = new Date();
-    
-    // 1. Filtra scaduti e ordina per scadenza più vicina
     const merciDisponibili = merciList.filter(m => {
-        if(!m.scadenza) return true; // Se non ha scadenza, mostralo
+        if(!m.scadenza) return true; 
         const scadenzaDate = new Date(m.scadenza);
-        // Normalizziamo le date per confrontare solo i giorni (senza ore)
         const todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
         const scadenzaZero = new Date(scadenzaDate.getFullYear(), scadenzaDate.getMonth(), scadenzaDate.getDate());
-        return scadenzaZero >= todayZero; // Mostra solo se NON è scaduto ieri o prima
+        return scadenzaZero >= todayZero; 
     }).sort((a,b) => {
         if(!a.scadenza) return 1; 
         if(!b.scadenza) return -1;
         return new Date(a.scadenza) - new Date(b.scadenza);
     });
 
-    // 2. Calcola colore per scadenze vicine (<= 3 giorni)
     const getExpiryColor = (scadenza) => {
         if(!scadenza) return 'black';
         const d = new Date(scadenza);
         const diffTime = d - today;
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-        if(diffDays <= 3) return '#e67e22'; // Arancione
+        if(diffDays <= 3) return '#e67e22'; 
         return 'black';
+    };
+
+    // Funzione per AGGIUNGERE un ingrediente alla lista temporanea
+    const addIngredient = () => {
+        if (!currentIngredient) return;
+        if (selectedIngredients.includes(currentIngredient)) return alert("Ingrediente già inserito!");
+        setSelectedIngredients([...selectedIngredients, currentIngredient]);
+        setCurrentIngredient(""); // Resetta il dropdown
+    };
+
+    // Funzione per RIMUOVERE un ingrediente dalla lista
+    const removeIngredient = (indexToRemove) => {
+        setSelectedIngredients(selectedIngredients.filter((_, index) => index !== indexToRemove));
+    };
+
+    // --- NUOVA FUNZIONE DI SALVATAGGIO (SENZA STAMPA AUTOMATICA) ---
+    const handleCreateOnly = async (e) => {
+        e.preventDefault();
+        
+        // Unisce gli ingredienti in una stringa unica per il database
+        const ingredientiString = selectedIngredients.join(', ');
+
+        const scadenza = labelData.scadenza_manuale ? new Date(labelData.scadenza_manuale) : new Date();
+        if(!labelData.scadenza_manuale) scadenza.setDate(scadenza.getDate() + parseInt(labelData.giorni_scadenza));
+
+        try {
+            const res = await fetch(`${API_URL}/api/haccp/labels`, { 
+                method:'POST', headers:{'Content-Type':'application/json'}, 
+                body: JSON.stringify({ 
+                    ristorante_id: info.id, 
+                    prodotto: labelData.prodotto, 
+                    data_scadenza: scadenza, 
+                    operatore: labelData.operatore || 'Chef', 
+                    tipo_conservazione: labelData.tipo,
+                    ingredienti: ingredientiString // Passiamo la stringa combinata
+                }) 
+            });
+            const data = await res.json(); 
+            
+            if(data.success) { 
+                // 1. Ricarica lo storico (così appare nella tabella)
+                caricaStorico();
+                // 2. Resetta il form
+                setLabelData({ ...labelData, prodotto: '' });
+                setSelectedIngredients([]);
+                // 3. NESSUNA chiamata a window.print() qui.
+                // L'utente stamperà cliccando il tasto nella tabella.
+            } else {
+                alert("Errore creazione: " + data.error);
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Errore di connessione");
+        }
     };
 
     return (
         <div className="no-print">
             <div style={{background:'white', padding:20, borderRadius:10, marginBottom:20, borderLeft:'5px solid #2980b9'}}>
                 <h3>🏭 Produzione / Abbattimento</h3>
-                <form onSubmit={handlePrintLabel} style={{display:'flex', flexWrap:'wrap', gap:10, alignItems:'flex-end'}}>
+                
+                {/* Nota: Usiamo handleCreateOnly invece di handlePrintLabel passato dalle props */}
+                <form onSubmit={handleCreateOnly} style={{display:'flex', flexWrap:'wrap', gap:10, alignItems:'flex-end'}}>
                     
                     {/* CAMPO PRODOTTO */}
                     <div style={{flex:2, minWidth:200}}><label style={{fontSize:11}}>Prodotto / Piatto</label>
-                        <input value={labelData.prodotto} onChange={e=>setLabelData({...labelData, prodotto:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required />
+                        <input value={labelData.prodotto} onChange={e=>setLabelData({...labelData, prodotto:e.target.value})} placeholder="Es. Lasagna" style={{width:'100%', padding:8, border:'1px solid #ddd'}} required />
                     </div>
 
-                    {/* NUOVO CAMPO: ALIMENTI / INGREDIENTI */}
-                    <div style={{flex:2, minWidth:250}}><label style={{fontSize:11}}>Alimenti / Materie Prime (Opzionale)</label>
-                        <select 
-                            value={labelData.ingredienti || ''} 
-                            onChange={e=>setLabelData({...labelData, ingredienti:e.target.value})} 
-                            style={{width:'100%', padding:9, border:'1px solid #ddd'}}
-                        >
-                            <option value="">-- Seleziona da Dispensa --</option>
-                            {merciDisponibili.map(m => (
-                                <option 
-                                    key={m.id} 
-                                    value={`${m.prodotto} (L:${m.lotto})`} 
-                                    style={{
-                                        color: getExpiryColor(m.scadenza), 
-                                        fontWeight: getExpiryColor(m.scadenza)!=='black' ? 'bold' : 'normal'
-                                    }}
-                                >
-                                    {m.prodotto} - {m.fornitore} [L:{m.lotto}] {m.scadenza ? `(Scad: ${new Date(m.scadenza).toLocaleDateString()})` : ''}
-                                </option>
+                    {/* SELEZIONE INGREDIENTI MULTIPLI */}
+                    <div style={{flex:3, minWidth:300, background:'#f9f9f9', padding:10, borderRadius:5, border:'1px solid #eee'}}>
+                        <label style={{fontSize:11, fontWeight:'bold', display:'block', marginBottom:5}}>Componi Ingredienti (Opzionale)</label>
+                        <div style={{display:'flex', gap:5}}>
+                            <select 
+                                value={currentIngredient} 
+                                onChange={e=>setCurrentIngredient(e.target.value)} 
+                                style={{flex:1, padding:8, border:'1px solid #ddd', borderRadius:4}}
+                            >
+                                <option value="">-- Seleziona Ingrediente --</option>
+                                {merciDisponibili.map(m => (
+                                    <option 
+                                        key={m.id} 
+                                        value={`${m.prodotto} (L:${m.lotto})`} 
+                                        style={{
+                                            color: getExpiryColor(m.scadenza), 
+                                            fontWeight: getExpiryColor(m.scadenza)!=='black' ? 'bold' : 'normal'
+                                        }}
+                                    >
+                                        {m.prodotto} [L:{m.lotto}] {m.scadenza ? `(Scad: ${new Date(m.scadenza).toLocaleDateString()})` : ''}
+                                    </option>
+                                ))}
+                            </select>
+                            <button type="button" onClick={addIngredient} style={{background:'#27ae60', color:'white', border:'none', borderRadius:4, width:40, fontSize:20, cursor:'pointer'}}>+</button>
+                        </div>
+                        
+                        {/* LISTA INGREDIENTI AGGIUNTI */}
+                        <div style={{marginTop:10, display:'flex', flexWrap:'wrap', gap:5}}>
+                            {selectedIngredients.map((ing, idx) => (
+                                <span key={idx} style={{background:'#dfe6e9', padding:'2px 8px', borderRadius:10, fontSize:11, display:'flex', alignItems:'center', gap:5}}>
+                                    {ing}
+                                    <span onClick={()=>removeIngredient(idx)} style={{cursor:'pointer', color:'#c0392b', fontWeight:'bold'}}>×</span>
+                                </span>
                             ))}
-                        </select>
+                            {selectedIngredients.length === 0 && <span style={{fontSize:11, color:'#999'}}>Nessun ingrediente aggiunto.</span>}
+                        </div>
                     </div>
                     
                     <div style={{flex:1, minWidth:150}}><label style={{fontSize:11}}>Conservazione</label>
@@ -121,9 +192,9 @@ const LabelGenerator = ({
                         </select>
                     </div>
 
-                    {/* TASTO MODIFICATO: SOLO CREA */}
-                    <button style={{background:'#2980b9', color:'white', border:'none', padding:'10px 20px', borderRadius:5, cursor:'pointer', height:40, fontWeight:'bold'}}>
-                        CREA
+                    {/* TASTO MODIFICATO: SOLO CREA (Niente Stampa Automatica) */}
+                    <button type="submit" style={{background:'#2980b9', color:'white', border:'none', padding:'10px 20px', borderRadius:5, cursor:'pointer', height:40, fontWeight:'bold', width:'100%'}}>
+                        CREA PRODOTTO
                     </button>
                 </form>
             </div>
@@ -151,14 +222,24 @@ const LabelGenerator = ({
                                 <td style={{padding:8}}>{new Date(l.data_produzione).toLocaleDateString()}</td>
                                 <td style={{padding:8}}>
                                     <strong>{l.prodotto}</strong>
-                                    {/* VISUALIZZAZIONE INGREDIENTI NELLO STORICO */}
-                                    {l.ingredienti && <div style={{fontSize:11, color:'#555', marginTop:2}}>🔗 {l.ingredienti}</div>}
+                                    {/* VISUALIZZAZIONE INGREDIENTI MULTIPLI NELLO STORICO */}
+                                    {l.ingredienti && (
+                                        <div style={{fontSize:11, color:'#555', marginTop:4, lineHeight:'1.4em'}}>
+                                            {l.ingredienti.split(', ').map((ing, i) => (
+                                                <span key={i} style={{background:'#eee', padding:'1px 4px', borderRadius:3, marginRight:4, display:'inline-block'}}>
+                                                    🔗 {ing}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
                                 </td>
                                 <td style={{padding:8}}><code>{l.lotto}</code></td>
                                 <td style={{padding:8, color:'#c0392b', fontWeight:'bold'}}>{new Date(l.data_scadenza).toLocaleDateString()}</td>
                                 <td style={{padding:8}}>
-                                    {/* TASTO MODIFICATO: SOLO STAMPA */}
-                                    <button onClick={() => handleReprint(l)} style={{background:'#34495e', color:'white', border:'none', borderRadius:3, padding:'4px 8px', cursor:'pointer'}}>Stampa 🖨️</button>
+                                    {/* TASTO STAMPA MANUALE */}
+                                    <button onClick={() => handleReprint(l)} style={{background:'#34495e', color:'white', border:'none', borderRadius:3, padding:'6px 12px', cursor:'pointer', fontWeight:'bold'}}>
+                                        Stampa 🖨️
+                                    </button>
                                 </td>
                             </tr>
                         ))}
