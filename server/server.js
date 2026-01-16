@@ -194,10 +194,21 @@ app.post('/api/auth/login', async (req, res) => {
 app.post('/api/register', async (req, res) => {
     try {
         const { nome, email, password, telefono, indirizzo, ruolo, ristorante_id } = req.body;
+        
         const check = await pool.query('SELECT * FROM utenti WHERE email = $1', [email]);
         if (check.rows.length > 0) return res.json({ success: false, error: "Email già registrata" });
-        const r_id = (ruolo === 'cameriere' || ruolo === 'editor') ? ristorante_id : null;
-        const r = await pool.query('INSERT INTO utenti (nome, email, password, telefono, indirizzo, ruolo, ristorante_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *', [nome, email, password, telefono, indirizzo, ruolo || 'cliente', r_id]);
+
+        // --- MODIFICA QUI: Assegna SEMPRE il ristorante se presente ---
+        // VECCHIO: const r_id = (ruolo === 'cameriere' || ruolo === 'editor') ? ristorante_id : null;
+        
+        // NUOVO: Se mi passi un ristorante_id, lo uso per qualsiasi ruolo (cuoco, lavapiatti, cameriere...)
+        const r_id = ristorante_id ? ristorante_id : null; 
+        // --------------------------------------------------------------
+
+        const r = await pool.query(
+            'INSERT INTO utenti (nome, email, password, telefono, indirizzo, ruolo, ristorante_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *', 
+            [nome, email, password, telefono, indirizzo, ruolo || 'cliente', r_id]
+        );
         res.json({ success: true, user: r.rows[0] });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -210,7 +221,8 @@ app.get('/api/utenti', async (req, res) => {
             return res.json(r.rows);
         } 
         if (mode === 'staff' && ristorante_id) {
-            const r = await pool.query("SELECT * FROM utenti WHERE ristorante_id = $1 ORDER BY nome", [ristorante_id]);
+    // Assicurati che la query sia ESATTAMENTE QUESTA (senza WHERE ruolo IN...):
+    const r = await pool.query("SELECT * FROM utenti WHERE ristorante_id = $1 ORDER BY nome", [ristorante_id]);
     return res.json(r.rows);
 }
         if ((mode === 'clienti' || mode === 'clienti_ordini') && ristorante_id) {
