@@ -191,7 +191,7 @@ app.get('/api/haccp/export/labels/:ristorante_id', async (req, res) => {
         sql += " ORDER BY data_produzione ASC";
         const r = await pool.query(sql, params);
 
-        const titoloReport = `REGISTRO PRODUZIONE: ${rangeName || 'Tutto lo storico'}`;
+        const titoloReport = "REGISTRO PRODUZIONE";
         
         // Intestazioni Colonne
         const headers = ["Data Prod.", "Prodotto", "Ingredienti (Produttore/Lotto)", "Tipo", "Lotto Produzione", "Scadenza", "Operatore"];
@@ -200,7 +200,7 @@ app.get('/api/haccp/export/labels/:ristorante_id', async (req, res) => {
         const rows = r.rows.map(l => [
             new Date(l.data_produzione).toLocaleDateString('it-IT'),
             String(l.prodotto || ''), 
-            String(l.ingredienti || '').replace(/, /g, '\n'), // A capo per leggibilità
+            String(l.ingredienti || '').replace(/, /g, '\n'), 
             String(l.tipo_conservazione || ''),
             String(l.lotto || ''), 
             new Date(l.data_scadenza).toLocaleDateString('it-IT'),
@@ -208,7 +208,7 @@ app.get('/api/haccp/export/labels/:ristorante_id', async (req, res) => {
         ]);
 
         if (format === 'pdf') {
-            // ... (CODICE PDF RIMANE UGUALE A PRIMA) ...
+            // ... (CODICE PDF INVARIATO) ...
             const doc = new PDFDocument({ margin: 20, size: 'A4', layout: 'landscape' });
             res.setHeader('Content-Type', 'application/pdf');
             res.setHeader('Content-Disposition', `attachment; filename="produzione_${rangeName || 'export'}.pdf"`);
@@ -216,7 +216,7 @@ app.get('/api/haccp/export/labels/:ristorante_id', async (req, res) => {
             doc.fontSize(16).text(String(azienda.nome), { align: 'center' });
             doc.fontSize(10).text(String(azienda.dati_fiscali || ""), { align: 'center' });
             doc.moveDown();
-            doc.fontSize(14).text(titoloReport, { align: 'center' });
+            doc.fontSize(14).text(`${titoloReport}: ${rangeName || 'Completo'}`, { align: 'center' });
             doc.moveDown();
             await doc.table({ headers, rows }, { 
                 width: 750, 
@@ -226,39 +226,42 @@ app.get('/api/haccp/export/labels/:ristorante_id', async (req, res) => {
             });
             doc.end();
         } else {
-            // *** NUOVO LAYOUT EXCEL UNIFORMATO ***
+            // *** LAYOUT EXCEL UNIFICATO ***
+            const wb = xlsx.utils.book_new();
             
-            // 1. Righe di intestazione aziendale (come negli altri file)
-            const rowTitolo = [titoloReport];
-            const rowAzienda = [azienda.nome];
-            const rowDati = [azienda.dati_fiscali || ""];
+            // 1. Dati Azienda
+            const rowAzienda = [azienda.dati_fiscali || azienda.nome];
+            // 2. Periodo
             const rowPeriodo = [`Periodo: ${rangeName || 'Tutto lo storico'}`];
-            const rowEmpty = [""]; // Riga vuota spaziatrice
+            // 3. Titolo Report
+            const rowTitolo = [titoloReport];
+            // 4. Riga Vuota
+            const rowEmpty = [""];
 
-            // 2. Uniamo tutto in un'unica matrice
             const finalData = [
-                rowTitolo, 
-                rowAzienda, 
-                rowDati, 
-                rowPeriodo, 
-                rowEmpty, 
-                headers, 
+                rowAzienda,
+                rowPeriodo,
+                rowTitolo,
+                rowEmpty,
+                headers,
                 ...rows
             ];
 
-            const workbook = xlsx.utils.book_new();
-            const worksheet = xlsx.utils.aoa_to_sheet(finalData);
+            const ws = xlsx.utils.aoa_to_sheet(finalData);
             
             // Larghezza colonne
             const wscols = [{wch:12}, {wch:25}, {wch:50}, {wch:15}, {wch:20}, {wch:12}, {wch:15}];
-            worksheet['!cols'] = wscols;
+            ws['!cols'] = wscols;
 
-            // Unione celle per l'intestazione (Estetica)
-            if(!worksheet['!merges']) worksheet['!merges'] = [];
-            worksheet['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }); // Titolo
+            // Merge per intestazioni (prime 3 righe)
+            if(!ws['!merges']) ws['!merges'] = [];
+            ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }); // Azienda
+            ws['!merges'].push({ s: { r: 1, c: 0 }, e: { r: 1, c: 6 } }); // Periodo
+            ws['!merges'].push({ s: { r: 2, c: 0 }, e: { r: 2, c: 6 } }); // Titolo
 
-            xlsx.utils.book_append_sheet(workbook, worksheet, "Produzione");
-            const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+            xlsx.utils.book_append_sheet(wb, ws, "Produzione");
+            const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+            
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
             res.setHeader('Content-Disposition', `attachment; filename="produzione_${rangeName || 'export'}.xlsx"`);
             res.send(buffer);
@@ -271,12 +274,15 @@ app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
     try {
         const { tipo, ristorante_id } = req.params;
         const { start, end, rangeName, format } = req.query; 
+        
         const ristRes = await pool.query("SELECT nome, dati_fiscali FROM ristoranti WHERE id = $1", [ristorante_id]);
         const aziendaInfo = ristRes.rows[0];
-        let headers = []; let rows = []; let sheetName = "Export";
+        
+        let headers = []; let rows = []; let sheetName = "Export"; let titoloReport = "REPORT HACCP";
         
         if (tipo === 'temperature') {
             sheetName = "Temperature";
+            titoloReport = "REGISTRO TEMPERATURE";
             headers = ["Data", "Ora", "Macchina", "Temp", "Esito", "Az. Correttiva", "Op."];
             let sql = `SELECT l.data_ora, a.nome as asset, l.valore, l.conformita, l.azione_correttiva, l.operatore FROM haccp_logs l JOIN haccp_assets a ON l.asset_id = a.id WHERE l.ristorante_id = $1`;
             const params = [ristorante_id];
@@ -289,6 +295,7 @@ app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
             });
         } else if (tipo === 'merci') { 
             sheetName = "Ricevimento Merci";
+            titoloReport = "REGISTRO RICEVIMENTO MERCI";
             headers = ["Data", "Fornitore", "Prodotto", "Condizione Prodotti", "Lotto", "Kg", "Scadenza", "Note"];
             let sql = `SELECT * FROM haccp_merci WHERE ristorante_id = $1`;
             const params = [ristorante_id];
@@ -302,11 +309,13 @@ app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
             });
         } else if (tipo === 'assets') { 
             sheetName = "Lista Macchine";
+            titoloReport = "LISTA MACCHINE E ATTREZZATURE";
             headers = ["Stato", "Nome", "Tipo", "Marca", "Matricola", "Range"];
             const r = await pool.query(`SELECT * FROM haccp_assets WHERE ristorante_id = $1 ORDER BY nome ASC`, [ristorante_id]);
             rows = r.rows.map(row => [String(row.stato ? row.stato.toUpperCase() : "ATTIVO"), String(row.nome || ''), String(row.tipo || ''), String(row.marca || ''), String(row.serial_number || '-'), `${row.range_min}°C / ${row.range_max}°C`]);
         } else if (tipo === 'pulizie') {
             sheetName = "Registro Pulizie";
+            titoloReport = "REGISTRO PULIZIE E SANIFICAZIONI";
             headers = ["Data", "Ora", "Area/Attrezzatura", "Detergente", "Operatore", "Esito"];
             let sql = `SELECT * FROM haccp_cleaning WHERE ristorante_id = $1`;
             const params = [ristorante_id];
@@ -323,25 +332,56 @@ app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
             doc.pipe(res);
             doc.fontSize(16).text(String(aziendaInfo.nome), { align: 'center' });
             doc.fontSize(10).text(String(aziendaInfo.dati_fiscali || ""), { align: 'center' });
-            doc.moveDown(0.5); doc.fontSize(12).text(`Report: ${sheetName}`, { align: 'center' }); doc.fontSize(10).text(`Periodo: ${rangeName || 'Completo'}`, { align: 'center', color: 'gray' }); doc.moveDown(1);
+            doc.moveDown(0.5); 
+            doc.fontSize(12).text(`${titoloReport} - ${rangeName || 'Completo'}`, { align: 'center' }); 
+            doc.moveDown(1);
+            
             const table = { headers: headers, rows: rows };
             await doc.table(table, { width: 500, prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8), prepareRow: () => doc.font("Helvetica").fontSize(8).fillColor('black') });
             doc.end();
             return; 
         }
-        const rowAzienda = [aziendaInfo.dati_fiscali || `${aziendaInfo.nome}`];
+
+        // *** LAYOUT EXCEL UNIFICATO ***
+        const wb = xlsx.utils.book_new();
+
+        // 1. Dati Azienda
+        const rowAzienda = [aziendaInfo.dati_fiscali || aziendaInfo.nome];
+        // 2. Periodo
         const rowPeriodo = [`Periodo: ${rangeName || 'Tutto lo storico'}`];
+        // 3. Titolo Report
+        const rowTitolo = [titoloReport];
+        // 4. Riga Vuota
         const rowEmpty = [""];
-        const finalData = [rowAzienda, rowPeriodo, rowEmpty, headers, ...rows];
-        const workbook = xlsx.utils.book_new();
-        const worksheet = xlsx.utils.aoa_to_sheet(finalData);
-        if(!worksheet['!merges']) worksheet['!merges'] = [];
-        worksheet['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } });
-        xlsx.utils.book_append_sheet(workbook, worksheet, sheetName);
-        const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-        res.setHeader('Content-Disposition', `attachment; filename="haccp_export.xlsx"`);
+
+        const finalData = [
+            rowAzienda, 
+            rowPeriodo, 
+            rowTitolo,
+            rowEmpty, 
+            headers, 
+            ...rows
+        ];
+        
+        const ws = xlsx.utils.aoa_to_sheet(finalData);
+        
+        // Merge intestazioni (prime 3 righe)
+        if(!ws['!merges']) ws['!merges'] = [];
+        ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }); // Azienda
+        ws['!merges'].push({ s: { r: 1, c: 0 }, e: { r: 1, c: headers.length - 1 } }); // Periodo
+        ws['!merges'].push({ s: { r: 2, c: 0 }, e: { r: 2, c: headers.length - 1 } }); // Titolo
+
+        // Auto-width colonne (basic)
+        const wscols = headers.map(() => ({wch: 20}));
+        ws['!cols'] = wscols;
+
+        xlsx.utils.book_append_sheet(wb, ws, sheetName);
+        const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+        
+        res.setHeader('Content-Disposition', `attachment; filename="haccp_${tipo}_export.xlsx"`);
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.send(buffer);
+
     } catch (err) { if (!res.headersSent) res.status(500).json({ error: "Errore Export: " + err.message }); }
 });
 
