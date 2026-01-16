@@ -181,7 +181,7 @@ app.get('/api/haccp/export/labels/:ristorante_id', async (req, res) => {
         const ristRes = await pool.query("SELECT nome, dati_fiscali FROM ristoranti WHERE id = $1", [ristorante_id]);
         const azienda = ristRes.rows[0];
 
-        // COSTRUZIONE QUERY CON FILTRI DATA
+        // QUERY
         let sql = "SELECT * FROM haccp_labels WHERE ristorante_id = $1";
         const params = [ristorante_id];
         if (start && end) {
@@ -191,17 +191,23 @@ app.get('/api/haccp/export/labels/:ristorante_id', async (req, res) => {
         sql += " ORDER BY data_produzione ASC";
         const r = await pool.query(sql, params);
 
-        const headers = ["Data Prod.", "Prodotto", "Tipo", "Lotto", "Scadenza", "Operatore"];
+        // MODIFICA QUI: Aggiunto Header "Ingredienti"
+        const headers = ["Data Prod.", "Prodotto", "Ingredienti (Produttore/Lotto)", "Tipo", "Lotto Produzione", "Scadenza", "Operatore"];
+        
         const rows = r.rows.map(l => [
             new Date(l.data_produzione).toLocaleDateString('it-IT'),
-            String(l.prodotto || ''), String(l.tipo_conservazione || ''),
-            String(l.lotto || ''), new Date(l.data_scadenza).toLocaleDateString('it-IT'),
+            String(l.prodotto || ''), 
+            // Sostituisci le virgole con 'a capo' per renderlo leggibile in cella
+            String(l.ingredienti || '').replace(/, /g, '\n'), 
+            String(l.tipo_conservazione || ''),
+            String(l.lotto || ''), 
+            new Date(l.data_scadenza).toLocaleDateString('it-IT'),
             String(l.operatore || '')
         ]);
         const titoloReport = `REGISTRO PRODUZIONE: ${rangeName || 'Tutto lo storico'}`;
 
         if (format === 'pdf') {
-            const doc = new PDFDocument({ margin: 30, size: 'A4' });
+            const doc = new PDFDocument({ margin: 20, size: 'A4', layout: 'landscape' }); // Landscape per avere più spazio
             res.setHeader('Content-Type', 'application/pdf');
             res.setHeader('Content-Disposition', `attachment; filename="produzione_${rangeName || 'export'}.pdf"`);
             doc.pipe(res);
@@ -210,12 +216,24 @@ app.get('/api/haccp/export/labels/:ristorante_id', async (req, res) => {
             doc.moveDown();
             doc.fontSize(14).text(titoloReport, { align: 'center' });
             doc.moveDown();
-            await doc.table({ headers, rows }, { width: 500 });
+            
+            // Tabella PDF con larghezze personalizzate per far stare gli ingredienti
+            await doc.table({ headers, rows }, { 
+                width: 750, // Larghezza aumentata (A4 landscape)
+                columnsSize: [70, 100, 250, 60, 100, 70, 80], // Colonna ingredienti (terza) molto larga
+                prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8),
+                prepareRow: () => doc.font("Helvetica").fontSize(8)
+            });
             doc.end();
         } else {
             const finalData = [[titoloReport], [azienda.nome], [""], headers, ...rows];
             const workbook = xlsx.utils.book_new();
             const worksheet = xlsx.utils.aoa_to_sheet(finalData);
+            
+            // Imposta larghezza colonne Excel
+            const wscols = [{wch:12}, {wch:25}, {wch:50}, {wch:15}, {wch:20}, {wch:12}, {wch:15}];
+            worksheet['!cols'] = wscols;
+
             xlsx.utils.book_append_sheet(workbook, worksheet, "Produzione");
             const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
