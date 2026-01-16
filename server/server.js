@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE V12 (FIX ORARIO ITALIA & ORDINE CRONOLOGICO) 🇮🇹
+// server/server.js - VERSIONE V12.1 (FIX EXPORT & STAFF) 🇮🇹
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -506,7 +506,7 @@ app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
                 ];
             });
 
-if (tipo === 'merci') {
+        } else if (tipo === 'merci') { // <--- CORRETTO: ELSE IF
             sheetName = "Ricevimento Merci";
             // 1. RINOMINATO STATO -> CONDIZIONE
             // 2. INVERTITO SCADENZA E NOTE
@@ -537,9 +537,8 @@ if (tipo === 'merci') {
                     String(row.note || '')
                 ];
             });
-        }
 
-        } else if (tipo === 'assets') {
+        } else if (tipo === 'assets') { // <--- CORRETTO: ELSE IF
             sheetName = "Lista Macchine";
             headers = ["Stato", "Nome", "Tipo", "Marca", "Range"];
             const r = await pool.query(`SELECT * FROM haccp_assets WHERE ristorante_id = $1 ORDER BY nome ASC`, [ristorante_id]);
@@ -552,7 +551,7 @@ if (tipo === 'merci') {
             ]);
         }
 
-       // GENERAZIONE PDF
+        // GENERAZIONE PDF
         if (format === 'pdf') {
             const PDFDocument = require('pdfkit-table'); // Assicurati sia importato
             const doc = new PDFDocument({ margin: 30, size: 'A4' });
