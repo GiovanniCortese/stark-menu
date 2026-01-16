@@ -469,7 +469,6 @@ app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
         const { tipo, ristorante_id } = req.params;
         const { start, end, rangeName, format } = req.query; 
         
-        // 1. Recupera Dati Ristorante
         const ristRes = await pool.query("SELECT nome, dati_fiscali FROM ristoranti WHERE id = $1", [ristorante_id]);
         const aziendaInfo = ristRes.rows[0];
 
@@ -507,9 +506,11 @@ app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
                 ];
             });
 
-        } else if (tipo === 'merci') {
+if (tipo === 'merci') {
             sheetName = "Ricevimento Merci";
-            headers = ["Data", "Fornitore", "Prodotto", "Stato", "Lotto", "Kg", "Note", "Scadenza"];
+            // 1. RINOMINATO STATO -> CONDIZIONE
+            // 2. INVERTITO SCADENZA E NOTE
+            headers = ["Data", "Fornitore", "Prodotto", "Condizione Prodotti", "Lotto", "Kg", "Scadenza", "Note"];
             
             let sql = `SELECT * FROM haccp_merci WHERE ristorante_id = $1`;
             const params = [ristorante_id];
@@ -530,10 +531,14 @@ app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
                     condizione,
                     String(row.lotto || ''),
                     String(row.quantita || ''),
-                    String(row.note || ''),
-                    row.scadenza ? new Date(row.scadenza).toLocaleDateString('it-IT') : "-"
+                    // SCADENZA PRIMA
+                    row.scadenza ? new Date(row.scadenza).toLocaleDateString('it-IT') : "-",
+                    // NOTE DOPO
+                    String(row.note || '')
                 ];
             });
+        }
+
         } else if (tipo === 'assets') {
             sheetName = "Lista Macchine";
             headers = ["Stato", "Nome", "Tipo", "Marca", "Range"];
@@ -547,77 +552,84 @@ app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
             ]);
         }
 
-        // ==========================================
-        // RAMO A: GENERAZIONE PDF
-        // ==========================================
+       // GENERAZIONE PDF
         if (format === 'pdf') {
-            try {
-                const doc = new PDFDocument({ margin: 30, size: 'A4' });
+            const PDFDocument = require('pdfkit-table'); // Assicurati sia importato
+            const doc = new PDFDocument({ margin: 30, size: 'A4' });
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename="haccp_${tipo}.pdf"`);
+            doc.pipe(res);
 
-                res.setHeader('Content-Type', 'application/pdf');
-                res.setHeader('Content-Disposition', `attachment; filename="haccp_${tipo}_${rangeName || 'report'}.pdf"`);
+            doc.fontSize(16).text(String(aziendaInfo.nome), { align: 'center' });
+            doc.fontSize(10).text(String(aziendaInfo.dati_fiscali || ""), { align: 'center' });
+            doc.moveDown(0.5);
+            doc.fontSize(12).text(`Report: ${sheetName}`, { align: 'center' });
+            doc.fontSize(10).text(`Periodo: ${rangeName || 'Completo'}`, { align: 'center', color: 'gray' });
+            doc.moveDown(1);
 
-                doc.pipe(res);
+            const table = { headers: headers, rows: rows };
 
-                doc.fontSize(16).text(String(aziendaInfo.nome), { align: 'center' }); // Removed bold:true to avoid font missing error
-                doc.fontSize(10).text(String(aziendaInfo.dati_fiscali || "Dati societari mancanti"), { align: 'center' });
-                doc.moveDown(0.5);
-                doc.fontSize(12).text(`Report: ${sheetName}`, { align: 'center' });
-                doc.fontSize(10).text(`Periodo: ${rangeName || 'Completo'}`, { align: 'center', color: 'gray' });
-                doc.moveDown(1);
-
-                const table = {
-                    title: "",
-                    headers: headers,
-                    rows: rows,
-                };
-
-                await doc.table(table, {
-                    width: 500,
-                    prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8),
-                    prepareRow: (row, indexColumn, indexRow, rect, rowData) => {
-                        doc.font("Helvetica").fontSize(8);
-                        // Evidenzia righe non conformi in rosso
-                        if (tipo === 'temperature' && rowData[4] === 'NO') doc.fillColor('red');
-                        else if (tipo === 'merci' && rowData[3] !== 'CONFORME') doc.fillColor('red');
-                        else doc.fillColor('black');
-                    },
-                });
-
-                doc.end();
-            } catch (pdfErr) {
-                console.error("PDF Generation Error:", pdfErr);
-                // Se non abbiamo ancora inviato header, mandiamo json error
-                if (!res.headersSent) res.status(500).json({ error: "Errore generazione PDF interno" });
-            }
+            await doc.table(table, {
+                width: 500,
+                prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8),
+                prepareRow: (row, indexColumn, indexRow, rect, rowData) => {
+                    doc.font("Helvetica").fontSize(8);
+                    // FIX: RIMOSSO IL ROSSO, ORA È TUTTO NERO (Default)
+                    doc.fillColor('black'); 
+                },
+            });
+            doc.end();
             return; 
         }
 
-        // ==========================================
-        // RAMO B: GENERAZIONE EXCEL
-        // ==========================================
+        // GENERAZIONE EXCEL
         const rowAzienda = [aziendaInfo.dati_fiscali || `${aziendaInfo.nome}`];
         const rowPeriodo = [`Periodo: ${rangeName || 'Tutto lo storico'}`];
         const rowEmpty = [""];
-
         const finalData = [rowAzienda, rowPeriodo, rowEmpty, headers, ...rows];
         const workbook = xlsx.utils.book_new();
         const worksheet = xlsx.utils.aoa_to_sheet(finalData);
-        
         if(!worksheet['!merges']) worksheet['!merges'] = [];
         worksheet['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } });
-
         xlsx.utils.book_append_sheet(workbook, worksheet, sheetName);
         const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-        
-        res.setHeader('Content-Disposition', `attachment; filename="haccp_${tipo}_${rangeName || 'report'}.xlsx"`);
+        res.setHeader('Content-Disposition', `attachment; filename="haccp_export.xlsx"`);
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.send(buffer);
 
     } catch (err) {
-        console.error("Errore Export Generale:", err);
         if (!res.headersSent) res.status(500).json({ error: "Errore Export: " + err.message });
     }
+});
+
+// --- AGGIUNGI QUESTE NUOVE API PER LO STAFF (IN FONDO AL FILE, PRIMA DI LISTEN) ---
+
+// 1. Carica documento staff
+app.post('/api/staff/docs', async (req, res) => {
+    try {
+        const { utente_id, tipo_doc, nome_file, url } = req.body;
+        await pool.query(
+            "INSERT INTO staff_docs (utente_id, tipo_doc, nome_file, url) VALUES ($1, $2, $3, $4)",
+            [utente_id, tipo_doc, nome_file, url]
+        );
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 2. Prendi documenti di uno staff
+app.get('/api/staff/docs/:utente_id', async (req, res) => {
+    try {
+        const r = await pool.query("SELECT * FROM staff_docs WHERE utente_id = $1 ORDER BY data_caricamento DESC", [req.params.utente_id]);
+        res.json(r.rows);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 3. Elimina documento
+app.delete('/api/staff/docs/:id', async (req, res) => {
+    try {
+        await pool.query("DELETE FROM staff_docs WHERE id = $1", [req.params.id]);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // 4. ELIMINA ASSET

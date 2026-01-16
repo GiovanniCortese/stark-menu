@@ -6,7 +6,7 @@ import QRCode from 'react-qr-code';
 function Haccp() {
   const { slug, scanId } = useParams();
   const navigate = useNavigate();
-  
+
   const [info, setInfo] = useState(null);
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [password, setPassword] = useState("");
@@ -17,6 +17,10 @@ function Haccp() {
   const [merci, setMerci] = useState([]); 
   const [calendarLogs, setCalendarLogs] = useState([]); 
   const [tab, setTab] = useState('temperature'); 
+  const [staffList, setStaffList] = useState([]);
+const [selectedStaff, setSelectedStaff] = useState(null);
+const [staffDocs, setStaffDocs] = useState([]);
+const [newDoc, setNewDoc] = useState({ tipo: 'Contratto', url: '' });
   
   // Stati Moduli
   const [tempInput, setTempInput] = useState({}); 
@@ -86,7 +90,8 @@ function Haccp() {
       fetch(`${API_URL}/api/haccp/assets/${info.id}`).then(r=>r.json()).then(setAssets);
       fetch(`${API_URL}/api/haccp/logs/${info.id}`).then(r=>r.json()).then(setLogs);
       fetch(`${API_URL}/api/haccp/merci/${info.id}`).then(r=>r.json()).then(setMerci);
-  };
+      fetch(`${API_URL}/api/utenti?mode=staff&ristorante_id=${info.id}`).then(r=>r.json()).then(setStaffList);
+};
 
   const ricaricaCalendario = async () => {
       if(tab !== 'calendario') return;
@@ -122,6 +127,40 @@ function Haccp() {
       const res = await fetch(`${API_URL}/api/upload`, { method:'POST', body:fd });
       const data = await res.json(); return data.url;
   };
+  
+  // 3. FUNZIONI PER GESTIONE DOCUMENTI STAFF
+const openStaffDocs = async (user) => {
+    setSelectedStaff(user);
+    const r = await fetch(`${API_URL}/api/staff/docs/${user.id}`);
+    const d = await r.json();
+    setStaffDocs(d);
+};
+
+const uploadStaffDoc = async (e) => {
+    const f = e.target.files[0]; if(!f) return;
+    const url = await uploadFile(f); // Usa la tua funzione upload esistente
+    
+    await fetch(`${API_URL}/api/staff/docs`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+            utente_id: selectedStaff.id,
+            tipo_doc: newDoc.tipo,
+            nome_file: f.name,
+            url: url
+        })
+    });
+    // Ricarica lista
+    const r = await fetch(`${API_URL}/api/staff/docs/${selectedStaff.id}`);
+    setStaffDocs(await r.json());
+    setNewDoc({...newDoc, url: ''});
+};
+
+const deleteDoc = async (id) => {
+    if(!confirm("Eliminare documento?")) return;
+    await fetch(`${API_URL}/api/staff/docs/${id}`, {method:'DELETE'});
+    const r = await fetch(`${API_URL}/api/staff/docs/${selectedStaff.id}`);
+    setStaffDocs(await r.json());
+};
 
   // --- EXCEL/PDF DOWNLOAD ---
   const openDownloadModal = (type) => {
@@ -442,11 +481,11 @@ const salvaMerci = async (e) => {
                       <button onClick={()=>openDownloadModal('assets')} style={{background:'#34495e', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Macchine</button>
                   </div>
 
-                  {['temperature', 'merci', 'calendario', 'etichette', 'setup'].map(t => (
-                      <button key={t} onClick={()=>setTab(t)} style={{padding:'10px 20px', borderRadius:5, border:'none', cursor:'pointer', fontWeight:'bold', textTransform:'uppercase', background: tab===t ? '#2c3e50' : 'white', color: tab===t ? 'white' : '#333'}}>
-                        {t==='merci' ? '📦 Merci' : (t==='setup' ? '⚙️ Macchine' : t)}
-                      </button>
-                  ))}
+                  {['temperature', 'merci', 'calendario', 'etichette', 'staff', 'setup'].map(t => (
+    <button key={t} onClick={()=>setTab(t)} style={{padding:'10px 20px', borderRadius:5, border:'none', cursor:'pointer', fontWeight:'bold', textTransform:'uppercase', background: tab===t ? '#2c3e50' : 'white', color: tab===t ? 'white' : '#333'}}>
+       {t==='merci' ? '📦 Merci' : (t==='setup' ? '⚙️ Macchine' : (t==='staff' ? '👥 Staff' : t))}
+    </button>
+))}
                   <button onClick={()=>{localStorage.removeItem(`haccp_session_${slug}`); setIsAuthorized(false)}} style={{background:'#e74c3c', color:'white', border:'none', padding:'10px 20px', borderRadius:5}}>ESCI</button>
               </div>
           </div>
@@ -598,36 +637,49 @@ const salvaMerci = async (e) => {
               <div style={{background:'white', padding:20, borderRadius:10}}>
                   <h3>📦 Storico Arrivi</h3>
                   <table style={{width:'100%', borderCollapse:'collapse', fontSize:13}}>
-                      <thead>
-                          <tr style={{background:'#f0f0f0', textAlign:'left'}}>
-                              <th style={{padding:8}}>Data</th>
-                              <th style={{padding:8}}>Fornitore / Prodotto</th>
-                              <th style={{padding:8}}>Dettagli</th>
-                              <th style={{padding:8}}>Stato</th>
-                              <th style={{padding:8}}>Azioni</th>
-                          </tr>
-                      </thead>
-                      <tbody>
-                          {merci.map(m => (
-                              <tr key={m.id} style={{borderBottom:'1px solid #eee'}}>
-                                  <td style={{padding:8}}>{new Date(m.data_ricezione).toLocaleDateString()}</td>
-                                  <td style={{padding:8}}><strong>{m.fornitore}</strong><br/>{m.prodotto}</td>
-                                  <td style={{padding:8}}>
-                                      Qty: {m.quantita || '-'} | Lotto: {m.lotto} <br/>
-                                      Scad: {m.scadenza ? new Date(m.scadenza).toLocaleDateString() : '-'}
-                                      {m.destinazione && <div style={{fontSize:11, color:'#666'}}>📍 {m.destinazione}</div>}
-                                      {m.note && <div style={{fontSize:11, fontStyle:'italic'}}>Note: {m.note}</div>}
-                                  </td>
-                                  <td style={{padding:8}}>{m.conforme && m.integro ? <span style={{color:'green', fontWeight:'bold'}}>OK</span> : <span style={{color:'red', fontWeight:'bold'}}>NO</span>}</td>
-                                  <td style={{padding:8, display:'flex', gap:5}}>
-                                      {m.allegato_url && <a href={m.allegato_url} target="_blank" style={{background:'#3498db', color:'white', border:'none', borderRadius:3, padding:'2px 5px', textDecoration:'none'}}>📎</a>}
-                                      <button onClick={()=>iniziaModificaMerci(m)} style={{background:'#f39c12', color:'white', border:'none', borderRadius:3, cursor:'pointer', padding:'2px 5px'}}>✏️</button>
-                                      <button onClick={()=>eliminaMerce(m.id)} style={{background:'#e74c3c', color:'white', border:'none', borderRadius:3, cursor:'pointer', padding:'2px 5px'}}>🗑️</button>
-                                  </td>
-                              </tr>
-                          ))}
-                      </tbody>
-                  </table>
+      <thead>
+          <tr style={{background:'#f0f0f0', textAlign:'left'}}>
+              <th style={{padding:8}}>Data</th>
+              <th style={{padding:8}}>Fornitore / Prodotto</th>
+              {/* RINOMINATO */}
+              <th style={{padding:8}}>Condizione Prodotti</th> 
+              {/* SCADENZA PRIMA DELLE NOTE */}
+              <th style={{padding:8}}>Lotto / Scadenza</th>
+              <th style={{padding:8}}>Note / Dest.</th>
+              <th style={{padding:8}}>Azioni</th>
+          </tr>
+      </thead>
+      <tbody>
+          {merci.map(m => (
+              <tr key={m.id} style={{borderBottom:'1px solid #eee'}}>
+                  <td style={{padding:8}}>{new Date(m.data_ricezione).toLocaleDateString()}</td>
+                  <td style={{padding:8}}><strong>{m.fornitore}</strong><br/>{m.prodotto} ({m.quantita})</td>
+                  <td style={{padding:8}}>
+                      {/* LOGICA VISIVA CONDIZIONE */}
+                      {!m.conforme ? <span style={{color:'red', fontWeight:'bold'}}>TEMP KO</span> : 
+                       (!m.integro ? <span style={{color:'orange', fontWeight:'bold'}}>DANNEGGIATO</span> : 
+                       <span style={{color:'green', fontWeight:'bold'}}>CONFORME</span>)}
+                  </td>
+                  {/* SCAMBIO ORDINE: SCADENZA/LOTTO QUI */}
+                  <td style={{padding:8}}>
+                       L: {m.lotto}<br/>
+                       S: {m.scadenza ? new Date(m.scadenza).toLocaleDateString() : '-'}
+                  </td>
+                  {/* NOTE E DESTINAZIONE QUI */}
+                  <td style={{padding:8}}>
+                       {m.destinazione && <div>📍 {m.destinazione}</div>}
+                       {m.note && <div style={{fontStyle:'italic'}}>{m.note}</div>}
+                  </td>
+                  <td style={{padding:8, display:'flex', gap:5}}>
+                      {/* ... Bottoni esistenti ... */}
+                      {m.allegato_url && <a href={m.allegato_url} target="_blank" style={{background:'#3498db', color:'white', border:'none', borderRadius:3, padding:'2px 5px', textDecoration:'none'}}>📎</a>}
+                      <button onClick={()=>iniziaModificaMerci(m)} style={{background:'#f39c12', color:'white', border:'none', borderRadius:3, cursor:'pointer', padding:'2px 5px'}}>✏️</button>
+                      <button onClick={()=>eliminaMerce(m.id)} style={{background:'#e74c3c', color:'white', border:'none', borderRadius:3, cursor:'pointer', padding:'2px 5px'}}>🗑️</button>
+                  </td>
+              </tr>
+          ))}
+      </tbody>
+    </table>
               </div>
           </div>
       )}
@@ -707,6 +759,80 @@ const salvaMerci = async (e) => {
                       </div>
                   ))}
               </div>
+
+              // 6. AGGIUNGI LA NUOVA VISTA STAFF (Dopo Tab 'etichette' o 'setup')
+{tab === 'staff' && !scanId && (
+    <div className="no-print">
+        <h3>Gestione Personale & Documenti</h3>
+        <p style={{fontSize:12, color:'#666'}}>Seleziona un membro dello staff per gestire i suoi documenti (Contratti, Buste Paga, Documenti Identità).</p>
+        
+        <div style={{display:'flex', gap:20, flexWrap:'wrap'}}>
+            {/* LISTA STAFF */}
+            <div style={{flex:1, minWidth:300, background:'white', padding:20, borderRadius:10}}>
+                <h4>Staff Attivo</h4>
+                {staffList.length === 0 && <p>Nessun dipendente trovato (Ruolo: Cameriere/Editor).</p>}
+                {staffList.map(u => (
+                    <div key={u.id} onClick={()=>openStaffDocs(u)} 
+                         style={{padding:10, borderBottom:'1px solid #eee', cursor:'pointer', background: selectedStaff?.id===u.id ? '#eafaf1' : 'white', display:'flex', justifyContent:'space-between'}}>
+                        <span style={{fontWeight:'bold'}}>{u.nome}</span>
+                        <span style={{fontSize:12, background:'#eee', padding:'2px 6px', borderRadius:4}}>{u.ruolo}</span>
+                    </div>
+                ))}
+            </div>
+
+            {/* DOCUMENTI UTENTE SELEZIONATO */}
+            {selectedStaff && (
+                <div style={{flex:2, minWidth:300, background:'white', padding:20, borderRadius:10, borderLeft:'4px solid #3498db'}}>
+                    <div style={{display:'flex', justifyContent:'space-between'}}>
+                        <h3 style={{margin:0}}>📂 Documenti: {selectedStaff.nome}</h3>
+                        <button onClick={()=>setSelectedStaff(null)} style={{background:'#ccc', border:'none', padding:'2px 8px', borderRadius:4, cursor:'pointer'}}>X</button>
+                    </div>
+
+                    {/* UPLOAD */}
+                    <div style={{marginTop:20, background:'#f9f9f9', padding:15, borderRadius:5, display:'flex', gap:10, alignItems:'center'}}>
+                        <select value={newDoc.tipo} onChange={e=>setNewDoc({...newDoc, tipo:e.target.value})} style={{padding:8, borderRadius:4, border:'1px solid #ddd'}}>
+                            <option value="Contratto">Contratto</option>
+                            <option value="Busta Paga">Busta Paga</option>
+                            <option value="Identità">Doc. Identità</option>
+                            <option value="Attestato HACCP">Attestato HACCP</option>
+                            <option value="Altro">Altro</option>
+                        </select>
+                        <label style={{background:'#3498db', color:'white', padding:'8px 15px', borderRadius:4, cursor:'pointer', fontSize:13}}>
+                            ⬆ Carica File
+                            <input type="file" onChange={uploadStaffDoc} style={{display:'none'}} />
+                        </label>
+                    </div>
+
+                    {/* LISTA DOCUMENTI */}
+                    <table style={{width:'100%', marginTop:20, fontSize:13, borderCollapse:'collapse'}}>
+                        <thead>
+                            <tr style={{textAlign:'left', borderBottom:'2px solid #ddd'}}>
+                                <th style={{padding:8}}>Data</th>
+                                <th style={{padding:8}}>Tipo</th>
+                                <th style={{padding:8}}>Nome File</th>
+                                <th style={{padding:8}}>Azioni</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {staffDocs.map(d => (
+                                <tr key={d.id} style={{borderBottom:'1px solid #eee'}}>
+                                    <td style={{padding:8}}>{new Date(d.data_caricamento).toLocaleDateString()}</td>
+                                    <td style={{padding:8}}><span style={{background:'#eee', padding:'2px 5px', borderRadius:3, fontSize:11}}>{d.tipo_doc}</span></td>
+                                    <td style={{padding:8}}>{d.nome_file}</td>
+                                    <td style={{padding:8, display:'flex', gap:5}}>
+                                        <a href={d.url} target="_blank" style={{background:'#27ae60', color:'white', textDecoration:'none', padding:'3px 8px', borderRadius:3, fontSize:12}}>Vedi</a>
+                                        <button onClick={()=>deleteDoc(d.id)} style={{background:'#e74c3c', color:'white', border:'none', padding:'3px 8px', borderRadius:3, cursor:'pointer', fontSize:12}}>X</button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                    {staffDocs.length === 0 && <p style={{color:'#999', marginTop:20, textAlign:'center'}}>Nessun documento caricato per questo utente.</p>}
+                </div>
+            )}
+        </div>
+    </div>
+)}
               
               {/* MODALI ESISTENTI (QR, EDIT) */}
               {showQRModal && (
