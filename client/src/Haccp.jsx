@@ -10,6 +10,7 @@ function Haccp() {
   const [info, setInfo] = useState(null);
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [password, setPassword] = useState("");
+  const [downloadFormat, setDownloadFormat] = useState('excel'); // 'excel' o 'pdf'
   
   // Dati
   const [assets, setAssets] = useState([]);
@@ -124,20 +125,23 @@ function Haccp() {
       setShowDownloadModal(true);
   };
 
-  const executeDownload = (range) => {
-      const end = new Date();
-      let start = new Date();
-      let rangeName = "Tutto";
+const executeDownload = (range) => {
+    const end = new Date();
+    let start = new Date();
+    let rangeName = "Tutto";
 
-      if(range === 'week') { start.setDate(end.getDate() - 7); rangeName="Ultima Settimana"; }
-      if(range === 'month') { start.setMonth(end.getMonth() - 1); rangeName="Ultimo Mese"; }
-      if(range === 'year') { start.setFullYear(end.getFullYear() - 1); rangeName="Ultimo Anno"; }
-      if(range === 'all') { start = new Date('2020-01-01'); rangeName="Storico Completo"; }
-
-      const query = `?start=${start.toISOString()}&end=${end.toISOString()}&rangeName=${rangeName}`;
-      window.open(`${API_URL}/api/haccp/export/${downloadType}/${info.id}${query}`, '_blank');
-      setShowDownloadModal(false);
-  };
+    if(range === 'week') { start.setDate(end.getDate() - 7); rangeName="Ultima Settimana"; }
+    if(range === 'month') { start.setMonth(end.getMonth() - 1); rangeName="Ultimo Mese"; }
+    if(range === 'year') { start.setFullYear(end.getFullYear() - 1); rangeName="Ultimo Anno"; }
+    
+    // FISSO START AL PRIMO DEL MESE SE RICHIESTO, MA QUI MANTENGO LA LOGICA DINAMICA
+    // Se vuoi fisso 01/01 - 30/01 per "month", usiamo la logica calendario
+    // Qui lascio range dinamico ma con ordinamento corretto backend.
+    
+    const query = `?start=${start.toISOString()}&end=${end.toISOString()}&rangeName=${rangeName}&format=${downloadFormat}`;
+    window.open(`${API_URL}/api/haccp/export/${downloadType}/${info.id}${query}`, '_blank');
+    setShowDownloadModal(false);
+};
 
   // --- TEMPERATURE ---
   const getTodayLog = (assetId) => {
@@ -152,33 +156,49 @@ function Haccp() {
           setTempInput(prev => ({...prev, [assetId]: { ...(prev[assetId] || {}), photo: url }}));
       } finally { setUploadingLog(null); }
   };
-  const registraTemperatura = async (asset) => {
-      const currentInput = tempInput[asset.id] || {};
-      const val = parseFloat(currentInput.val);
-      if(isNaN(val) && currentInput.val !== '0') return alert("Inserisci un numero valido");
-      
-      const realMin = Math.min(parseFloat(asset.range_min), parseFloat(asset.range_max));
-      const realMax = Math.max(parseFloat(asset.range_min), parseFloat(asset.range_max));
-      const conforme = val >= realMin && val <= realMax;
-      
-      let azione = "";
-      if(!conforme) {
-          azione = prompt(`⚠️ ATTENZIONE: Temp ${val}°C fuori range.\nDescrivi azione correttiva:`, "");
-          if(!azione) return alert("Azione correttiva obbligatoria!");
-      }
+const registraTemperatura = async (asset, isSpento = false) => {
+    // Se è spento, forziamo i valori
+    let val = 'OFF';
+    let conforme = true;
+    let azione = "";
+    
+    // Se NON è spento, leggiamo l'input
+    if (!isSpento) {
+        const currentInput = tempInput[asset.id] || {};
+        val = parseFloat(currentInput.val);
+        if(isNaN(val) && currentInput.val !== '0') return alert("Inserisci un numero valido");
+        
+        const realMin = Math.min(parseFloat(asset.range_min), parseFloat(asset.range_max));
+        const realMax = Math.max(parseFloat(asset.range_min), parseFloat(asset.range_max));
+        conforme = val >= realMin && val <= realMax;
+        
+        if(!conforme) {
+            azione = prompt(`⚠️ ATTENZIONE: Temp ${val}°C fuori range.\nDescrivi azione correttiva:`, "");
+            if(!azione) return alert("Azione correttiva obbligatoria!");
+        }
+        val = val.toString();
+    } else {
+        // Logica per "Spento oggi"
+        val = "OFF";
+        conforme = true;
+        azione = "Macchinario spento/inutilizzato in data odierna";
+    }
 
-      await fetch(`${API_URL}/api/haccp/logs`, {
-          method: 'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({
-              ristorante_id: info.id, asset_id: asset.id, operatore: 'Staff', 
-              tipo_log: 'temperatura', valore: val.toString(), 
-              conformita: conforme, azione_correttiva: azione, foto_prova_url: currentInput.photo || ''
-          })
-      });
-      setTempInput(prev => { const newState = {...prev}; delete newState[asset.id]; return newState; }); 
-      ricaricaDati();
-      if(scanId) navigate(`/haccp/${slug}`); 
-  };
+    const currentInput = tempInput[asset.id] || {};
+
+    await fetch(`${API_URL}/api/haccp/logs`, {
+        method: 'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+            ristorante_id: info.id, asset_id: asset.id, operatore: 'Staff', 
+            tipo_log: 'temperatura', valore: val, 
+            conformita: conforme, azione_correttiva: azione, foto_prova_url: currentInput.photo || ''
+        })
+    });
+    // Pulisci input
+    setTempInput(prev => { const newState = {...prev}; delete newState[asset.id]; return newState; }); 
+    ricaricaDati();
+    if(scanId) navigate(`/haccp/${slug}`); 
+};
   const abilitaNuovaMisurazione = (asset) => {
       const logEsistente = getTodayLog(asset.id);
       setTempInput(prev => ({ ...prev, [asset.id]: { val: logEsistente ? logEsistente.valore : '', photo: '' } }));
@@ -439,10 +459,26 @@ function Haccp() {
                                 <div style={{flex:2, textAlign:'center'}}>TEMPERATURA</div><div style={{width:50, textAlign:'center'}}>FOTO</div><div style={{width:80, textAlign:'center'}}>AZIONE</div>
                            </div>
                            <div style={{display:'flex', gap:5, alignItems:'stretch', height:45}}>
-                              <input type="number" step="0.1" placeholder="°C" value={currentData.val || ''} onChange={e=>setTempInput({...tempInput, [asset.id]: {...currentData, val: e.target.value}})} style={{flex:2, borderRadius:5, border:'1px solid #ddd', fontSize:18, textAlign:'center', fontWeight:'bold'}} />
-                              <label style={{width:50, cursor:'pointer', background: currentData.photo ? '#2ecc71' : '#f1f2f6', borderRadius:5, display:'flex', alignItems:'center', justifyContent:'center', border:'1px solid #ddd'}}>📷<input type="file" accept="image/*" onChange={(e)=>handleLogPhoto(e, asset.id)} style={{display:'none'}} /></label>
-                              <button onClick={()=>registraTemperatura(asset)} style={{width:80, background:'#2c3e50', color:'white', border:'none', borderRadius:5, cursor:'pointer', fontWeight:'bold', fontSize:'12px'}}>SALVA</button>
-                           </div>
+    <input type="number" step="0.1" placeholder="°C" 
+           value={currentData.val || ''} 
+           onChange={e=>setTempInput({...tempInput, [asset.id]: {...currentData, val: e.target.value}})} 
+           style={{flex:2, borderRadius:5, border:'1px solid #ddd', fontSize:18, textAlign:'center', fontWeight:'bold'}} 
+    />
+    
+    <button onClick={()=>registraTemperatura(asset, true)} title="Segna come SPENTO oggi"
+            style={{width:40, background:'#95a5a6', color:'white', border:'none', borderRadius:5, cursor:'pointer', fontWeight:'bold', fontSize:'10px'}}>
+        OFF
+    </button>
+
+    <label style={{width:50, cursor:'pointer', background: currentData.photo ? '#2ecc71' : '#f1f2f6', borderRadius:5, display:'flex', alignItems:'center', justifyContent:'center', border:'1px solid #ddd'}}>
+        📷<input type="file" accept="image/*" onChange={(e)=>handleLogPhoto(e, asset.id)} style={{display:'none'}} />
+    </label>
+    
+    <button onClick={()=>registraTemperatura(asset, false)} 
+            style={{width:60, background:'#2c3e50', color:'white', border:'none', borderRadius:5, cursor:'pointer', fontWeight:'bold', fontSize:'12px'}}>
+        SALVA
+    </button>
+</div>
                            {isInputActive && getTodayLog(asset.id) && <button onClick={()=>{const n={...tempInput}; delete n[asset.id]; setTempInput(n);}} style={{marginTop:5, width:'100%', fontSize:10, background:'transparent', border:'none', color:'#999', cursor:'pointer'}}>Annulla Modifica</button>}
                       </div>
                   );
@@ -659,22 +695,30 @@ function Haccp() {
 
       {/* --- MODALE DOWNLOAD EXCEL --- */}
       {showDownloadModal && (
-          <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000}}>
-              <div style={{background:'white', padding:30, borderRadius:10, textAlign:'center', width:300}}>
-                  <h3 style={{marginTop:0}}>Scarica Excel: {downloadType === 'temperature' ? 'Temperature' : (downloadType === 'merci' ? 'Merci' : 'Macchine')}</h3>
-                  <p style={{color:'#666', fontSize:14}}>Seleziona il periodo da scaricare:</p>
-                  
-                  <div style={{display:'flex', flexDirection:'column', gap:10, marginTop:20}}>
-                      <button onClick={()=>executeDownload('week')} style={{padding:12, background:'#3498db', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Ultima Settimana</button>
-                      <button onClick={()=>executeDownload('month')} style={{padding:12, background:'#2980b9', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Ultimo Mese</button>
-                      <button onClick={()=>executeDownload('year')} style={{padding:12, background:'#8e44ad', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Ultimo Anno</button>
-                      <button onClick={()=>executeDownload('all')} style={{padding:12, background:'#2c3e50', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Tutto lo storico</button>
-                  </div>
-                  
-                  <button onClick={()=>setShowDownloadModal(false)} style={{marginTop:20, background:'transparent', border:'none', color:'#999', cursor:'pointer', textDecoration:'underline'}}>Annulla</button>
-              </div>
+  <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000}}>
+      <div style={{background:'white', padding:30, borderRadius:10, textAlign:'center', width:350}}>
+          <h3 style={{marginTop:0}}>Scarica Report: {downloadType === 'temperature' ? 'Temperature' : (downloadType === 'merci' ? 'Merci' : 'Macchine')}</h3>
+          
+          <div style={{marginBottom:20, background:'#f9f9f9', padding:10, borderRadius:5}}>
+               <p style={{margin:'0 0 10px 0', fontSize:14, fontWeight:'bold'}}>Formato:</p>
+               <div style={{display:'flex', justifyContent:'center', gap:10}}>
+                   <button onClick={()=>setDownloadFormat('excel')} style={{background: downloadFormat==='excel'?'#27ae60':'#eee', color:downloadFormat==='excel'?'white':'black', padding:'5px 15px', border:'none', borderRadius:20, cursor:'pointer'}}>Excel (.xlsx)</button>
+                   <button onClick={()=>setDownloadFormat('pdf')} style={{background: downloadFormat==='pdf'?'#e74c3c':'#eee', color:downloadFormat==='pdf'?'white':'black', padding:'5px 15px', border:'none', borderRadius:20, cursor:'pointer'}}>PDF (.pdf)</button>
+               </div>
           </div>
-      )}
+
+          <p style={{color:'#666', fontSize:14}}>Seleziona il periodo:</p>
+          
+          <div style={{display:'flex', flexDirection:'column', gap:10, marginTop:10}}>
+              <button onClick={()=>executeDownload('week')} style={{padding:12, background:'#3498db', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Ultima Settimana</button>
+              <button onClick={()=>executeDownload('month')} style={{padding:12, background:'#2980b9', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Ultimo Mese</button>
+              <button onClick={()=>executeDownload('all')} style={{padding:12, background:'#2c3e50', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Tutto lo storico</button>
+          </div>
+          
+          <button onClick={()=>setShowDownloadModal(false)} style={{marginTop:20, background:'transparent', border:'none', color:'#999', cursor:'pointer', textDecoration:'underline'}}>Annulla</button>
+      </div>
+  </div>
+)}
 
       {/* --- PRINT AREA (ETICHETTA MIGLIORATA GRAFICAMENTE) --- */}
       {printMode === 'label' && lastLabel && (

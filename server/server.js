@@ -466,16 +466,16 @@ app.put('/api/haccp/assets/:id', async (req, res) => {
 app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
     try {
         const { tipo, ristorante_id } = req.params;
-        const { start, end, rangeName } = req.query; 
+        const { start, end, rangeName, format } = req.query; // Aggiunto 'format' (excel o pdf)
         
         // 1. Recupera Dati Ristorante
         const ristRes = await pool.query("SELECT nome, dati_fiscali FROM ristoranti WHERE id = $1", [ristorante_id]);
         const aziendaInfo = ristRes.rows[0];
 
-        // Intestazioni Riga 1-3
+        // Intestazioni Riga 1-3 (Per Excel)
         const rowAzienda = [aziendaInfo.dati_fiscali || `${aziendaInfo.nome} - Dati societari non compilati`];
         const rowPeriodo = [`Periodo Report: ${rangeName || 'Tutto lo storico'}`];
-        const rowEmpty = [""]; // Riga vuota separatrice
+        const rowEmpty = [""];
 
         let headers = [];
         let rows = [];
@@ -484,9 +484,9 @@ app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
         // 2. Costruzione Dati in base al tipo
         if (tipo === 'temperature') {
             sheetName = "Temperature";
-            headers = ["Data", "Ora", "Macchina", "Temp (°C)", "Esito", "Azione Correttiva", "Operatore"];
+            headers = ["Data", "Ora", "Macchina", "Temp (°C) / Stato", "Esito", "Azione Correttiva", "Operatore"];
             
-            let sql = `SELECT l.data_ora, a.nome as asset, l.valore as temperatura, l.conformita, l.azione_correttiva, l.operatore 
+            let sql = `SELECT l.data_ora, a.nome as asset, l.valore, l.conformita, l.azione_correttiva, l.operatore 
                        FROM haccp_logs l JOIN haccp_assets a ON l.asset_id = a.id 
                        WHERE l.ristorante_id = $1`;
             const params = [ristorante_id];
@@ -495,87 +495,98 @@ app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
                 sql += ` AND l.data_ora >= $2 AND l.data_ora <= $3`;
                 params.push(start, end);
             }
-            sql += ` ORDER BY l.data_ora DESC`;
+            // ORDINAMENTO CRONOLOGICO (dal 01 al 30)
+            sql += ` ORDER BY l.data_ora ASC`; 
 
             const r = await pool.query(sql, params);
             
             rows = r.rows.map(row => {
                 const d = new Date(row.data_ora);
+                // Se il valore è "OFF" o "0" con nota SPENTO, lo scriviamo chiaro
+                const displayVal = row.valore === 'OFF' ? 'SPENTO' : `${row.valore}°C`;
+                
                 return [
-                    d.toLocaleDateString('it-IT'), // Colonna Data
-                    d.toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'}), // Colonna Ora
+                    d.toLocaleDateString('it-IT'), 
+                    d.toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'}), 
                     row.asset,
-                    row.temperatura,
-                    row.conformita ? "OK" : "ANOMALIA",
-                    row.conformita ? "" : (row.azione_correttiva || "Nessuna azione segnata"), // Campo Azione se c'è errore
+                    displayVal,
+                    row.conformita ? "CONFORME" : "ANOMALIA",
+                    row.azione_correttiva || "", 
                     row.operatore
                 ];
             });
         } 
         else if (tipo === 'merci') {
             sheetName = "Merci";
-            headers = ["Data Arrivo", "Fornitore", "Prodotto", "Lotto", "Scadenza", "Temp", "Stato", "Operatore", "Note"];
-            // ... (logica merci simile, ometti per brevità se non serve cambiare colonne qui) ...
-            // Per brevità uso la stessa logica di prima convertita in array
+            // NUOVO ORDINE COLONNE RICHIESTO: 
+            // Data - Fornitore - Prodotto - Condizione - Lotto - Quantità - Note - Scadenza
+            headers = ["Data Ricezione", "Fornitore", "Prodotto", "Condizione", "Lotto", "Quantità", "Note", "Scadenza"];
+            
             let sql = `SELECT * FROM haccp_merci WHERE ristorante_id = $1`;
             const params = [ristorante_id];
             if(start && end) { sql += ` AND data_ricezione >= $2 AND data_ricezione <= $3`; params.push(start, end); }
-            sql += ` ORDER BY data_ricezione DESC`;
+            
+            // ORDINAMENTO CRONOLOGICO
+            sql += ` ORDER BY data_ricezione ASC`; 
+            
             const r = await pool.query(sql, params);
-            rows = r.rows.map(row => [
-                new Date(row.data_ricezione).toLocaleDateString('it-IT'),
-                row.fornitore,
-                row.prodotto,
-                row.lotto,
-                row.scadenza ? new Date(row.scadenza).toLocaleDateString('it-IT') : "",
-                row.temperatura,
-                (row.conforme && row.integro) ? "OK" : "NON CONFORME",
-                row.operatore,
-                row.note
-            ]);
+            rows = r.rows.map(row => {
+                // Calcolo condizione
+                let condizione = "CONFORME";
+                if (!row.conforme) condizione = "NON CONFORME (Temp)";
+                if (!row.integro) condizione = "NON INTEGRO (Pacco rotto)";
+                if (!row.conforme && !row.integro) condizione = "NON CONFORME E ROTTO";
+
+                return [
+                    new Date(row.data_ricezione).toLocaleDateString('it-IT'),
+                    row.fornitore,
+                    row.prodotto,
+                    condizione, // Colonna Condizione
+                    row.lotto,
+                    row.quantita,
+                    row.note,
+                    row.scadenza ? new Date(row.scadenza).toLocaleDateString('it-IT') : "-"
+                ];
+            });
         }
         else if (tipo === 'assets') {
             sheetName = "Macchine";
-            headers = ["Stato", "Nome", "Tipo", "Marca", "Modello", "Seriale", "Range Temp"];
-            const r = await pool.query(`SELECT * FROM haccp_assets WHERE ristorante_id = $1`, [ristorante_id]);
+            headers = ["Stato Attuale", "Nome", "Tipo", "Marca", "Range Temp"];
+            const r = await pool.query(`SELECT * FROM haccp_assets WHERE ristorante_id = $1 ORDER BY nome ASC`, [ristorante_id]);
             rows = r.rows.map(row => [
                 row.stato ? row.stato.toUpperCase() : "ATTIVO",
                 row.nome,
                 row.tipo,
                 row.marca,
-                row.modello,
-                row.serial_number,
                 `${row.range_min}°C / ${row.range_max}°C`
             ]);
         }
 
-        // 3. Creazione Excel con Array of Arrays (AoA)
-        // Struttura: [ [Dati Azienda], [Periodo], [""], [Intestazioni], [Dato1], [Dato2]... ]
-        const finalData = [
-            rowAzienda,
-            rowPeriodo,
-            rowEmpty,
-            headers,
-            ...rows
-        ];
-
+        // --- GESTIONE PDF (Opzionale semplice) ---
+        // Se non hai installato pdfkit, per ora restituiamo Excel anche se chiede PDF
+        // ma cambiando nome file. Se vuoi il PDF reale serve libreria aggiuntiva.
+        // Qui mantengo Excel per stabilità immediata ma col nome corretto.
+        
+        const finalData = [rowAzienda, rowPeriodo, rowEmpty, headers, ...rows];
         const workbook = xlsx.utils.book_new();
         const worksheet = xlsx.utils.aoa_to_sheet(finalData);
         
-        // Unione celle per l'intestazione (Estetica)
+        // Merge intestazione
         if(!worksheet['!merges']) worksheet['!merges'] = [];
-        worksheet['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }); // Unisce la prima riga
+        worksheet['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } });
 
         xlsx.utils.book_append_sheet(workbook, worksheet, sheetName);
         const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
         
-        res.setHeader('Content-Disposition', `attachment; filename="haccp_${tipo}_${rangeName || 'report'}.xlsx"`);
+        const ext = format === 'pdf' ? 'xlsx' : 'xlsx'; // (Qui forzo xlsx finché non metti pdfkit)
+        
+        res.setHeader('Content-Disposition', `attachment; filename="haccp_${tipo}_${rangeName || 'report'}.${ext}"`);
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.send(buffer);
 
     } catch (err) {
         console.error(err);
-        res.status(500).json({ error: "Errore Export Excel" });
+        res.status(500).json({ error: "Errore Export" });
     }
 });
 
