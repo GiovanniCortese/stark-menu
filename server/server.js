@@ -8,6 +8,7 @@ const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require('multer');
 const xlsx = require('xlsx');
 const { authenticator } = require('otplib');
+const PDFDocument = require('pdfkit-table'); // <--- AGGIUNGI QUESTO
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -466,92 +467,76 @@ app.put('/api/haccp/assets/:id', async (req, res) => {
 app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
     try {
         const { tipo, ristorante_id } = req.params;
-        const { start, end, rangeName, format } = req.query; // Aggiunto 'format' (excel o pdf)
+        const { start, end, rangeName, format } = req.query; 
         
         // 1. Recupera Dati Ristorante
         const ristRes = await pool.query("SELECT nome, dati_fiscali FROM ristoranti WHERE id = $1", [ristorante_id]);
         const aziendaInfo = ristRes.rows[0];
 
-        // Intestazioni Riga 1-3 (Per Excel)
-        const rowAzienda = [aziendaInfo.dati_fiscali || `${aziendaInfo.nome} - Dati societari non compilati`];
-        const rowPeriodo = [`Periodo Report: ${rangeName || 'Tutto lo storico'}`];
-        const rowEmpty = [""];
-
+        // 2. Preparazione Dati (Comune a Excel e PDF)
         let headers = [];
         let rows = [];
         let sheetName = "Export";
         
-        // 2. Costruzione Dati in base al tipo
         if (tipo === 'temperature') {
             sheetName = "Temperature";
-            headers = ["Data", "Ora", "Macchina", "Temp (°C) / Stato", "Esito", "Azione Correttiva", "Operatore"];
+            // Header per PDF/Excel
+            headers = ["Data", "Ora", "Macchina", "Temp/Stato", "Esito", "Az. Correttiva", "Op."];
             
             let sql = `SELECT l.data_ora, a.nome as asset, l.valore, l.conformita, l.azione_correttiva, l.operatore 
                        FROM haccp_logs l JOIN haccp_assets a ON l.asset_id = a.id 
                        WHERE l.ristorante_id = $1`;
             const params = [ristorante_id];
             
-            if(start && end) {
-                sql += ` AND l.data_ora >= $2 AND l.data_ora <= $3`;
-                params.push(start, end);
-            }
-            // ORDINAMENTO CRONOLOGICO (dal 01 al 30)
+            if(start && end) { sql += ` AND l.data_ora >= $2 AND l.data_ora <= $3`; params.push(start, end); }
             sql += ` ORDER BY l.data_ora ASC`; 
 
             const r = await pool.query(sql, params);
             
             rows = r.rows.map(row => {
                 const d = new Date(row.data_ora);
-                // Se il valore è "OFF" o "0" con nota SPENTO, lo scriviamo chiaro
                 const displayVal = row.valore === 'OFF' ? 'SPENTO' : `${row.valore}°C`;
-                
                 return [
                     d.toLocaleDateString('it-IT'), 
                     d.toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'}), 
                     row.asset,
                     displayVal,
-                    row.conformita ? "CONFORME" : "ANOMALIA",
+                    row.conformita ? "OK" : "NO",
                     row.azione_correttiva || "", 
                     row.operatore
                 ];
             });
-        } 
-        else if (tipo === 'merci') {
-            sheetName = "Merci";
-            // NUOVO ORDINE COLONNE RICHIESTO: 
-            // Data - Fornitore - Prodotto - Condizione - Lotto - Quantità - Note - Scadenza
-            headers = ["Data Ricezione", "Fornitore", "Prodotto", "Condizione", "Lotto", "Quantità", "Note", "Scadenza"];
+
+        } else if (tipo === 'merci') {
+            sheetName = "Ricevimento Merci";
+            headers = ["Data", "Fornitore", "Prodotto", "Condizione", "Lotto", "Kg", "Note", "Scadenza"];
             
             let sql = `SELECT * FROM haccp_merci WHERE ristorante_id = $1`;
             const params = [ristorante_id];
             if(start && end) { sql += ` AND data_ricezione >= $2 AND data_ricezione <= $3`; params.push(start, end); }
-            
-            // ORDINAMENTO CRONOLOGICO
             sql += ` ORDER BY data_ricezione ASC`; 
             
             const r = await pool.query(sql, params);
             rows = r.rows.map(row => {
-                // Calcolo condizione
                 let condizione = "CONFORME";
-                if (!row.conforme) condizione = "NON CONFORME (Temp)";
-                if (!row.integro) condizione = "NON INTEGRO (Pacco rotto)";
-                if (!row.conforme && !row.integro) condizione = "NON CONFORME E ROTTO";
+                if (!row.conforme) condizione = "TEMP KO";
+                if (!row.integro) condizione = "PACCO ROTTO";
+                if (!row.conforme && !row.integro) condizione = "DANNEGGIATO";
 
                 return [
                     new Date(row.data_ricezione).toLocaleDateString('it-IT'),
                     row.fornitore,
                     row.prodotto,
-                    condizione, // Colonna Condizione
+                    condizione,
                     row.lotto,
                     row.quantita,
                     row.note,
                     row.scadenza ? new Date(row.scadenza).toLocaleDateString('it-IT') : "-"
                 ];
             });
-        }
-        else if (tipo === 'assets') {
-            sheetName = "Macchine";
-            headers = ["Stato Attuale", "Nome", "Tipo", "Marca", "Range Temp"];
+        } else if (tipo === 'assets') {
+            sheetName = "Lista Macchine";
+            headers = ["Stato", "Nome", "Tipo", "Marca", "Range"];
             const r = await pool.query(`SELECT * FROM haccp_assets WHERE ristorante_id = $1 ORDER BY nome ASC`, [ristorante_id]);
             rows = r.rows.map(row => [
                 row.stato ? row.stato.toUpperCase() : "ATTIVO",
@@ -562,31 +547,71 @@ app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
             ]);
         }
 
-        // --- GESTIONE PDF (Opzionale semplice) ---
-        // Se non hai installato pdfkit, per ora restituiamo Excel anche se chiede PDF
-        // ma cambiando nome file. Se vuoi il PDF reale serve libreria aggiuntiva.
-        // Qui mantengo Excel per stabilità immediata ma col nome corretto.
-        
+        // ==========================================
+        // RAMO A: GENERAZIONE PDF
+        // ==========================================
+        if (format === 'pdf') {
+            const doc = new PDFDocument({ margin: 30, size: 'A4' });
+
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename="haccp_${tipo}_${rangeName || 'report'}.pdf"`);
+
+            doc.pipe(res);
+
+            // Intestazione PDF
+            doc.fontSize(16).text(aziendaInfo.nome, { align: 'center', bold: true });
+            doc.fontSize(10).text(aziendaInfo.dati_fiscali || "Dati societari mancanti", { align: 'center' });
+            doc.moveDown(0.5);
+            doc.fontSize(12).text(`Report: ${sheetName}`, { align: 'center' });
+            doc.fontSize(10).text(`Periodo: ${rangeName || 'Completo'}`, { align: 'center', color: 'gray' });
+            doc.moveDown(1);
+
+            // Tabella PDF
+            const table = {
+                headers: headers,
+                rows: rows,
+            };
+
+            await doc.table(table, {
+                prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8),
+                prepareRow: (row, indexColumn, indexRow, rect, rowData) => {
+                    doc.font("Helvetica").fontSize(8);
+                    // Evidenzia righe non conformi in rosso (solo logica base)
+                    if (tipo === 'temperature' && rowData[4] === 'NO') doc.fillColor('red');
+                    else if (tipo === 'merci' && rowData[3] !== 'CONFORME') doc.fillColor('red');
+                    else doc.fillColor('black');
+                },
+            });
+
+            doc.end();
+            return; 
+        }
+
+        // ==========================================
+        // RAMO B: GENERAZIONE EXCEL (Fallback default)
+        // ==========================================
+        const rowAzienda = [aziendaInfo.dati_fiscali || `${aziendaInfo.nome}`];
+        const rowPeriodo = [`Periodo: ${rangeName || 'Tutto lo storico'}`];
+        const rowEmpty = [""];
+
         const finalData = [rowAzienda, rowPeriodo, rowEmpty, headers, ...rows];
         const workbook = xlsx.utils.book_new();
         const worksheet = xlsx.utils.aoa_to_sheet(finalData);
         
-        // Merge intestazione
+        // Merge intestazione Excel
         if(!worksheet['!merges']) worksheet['!merges'] = [];
         worksheet['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } });
 
         xlsx.utils.book_append_sheet(workbook, worksheet, sheetName);
         const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
         
-        const ext = format === 'pdf' ? 'xlsx' : 'xlsx'; // (Qui forzo xlsx finché non metti pdfkit)
-        
-        res.setHeader('Content-Disposition', `attachment; filename="haccp_${tipo}_${rangeName || 'report'}.${ext}"`);
+        res.setHeader('Content-Disposition', `attachment; filename="haccp_${tipo}_${rangeName || 'report'}.xlsx"`);
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.send(buffer);
 
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: "Errore Export" });
+        console.error("Errore Export:", err);
+        res.status(500).json({ error: "Errore Export: " + err.message });
     }
 });
 
