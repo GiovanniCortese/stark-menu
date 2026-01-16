@@ -115,14 +115,25 @@ const StaffManager = ({
                                             <td style={{padding:8}}><span style={{background:'#eee', padding:'2px 5px', borderRadius:3, fontSize:11}}>{d.tipo_doc}</span></td>
                                             <td style={{padding:8}}>{d.nome_file}</td>
                                             <td style={{padding:8, display:'flex', gap:5}}>
-                                                {/* MODIFICA QUI: Solo tasto Download semplice */}
+                                                {/* MODIFICA QUI: Tasto Download via Proxy */}
                                                 <a 
-                                                    href={d.url} 
+                                                    href={`${API_URL}/api/proxy-download?url=${encodeURIComponent(d.url)}&name=${encodeURIComponent(d.nome_file || 'documento.pdf')}`}
                                                     target="_blank" 
                                                     rel="noopener noreferrer"
-                                                    style={{background:'#3498db', color:'white', textDecoration:'none', padding:'4px 10px', borderRadius:3, fontSize:12, fontWeight:'bold'}}
+                                                    style={{
+                                                        background:'#3498db', 
+                                                        color:'white', 
+                                                        textDecoration:'none', 
+                                                        padding:'4px 10px', 
+                                                        borderRadius:3, 
+                                                        fontSize:12, 
+                                                        fontWeight:'bold',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px'
+                                                    }}
                                                 >
-                                                    Download ⬇
+                                                    ⬇ Download
                                                 </a>
                                                 
                                                 <button 

@@ -191,23 +191,25 @@ app.get('/api/haccp/export/labels/:ristorante_id', async (req, res) => {
         sql += " ORDER BY data_produzione ASC";
         const r = await pool.query(sql, params);
 
-        // MODIFICA QUI: Aggiunto Header "Ingredienti"
+        const titoloReport = `REGISTRO PRODUZIONE: ${rangeName || 'Tutto lo storico'}`;
+        
+        // Intestazioni Colonne
         const headers = ["Data Prod.", "Prodotto", "Ingredienti (Produttore/Lotto)", "Tipo", "Lotto Produzione", "Scadenza", "Operatore"];
         
+        // Mappatura Dati
         const rows = r.rows.map(l => [
             new Date(l.data_produzione).toLocaleDateString('it-IT'),
             String(l.prodotto || ''), 
-            // Sostituisci le virgole con 'a capo' per renderlo leggibile in cella
-            String(l.ingredienti || '').replace(/, /g, '\n'), 
+            String(l.ingredienti || '').replace(/, /g, '\n'), // A capo per leggibilità
             String(l.tipo_conservazione || ''),
             String(l.lotto || ''), 
             new Date(l.data_scadenza).toLocaleDateString('it-IT'),
             String(l.operatore || '')
         ]);
-        const titoloReport = `REGISTRO PRODUZIONE: ${rangeName || 'Tutto lo storico'}`;
 
         if (format === 'pdf') {
-            const doc = new PDFDocument({ margin: 20, size: 'A4', layout: 'landscape' }); // Landscape per avere più spazio
+            // ... (CODICE PDF RIMANE UGUALE A PRIMA) ...
+            const doc = new PDFDocument({ margin: 20, size: 'A4', layout: 'landscape' });
             res.setHeader('Content-Type', 'application/pdf');
             res.setHeader('Content-Disposition', `attachment; filename="produzione_${rangeName || 'export'}.pdf"`);
             doc.pipe(res);
@@ -216,23 +218,44 @@ app.get('/api/haccp/export/labels/:ristorante_id', async (req, res) => {
             doc.moveDown();
             doc.fontSize(14).text(titoloReport, { align: 'center' });
             doc.moveDown();
-            
-            // Tabella PDF con larghezze personalizzate per far stare gli ingredienti
             await doc.table({ headers, rows }, { 
-                width: 750, // Larghezza aumentata (A4 landscape)
-                columnsSize: [70, 100, 250, 60, 100, 70, 80], // Colonna ingredienti (terza) molto larga
+                width: 750, 
+                columnsSize: [70, 100, 250, 60, 100, 70, 80],
                 prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8),
                 prepareRow: () => doc.font("Helvetica").fontSize(8)
             });
             doc.end();
         } else {
-            const finalData = [[titoloReport], [azienda.nome], [""], headers, ...rows];
+            // *** NUOVO LAYOUT EXCEL UNIFORMATO ***
+            
+            // 1. Righe di intestazione aziendale (come negli altri file)
+            const rowTitolo = [titoloReport];
+            const rowAzienda = [azienda.nome];
+            const rowDati = [azienda.dati_fiscali || ""];
+            const rowPeriodo = [`Periodo: ${rangeName || 'Tutto lo storico'}`];
+            const rowEmpty = [""]; // Riga vuota spaziatrice
+
+            // 2. Uniamo tutto in un'unica matrice
+            const finalData = [
+                rowTitolo, 
+                rowAzienda, 
+                rowDati, 
+                rowPeriodo, 
+                rowEmpty, 
+                headers, 
+                ...rows
+            ];
+
             const workbook = xlsx.utils.book_new();
             const worksheet = xlsx.utils.aoa_to_sheet(finalData);
             
-            // Imposta larghezza colonne Excel
+            // Larghezza colonne
             const wscols = [{wch:12}, {wch:25}, {wch:50}, {wch:15}, {wch:20}, {wch:12}, {wch:15}];
             worksheet['!cols'] = wscols;
+
+            // Unione celle per l'intestazione (Estetica)
+            if(!worksheet['!merges']) worksheet['!merges'] = [];
+            worksheet['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }); // Titolo
 
             xlsx.utils.book_append_sheet(workbook, worksheet, "Produzione");
             const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
@@ -387,6 +410,28 @@ app.get('/api/haccp/labels/storico/:ristorante_id', async (req, res) => {
         ); 
         res.json(r.rows); 
     } catch(e) { res.status(500).json({error: "Errore recupero storico"}); } 
+});
+
+// --- NUOVA ROUTE PER DOWNLOAD SICURO STAFF ---
+app.get('/api/proxy-download', (req, res) => {
+    const fileUrl = req.query.url;
+    const fileName = req.query.name || 'documento.pdf';
+
+    if (!fileUrl) return res.status(400).send("URL mancante");
+
+    // Usa il modulo nativo HTTPS per scaricare il file e passarlo al client
+    const https = require('https');
+    
+    https.get(fileUrl, (stream) => {
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        // Se è un PDF, forza il tipo corretto, altrimenti lascia generico
+        if(fileName.toLowerCase().endsWith('.pdf')) {
+            res.setHeader('Content-Type', 'application/pdf');
+        }
+        stream.pipe(res);
+    }).on('error', (err) => {
+        res.status(500).send("Errore nel download del file");
+    });
 });
 
 app.listen(port, () => console.log(`🚀 SERVER V12.2 (Porta ${port}) - TIMEZONE: ROME`));
