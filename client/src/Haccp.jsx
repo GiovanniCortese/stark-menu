@@ -90,7 +90,12 @@ const [newDoc, setNewDoc] = useState({ tipo: 'Contratto', url: '' });
       fetch(`${API_URL}/api/haccp/assets/${info.id}`).then(r=>r.json()).then(setAssets);
       fetch(`${API_URL}/api/haccp/logs/${info.id}`).then(r=>r.json()).then(setLogs);
       fetch(`${API_URL}/api/haccp/merci/${info.id}`).then(r=>r.json()).then(setMerci);
-      fetch(`${API_URL}/api/utenti?mode=staff&ristorante_id=${info.id}`).then(r=>r.json()).then(setStaffList);
+fetch(`${API_URL}/api/utenti?mode=staff&ristorante_id=${info.id}&t=${new Date().getTime()}`)
+        .then(r=>r.json())
+        .then(data => {
+            // Piccolo controllo di sicurezza: se arriva null o errore, metti array vuoto
+            setStaffList(Array.isArray(data) ? data : []); 
+        });
 };
 
   const ricaricaCalendario = async () => {
