@@ -1,4 +1,4 @@
-// client/src/Haccp.jsx - VERSIONE V10 (CLEANUP & CALENDARIO ANOMALIE)
+// client/src/Haccp.jsx - VERSIONE AGGIORNATA (FIX UI & DOWNLOAD MESE)
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import QRCode from 'react-qr-code'; 
@@ -10,7 +10,6 @@ function Haccp() {
   const [info, setInfo] = useState(null);
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [password, setPassword] = useState("");
-  const [downloadFormat, setDownloadFormat] = useState('excel'); // 'excel' o 'pdf'
   
   // Dati
   const [assets, setAssets] = useState([]);
@@ -46,9 +45,14 @@ function Haccp() {
   const [uploadingLabel, setUploadingLabel] = useState(false); 
   const [showQRModal, setShowQRModal] = useState(null);
 
-  // Stati Download Excel
+  // NUOVO: Stati Anteprima Immagine (Popup)
+  const [previewImage, setPreviewImage] = useState(null);
+
+  // Stati Download Excel/PDF
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [downloadType, setDownloadType] = useState(null); 
+  const [downloadFormat, setDownloadFormat] = useState('excel'); // 'excel' o 'pdf'
+  const [selectedMonth, setSelectedMonth] = useState(''); // Per il download mese specifico
 
   // Stati Etichette e Stampa
   const [labelData, setLabelData] = useState({ prodotto: '', giorni_scadenza: 3, operatore: '', tipo: 'positivo' });
@@ -119,29 +123,44 @@ function Haccp() {
       const data = await res.json(); return data.url;
   };
 
-  // --- EXCEL DOWNLOAD ---
+  // --- EXCEL/PDF DOWNLOAD ---
   const openDownloadModal = (type) => {
       setDownloadType(type);
       setShowDownloadModal(true);
+      setSelectedMonth(''); // Reset selezione mese
   };
 
-const executeDownload = (range) => {
-    const end = new Date();
-    let start = new Date();
-    let rangeName = "Tutto";
+  const executeDownload = (range) => {
+      let start = new Date();
+      let end = new Date();
+      let rangeName = "Tutto";
 
-    if(range === 'week') { start.setDate(end.getDate() - 7); rangeName="Ultima Settimana"; }
-    if(range === 'month') { start.setMonth(end.getMonth() - 1); rangeName="Ultimo Mese"; }
-    if(range === 'year') { start.setFullYear(end.getFullYear() - 1); rangeName="Ultimo Anno"; }
-    
-    // FISSO START AL PRIMO DEL MESE SE RICHIESTO, MA QUI MANTENGO LA LOGICA DINAMICA
-    // Se vuoi fisso 01/01 - 30/01 per "month", usiamo la logica calendario
-    // Qui lascio range dinamico ma con ordinamento corretto backend.
-    
-    const query = `?start=${start.toISOString()}&end=${end.toISOString()}&rangeName=${rangeName}&format=${downloadFormat}`;
-    window.open(`${API_URL}/api/haccp/export/${downloadType}/${info.id}${query}`, '_blank');
-    setShowDownloadModal(false);
-};
+      if(range === 'week') { 
+          start.setDate(end.getDate() - 7); 
+          rangeName="Ultima Settimana"; 
+      } else if(range === 'month') { 
+          start.setMonth(end.getMonth() - 1); 
+          rangeName="Ultimo Mese"; 
+      } else if(range === 'year') { 
+          start.setFullYear(end.getFullYear() - 1); 
+          rangeName="Ultimo Anno"; 
+      } else if (range === 'custom-month') {
+          // Logica per mese specifico
+          if(!selectedMonth) return alert("Seleziona un mese!");
+          const [y, m] = selectedMonth.split('-');
+          start = new Date(y, m - 1, 1); // Primo giorno
+          end = new Date(y, m, 0, 23, 59, 59); // Ultimo giorno
+          const nomeMese = start.toLocaleString('it-IT', { month: 'long', year: 'numeric' });
+          rangeName = `Mese di ${nomeMese}`;
+      } else if(range === 'all') { 
+          start = new Date('2020-01-01'); 
+          rangeName="Storico Completo"; 
+      }
+      
+      const query = `?start=${start.toISOString()}&end=${end.toISOString()}&rangeName=${rangeName}&format=${downloadFormat}`;
+      window.open(`${API_URL}/api/haccp/export/${downloadType}/${info.id}${query}`, '_blank');
+      setShowDownloadModal(false);
+  };
 
   // --- TEMPERATURE ---
   const getTodayLog = (assetId) => {
@@ -156,49 +175,47 @@ const executeDownload = (range) => {
           setTempInput(prev => ({...prev, [assetId]: { ...(prev[assetId] || {}), photo: url }}));
       } finally { setUploadingLog(null); }
   };
-const registraTemperatura = async (asset, isSpento = false) => {
-    // Se è spento, forziamo i valori
-    let val = 'OFF';
-    let conforme = true;
-    let azione = "";
-    
-    // Se NON è spento, leggiamo l'input
-    if (!isSpento) {
-        const currentInput = tempInput[asset.id] || {};
-        val = parseFloat(currentInput.val);
-        if(isNaN(val) && currentInput.val !== '0') return alert("Inserisci un numero valido");
-        
-        const realMin = Math.min(parseFloat(asset.range_min), parseFloat(asset.range_max));
-        const realMax = Math.max(parseFloat(asset.range_min), parseFloat(asset.range_max));
-        conforme = val >= realMin && val <= realMax;
-        
-        if(!conforme) {
-            azione = prompt(`⚠️ ATTENZIONE: Temp ${val}°C fuori range.\nDescrivi azione correttiva:`, "");
-            if(!azione) return alert("Azione correttiva obbligatoria!");
-        }
-        val = val.toString();
-    } else {
-        // Logica per "Spento oggi"
-        val = "OFF";
-        conforme = true;
-        azione = "Macchinario spento/inutilizzato in data odierna";
-    }
+  
+  const registraTemperatura = async (asset, isSpento = false) => {
+      let val = 'OFF';
+      let conforme = true;
+      let azione = "";
+      
+      if (!isSpento) {
+          const currentInput = tempInput[asset.id] || {};
+          val = parseFloat(currentInput.val);
+          if(isNaN(val) && currentInput.val !== '0') return alert("Inserisci un numero valido");
+          
+          const realMin = Math.min(parseFloat(asset.range_min), parseFloat(asset.range_max));
+          const realMax = Math.max(parseFloat(asset.range_min), parseFloat(asset.range_max));
+          conforme = val >= realMin && val <= realMax;
+          
+          if(!conforme) {
+              azione = prompt(`⚠️ ATTENZIONE: Temp ${val}°C fuori range.\nDescrivi azione correttiva:`, "");
+              if(!azione) return alert("Azione correttiva obbligatoria!");
+          }
+          val = val.toString();
+      } else {
+          val = "OFF";
+          conforme = true;
+          azione = "Macchinario spento/inutilizzato in data odierna";
+      }
 
-    const currentInput = tempInput[asset.id] || {};
+      const currentInput = tempInput[asset.id] || {};
 
-    await fetch(`${API_URL}/api/haccp/logs`, {
-        method: 'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({
-            ristorante_id: info.id, asset_id: asset.id, operatore: 'Staff', 
-            tipo_log: 'temperatura', valore: val, 
-            conformita: conforme, azione_correttiva: azione, foto_prova_url: currentInput.photo || ''
-        })
-    });
-    // Pulisci input
-    setTempInput(prev => { const newState = {...prev}; delete newState[asset.id]; return newState; }); 
-    ricaricaDati();
-    if(scanId) navigate(`/haccp/${slug}`); 
-};
+      await fetch(`${API_URL}/api/haccp/logs`, {
+          method: 'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({
+              ristorante_id: info.id, asset_id: asset.id, operatore: 'Staff', 
+              tipo_log: 'temperatura', valore: val, 
+              conformita: conforme, azione_correttiva: azione, foto_prova_url: currentInput.photo || ''
+          })
+      });
+      setTempInput(prev => { const newState = {...prev}; delete newState[asset.id]; return newState; }); 
+      ricaricaDati();
+      if(scanId) navigate(`/haccp/${slug}`); 
+  };
+  
   const abilitaNuovaMisurazione = (asset) => {
       const logEsistente = getTodayLog(asset.id);
       setTempInput(prev => ({ ...prev, [asset.id]: { val: logEsistente ? logEsistente.valore : '', photo: '' } }));
@@ -310,7 +327,7 @@ const registraTemperatura = async (asset, isSpento = false) => {
                      <h2 style={{marginTop:0}}>Dettagli {selectedDayLogs.day} {monthNames[currentDate.getMonth()]}</h2>
                      
                      <div style={{display:'flex', gap:20, flexWrap:'wrap'}}>
-                         {/* COLONNA TEMPERATURE (MODIFICATA) */}
+                         {/* COLONNA TEMPERATURE */}
                          <div style={{flex:1, minWidth:300, background:'#f9f9f9', padding:15, borderRadius:5}}>
                              <h4 style={{marginTop:0, borderBottom:'2px solid #27ae60', color:'#27ae60'}}>🌡️ Temperature</h4>
                              {selectedDayLogs.logs.length === 0 ? <p style={{color:'#999'}}>Nessuna registrazione.</p> : (
@@ -439,46 +456,59 @@ const registraTemperatura = async (asset, isSpento = false) => {
                           <div key={asset.id} style={{background:'#eafaf1', padding:20, borderRadius:10, border:'2px solid #27ae60', boxShadow:'0 2px 5px rgba(0,0,0,0.1)'}}>
                               <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                                   <h3 style={{margin:0, color:'#27ae60'}}>✅ {asset.nome}</h3>
-                                  <span style={{fontSize:'24px', fontWeight:'bold'}}>{todayLog.valore}°C</span>
+                                  <span style={{fontSize:'24px', fontWeight:'bold'}}>{todayLog.valore === 'OFF' ? 'SPENTO' : todayLog.valore + '°C'}</span>
                               </div>
                               <div style={{fontSize:'12px', color:'#555', marginTop:5}}>
-                                  {isModificato ? `🔄 Modificato alle ${timeStr}` : `Registrato alle ${timeStr}`}
-                                  {todayLog.conformita ? '' : ' ⚠️ Anomalia'}
+                                  {todayLog.conformita ? `Registrato alle ${timeStr}` : `⚠️ ANOMALIA - ${todayLog.azione_correttiva}`}
                               </div>
-                              <button onClick={() => abilitaNuovaMisurazione(asset)} style={{marginTop:15, width:'100%', background:'#f39c12', color:'white', border:'none', padding:10, borderRadius:5, cursor:'pointer', fontWeight:'bold'}}>✏️ MODIFICA / CORREGGI</button>
+                              <button onClick={() => abilitaNuovaMisurazione(asset)} style={{marginTop:15, width:'100%', background:'#f39c12', color:'white', border:'none', padding:10, borderRadius:5, cursor:'pointer', fontWeight:'bold'}}>✏️ MODIFICA</button>
                           </div>
                       );
                   }
+                  
+                  // --- FIX GRAFICO INPUT TEMPERATURE ---
                   return (
                       <div key={asset.id} style={{background:'white', padding:15, borderRadius:10, boxShadow:'0 2px 5px rgba(0,0,0,0.1)', borderTop:'5px solid #bdc3c7'}}>
                            <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:15}}>
                                 <div><h3 style={{margin:0, fontSize:'16px'}}>{asset.nome}</h3><span style={{fontSize:'11px', color:'#999'}}>{asset.marca}</span></div>
                                 <span style={{background:'#eee', padding:'2px 6px', borderRadius:4, fontSize:10}}>Range: {asset.range_min}°/{asset.range_max}°</span>
                            </div>
-                           <div style={{display:'flex', fontSize:'11px', fontWeight:'bold', color:'#7f8c8d', marginBottom:2}}>
-                                <div style={{flex:2, textAlign:'center'}}>TEMPERATURA</div><div style={{width:50, textAlign:'center'}}>FOTO</div><div style={{width:80, textAlign:'center'}}>AZIONE</div>
+                           
+                           {/* Intestazione Colonne */}
+                           <div style={{display:'flex', fontSize:'11px', fontWeight:'bold', color:'#7f8c8d', marginBottom:5}}>
+                                <div style={{flex:1}}>TEMPERATURA</div>
+                                <div style={{width:160, display:'flex', justifyContent:'space-between'}}>
+                                    <span style={{width:50, textAlign:'center'}}>FOTO</span>
+                                    <span style={{width:100, textAlign:'center'}}>AZIONE</span>
+                                </div>
                            </div>
-                           <div style={{display:'flex', gap:5, alignItems:'stretch', height:45}}>
-    <input type="number" step="0.1" placeholder="°C" 
-           value={currentData.val || ''} 
-           onChange={e=>setTempInput({...tempInput, [asset.id]: {...currentData, val: e.target.value}})} 
-           style={{flex:2, borderRadius:5, border:'1px solid #ddd', fontSize:18, textAlign:'center', fontWeight:'bold'}} 
-    />
-    
-    <button onClick={()=>registraTemperatura(asset, true)} title="Segna come SPENTO oggi"
-            style={{width:40, background:'#95a5a6', color:'white', border:'none', borderRadius:5, cursor:'pointer', fontWeight:'bold', fontSize:'10px'}}>
-        OFF
-    </button>
 
-    <label style={{width:50, cursor:'pointer', background: currentData.photo ? '#2ecc71' : '#f1f2f6', borderRadius:5, display:'flex', alignItems:'center', justifyContent:'center', border:'1px solid #ddd'}}>
-        📷<input type="file" accept="image/*" onChange={(e)=>handleLogPhoto(e, asset.id)} style={{display:'none'}} />
-    </label>
-    
-    <button onClick={()=>registraTemperatura(asset, false)} 
-            style={{width:60, background:'#2c3e50', color:'white', border:'none', borderRadius:5, cursor:'pointer', fontWeight:'bold', fontSize:'12px'}}>
-        SALVA
-    </button>
-</div>
+                           {/* Flexbox Row: Input e Bottoni Allineati */}
+                           <div style={{display:'flex', alignItems:'stretch', gap:10, height:45}}>
+                              <input type="number" step="0.1" placeholder="°C" 
+                                   value={currentData.val || ''} 
+                                   onChange={e=>setTempInput({...tempInput, [asset.id]: {...currentData, val: e.target.value}})} 
+                                   style={{flex:1, borderRadius:5, border:'1px solid #ddd', fontSize:18, textAlign:'center', fontWeight:'bold'}} 
+                              />
+                              
+                              <div style={{display:'flex', gap:5}}>
+                                  <button onClick={()=>registraTemperatura(asset, true)} title="Segna come SPENTO"
+                                          style={{width:50, background:'#95a5a6', color:'white', border:'none', borderRadius:5, cursor:'pointer', fontWeight:'bold', fontSize:'11px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'}}>
+                                      <span>OFF</span>
+                                  </button>
+
+                                  <label style={{width:50, cursor:'pointer', background: currentData.photo ? '#2ecc71' : '#f1f2f6', borderRadius:5, display:'flex', alignItems:'center', justifyContent:'center', border:'1px solid #ddd'}}>
+                                      <span style={{fontSize:'20px'}}>📷</span>
+                                      <input type="file" accept="image/*" onChange={(e)=>handleLogPhoto(e, asset.id)} style={{display:'none'}} />
+                                  </label>
+                                  
+                                  <button onClick={()=>registraTemperatura(asset, false)} 
+                                          style={{width:60, background:'#2c3e50', color:'white', border:'none', borderRadius:5, cursor:'pointer', fontWeight:'bold', fontSize:'12px'}}>
+                                      SALVA
+                                  </button>
+                              </div>
+                           </div>
+
                            {isInputActive && getTodayLog(asset.id) && <button onClick={()=>{const n={...tempInput}; delete n[asset.id]; setTempInput(n);}} style={{marginTop:5, width:'100%', fontSize:10, background:'transparent', border:'none', color:'#999', cursor:'pointer'}}>Annulla Modifica</button>}
                       </div>
                   );
@@ -604,7 +634,7 @@ const registraTemperatura = async (asset, isSpento = false) => {
           </div>
       )}
 
-      {/* 5. SETUP (DATI SOCIETARI RIMOSSI - SOLO MACCHINE) */}
+      {/* 5. SETUP (MACCHINE) - AGGIORNATO CON POPUP */}
       {tab === 'setup' && !scanId && (
           <div className="no-print">
               <div style={{display:'flex', justifyContent:'space-between', marginBottom:20}}>
@@ -613,28 +643,37 @@ const registraTemperatura = async (asset, isSpento = false) => {
               </div>
               <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(300px, 1fr))', gap:20}}>
                   {assets.map(a => (
-                      <div key={a.id} style={{background: a.stato === 'spento' ? '#f0f0f0' : 'white', padding:15, borderRadius:10, borderLeft: a.stato === 'spento' ? '4px solid #999' : '4px solid #34495e'}}>
+                      <div key={a.id} style={{background: 'white', padding:15, borderRadius:10, borderLeft: '4px solid #34495e', boxShadow:'0 2px 5px rgba(0,0,0,0.1)'}}>
                           <div style={{display:'flex', justifyContent:'space-between'}}>
                               <strong>{a.nome}</strong> 
-                              {a.stato === 'spento' ? <span style={{background:'#ccc', fontSize:10, padding:'2px 5px', borderRadius:3, fontWeight:'bold'}}>SPENTO</span> : <span style={{fontSize:12, color:'#666'}}>({a.tipo})</span>}
+                              <span style={{fontSize:12, color:'#666'}}>({a.tipo})</span>
                           </div>
-                          <div style={{fontSize:12, color:'#7f8c8d', margin:'5px 0'}}>
-                             {a.marca} {a.modello} <br/>
-                             SN: {a.serial_number || '-'}
+                          <div style={{fontSize:12, color:'#7f8c8d', margin:'5px 0'}}>SN: {a.serial_number || '-'}</div>
+                          
+                          <div style={{marginTop:10, display:'flex', gap:5}}>
+                              <button onClick={()=>setShowQRModal(a)} style={{background:'#34495e', color:'white', border:'none', padding:'8px', borderRadius:3, flex:1, fontWeight:'bold'}}>QR Code</button>
+                              <button onClick={()=>apriModaleAsset(a)} style={{background:'#f39c12', color:'white', border:'none', padding:'8px', borderRadius:3, flex:1, fontWeight:'bold'}}>Modifica</button>
                           </div>
                           
-                          <div style={{marginTop:10, display:'flex', gap:5, flexWrap:'wrap'}}>
-                              <button onClick={()=>setShowQRModal(a)} style={{background:'#34495e', color:'white', border:'none', padding:'5px 10px', borderRadius:3, flex:1}}>QR Code</button>
-                              <button onClick={()=>apriModaleAsset(a)} style={{background:'#f39c12', color:'white', border:'none', padding:'5px 10px', borderRadius:3, flex:1}}>Modifica</button>
-                          </div>
-                          <div style={{marginTop:5, display:'flex', gap:5}}>
-                                {a.foto_url && <a href={a.foto_url} target="_blank" style={{fontSize:11, textDecoration:'none', color:'#3498db'}}>📸 Foto</a>}
-                                {a.etichetta_url && <a href={a.etichetta_url} target="_blank" style={{fontSize:11, textDecoration:'none', color:'#e67e22'}}>📄 Etichetta</a>}
+                          {/* LINK AGGIORNATI CON POPUP */}
+                          <div style={{marginTop:10, display:'flex', gap:10, fontSize:13}}>
+                                {a.foto_url ? (
+                                    <button onClick={() => setPreviewImage(a.foto_url)} style={{background:'transparent', border:'none', color:'#3498db', cursor:'pointer', display:'flex', alignItems:'center', gap:5, padding:0}}>
+                                        📸 Foto
+                                    </button>
+                                ) : <span style={{color:'#ccc'}}>📸 No Foto</span>}
+
+                                {a.etichetta_url ? (
+                                    <button onClick={() => setPreviewImage(a.etichetta_url)} style={{background:'transparent', border:'none', color:'#e67e22', cursor:'pointer', display:'flex', alignItems:'center', gap:5, padding:0}}>
+                                        📄 Etichetta
+                                    </button>
+                                ) : <span style={{color:'#ccc'}}>📄 No Etich.</span>}
                           </div>
                       </div>
                   ))}
               </div>
               
+              {/* MODALI ESISTENTI (QR, EDIT) */}
               {showQRModal && (
                   <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center'}}>
                       <div style={{background:'white', padding:30, textAlign:'center', borderRadius:10}}>
@@ -644,23 +683,16 @@ const registraTemperatura = async (asset, isSpento = false) => {
                       </div>
                   </div>
               )}
-              
               {showAssetModal && (
                   <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000}}>
                      <div style={{background:'white', padding:25, width:400, borderRadius:10, maxHeight:'90vh', overflowY:'auto'}}>
                         <h3 style={{marginTop:0}}>{editingAsset ? 'Modifica Asset' : 'Nuovo Asset'}</h3>
                         <form onSubmit={salvaAsset} style={{display:'flex', flexDirection:'column', gap:10}}>
                            <input value={assetForm.nome} onChange={e=>setAssetForm({...assetForm, nome:e.target.value})} placeholder="Nome (es. Frigo 1)" style={{padding:8, border:'1px solid #ccc'}} required />
-                           
-                           {/* SWITCH ACCESO/SPENTO */}
-                           <div style={{display:'flex', alignItems:'center', gap:10, background:'#eee', padding:10, borderRadius:5}}>
-                               <label style={{fontWeight:'bold'}}>Stato Macchina:</label>
-                               <select value={assetForm.stato} onChange={e=>setAssetForm({...assetForm, stato:e.target.value})} style={{padding:5, borderRadius:3}}>
-                                   <option value="attivo">✅ ATTIVA (Accesa)</option>
-                                   <option value="spento">⛔ SPENTA (Non in uso)</option>
-                               </select>
-                           </div>
-
+                           <select value={assetForm.stato} onChange={e=>setAssetForm({...assetForm, stato:e.target.value})} style={{padding:5, borderRadius:3}}>
+                               <option value="attivo">✅ ATTIVA (Accesa)</option>
+                               <option value="spento">⛔ SPENTA (Non in uso)</option>
+                           </select>
                            <select value={assetForm.tipo} onChange={e=>setAssetForm({...assetForm, tipo:e.target.value})} style={{padding:8, border:'1px solid #ccc'}}>
                                <option value="frigo">Frigorifero</option><option value="cella">Cella Frigo</option><option value="vetrina">Vetrina</option><option value="congelatore">Congelatore</option><option value="magazzino">Magazzino Secco</option><option value="abbattitore">Abbattitore</option>
                            </select>
@@ -672,7 +704,6 @@ const registraTemperatura = async (asset, isSpento = false) => {
                            <input value={assetForm.modello} onChange={e=>setAssetForm({...assetForm, modello:e.target.value})} placeholder="Modello" style={{padding:8, border:'1px solid #ccc'}} />
                            <input value={assetForm.serial_number} onChange={e=>setAssetForm({...assetForm, serial_number:e.target.value})} placeholder="Numero Seriale" style={{padding:8, border:'1px solid #ccc'}} />
 
-                           {/* UPLOAD FOTO E ETICHETTA */}
                            <div style={{display:'flex', gap:10}}>
                                 <label style={{flex:1, cursor:'pointer', background: assetForm.foto_url ? '#eafaf1' : '#f0f0f0', padding:10, textAlign:'center', borderRadius:5, fontSize:12, border:'1px solid #ccc'}}>
                                     {uploadingAsset ? '...' : (assetForm.foto_url ? '✅ Foto OK' : '📸 Foto Frigo')}
@@ -693,54 +724,66 @@ const registraTemperatura = async (asset, isSpento = false) => {
           </div>
       )}
 
-      {/* --- MODALE DOWNLOAD EXCEL --- */}
+      {/* --- MODALE DOWNLOAD EXCEL/PDF (AGGIORNATA CON MESE SPECIFICO) --- */}
       {showDownloadModal && (
-  <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000}}>
-      <div style={{background:'white', padding:30, borderRadius:10, textAlign:'center', width:350}}>
-          <h3 style={{marginTop:0}}>Scarica Report: {downloadType === 'temperature' ? 'Temperature' : (downloadType === 'merci' ? 'Merci' : 'Macchine')}</h3>
-          
-          <div style={{marginBottom:20, background:'#f9f9f9', padding:10, borderRadius:5}}>
-               <p style={{margin:'0 0 10px 0', fontSize:14, fontWeight:'bold'}}>Formato:</p>
-               <div style={{display:'flex', justifyContent:'center', gap:10}}>
-                   <button onClick={()=>setDownloadFormat('excel')} style={{background: downloadFormat==='excel'?'#27ae60':'#eee', color:downloadFormat==='excel'?'white':'black', padding:'5px 15px', border:'none', borderRadius:20, cursor:'pointer'}}>Excel (.xlsx)</button>
-                   <button onClick={()=>setDownloadFormat('pdf')} style={{background: downloadFormat==='pdf'?'#e74c3c':'#eee', color:downloadFormat==='pdf'?'white':'black', padding:'5px 15px', border:'none', borderRadius:20, cursor:'pointer'}}>PDF (.pdf)</button>
-               </div>
-          </div>
+          <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000}}>
+              <div style={{background:'white', padding:30, borderRadius:10, textAlign:'center', width:350}}>
+                  <h3 style={{marginTop:0}}>Scarica Report: {downloadType === 'temperature' ? 'Temperature' : (downloadType === 'merci' ? 'Merci' : 'Macchine')}</h3>
+                  
+                  {/* SELEZIONE FORMATO */}
+                  <div style={{marginBottom:20, background:'#f9f9f9', padding:10, borderRadius:5}}>
+                       <p style={{margin:'0 0 10px 0', fontSize:14, fontWeight:'bold'}}>Formato:</p>
+                       <div style={{display:'flex', justifyContent:'center', gap:10}}>
+                           <button onClick={()=>setDownloadFormat('excel')} style={{background: downloadFormat==='excel'?'#27ae60':'#eee', color:downloadFormat==='excel'?'white':'black', padding:'5px 15px', border:'none', borderRadius:20, cursor:'pointer'}}>Excel</button>
+                           <button onClick={()=>setDownloadFormat('pdf')} style={{background: downloadFormat==='pdf'?'#e74c3c':'#eee', color:downloadFormat==='pdf'?'white':'black', padding:'5px 15px', border:'none', borderRadius:20, cursor:'pointer'}}>PDF</button>
+                       </div>
+                  </div>
 
-          <p style={{color:'#666', fontSize:14}}>Seleziona il periodo:</p>
-          
-          <div style={{display:'flex', flexDirection:'column', gap:10, marginTop:10}}>
-              <button onClick={()=>executeDownload('week')} style={{padding:12, background:'#3498db', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Ultima Settimana</button>
-              <button onClick={()=>executeDownload('month')} style={{padding:12, background:'#2980b9', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Ultimo Mese</button>
-              <button onClick={()=>executeDownload('all')} style={{padding:12, background:'#2c3e50', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Tutto lo storico</button>
-          </div>
-          
-          <button onClick={()=>setShowDownloadModal(false)} style={{marginTop:20, background:'transparent', border:'none', color:'#999', cursor:'pointer', textDecoration:'underline'}}>Annulla</button>
-      </div>
-  </div>
-)}
+                  <p style={{color:'#666', fontSize:14}}>Seleziona il periodo:</p>
+                  
+                  <div style={{display:'flex', flexDirection:'column', gap:10, marginTop:10}}>
+                      {/* NUOVO: SELETTORE MESE SPECIFICO */}
+                      <div style={{display:'flex', gap:5}}>
+                          <input type="month" 
+                                 value={selectedMonth} 
+                                 onChange={(e) => setSelectedMonth(e.target.value)}
+                                 style={{flex:1, padding:10, border:'1px solid #ccc', borderRadius:5}} 
+                          />
+                          <button onClick={()=>executeDownload('custom-month')} 
+                                  style={{padding:'0 15px', background:'#8e44ad', color:'white', border:'none', borderRadius:5, cursor:'pointer', fontWeight:'bold'}}>
+                              SCARICA
+                          </button>
+                      </div>
 
-      {/* --- PRINT AREA (ETICHETTA MIGLIORATA GRAFICAMENTE) --- */}
+                      <div style={{borderTop:'1px solid #eee', margin:'5px 0'}}></div>
+
+                      <button onClick={()=>executeDownload('week')} style={{padding:12, background:'#3498db', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Ultima Settimana</button>
+                      <button onClick={()=>executeDownload('month')} style={{padding:12, background:'#2980b9', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Ultimi 30 Giorni</button>
+                      <button onClick={()=>executeDownload('all')} style={{padding:12, background:'#2c3e50', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Tutto lo storico</button>
+                  </div>
+                  
+                  <button onClick={()=>setShowDownloadModal(false)} style={{marginTop:20, background:'transparent', border:'none', color:'#999', cursor:'pointer', textDecoration:'underline'}}>Annulla</button>
+              </div>
+          </div>
+      )}
+
+      {/* --- NUOVA MODALE ANTEPRIMA IMMAGINE --- */}
+      {previewImage && (
+          <div onClick={() => setPreviewImage(null)} style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.9)', zIndex:3000, display:'flex', alignItems:'center', justifyContent:'center', cursor:'zoom-out'}}>
+              <img src={previewImage} alt="Anteprima" style={{maxWidth:'90%', maxHeight:'90%', borderRadius:10, border:'2px solid white'}} />
+              <button style={{position:'absolute', top:20, right:20, background:'white', border:'none', borderRadius:'50%', width:40, height:40, fontWeight:'bold', cursor:'pointer'}}>X</button>
+          </div>
+      )}
+
+      {/* --- PRINT AREA --- */}
       {printMode === 'label' && lastLabel && (
         <div className="print-area" style={{position:'fixed', top:0, left:0, width:'58mm', height:'40mm', background:'white', color:'black', display:'flex', flexDirection:'column', padding:'3mm', boxSizing:'border-box', fontFamily:'Arial', border:'1px solid black'}}>
             <div style={{fontWeight:'900', fontSize:'14px', textAlign:'center', borderBottom:'2px solid black', paddingBottom:'2px', textTransform:'uppercase'}}>{lastLabel.prodotto}</div>
-            
-            <div style={{display:'flex', justifyContent:'space-between', marginTop:'5px', fontSize:'10px'}}>
-                <span>PROD: <strong>{new Date(lastLabel.data_produzione).toLocaleDateString()}</strong></span>
-                <span>OP: {lastLabel.operatore}</span>
-            </div>
-            
-            <div style={{marginTop:'5px', textAlign:'center'}}>
-                <div style={{fontSize:'10px'}}>SCADENZA</div>
-                <div style={{fontWeight:'900', fontSize:'16px'}}>{new Date(lastLabel.data_scadenza).toLocaleDateString()}</div>
-            </div>
-
-            <div style={{marginTop:'auto', fontSize:'9px', textAlign:'center', borderTop:'1px solid black', paddingTop:'2px'}}>
-                Lotto: {lastLabel.lotto}
-            </div>
+            <div style={{display:'flex', justifyContent:'space-between', marginTop:'5px', fontSize:'10px'}}><span>PROD: <strong>{new Date(lastLabel.data_produzione).toLocaleDateString()}</strong></span><span>OP: {lastLabel.operatore}</span></div>
+            <div style={{marginTop:'5px', textAlign:'center'}}><div style={{fontSize:'10px'}}>SCADENZA</div><div style={{fontWeight:'900', fontSize:'16px'}}>{new Date(lastLabel.data_scadenza).toLocaleDateString()}</div></div>
+            <div style={{marginTop:'auto', fontSize:'9px', textAlign:'center', borderTop:'1px solid black', paddingTop:'2px'}}>Lotto: {lastLabel.lotto}</div>
         </div>
       )}
-      
       {printMode === 'qr' && showQRModal && (
         <div className="print-area" style={{position:'fixed', top:0, left:0, width:'100%', height:'100%', background:'white', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'}}>
              <h1 style={{fontSize:'40px', marginBottom:20}}>{showQRModal.nome}</h1>
