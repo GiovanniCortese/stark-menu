@@ -1,4 +1,4 @@
-// client/src/Haccp.jsx - V13 FIX MOBILE & ALLINEAMENTO TEMPERATURE
+// client/src/Haccp.jsx - VERSIONE AGGIORNATA (FIX UI & DOWNLOAD MESE)
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import QRCode from 'react-qr-code'; 
@@ -45,14 +45,14 @@ function Haccp() {
   const [uploadingLabel, setUploadingLabel] = useState(false); 
   const [showQRModal, setShowQRModal] = useState(null);
 
-  // Stati Anteprima Immagine (Popup)
+  // NUOVO: Stati Anteprima Immagine (Popup)
   const [previewImage, setPreviewImage] = useState(null);
 
   // Stati Download Excel/PDF
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [downloadType, setDownloadType] = useState(null); 
-  const [downloadFormat, setDownloadFormat] = useState('excel'); 
-  const [selectedMonth, setSelectedMonth] = useState(''); 
+  const [downloadFormat, setDownloadFormat] = useState('excel'); // 'excel' o 'pdf'
+  const [selectedMonth, setSelectedMonth] = useState(''); // Per il download mese specifico
 
   // Stati Etichette e Stampa
   const [labelData, setLabelData] = useState({ prodotto: '', giorni_scadenza: 3, operatore: '', tipo: 'positivo' });
@@ -127,7 +127,7 @@ function Haccp() {
   const openDownloadModal = (type) => {
       setDownloadType(type);
       setShowDownloadModal(true);
-      setSelectedMonth(''); 
+      setSelectedMonth(''); // Reset selezione mese
   };
 
   const executeDownload = (range) => {
@@ -145,10 +145,11 @@ function Haccp() {
           start.setFullYear(end.getFullYear() - 1); 
           rangeName="Ultimo Anno"; 
       } else if (range === 'custom-month') {
+          // Logica per mese specifico
           if(!selectedMonth) return alert("Seleziona un mese!");
           const [y, m] = selectedMonth.split('-');
-          start = new Date(y, m - 1, 1); 
-          end = new Date(y, m, 0, 23, 59, 59); 
+          start = new Date(y, m - 1, 1); // Primo giorno
+          end = new Date(y, m, 0, 23, 59, 59); // Ultimo giorno
           const nomeMese = start.toLocaleString('it-IT', { month: 'long', year: 'numeric' });
           rangeName = `Mese di ${nomeMese}`;
       } else if(range === 'all') { 
@@ -271,7 +272,7 @@ function Haccp() {
       try { const url = await uploadFile(f); setAssetForm(prev => ({...prev, etichetta_url: url})); } finally { setUploadingLabel(false); }
   };
 
-  // --- CALENDARIO ---
+  // --- CALENDARIO (MODIFICATO PER ANOMALIE ESTESE) ---
   const getDaysInMonth = (date) => { 
     const year = date.getFullYear(), month = date.getMonth();
     const days = new Date(year, month + 1, 0).getDate();
@@ -403,45 +404,43 @@ function Haccp() {
   const assetsToDisplay = scanId ? assets.filter(a => a.id.toString() === scanId) : assets.filter(a=>['frigo','cella','vetrina'].includes(a.tipo));
 
   return (
-    <div className="haccp-container" style={{minHeight:'100vh', background:'#ecf0f1', padding:'10px', fontFamily:'sans-serif', paddingBottom:'80px'}}>
+    <div className="haccp-container" style={{minHeight:'100vh', background:'#ecf0f1', padding:20, fontFamily:'sans-serif'}}>
       
       {!scanId && (
-          <div className="no-print" style={{display:'flex', flexDirection:'column', gap:15, marginBottom:20}}>
-              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                   <h1 style={{margin:0, color:'#2c3e50', fontSize:'24px'}}>🛡️ HACCP</h1>
-                   <button onClick={()=>{localStorage.removeItem(`haccp_session_${slug}`); setIsAuthorized(false)}} style={{background:'#e74c3c', color:'white', border:'none', padding:'8px 15px', borderRadius:5}}>ESCI</button>
-              </div>
+          <div className="no-print" style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20, flexWrap:'wrap', gap:10}}>
+              <div><h1 style={{margin:0, color:'#2c3e50'}}>🛡️ HACCP Control</h1></div>
+              <div style={{display:'flex', gap:10, alignItems:'center'}}>
+                  {/* PULSANTI DOWNLOAD EXCEL */}
+                  <div style={{marginRight:20, display:'flex', gap:5}}>
+                      <button onClick={()=>openDownloadModal('temperature')} style={{background:'#27ae60', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Temp</button>
+                      <button onClick={()=>openDownloadModal('merci')} style={{background:'#f39c12', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Merci</button>
+                      <button onClick={()=>openDownloadModal('assets')} style={{background:'#34495e', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Macchine</button>
+                  </div>
 
-              {/* NAVIGAZIONE SCROLLABILE SU MOBILE */}
-              <div style={{display:'flex', gap:10, overflowX:'auto', paddingBottom:5}}>
                   {['temperature', 'merci', 'calendario', 'etichette', 'setup'].map(t => (
-                      <button key={t} onClick={()=>setTab(t)} style={{whiteSpace:'nowrap', padding:'10px 15px', borderRadius:5, border:'none', cursor:'pointer', fontWeight:'bold', textTransform:'uppercase', background: tab===t ? '#2c3e50' : 'white', color: tab===t ? 'white' : '#333'}}>
-                        {t==='merci' ? '📦 Merci' : (t==='setup' ? '⚙️ Setup' : t)}
+                      <button key={t} onClick={()=>setTab(t)} style={{padding:'10px 20px', borderRadius:5, border:'none', cursor:'pointer', fontWeight:'bold', textTransform:'uppercase', background: tab===t ? '#2c3e50' : 'white', color: tab===t ? 'white' : '#333'}}>
+                        {t==='merci' ? '📦 Merci' : (t==='setup' ? '⚙️ Macchine' : t)}
                       </button>
                   ))}
-              </div>
-              
-              <div style={{display:'flex', gap:5, overflowX:'auto'}}>
-                  <button onClick={()=>openDownloadModal('temperature')} style={{background:'#27ae60', color:'white', border:'none', padding:'8px', borderRadius:3, fontSize:12, whiteSpace:'nowrap'}}>⬇ Temp</button>
-                  <button onClick={()=>openDownloadModal('merci')} style={{background:'#f39c12', color:'white', border:'none', padding:'8px', borderRadius:3, fontSize:12, whiteSpace:'nowrap'}}>⬇ Merci</button>
-                  <button onClick={()=>openDownloadModal('assets')} style={{background:'#34495e', color:'white', border:'none', padding:'8px', borderRadius:3, fontSize:12, whiteSpace:'nowrap'}}>⬇ Macchine</button>
+                  <button onClick={()=>{localStorage.removeItem(`haccp_session_${slug}`); setIsAuthorized(false)}} style={{background:'#e74c3c', color:'white', border:'none', padding:'10px 20px', borderRadius:5}}>ESCI</button>
               </div>
           </div>
       )}
 
       {/* 1. TEMPERATURE */}
       {tab === 'temperature' && (
-          <div className="no-print" style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(300px, 1fr))', gap:15}}>
+          <div className="no-print" style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(350px, 1fr))', gap:20}}>
               {assetsToDisplay.map(asset => {
                   const todayLog = getTodayLog(asset.id);
                   
                   if(asset.stato === 'spento') {
                       return (
-                          <div key={asset.id} style={{background:'#e0e0e0', padding:15, borderRadius:10, border:'2px solid #999', opacity:0.7, position:'relative'}}>
+                          <div key={asset.id} style={{background:'#e0e0e0', padding:20, borderRadius:10, border:'2px solid #999', opacity:0.7, position:'relative'}}>
                               <div style={{position:'absolute', top:10, right:10, background:'#555', color:'white', padding:'2px 8px', borderRadius:4, fontSize:10, fontWeight:'bold'}}>OFF</div>
                               <h3 style={{margin:0, color:'#555'}}>🚫 {asset.nome}</h3>
-                              <div style={{height:40, background:'#ccc', borderRadius:5, display:'flex', alignItems:'center', justifyContent:'center', color:'#777', fontWeight:'bold', fontSize:12, marginTop:10}}>
-                                  SPENTO
+                              <p style={{margin:'5px 0', fontSize:12}}>Macchinario Spento</p>
+                              <div style={{height:40, background:'#ccc', borderRadius:5, display:'flex', alignItems:'center', justifyContent:'center', color:'#777', fontWeight:'bold', fontSize:12}}>
+                                  NESSUNA RILEVAZIONE
                               </div>
                           </div>
                       );
@@ -452,109 +451,123 @@ function Haccp() {
                   
                   if (todayLog && !isInputActive) {
                       const timeStr = new Date(todayLog.data_ora).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'});
+                      const isModificato = logs.filter(l => l.asset_id === asset.id && new Date(l.data_ora).toDateString() === new Date().toDateString()).length > 1;
                       return (
-                          <div key={asset.id} style={{background:'#eafaf1', padding:15, borderRadius:10, border:'2px solid #27ae60'}}>
+                          <div key={asset.id} style={{background:'#eafaf1', padding:20, borderRadius:10, border:'2px solid #27ae60', boxShadow:'0 2px 5px rgba(0,0,0,0.1)'}}>
                               <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                                   <h3 style={{margin:0, color:'#27ae60'}}>✅ {asset.nome}</h3>
-                                  <span style={{fontSize:'22px', fontWeight:'bold'}}>{todayLog.valore === 'OFF' ? 'SPENTO' : todayLog.valore + '°C'}</span>
+                                  <span style={{fontSize:'24px', fontWeight:'bold'}}>{todayLog.valore === 'OFF' ? 'SPENTO' : todayLog.valore + '°C'}</span>
                               </div>
                               <div style={{fontSize:'12px', color:'#555', marginTop:5}}>
-                                  {todayLog.conformita ? `Ore ${timeStr}` : `⚠️ ${todayLog.azione_correttiva}`}
+                                  {todayLog.conformita ? `Registrato alle ${timeStr}` : `⚠️ ANOMALIA - ${todayLog.azione_correttiva}`}
                               </div>
-                              <button onClick={() => abilitaNuovaMisurazione(asset)} style={{marginTop:15, width:'100%', background:'#f39c12', color:'white', border:'none', padding:10, borderRadius:5, fontWeight:'bold'}}>✏️ MODIFICA</button>
+                              <button onClick={() => abilitaNuovaMisurazione(asset)} style={{marginTop:15, width:'100%', background:'#f39c12', color:'white', border:'none', padding:10, borderRadius:5, cursor:'pointer', fontWeight:'bold'}}>✏️ MODIFICA</button>
                           </div>
                       );
                   }
                   
-                  // --- FIX GRAFICO INPUT TEMPERATURE (FLEXBOX) ---
+                  // --- FIX GRAFICO INPUT TEMPERATURE ---
                   return (
                       <div key={asset.id} style={{background:'white', padding:15, borderRadius:10, boxShadow:'0 2px 5px rgba(0,0,0,0.1)', borderTop:'5px solid #bdc3c7'}}>
-                           <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10}}>
+                           <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:15}}>
                                 <div><h3 style={{margin:0, fontSize:'16px'}}>{asset.nome}</h3><span style={{fontSize:'11px', color:'#999'}}>{asset.marca}</span></div>
                                 <span style={{background:'#eee', padding:'2px 6px', borderRadius:4, fontSize:10}}>Range: {asset.range_min}°/{asset.range_max}°</span>
                            </div>
                            
+                           {/* Intestazione Colonne */}
                            <div style={{display:'flex', fontSize:'11px', fontWeight:'bold', color:'#7f8c8d', marginBottom:5}}>
-                                <div style={{flex:1}}>TEMP</div>
-                                <div style={{width:130, textAlign:'center'}}>AZIONI</div>
+                                <div style={{flex:1}}>TEMPERATURA</div>
+                                <div style={{width:160, display:'flex', justifyContent:'space-between'}}>
+                                    <span style={{width:50, textAlign:'center'}}>FOTO</span>
+                                    <span style={{width:100, textAlign:'center'}}>AZIONE</span>
+                                </div>
                            </div>
 
-                           {/* RIGA FLEXBOX PERFETTAMENTE ALLINEATA */}
-                           <div style={{display:'flex', gap:8, height:45, alignItems:'stretch'}}>
-                              {/* INPUT (Flessibile, si stringe se necessario) */}
+                           {/* Flexbox Row: Input e Bottoni Allineati */}
+                           <div style={{display:'flex', alignItems:'stretch', gap:10, height:45}}>
                               <input type="number" step="0.1" placeholder="°C" 
                                    value={currentData.val || ''} 
                                    onChange={e=>setTempInput({...tempInput, [asset.id]: {...currentData, val: e.target.value}})} 
-                                   style={{flex:1, width:'0px', minWidth:0, borderRadius:5, border:'1px solid #ddd', fontSize:20, textAlign:'center', fontWeight:'bold'}} 
+                                   style={{flex:1, borderRadius:5, border:'1px solid #ddd', fontSize:18, textAlign:'center', fontWeight:'bold'}} 
                               />
                               
-                              {/* PULSANTI (Larghezza fissa, non si schiacciano) */}
-                              <div style={{display:'flex', gap:5, flexShrink:0}}>
-                                  <button onClick={()=>registraTemperatura(asset, true)} 
-                                          style={{width:45, background:'#95a5a6', color:'white', border:'none', borderRadius:5, fontWeight:'bold', fontSize:'10px', display:'flex', alignItems:'center', justifyContent:'center'}}>
-                                      OFF
+                              <div style={{display:'flex', gap:5}}>
+                                  <button onClick={()=>registraTemperatura(asset, true)} title="Segna come SPENTO"
+                                          style={{width:50, background:'#95a5a6', color:'white', border:'none', borderRadius:5, cursor:'pointer', fontWeight:'bold', fontSize:'11px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'}}>
+                                      <span>OFF</span>
                                   </button>
 
-                                  <label style={{width:45, background: currentData.photo ? '#2ecc71' : '#f1f2f6', borderRadius:5, display:'flex', alignItems:'center', justifyContent:'center', border:'1px solid #ddd', cursor:'pointer'}}>
+                                  <label style={{width:50, cursor:'pointer', background: currentData.photo ? '#2ecc71' : '#f1f2f6', borderRadius:5, display:'flex', alignItems:'center', justifyContent:'center', border:'1px solid #ddd'}}>
                                       <span style={{fontSize:'20px'}}>📷</span>
                                       <input type="file" accept="image/*" onChange={(e)=>handleLogPhoto(e, asset.id)} style={{display:'none'}} />
                                   </label>
                                   
                                   <button onClick={()=>registraTemperatura(asset, false)} 
-                                          style={{width:60, background:'#2c3e50', color:'white', border:'none', borderRadius:5, fontWeight:'bold', fontSize:'12px'}}>
+                                          style={{width:60, background:'#2c3e50', color:'white', border:'none', borderRadius:5, cursor:'pointer', fontWeight:'bold', fontSize:'12px'}}>
                                       SALVA
                                   </button>
                               </div>
                            </div>
 
-                           {isInputActive && getTodayLog(asset.id) && <button onClick={()=>{const n={...tempInput}; delete n[asset.id]; setTempInput(n);}} style={{marginTop:10, width:'100%', fontSize:12, background:'transparent', border:'none', color:'#999'}}>Annulla Modifica</button>}
+                           {isInputActive && getTodayLog(asset.id) && <button onClick={()=>{const n={...tempInput}; delete n[asset.id]; setTempInput(n);}} style={{marginTop:5, width:'100%', fontSize:10, background:'transparent', border:'none', color:'#999', cursor:'pointer'}}>Annulla Modifica</button>}
                       </div>
                   );
               })}
           </div>
       )}
 
-      {/* 2. MERCI (CON SCROLL MOBILE) */}
+      {/* 2. MERCI */}
       {tab === 'merci' && !scanId && (
           <div className="no-print">
-              <div style={{background:'white', padding:15, borderRadius:10, marginBottom:20, borderLeft: merciForm.id ? '5px solid #f39c12' : '5px solid #27ae60'}}>
-                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10}}>
-                      <h3 style={{margin:0}}>{merciForm.id ? '✏️ Modifica' : '📥 Nuovo Arrivo'}</h3>
-                      {merciForm.id && <button onClick={resetMerciForm} style={{background:'#e74c3c', color:'white', border:'none', borderRadius:5, padding:'5px 10px'}}>X</button>}
+              <div style={{background:'white', padding:20, borderRadius:10, marginBottom:20, borderLeft: merciForm.id ? '5px solid #f39c12' : '5px solid #27ae60'}}>
+                  <div style={{display:'flex', justifyContent:'space-between'}}>
+                      <h3>{merciForm.id ? '✏️ Modifica Arrivo Merce' : '📥 Nuovo Arrivo'}</h3>
+                      {merciForm.id && <button onClick={resetMerciForm} style={{background:'#e74c3c', color:'white', border:'none', borderRadius:5, padding:'5px 10px'}}>Annulla Modifica</button>}
                   </div>
-                  <form onSubmit={salvaMerci} style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(140px, 1fr))', gap:10}}>
-                      <div><label style={{fontSize:10}}>Data</label><input type="date" value={merciForm.data_ricezione} onChange={e=>setMerciForm({...merciForm, data_ricezione:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd', boxSizing:'border-box'}} required /></div>
-                      <div><label style={{fontSize:10}}>Fornitore</label><input value={merciForm.fornitore} onChange={e=>setMerciForm({...merciForm, fornitore:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd', boxSizing:'border-box'}} required /></div>
-                      <div><label style={{fontSize:10}}>Prodotto</label><input value={merciForm.prodotto} onChange={e=>setMerciForm({...merciForm, prodotto:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd', boxSizing:'border-box'}} required /></div>
-                      <div><label style={{fontSize:10}}>Quantità</label><input value={merciForm.quantita} onChange={e=>setMerciForm({...merciForm, quantita:e.target.value})} placeholder="Es. 10kg" style={{width:'100%', padding:8, border:'1px solid #ddd', boxSizing:'border-box'}} /></div>
-                      <div><label style={{fontSize:10}}>Lotto</label><input value={merciForm.lotto} onChange={e=>setMerciForm({...merciForm, lotto:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd', boxSizing:'border-box'}} /></div>
-                      <div><label style={{fontSize:10}}>Scadenza</label><input type="date" value={merciForm.scadenza} onChange={e=>setMerciForm({...merciForm, scadenza:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd', boxSizing:'border-box'}} /></div>
-                      <div><label style={{fontSize:10}}>Temp °C</label><input type="number" step="0.1" value={merciForm.temperatura} onChange={e=>setMerciForm({...merciForm, temperatura:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd', boxSizing:'border-box'}} /></div>
+                  <form onSubmit={salvaMerci} style={{display:'flex', flexWrap:'wrap', gap:10, alignItems:'flex-end'}}>
+                      <div style={{flex:1, minWidth:120}}><label style={{fontSize:11}}>Data Arrivo</label><input type="date" value={merciForm.data_ricezione} onChange={e=>setMerciForm({...merciForm, data_ricezione:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required /></div>
+                      <div style={{flex:2, minWidth:150}}><label style={{fontSize:11}}>Fornitore</label><input value={merciForm.fornitore} onChange={e=>setMerciForm({...merciForm, fornitore:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required /></div>
+                      <div style={{flex:2, minWidth:150}}><label style={{fontSize:11}}>Prodotto</label><input value={merciForm.prodotto} onChange={e=>setMerciForm({...merciForm, prodotto:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required /></div>
+                      <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Quantità (KG/Colli)</label><input value={merciForm.quantita} onChange={e=>setMerciForm({...merciForm, quantita:e.target.value})} placeholder="Es. 10kg" style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
+                      <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Lotto</label><input value={merciForm.lotto} onChange={e=>setMerciForm({...merciForm, lotto:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
+                      <div style={{flex:1, minWidth:120}}><label style={{fontSize:11}}>Scadenza</label><input type="date" value={merciForm.scadenza} onChange={e=>setMerciForm({...merciForm, scadenza:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
+                      <div style={{flex:1, minWidth:80}}><label style={{fontSize:11}}>Temp °C</label><input type="number" step="0.1" value={merciForm.temperatura} onChange={e=>setMerciForm({...merciForm, temperatura:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
                       
-                      <div style={{gridColumn:'1/-1'}}><label style={{fontSize:10}}>Note</label><input value={merciForm.note} onChange={e=>setMerciForm({...merciForm, note:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd', boxSizing:'border-box'}} /></div>
+                      <div style={{flex:1, minWidth:150}}><label style={{fontSize:11}}>Destinazione</label>
+                        <select value={merciForm.destinazione} onChange={e=>setMerciForm({...merciForm, destinazione:e.target.value})} style={{width:'100%', padding:9, border:'1px solid #ddd'}}>
+                            <option value="">-- Seleziona --</option>
+                            {assets.map(a => <option key={a.id} value={a.nome}>{a.nome}</option>)}
+                        </select>
+                      </div>
+
+                      <div style={{flex:2, minWidth:200}}><label style={{fontSize:11}}>Note</label><input value={merciForm.note} onChange={e=>setMerciForm({...merciForm, note:e.target.value})} placeholder="Es. Fattura 42..." style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
                       
-                      <div style={{gridColumn:'1/-1', display:'flex', gap:10, alignItems:'center', flexWrap:'wrap'}}>
-                          <label style={{fontSize:12}}><input type="checkbox" checked={merciForm.conforme} onChange={e=>setMerciForm({...merciForm, conforme:e.target.checked})} /> Conforme</label>
-                          <label style={{fontSize:12}}><input type="checkbox" checked={merciForm.integro} onChange={e=>setMerciForm({...merciForm, integro:e.target.checked})} /> Integro</label>
-                          <label style={{background: merciForm.allegato_url ? '#2ecc71' : '#ecf0f1', padding:'8px', borderRadius:5, fontSize:12, cursor:'pointer'}}>
-                              {uploadingMerci ? "..." : (merciForm.allegato_url ? "📎 OK" : "📎 Bolla")}
-                              <input type="file" accept="image/*,.pdf" onChange={handleMerciPhoto} style={{display:'none'}} />
-                          </label>
+                      <div style={{display:'flex', alignItems:'center', gap:5}}>
+                        <label style={{cursor:'pointer', background: merciForm.allegato_url ? '#2ecc71' : '#ecf0f1', padding:'10px', borderRadius:5, border:'1px solid #ccc', fontSize:12, whiteSpace:'nowrap'}}>
+                            {uploadingMerci ? "Caricamento..." : (merciForm.allegato_url ? "📎 Bolla Allegata" : "📎 Allega Bolla")}
+                            <input type="file" accept="image/*,.pdf" onChange={handleMerciPhoto} style={{display:'none'}} />
+                        </label>
+                      </div>
+
+                      <div style={{display:'flex', flexDirection:'column', gap:5, minWidth:100}}>
+                          <label style={{fontSize:11}}><input type="checkbox" checked={merciForm.conforme} onChange={e=>setMerciForm({...merciForm, conforme:e.target.checked})} /> Conforme</label>
+                          <label style={{fontSize:11}}><input type="checkbox" checked={merciForm.integro} onChange={e=>setMerciForm({...merciForm, integro:e.target.checked})} /> Integro</label>
                       </div>
                       
-                      <button style={{gridColumn:'1/-1', background: merciForm.id ? '#f39c12' : '#27ae60', color:'white', border:'none', padding:'12px', borderRadius:5, fontWeight:'bold', marginTop:5}}>
-                          {merciForm.id ? 'AGGIORNA DATI' : 'REGISTRA ARRIVO'}
+                      <button style={{background: merciForm.id ? '#f39c12' : '#27ae60', color:'white', border:'none', padding:'10px 20px', borderRadius:5, cursor:'pointer', height:40, fontWeight:'bold'}}>
+                          {merciForm.id ? 'AGGIORNA' : 'REGISTRA'}
                       </button>
                   </form>
               </div>
 
-              <div style={{background:'white', padding:15, borderRadius:10, overflowX:'auto'}}>
-                  <h3>📦 Storico</h3>
-                  <table style={{width:'100%', minWidth:'500px', borderCollapse:'collapse', fontSize:13}}>
+              <div style={{background:'white', padding:20, borderRadius:10}}>
+                  <h3>📦 Storico Arrivi</h3>
+                  <table style={{width:'100%', borderCollapse:'collapse', fontSize:13}}>
                       <thead>
                           <tr style={{background:'#f0f0f0', textAlign:'left'}}>
                               <th style={{padding:8}}>Data</th>
                               <th style={{padding:8}}>Fornitore / Prodotto</th>
+                              <th style={{padding:8}}>Dettagli</th>
                               <th style={{padding:8}}>Stato</th>
                               <th style={{padding:8}}>Azioni</th>
                           </tr>
@@ -564,11 +577,17 @@ function Haccp() {
                               <tr key={m.id} style={{borderBottom:'1px solid #eee'}}>
                                   <td style={{padding:8}}>{new Date(m.data_ricezione).toLocaleDateString()}</td>
                                   <td style={{padding:8}}><strong>{m.fornitore}</strong><br/>{m.prodotto}</td>
+                                  <td style={{padding:8}}>
+                                      Qty: {m.quantita || '-'} | Lotto: {m.lotto} <br/>
+                                      Scad: {m.scadenza ? new Date(m.scadenza).toLocaleDateString() : '-'}
+                                      {m.destinazione && <div style={{fontSize:11, color:'#666'}}>📍 {m.destinazione}</div>}
+                                      {m.note && <div style={{fontSize:11, fontStyle:'italic'}}>Note: {m.note}</div>}
+                                  </td>
                                   <td style={{padding:8}}>{m.conforme && m.integro ? <span style={{color:'green', fontWeight:'bold'}}>OK</span> : <span style={{color:'red', fontWeight:'bold'}}>NO</span>}</td>
                                   <td style={{padding:8, display:'flex', gap:5}}>
-                                      {m.allegato_url && <a href={m.allegato_url} target="_blank" style={{background:'#3498db', color:'white', padding:'3px 6px', borderRadius:3, textDecoration:'none'}}>📎</a>}
-                                      <button onClick={()=>iniziaModificaMerci(m)} style={{background:'#f39c12', color:'white', border:'none', borderRadius:3, padding:'3px 6px'}}>✏️</button>
-                                      <button onClick={()=>eliminaMerce(m.id)} style={{background:'#e74c3c', color:'white', border:'none', borderRadius:3, padding:'3px 6px'}}>🗑️</button>
+                                      {m.allegato_url && <a href={m.allegato_url} target="_blank" style={{background:'#3498db', color:'white', border:'none', borderRadius:3, padding:'2px 5px', textDecoration:'none'}}>📎</a>}
+                                      <button onClick={()=>iniziaModificaMerci(m)} style={{background:'#f39c12', color:'white', border:'none', borderRadius:3, cursor:'pointer', padding:'2px 5px'}}>✏️</button>
+                                      <button onClick={()=>eliminaMerce(m.id)} style={{background:'#e74c3c', color:'white', border:'none', borderRadius:3, cursor:'pointer', padding:'2px 5px'}}>🗑️</button>
                                   </td>
                               </tr>
                           ))}
@@ -583,32 +602,46 @@ function Haccp() {
 
       {/* 4. ETICHETTE */}
       {tab === 'etichette' && !scanId && (
-          <div className="no-print" style={{display:'flex', flexDirection:'column', gap:20}}>
-             <div style={{background:'white', padding:20, borderRadius:10}}>
-                 <h3>Genera Etichetta</h3>
+          <div className="no-print" style={{display:'flex', gap:20}}>
+             <div style={{background:'white', padding:20, borderRadius:10, flex:1}}>
+                 <h3>Genera Etichetta Interna</h3>
                  <form onSubmit={handlePrintLabel} style={{display:'flex', flexDirection:'column', gap:10}}>
-                    <input placeholder="Prodotto" required value={labelData.prodotto} onChange={e=>setLabelData({...labelData, prodotto:e.target.value})} style={{padding:12, border:'1px solid #ccc', borderRadius:5}} />
-                    <select value={labelData.tipo} onChange={handleLabelTypeChange} style={{padding:12, border:'1px solid #ccc', borderRadius:5}}>
+                    <input placeholder="Prodotto" required value={labelData.prodotto} onChange={e=>setLabelData({...labelData, prodotto:e.target.value})} style={{padding:10, border:'1px solid #ccc'}} />
+                    <select value={labelData.tipo} onChange={handleLabelTypeChange} style={{padding:10, border:'1px solid #ccc'}}>
                         <option value="positivo">Positivo (+3°C) - 3gg</option>
                         <option value="negativo">Negativo (-18°C) - 180gg</option>
                         <option value="sottovuoto">Sottovuoto - 10gg</option>
                     </select>
-                    <input type="number" value={labelData.giorni_scadenza} onChange={e=>setLabelData({...labelData, giorni_scadenza:e.target.value})} style={{padding:12, border:'1px solid #ccc', borderRadius:5}} />
-                    <input placeholder="Operatore" value={labelData.operatore} onChange={e=>setLabelData({...labelData, operatore:e.target.value})} style={{padding:12, border:'1px solid #ccc', borderRadius:5}} />
-                    <button style={{background:'#2980b9', color:'white', border:'none', padding:15, marginTop:10, borderRadius:5, fontWeight:'bold'}}>STAMPA</button>
+                    <div style={{fontSize:12, color:'#666'}}>Giorni scadenza (Modificabile):</div>
+                    <input type="number" value={labelData.giorni_scadenza} onChange={e=>setLabelData({...labelData, giorni_scadenza:e.target.value})} style={{padding:10, border:'1px solid #ccc'}} />
+                    <input placeholder="Operatore" value={labelData.operatore} onChange={e=>setLabelData({...labelData, operatore:e.target.value})} style={{padding:10, border:'1px solid #ccc'}} />
+                    <button style={{background:'#2980b9', color:'white', border:'none', padding:10, marginTop:10, borderRadius:5}}>STAMPA</button>
                  </form>
+             </div>
+             <div style={{flex:1, background:'#eee', display:'flex', alignItems:'center', justifyContent:'center'}}>
+                 {lastLabel && <div style={{background:'white', padding:15, border:'2px solid black', width:300}}>
+                     <h2 style={{margin:'0 0 10px 0', borderBottom:'1px solid black'}}>{lastLabel.prodotto}</h2>
+                     <div style={{display:'flex', justifyContent:'space-between'}}>
+                        <span>📅 Prod: {new Date(lastLabel.data_produzione).toLocaleDateString()}</span>
+                        <span>👨‍🍳 {lastLabel.operatore}</span>
+                     </div>
+                     <div style={{marginTop:10, fontWeight:'bold', fontSize:18}}>
+                        SCAD: {new Date(lastLabel.data_scadenza).toLocaleDateString()}
+                     </div>
+                     <div style={{marginTop:10, fontSize:12, color:'#555'}}>Lotto: {lastLabel.lotto}</div>
+                 </div>}
              </div>
           </div>
       )}
 
-      {/* 5. SETUP (MACCHINE) */}
+      {/* 5. SETUP (MACCHINE) - AGGIORNATO CON POPUP */}
       {tab === 'setup' && !scanId && (
           <div className="no-print">
-              <div style={{display:'flex', justifyContent:'space-between', marginBottom:20, alignItems:'center'}}>
+              <div style={{display:'flex', justifyContent:'space-between', marginBottom:20}}>
                   <h2>Macchinari</h2>
-                  <button onClick={()=>apriModaleAsset()} style={{background:'#27ae60', color:'white', border:'none', padding:'10px', borderRadius:5, fontWeight:'bold'}}>+ Nuovo</button>
+                  <button onClick={()=>apriModaleAsset()} style={{background:'#27ae60', color:'white', border:'none', padding:'10px 20px', borderRadius:5, fontWeight:'bold'}}>+ Nuova Macchina</button>
               </div>
-              <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:15}}>
+              <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(300px, 1fr))', gap:20}}>
                   {assets.map(a => (
                       <div key={a.id} style={{background: 'white', padding:15, borderRadius:10, borderLeft: '4px solid #34495e', boxShadow:'0 2px 5px rgba(0,0,0,0.1)'}}>
                           <div style={{display:'flex', justifyContent:'space-between'}}>
@@ -618,77 +651,127 @@ function Haccp() {
                           <div style={{fontSize:12, color:'#7f8c8d', margin:'5px 0'}}>SN: {a.serial_number || '-'}</div>
                           
                           <div style={{marginTop:10, display:'flex', gap:5}}>
-                              <button onClick={()=>setShowQRModal(a)} style={{background:'#34495e', color:'white', border:'none', padding:'8px', borderRadius:3, flex:1, fontWeight:'bold', fontSize:12}}>QR</button>
-                              <button onClick={()=>apriModaleAsset(a)} style={{background:'#f39c12', color:'white', border:'none', padding:'8px', borderRadius:3, flex:1, fontWeight:'bold', fontSize:12}}>Modifica</button>
+                              <button onClick={()=>setShowQRModal(a)} style={{background:'#34495e', color:'white', border:'none', padding:'8px', borderRadius:3, flex:1, fontWeight:'bold'}}>QR Code</button>
+                              <button onClick={()=>apriModaleAsset(a)} style={{background:'#f39c12', color:'white', border:'none', padding:'8px', borderRadius:3, flex:1, fontWeight:'bold'}}>Modifica</button>
                           </div>
                           
-                          <div style={{marginTop:10, display:'flex', gap:10, fontSize:12}}>
-                                <button onClick={() => a.foto_url && setPreviewImage(a.foto_url)} style={{background:'transparent', border:'none', color: a.foto_url ? '#3498db' : '#ccc', padding:0}}>📸 Foto</button>
-                                <button onClick={() => a.etichetta_url && setPreviewImage(a.etichetta_url)} style={{background:'transparent', border:'none', color: a.etichetta_url ? '#e67e22' : '#ccc', padding:0}}>📄 Etichetta</button>
+                          {/* LINK AGGIORNATI CON POPUP */}
+                          <div style={{marginTop:10, display:'flex', gap:10, fontSize:13}}>
+                                {a.foto_url ? (
+                                    <button onClick={() => setPreviewImage(a.foto_url)} style={{background:'transparent', border:'none', color:'#3498db', cursor:'pointer', display:'flex', alignItems:'center', gap:5, padding:0}}>
+                                        📸 Foto
+                                    </button>
+                                ) : <span style={{color:'#ccc'}}>📸 No Foto</span>}
+
+                                {a.etichetta_url ? (
+                                    <button onClick={() => setPreviewImage(a.etichetta_url)} style={{background:'transparent', border:'none', color:'#e67e22', cursor:'pointer', display:'flex', alignItems:'center', gap:5, padding:0}}>
+                                        📄 Etichetta
+                                    </button>
+                                ) : <span style={{color:'#ccc'}}>📄 No Etich.</span>}
                           </div>
                       </div>
                   ))}
               </div>
-          </div>
-      )}
-
-      {/* --- MODALI (DOWNLOAD, ASSET, QR, PREVIEW) --- */}
-      {showDownloadModal && (
-          <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000, padding:20}}>
-              <div style={{background:'white', padding:25, borderRadius:10, textAlign:'center', width:'100%', maxWidth:'350px'}}>
-                  <h3 style={{marginTop:0}}>Scarica Report</h3>
-                  <div style={{marginBottom:15, background:'#f9f9f9', padding:10, borderRadius:5, display:'flex', justifyContent:'center', gap:10}}>
-                       <button onClick={()=>setDownloadFormat('excel')} style={{background: downloadFormat==='excel'?'#27ae60':'#eee', color:downloadFormat==='excel'?'white':'black', padding:'5px 15px', border:'none', borderRadius:20}}>Excel</button>
-                       <button onClick={()=>setDownloadFormat('pdf')} style={{background: downloadFormat==='pdf'?'#e74c3c':'#eee', color:downloadFormat==='pdf'?'white':'black', padding:'5px 15px', border:'none', borderRadius:20}}>PDF</button>
-                  </div>
-                  <div style={{display:'flex', flexDirection:'column', gap:8}}>
-                      <div style={{display:'flex', gap:5}}>
-                          <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} style={{flex:1, padding:10, border:'1px solid #ccc', borderRadius:5}} />
-                          <button onClick={()=>executeDownload('custom-month')} style={{padding:'0 15px', background:'#8e44ad', color:'white', border:'none', borderRadius:5}}>OK</button>
+              
+              {/* MODALI ESISTENTI (QR, EDIT) */}
+              {showQRModal && (
+                  <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center'}}>
+                      <div style={{background:'white', padding:30, textAlign:'center', borderRadius:10}}>
+                          <h3>QR: {showQRModal.nome}</h3>
+                          <QRCode value={`${window.location.origin}/haccp/${slug}/scan/${showQRModal.id}`} size={150} />
+                          <br/><br/><button onClick={executePrintQR}>STAMPA QR</button><button onClick={()=>setShowQRModal(null)} style={{marginLeft:10}}>CHIUDI</button>
                       </div>
-                      <button onClick={()=>executeDownload('month')} style={{padding:12, background:'#2980b9', color:'white', border:'none', borderRadius:5}}>Ultimi 30 Giorni</button>
-                      <button onClick={()=>executeDownload('all')} style={{padding:12, background:'#2c3e50', color:'white', border:'none', borderRadius:5}}>Storico Completo</button>
                   </div>
-                  <button onClick={()=>setShowDownloadModal(false)} style={{marginTop:20, background:'transparent', border:'none', color:'#999', textDecoration:'underline'}}>Chiudi</button>
+              )}
+              {showAssetModal && (
+                  <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000}}>
+                     <div style={{background:'white', padding:25, width:400, borderRadius:10, maxHeight:'90vh', overflowY:'auto'}}>
+                        <h3 style={{marginTop:0}}>{editingAsset ? 'Modifica Asset' : 'Nuovo Asset'}</h3>
+                        <form onSubmit={salvaAsset} style={{display:'flex', flexDirection:'column', gap:10}}>
+                           <input value={assetForm.nome} onChange={e=>setAssetForm({...assetForm, nome:e.target.value})} placeholder="Nome (es. Frigo 1)" style={{padding:8, border:'1px solid #ccc'}} required />
+                           <select value={assetForm.stato} onChange={e=>setAssetForm({...assetForm, stato:e.target.value})} style={{padding:5, borderRadius:3}}>
+                               <option value="attivo">✅ ATTIVA (Accesa)</option>
+                               <option value="spento">⛔ SPENTA (Non in uso)</option>
+                           </select>
+                           <select value={assetForm.tipo} onChange={e=>setAssetForm({...assetForm, tipo:e.target.value})} style={{padding:8, border:'1px solid #ccc'}}>
+                               <option value="frigo">Frigorifero</option><option value="cella">Cella Frigo</option><option value="vetrina">Vetrina</option><option value="congelatore">Congelatore</option><option value="magazzino">Magazzino Secco</option><option value="abbattitore">Abbattitore</option>
+                           </select>
+                           <div style={{display:'flex', gap:5}}>
+                               <input type="number" value={assetForm.range_min} onChange={e=>setAssetForm({...assetForm, range_min:e.target.value})} placeholder="Min" style={{flex:1, padding:8, border:'1px solid #ccc'}} />
+                               <input type="number" value={assetForm.range_max} onChange={e=>setAssetForm({...assetForm, range_max:e.target.value})} placeholder="Max" style={{flex:1, padding:8, border:'1px solid #ccc'}} />
+                           </div>
+                           <input value={assetForm.marca} onChange={e=>setAssetForm({...assetForm, marca:e.target.value})} placeholder="Marca" style={{padding:8, border:'1px solid #ccc'}} />
+                           <input value={assetForm.modello} onChange={e=>setAssetForm({...assetForm, modello:e.target.value})} placeholder="Modello" style={{padding:8, border:'1px solid #ccc'}} />
+                           <input value={assetForm.serial_number} onChange={e=>setAssetForm({...assetForm, serial_number:e.target.value})} placeholder="Numero Seriale" style={{padding:8, border:'1px solid #ccc'}} />
+
+                           <div style={{display:'flex', gap:10}}>
+                                <label style={{flex:1, cursor:'pointer', background: assetForm.foto_url ? '#eafaf1' : '#f0f0f0', padding:10, textAlign:'center', borderRadius:5, fontSize:12, border:'1px solid #ccc'}}>
+                                    {uploadingAsset ? '...' : (assetForm.foto_url ? '✅ Foto OK' : '📸 Foto Frigo')}
+                                    <input type="file" onChange={handleAssetPhoto} style={{display:'none'}} />
+                                </label>
+                                <label style={{flex:1, cursor:'pointer', background: assetForm.etichetta_url ? '#eafaf1' : '#f0f0f0', padding:10, textAlign:'center', borderRadius:5, fontSize:12, border:'1px solid #ccc'}}>
+                                    {uploadingLabel ? '...' : (assetForm.etichetta_url ? '✅ Etic. OK' : '📄 Etic. Frigo')}
+                                    <input type="file" onChange={handleAssetLabel} style={{display:'none'}} />
+                                </label>
+                           </div>
+
+                           <button style={{background:'#27ae60', color:'white', border:'none', padding:10, borderRadius:5}}>SALVA</button>
+                           <button type="button" onClick={()=>setShowAssetModal(false)} style={{background:'#95a5a6', color:'white', border:'none', padding:10, borderRadius:5}}>Annulla</button>
+                        </form>
+                     </div>
+                  </div>
+              )}
+          </div>
+      )}
+
+      {/* --- MODALE DOWNLOAD EXCEL/PDF (AGGIORNATA CON MESE SPECIFICO) --- */}
+      {showDownloadModal && (
+          <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000}}>
+              <div style={{background:'white', padding:30, borderRadius:10, textAlign:'center', width:350}}>
+                  <h3 style={{marginTop:0}}>Scarica Report: {downloadType === 'temperature' ? 'Temperature' : (downloadType === 'merci' ? 'Merci' : 'Macchine')}</h3>
+                  
+                  {/* SELEZIONE FORMATO */}
+                  <div style={{marginBottom:20, background:'#f9f9f9', padding:10, borderRadius:5}}>
+                       <p style={{margin:'0 0 10px 0', fontSize:14, fontWeight:'bold'}}>Formato:</p>
+                       <div style={{display:'flex', justifyContent:'center', gap:10}}>
+                           <button onClick={()=>setDownloadFormat('excel')} style={{background: downloadFormat==='excel'?'#27ae60':'#eee', color:downloadFormat==='excel'?'white':'black', padding:'5px 15px', border:'none', borderRadius:20, cursor:'pointer'}}>Excel</button>
+                           <button onClick={()=>setDownloadFormat('pdf')} style={{background: downloadFormat==='pdf'?'#e74c3c':'#eee', color:downloadFormat==='pdf'?'white':'black', padding:'5px 15px', border:'none', borderRadius:20, cursor:'pointer'}}>PDF</button>
+                       </div>
+                  </div>
+
+                  <p style={{color:'#666', fontSize:14}}>Seleziona il periodo:</p>
+                  
+                  <div style={{display:'flex', flexDirection:'column', gap:10, marginTop:10}}>
+                      {/* NUOVO: SELETTORE MESE SPECIFICO */}
+                      <div style={{display:'flex', gap:5}}>
+                          <input type="month" 
+                                 value={selectedMonth} 
+                                 onChange={(e) => setSelectedMonth(e.target.value)}
+                                 style={{flex:1, padding:10, border:'1px solid #ccc', borderRadius:5}} 
+                          />
+                          <button onClick={()=>executeDownload('custom-month')} 
+                                  style={{padding:'0 15px', background:'#8e44ad', color:'white', border:'none', borderRadius:5, cursor:'pointer', fontWeight:'bold'}}>
+                              SCARICA
+                          </button>
+                      </div>
+
+                      <div style={{borderTop:'1px solid #eee', margin:'5px 0'}}></div>
+
+                      <button onClick={()=>executeDownload('week')} style={{padding:12, background:'#3498db', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Ultima Settimana</button>
+                      <button onClick={()=>executeDownload('month')} style={{padding:12, background:'#2980b9', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Ultimi 30 Giorni</button>
+                      <button onClick={()=>executeDownload('all')} style={{padding:12, background:'#2c3e50', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Tutto lo storico</button>
+                  </div>
+                  
+                  <button onClick={()=>setShowDownloadModal(false)} style={{marginTop:20, background:'transparent', border:'none', color:'#999', cursor:'pointer', textDecoration:'underline'}}>Annulla</button>
               </div>
           </div>
       )}
 
-      {showAssetModal && (
-         <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000, padding:20}}>
-            <div style={{background:'white', padding:20, width:'100%', maxWidth:'400px', borderRadius:10, maxHeight:'85vh', overflowY:'auto'}}>
-               <h3 style={{marginTop:0}}>{editingAsset ? 'Modifica' : 'Nuovo'}</h3>
-               <form onSubmit={salvaAsset} style={{display:'flex', flexDirection:'column', gap:10}}>
-                   <input value={assetForm.nome} onChange={e=>setAssetForm({...assetForm, nome:e.target.value})} placeholder="Nome" style={{padding:10, border:'1px solid #ccc', borderRadius:5}} required />
-                   <div style={{display:'flex', gap:10}}>
-                       <input type="number" value={assetForm.range_min} onChange={e=>setAssetForm({...assetForm, range_min:e.target.value})} placeholder="Min" style={{flex:1, padding:10, border:'1px solid #ccc', borderRadius:5}} />
-                       <input type="number" value={assetForm.range_max} onChange={e=>setAssetForm({...assetForm, range_max:e.target.value})} placeholder="Max" style={{flex:1, padding:10, border:'1px solid #ccc', borderRadius:5}} />
-                   </div>
-                   <select value={assetForm.stato} onChange={e=>setAssetForm({...assetForm, stato:e.target.value})} style={{padding:10, borderRadius:5, border:'1px solid #ccc'}}>
-                       <option value="attivo">✅ Attiva</option><option value="spento">⛔ Spenta</option>
-                   </select>
-                   <select value={assetForm.tipo} onChange={e=>setAssetForm({...assetForm, tipo:e.target.value})} style={{padding:10, borderRadius:5, border:'1px solid #ccc'}}>
-                       <option value="frigo">Frigo</option><option value="cella">Cella</option><option value="vetrina">Vetrina</option><option value="congelatore">Congelatore</option>
-                   </select>
-                   <button style={{background:'#27ae60', color:'white', border:'none', padding:12, borderRadius:5, marginTop:10}}>SALVA</button>
-                   <button type="button" onClick={()=>setShowAssetModal(false)} style={{background:'#95a5a6', color:'white', border:'none', padding:12, borderRadius:5}}>Annulla</button>
-               </form>
-            </div>
-         </div>
-      )}
-
+      {/* --- NUOVA MODALE ANTEPRIMA IMMAGINE --- */}
       {previewImage && (
-          <div onClick={() => setPreviewImage(null)} style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.9)', zIndex:3000, display:'flex', alignItems:'center', justifyContent:'center'}}>
-              <img src={previewImage} alt="Preview" style={{maxWidth:'95%', maxHeight:'90%', borderRadius:5}} />
-          </div>
-      )}
-
-      {showQRModal && (
-          <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1500}}>
-              <div style={{background:'white', padding:30, textAlign:'center', borderRadius:10}}>
-                  <QRCode value={`${window.location.origin}/haccp/${slug}/scan/${showQRModal.id}`} size={200} />
-                  <br/><br/><button onClick={executePrintQR}>STAMPA</button><button onClick={()=>setShowQRModal(null)} style={{marginLeft:10}}>CHIUDI</button>
-              </div>
+          <div onClick={() => setPreviewImage(null)} style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.9)', zIndex:3000, display:'flex', alignItems:'center', justifyContent:'center', cursor:'zoom-out'}}>
+              <img src={previewImage} alt="Anteprima" style={{maxWidth:'90%', maxHeight:'90%', borderRadius:10, border:'2px solid white'}} />
+              <button style={{position:'absolute', top:20, right:20, background:'white', border:'none', borderRadius:'50%', width:40, height:40, fontWeight:'bold', cursor:'pointer'}}>X</button>
           </div>
       )}
 
@@ -705,9 +788,11 @@ function Haccp() {
         <div className="print-area" style={{position:'fixed', top:0, left:0, width:'100%', height:'100%', background:'white', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'}}>
              <h1 style={{fontSize:'40px', marginBottom:20}}>{showQRModal.nome}</h1>
              <QRCode value={`${window.location.origin}/haccp/${slug}/scan/${showQRModal.id}`} size={400} />
+             <p style={{marginTop:20, fontSize:'20px'}}>Scansiona per registrare la temperatura</p>
         </div>
       )}
-      <style>{`@media print { .no-print { display: none !important; } .print-area { z-index: 9999; display: flex !important; } body { margin: 0; padding: 0; } }`}</style>
+
+      <style>{`@media print { .no-print { display: none !important; } .print-area { z-index: 9999; display: flex !important; } body { margin: 0; padding: 0; } @page { margin: 0; size: auto; } }`}</style>
     </div>
   );
 }
