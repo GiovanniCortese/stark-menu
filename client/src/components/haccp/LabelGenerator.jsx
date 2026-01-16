@@ -1,34 +1,88 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
-const LabelGenerator = ({ labelData, setLabelData, handleLabelTypeChange, handlePrintLabel, lastLabel }) => {
+const LabelGenerator = ({ 
+    labelData, setLabelData, handleLabelTypeChange, handlePrintLabel, 
+    lastLabel, info, API_URL, staffList, handleFileView 
+}) => {
+    const [storicoLabels, setStoricoLabels] = useState([]);
+
+    const caricaStorico = async () => {
+        try {
+            const r = await fetch(`${API_URL}/api/haccp/labels/storico/${info.id}`);
+            const d = await r.json();
+            setStoricoLabels(d);
+        } catch (e) { console.error("Err storico labels", e); }
+    };
+
+    useEffect(() => { caricaStorico(); }, [lastLabel]);
+
     return (
-        <div className="no-print" style={{display:'flex', gap:20}}>
-           <div style={{background:'white', padding:20, borderRadius:10, flex:1}}>
-               <h3>Genera Etichetta Interna</h3>
-               <form onSubmit={handlePrintLabel} style={{display:'flex', flexDirection:'column', gap:10}}>
-                  <input placeholder="Prodotto" required value={labelData.prodotto} onChange={e=>setLabelData({...labelData, prodotto:e.target.value})} style={{padding:10, border:'1px solid #ccc'}} />
-                  <select value={labelData.tipo} onChange={handleLabelTypeChange} style={{padding:10, border:'1px solid #ccc'}}>
-                      <option value="positivo">Positivo (+3°C) - 3gg</option>
-                      <option value="negativo">Negativo (-18°C) - 180gg</option>
-                      <option value="sottovuoto">Sottovuoto - 10gg</option>
-                  </select>
-                  <label style={{fontSize:12}}>Giorni scadenza:</label>
-                  <input type="number" value={labelData.giorni_scadenza} onChange={e=>setLabelData({...labelData, giorni_scadenza:e.target.value})} style={{padding:10, border:'1px solid #ccc'}} />
-                  <input placeholder="Operatore" value={labelData.operatore} onChange={e=>setLabelData({...labelData, operatore:e.target.value})} style={{padding:10, border:'1px solid #ccc'}} />
-                  <button style={{background:'#2980b9', color:'white', border:'none', padding:10, borderRadius:5, cursor:'pointer', fontWeight:'bold'}}>STAMPA ETICHETTA</button>
-               </form>
-           </div>
-           
-           <div style={{flex:1, background:'#eee', display:'flex', alignItems:'center', justifyContent:'center', borderRadius:10}}>
-               {lastLabel ? (
-                   <div style={{background:'white', padding:15, border:'2px solid black', width:250}}>
-                       <h2 style={{margin:'0 0 10px 0', borderBottom:'1px solid black', fontSize:18}}>{lastLabel.prodotto}</h2>
-                       <div style={{fontSize:12}}>PROD: {new Date(lastLabel.data_produzione).toLocaleDateString()}</div>
-                       <div style={{fontSize:16, fontWeight:'bold', marginTop:5}}>SCAD: {new Date(lastLabel.data_scadenza).toLocaleDateString()}</div>
-                       <div style={{fontSize:10, color:'#555', marginTop:5}}>Lotto: {lastLabel.lotto}</div>
-                   </div>
-               ) : <p style={{color:'#999'}}>Anteprima stampa</p>}
-           </div>
+        <div className="no-print">
+            {/* FORM CREAZIONE (STILE MERCI) */}
+            <div style={{background:'white', padding:20, borderRadius:10, marginBottom:20, borderLeft:'5px solid #2980b9'}}>
+                <h3>❄️ Registrazione Abbattimento / Produzione</h3>
+                <form onSubmit={handlePrintLabel} style={{display:'flex', flexWrap:'wrap', gap:10, alignItems:'flex-end'}}>
+                    <div style={{flex:2, minWidth:200}}><label style={{fontSize:11}}>Prodotto / Piatto</label>
+                        <input value={labelData.prodotto} onChange={e=>setLabelData({...labelData, prodotto:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required />
+                    </div>
+                    <div style={{flex:1, minWidth:150}}><label style={{fontSize:11}}>Tipo Conservazione</label>
+                        <select value={labelData.tipo} onChange={handleLabelTypeChange} style={{width:'100%', padding:9, border:'1px solid #ddd'}}>
+                            <option value="positivo">Positivo (+3°C) - 3gg</option>
+                            <option value="negativo">Negativo (-18°C) - 180gg</option>
+                            <option value="sottovuoto">Sottovuoto - 10gg</option>
+                        </select>
+                    </div>
+                    <div style={{flex:1, minWidth:80}}><label style={{fontSize:11}}>Scadenza (gg)</label>
+                        <input type="number" value={labelData.giorni_scadenza} onChange={e=>setLabelData({...labelData, giorni_scadenza:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} />
+                    </div>
+                    <div style={{flex:1, minWidth:150}}><label style={{fontSize:11}}>Operatore</label>
+                        <select value={labelData.operatore} onChange={e=>setLabelData({...labelData, operatore:e.target.value})} style={{width:'100%', padding:9, border:'1px solid #ddd'}}>
+                            <option value="">-- Seleziona --</option>
+                            {staffList.map(s => <option key={s.id} value={s.nome}>{s.nome}</option>)}
+                        </select>
+                    </div>
+                    <button style={{background:'#2980b9', color:'white', border:'none', padding:'10px 20px', borderRadius:5, cursor:'pointer', height:40, fontWeight:'bold'}}>
+                        CREA E STAMPA
+                    </button>
+                </form>
+            </div>
+
+            {/* STORICO ABBATTIMENTI */}
+            <div style={{background:'white', padding:20, borderRadius:10}}>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:15}}>
+                    <h3>📑 Registro Produzione e Abbattimento</h3>
+                    <div style={{display:'flex', gap:5}}>
+                        <button onClick={() => window.open(`${API_URL}/api/haccp/export/labels/${info.id}?format=excel`, '_blank')} style={{background:'#27ae60', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12}}>⬇ Excel</button>
+                        <button onClick={() => window.open(`${API_URL}/api/haccp/export/labels/${info.id}?format=pdf`, '_blank')} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12}}>⬇ PDF</button>
+                    </div>
+                </div>
+                <table style={{width:'100%', borderCollapse:'collapse', fontSize:13}}>
+                    <thead>
+                        <tr style={{background:'#f0f0f0', textAlign:'left'}}>
+                            <th style={{padding:8}}>Data Prod.</th>
+                            <th style={{padding:8}}>Prodotto</th>
+                            <th style={{padding:8}}>Lotto</th>
+                            <th style={{padding:8}}>Scadenza</th>
+                            <th style={{padding:8}}>Operatore</th>
+                            <th style={{padding:8}}>Azioni</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {storicoLabels.map(l => (
+                            <tr key={l.id} style={{borderBottom:'1px solid #eee'}}>
+                                <td style={{padding:8}}>{new Date(l.data_produzione).toLocaleDateString()}</td>
+                                <td style={{padding:8}}><strong>{l.prodotto}</strong> <br/><small>{l.tipo_conservazione}</small></td>
+                                <td style={{padding:8}}><code style={{background:'#eee', padding:'2px 4px'}}>{l.lotto}</code></td>
+                                <td style={{padding:8}}>{new Date(l.data_scadenza).toLocaleDateString()}</td>
+                                <td style={{padding:8}}>{l.operatore}</td>
+                                <td style={{padding:8}}>
+                                    <button onClick={() => { setLastLabel(l); setTimeout(() => window.print(), 500); }} style={{background:'#34495e', color:'white', border:'none', borderRadius:3, padding:'4px 8px', cursor:'pointer'}}>Stampa 🖨️</button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 };

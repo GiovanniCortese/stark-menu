@@ -887,4 +887,61 @@ app.delete('/api/haccp/pulizie/:id', async (req, res) => {
     } catch(e) { res.status(500).json({error:"Err"}); }
 });
 
+// --- API REGISTRO ABBATTIMENTI (ETICHETTE) ---//
+
+// 1. Recupera storico etichette (per la tabella nel frontend)
+app.get('/api/haccp/labels/storico/:ristorante_id', async (req, res) => {
+    try {
+        const r = await pool.query(
+            "SELECT * FROM haccp_labels WHERE ristorante_id = $1 ORDER BY data_produzione DESC LIMIT 100", 
+            [req.params.ristorante_id]
+        );
+        res.json(r.rows);
+    } catch(e) { res.status(500).json({error: "Errore recupero storico"}); }
+});
+
+// 2. Export Excel/PDF specifico per le etichette (Abbattimento)
+app.get('/api/haccp/export/labels/:ristorante_id', async (req, res) => {
+    try {
+        const { ristorante_id } = req.params;
+        const { format } = req.query;
+
+        const ristRes = await pool.query("SELECT nome, dati_fiscali FROM ristoranti WHERE id = $1", [ristorante_id]);
+        const azienda = ristRes.rows[0];
+
+        const r = await pool.query(
+            "SELECT * FROM haccp_labels WHERE ristorante_id = $1 ORDER BY data_produzione ASC", 
+            [ristorante_id]
+        );
+
+        const headers = ["Data Prod.", "Prodotto", "Tipo", "Lotto", "Scadenza", "Operatore"];
+        const rows = r.rows.map(l => [
+            new Date(l.data_produzione).toLocaleDateString('it-IT'),
+            String(l.prodotto || ''),
+            String(l.tipo_conservazione || ''),
+            String(l.lotto || ''),
+            new Date(l.data_scadenza).toLocaleDateString('it-IT'),
+            String(l.operatore || '')
+        ]);
+
+        if (format === 'pdf') {
+            const doc = new PDFDocument({ margin: 30, size: 'A4' });
+            res.setHeader('Content-Type', 'application/pdf');
+            res.pipe(res);
+            doc.fontSize(14).text(`Registro Abbattimento: ${azienda.nome}`, { align: 'center' });
+            doc.moveDown();
+            await doc.table({ headers, rows }, { width: 500 });
+            doc.end();
+        } else {
+            const finalData = [["REGISTRO ABBATTIMENTO / PRODUZIONE"], [azienda.nome], [""], headers, ...rows];
+            const worksheet = xlsx.utils.aoa_to_sheet(finalData);
+            const workbook = xlsx.utils.book_new();
+            xlsx.utils.book_append_sheet(workbook, worksheet, "Abbattimento");
+            const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.send(buffer);
+        }
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.listen(port, () => console.log(`🚀 SERVER V12 (Porta ${port}) - TIMEZONE: ROME`));
