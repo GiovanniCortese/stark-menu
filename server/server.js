@@ -452,84 +452,114 @@ app.get('/api/haccp/labels/storico/:ristorante_id', async (req, res) => {
     } catch(e) { res.status(500).json({error: "Errore recupero storico"}); } 
 });
 
-// --- PROXY DOWNLOAD V7 (RICOSTRUZIONE FORZATA URL AUTENTICATO) ---
-app.get('/api/proxy-download', (req, res) => {
+// --- PROXY DOWNLOAD V8 (TENTATIVI MULTIPLI INTELLIGENTI) ---
+app.get('/api/proxy-download', async (req, res) => {
     const fileUrl = req.query.url;
     const fileName = req.query.name || 'documento.pdf';
 
     if (!fileUrl) return res.status(400).send("URL mancante");
 
-    // Moduli necessari
-    const http = require('http');
+    // Moduli
     const https = require('https');
+    const http = require('http');
 
-    let downloadUrl = fileUrl;
-
-    // Logica di rigenerazione URL Firmato
-    if (fileUrl.includes('cloudinary.com')) {
-        try {
-            // 1. Pulizia dell'URL per trovare il Public ID
-            // Esempio URL: https://res.cloudinary.com/.../image/upload/v1768605417/menu-app/doc.pdf
-            
-            // Separiamo l'URL in base a '/upload/'
-            const parts = fileUrl.split('/upload/');
-            
-            if (parts.length === 2) {
-                let path = parts[1]; // Prende: "v1768605417/menu-app/doc.pdf"
-                
-                // Rimuove la versione (vXXXXX/) se presente
-                path = path.replace(/^v\d+\//, ''); // Diventa: "menu-app/doc.pdf"
-                
-                // Rimuove l'estensione (.pdf) per ottenere il vero Public ID
-                const publicId = path.replace(/\.[^/.]+$/, ""); // Diventa: "menu-app/doc"
-                
-                // 2. Generiamo un NUOVO URL di tipo 'authenticated'
-                // Questo crea un link che inizia con /image/authenticated/s--FIRMA--/...
-                downloadUrl = cloudinary.url(publicId, {
-                    resource_type: 'image', // I PDF su Cloudinary sono gestiti come immagini
-                    type: 'authenticated',  // <--- FORZIAMO QUESTO
-                    sign_url: true,         // Genera la firma
-                    format: 'pdf',          // Assicura l'estensione corretta
-                    secure: true
-                });
-                
-                console.log("🔓 URL Rigenerato (Authenticated):", downloadUrl);
-            }
-        } catch (e) {
-            console.error("Errore rigenerazione URL:", e);
-        }
-    }
-
-    // 3. Eseguiamo il download del nuovo URL
-    const downloadLoop = (url, redirectCount = 0) => {
-        if (redirectCount > 5) return res.status(500).send("Troppi redirect.");
-
-        const client = url.startsWith('https') ? https : http;
-        const options = {
-            headers: { 
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36' 
-            }
-        };
-
-        client.get(url, options, (response) => {
-            if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-                return downloadLoop(response.headers.location, redirectCount + 1);
-            }
-
-            if (response.statusCode !== 200) {
-                console.error(`❌ Errore Proxy: ${response.statusCode} su ${url}`);
-                // Se fallisce anche questo, è probabile che le chiavi API nel .env non siano quelle dell'account Cloudinary corretto
-                return res.status(response.statusCode).send(`Errore Cloudinary: ${response.statusCode} (Verifica API Key o Permissions)`);
-            }
-
-            res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
-            res.setHeader('Content-Type', 'application/pdf');
-            response.pipe(res);
-
-        }).on('error', (err) => res.status(500).send("Errore di rete."));
+    // Funzione helper per scaricare un URL
+    const tryDownload = (url) => {
+        return new Promise((resolve, reject) => {
+            const client = url.startsWith('https') ? https : http;
+            const req = client.get(url, {
+                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36' }
+            }, (response) => {
+                // Se è un redirect, seguiamolo (massimo 1 livello per semplicità qui)
+                if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+                    resolve({ status: 'redirect', location: response.headers.location });
+                } else if (response.statusCode === 200) {
+                    resolve({ status: 'ok', response: response });
+                } else {
+                    resolve({ status: 'error', code: response.statusCode });
+                }
+            });
+            req.on('error', (err) => reject(err));
+        });
     };
 
-    downloadLoop(downloadUrl);
+    try {
+        let publicId = "";
+        let version = "";
+        
+        // 1. ESTRAZIONE ID E VERSIONE DALL'URL
+        if (fileUrl.includes('/upload/')) {
+            const parts = fileUrl.split('/upload/');
+            let path = parts[1]; // es: v1768605417/menu-app/doc.pdf
+            
+            // Estrai versione se c'è (es. v12345)
+            const verMatch = path.match(/^(v\d+)\//);
+            if (verMatch) {
+                version = verMatch[1]; // v1768605417
+                path = path.replace(/^(v\d+)\//, ''); // rimuovi versione
+            }
+            
+            // Public ID senza estensione
+            publicId = path.replace(/\.[^/.]+$/, ""); // menu-app/doc
+        }
+
+        // 2. GENERIAMO I CANDIDATI (Tentativi)
+        const candidates = [];
+
+        // TENTATIVO A: Tipo 'upload' (Pubblico) ma FIRMATO (Probabile soluzione per i tuoi PDF)
+        candidates.push(cloudinary.url(publicId, {
+            resource_type: 'image',
+            type: 'upload', 
+            sign_url: true,
+            format: 'pdf',
+            version: version // Manteniamo la versione originale per sicurezza
+        }));
+
+        // TENTATIVO B: Tipo 'authenticated' (Privato)
+        candidates.push(cloudinary.url(publicId, {
+            resource_type: 'image',
+            type: 'authenticated',
+            sign_url: true,
+            format: 'pdf',
+            version: version
+        }));
+
+        console.log(`🔎 Tentativo Download per ID: ${publicId}`);
+
+        // 3. ESECUZIONE TENTATIVI
+        for (const attemptUrl of candidates) {
+            console.log(`   ➡ Provo URL: ${attemptUrl}`);
+            try {
+                const result = await tryDownload(attemptUrl);
+                
+                if (result.status === 'redirect') {
+                    // Se c'è un redirect, seguiamolo una volta (spesso porta al file vero)
+                    const result2 = await tryDownload(result.location);
+                    if (result2.status === 'ok') {
+                         res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+                         res.setHeader('Content-Type', 'application/pdf');
+                         result2.response.pipe(res);
+                         return; // FERMATI QUI, ABBIAMO VINTO
+                    }
+                } else if (result.status === 'ok') {
+                    res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+                    res.setHeader('Content-Type', 'application/pdf');
+                    result.response.pipe(res);
+                    return; // FERMATI QUI, ABBIAMO VINTO
+                }
+                // Se error, continua al prossimo candidato...
+            } catch (e) {
+                console.error("Err rete candidato:", e.message);
+            }
+        }
+
+        // Se siamo qui, nessun tentativo ha funzionato
+        res.status(404).send("Errore: Impossibile scaricare il file con nessuna configurazione (Upload/Auth). Controlla se il file esiste ancora.");
+
+    } catch (e) {
+        console.error("Errore script:", e);
+        res.status(500).send("Errore interno proxy.");
+    }
 });
 
 app.listen(port, () => console.log(`🚀 SERVER V12.2 (Porta ${port}) - TIMEZONE: ROME`));
