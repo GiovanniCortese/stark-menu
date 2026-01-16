@@ -394,6 +394,14 @@ app.put('/api/ristorante/security/:id', async (req, res) => {
         res.json({ success: true }); 
     } catch (e) { res.status(500).json({ error: "Err" }); } 
 });
+// --- API AGGIORNAMENTO DATI FISCALI RISTORANTE ---
+app.put('/api/ristorante/dati-fiscali/:id', async (req, res) => {
+    try {
+        const { dati_fiscali } = req.body;
+        await pool.query('UPDATE ristoranti SET dati_fiscali = $1 WHERE id = $2', [dati_fiscali, req.params.id]);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: "Err" }); }
+});
 app.post('/api/upload', upload.single('photo'), (req, res) => res.json({ url: req.file.path }));
 app.post('/api/login', async (req, res) => { const { email, password } = req.body; try { const result = await pool.query("SELECT * FROM ristoranti WHERE email = $1", [email]); if (result.rows.length > 0) { const ristorante = result.rows[0]; if (ristorante.password === password) { return res.json({ success: true, user: { id: ristorante.id, nome: ristorante.nome, slug: ristorante.slug } }); } } res.status(401).json({ success: false, error: "Credenziali errate" }); } catch (e) { res.status(500).json({ success: false, error: "Errore interno" }); } });
 app.post('/api/auth/station', async (req, res) => { try { const { ristorante_id, role, password } = req.body; const roleMap = { 'cassa': 'pw_cassa', 'cucina': 'pw_cucina', 'pizzeria': 'pw_pizzeria', 'bar': 'pw_bar', 'haccp': 'pw_haccp' }; const colonnaPwd = roleMap[role]; if (!colonnaPwd) return res.json({ success: false, error: "Ruolo non valido" }); const r = await pool.query(`SELECT id, nome, ${colonnaPwd} as password_reparto FROM ristoranti WHERE id = $1`, [ristorante_id]); if (r.rows.length === 0) return res.json({ success: false, error: "Ristorante non trovato" }); if (String(r.rows[0].password_reparto) === String(password)) res.json({ success: true, nome_ristorante: r.rows[0].nome }); else res.json({ success: false, error: "Password Errata" }); } catch (e) { res.status(500).json({ error: "Err" }); } });
@@ -427,44 +435,65 @@ app.get('/api/haccp/assets/:ristorante_id', async (req, res) => {
 // 2. CREA ASSET
 app.post('/api/haccp/assets', async (req, res) => {
     try {
-        // Aggiunto etichetta_url nei parametri
-        const { ristorante_id, nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url } = req.body;
+        const { ristorante_id, nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url, stato } = req.body;
         await pool.query(
             `INSERT INTO haccp_assets 
-            (ristorante_id, nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url) 
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, 
-            [ristorante_id, nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url]
+            (ristorante_id, nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url, stato) 
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, 
+            [ristorante_id, nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url, stato || 'attivo']
         );
         res.json({success:true});
     } catch(e) { res.status(500).json({error:e.message}); }
 });
 
+// PUT
 app.put('/api/haccp/assets/:id', async (req, res) => {
     try {
-        const { nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url } = req.body;
+        const { nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url, stato } = req.body;
         await pool.query(
             `UPDATE haccp_assets 
-             SET nome=$1, tipo=$2, range_min=$3, range_max=$4, marca=$5, modello=$6, serial_number=$7, foto_url=$8, etichetta_url=$9
-             WHERE id=$10`, 
-            [nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url, req.params.id]
+             SET nome=$1, tipo=$2, range_min=$3, range_max=$4, marca=$5, modello=$6, serial_number=$7, foto_url=$8, etichetta_url=$9, stato=$10
+             WHERE id=$11`, 
+            [nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url, stato, req.params.id]
         );
         res.json({success:true});
     } catch(e) { res.status(500).json({error:e.message}); }
 });
 
-// --- NUOVA API: EXPORT EXCEL ---
+// --- API EXPORT EXCEL AVANZATA (Intestazione Azienda + Date) ---
 app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
     try {
         const { tipo, ristorante_id } = req.params;
-        const workbook = xlsx.utils.book_new();
+        const { start, end, rangeName } = req.query; // Date passate dal frontend
+        
+        // 1. Recupera Dati Ristorante/Azienda
+        const ristRes = await pool.query("SELECT nome, dati_fiscali FROM ristoranti WHERE id = $1", [ristorante_id]);
+        const aziendaInfo = ristRes.rows[0];
+        const headerTitle = `REGISTRO HACCP - ${aziendaInfo.nome.toUpperCase()}`;
+        const headerSub = aziendaInfo.dati_fiscali || "Dati societari non specificati";
+        const headerRange = `Periodo: ${rangeName || 'Tutto lo storico'}`;
+
         let data = [];
         let sheetName = "Export";
-
+        
+        // 2. Query Dinamica in base alle date
         if (tipo === 'temperature') {
-            const r = await pool.query(`SELECT l.data_ora, a.nome as asset, l.valore as temperatura, l.conformita, l.azione_correttiva, l.operatore FROM haccp_logs l JOIN haccp_assets a ON l.asset_id = a.id WHERE l.ristorante_id = $1 ORDER BY l.data_ora DESC`, [ristorante_id]);
+            let sql = `SELECT l.data_ora, a.nome as asset, a.stato as stato_macchina, l.valore as temperatura, l.conformita, l.azione_correttiva, l.operatore 
+                       FROM haccp_logs l JOIN haccp_assets a ON l.asset_id = a.id 
+                       WHERE l.ristorante_id = $1`;
+            const params = [ristorante_id];
+            
+            if(start && end) {
+                sql += ` AND l.data_ora >= $2 AND l.data_ora <= $3`;
+                params.push(start, end);
+            }
+            sql += ` ORDER BY l.data_ora DESC`;
+
+            const r = await pool.query(sql, params);
             data = r.rows.map(row => ({
                 "Data/Ora": new Date(row.data_ora).toLocaleString('it-IT'),
                 "Macchina": row.asset,
+                "Stato Macchina": row.stato_macchina.toUpperCase(),
                 "Temp (°C)": row.temperatura,
                 "Esito": row.conformita ? "OK" : "ANOMALIA",
                 "Azioni": row.azione_correttiva || "",
@@ -473,41 +502,67 @@ app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
             sheetName = "Temperature";
         } 
         else if (tipo === 'merci') {
-            const r = await pool.query(`SELECT * FROM haccp_merci WHERE ristorante_id = $1 ORDER BY data_ricezione DESC`, [ristorante_id]);
+            let sql = `SELECT * FROM haccp_merci WHERE ristorante_id = $1`;
+            const params = [ristorante_id];
+            if(start && end) {
+                sql += ` AND data_ricezione >= $2 AND data_ricezione <= $3`;
+                params.push(start, end);
+            }
+            sql += ` ORDER BY data_ricezione DESC`;
+            
+            const r = await pool.query(sql, params);
             data = r.rows.map(row => ({
                 "Data Ricezione": new Date(row.data_ricezione).toLocaleDateString('it-IT'),
                 "Fornitore": row.fornitore,
                 "Prodotto": row.prodotto,
-                "Quantità": row.quantita,
                 "Lotto": row.lotto,
                 "Scadenza": row.scadenza ? new Date(row.scadenza).toLocaleDateString('it-IT') : "",
-                "Temp Arrivo": row.temperatura,
+                "Quantità": row.quantita,
+                "Temp": row.temperatura,
                 "Conforme": row.conforme ? "SI" : "NO",
                 "Integro": row.integro ? "SI" : "NO",
-                "Note": row.note,
                 "Destinazione": row.destinazione
             }));
             sheetName = "Merci";
         }
         else if (tipo === 'assets') {
+            // Per gli asset non filtriamo per data, mostriamo lo stato attuale
             const r = await pool.query(`SELECT * FROM haccp_assets WHERE ristorante_id = $1`, [ristorante_id]);
             data = r.rows.map(row => ({
+                "Stato": row.stato ? row.stato.toUpperCase() : "ATTIVO",
                 "Nome": row.nome,
                 "Tipo": row.tipo,
                 "Marca": row.marca,
                 "Modello": row.modello,
                 "Seriale": row.serial_number,
-                "Range Min": row.range_min,
-                "Range Max": row.range_max
+                "Range": `${row.range_min}°C / ${row.range_max}°C`
             }));
             sheetName = "Macchine";
         }
 
-        const worksheet = xlsx.utils.json_to_sheet(data);
+        // 3. Creazione Excel con Intestazione Custom
+        const workbook = xlsx.utils.book_new();
+        
+        // Creiamo i dati "sporchi" aggiungendo le righe di intestazione all'inizio
+        const finalData = [
+            { "Data/Ora": headerTitle },     // Riga 1: Nome Ristorante
+            { "Data/Ora": headerSub },       // Riga 2: Dati Societari
+            { "Data/Ora": headerRange },     // Riga 3: Periodo
+            { "Data/Ora": "" },              // Riga 4: Vuota
+            ...data                          // Dati reali
+        ];
+
+        const worksheet = xlsx.utils.json_to_sheet(finalData, { skipHeader: false });
+        
+        // Uniamo le celle delle prime righe per estetica (A1:C1, A2:C2...) - Opzionale ma carino
+        if(!worksheet['!merges']) worksheet['!merges'] = [];
+        worksheet['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } }); // Unisce titolo
+        worksheet['!merges'].push({ s: { r: 1, c: 0 }, e: { r: 1, c: 4 } }); // Unisce dati fiscali
+
         xlsx.utils.book_append_sheet(workbook, worksheet, sheetName);
         const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
         
-        res.setHeader('Content-Disposition', `attachment; filename="haccp_${tipo}.xlsx"`);
+        res.setHeader('Content-Disposition', `attachment; filename="haccp_${tipo}_${rangeName || 'full'}.xlsx"`);
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.send(buffer);
 

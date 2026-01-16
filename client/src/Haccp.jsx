@@ -1,4 +1,4 @@
-// client/src/Haccp.jsx - VERSIONE V8 (FINAL: EXPORT + ASSET FIELDS + NEW LABELS + CALENDAR UI)
+// client/src/Haccp.jsx - VERSIONE V9 (FRIGO SPENTO + DATI SOCIETARI + EXCEL TIME RANGE)
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import QRCode from 'react-qr-code'; 
@@ -18,6 +18,9 @@ function Haccp() {
   const [calendarLogs, setCalendarLogs] = useState([]); 
   const [tab, setTab] = useState('temperature'); 
   
+  // Dati Societari (NUOVO)
+  const [datiFiscali, setDatiFiscali] = useState("");
+
   // Stati Moduli
   const [tempInput, setTempInput] = useState({}); 
   const [uploadingLog, setUploadingLog] = useState(null); 
@@ -37,12 +40,17 @@ function Haccp() {
   const [editingAsset, setEditingAsset] = useState(null); 
   const [assetForm, setAssetForm] = useState({ 
       nome:'', tipo:'frigo', range_min:0, range_max:4, 
-      marca:'', modello:'', serial_number:'', // AGGIUNTO SERIALE
-      foto_url:'', etichetta_url:'' // AGGIUNTO ETICHETTA URL
+      marca:'', modello:'', serial_number:'', 
+      foto_url:'', etichetta_url:'',
+      stato: 'attivo' // NUOVO STATO
   });
-  const [uploadingAsset, setUploadingAsset] = useState(false); // Per foto macchina
-  const [uploadingLabel, setUploadingLabel] = useState(false); // Per etichetta file
+  const [uploadingAsset, setUploadingAsset] = useState(false); 
+  const [uploadingLabel, setUploadingLabel] = useState(false); 
   const [showQRModal, setShowQRModal] = useState(null);
+
+  // Stati Download Excel (NUOVO)
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
+  const [downloadType, setDownloadType] = useState(null); // 'temperature', 'merci', 'assets'
 
   // Stati Etichette e Stampa
   const [labelData, setLabelData] = useState({ prodotto: '', giorni_scadenza: 3, operatore: '', tipo: 'positivo' });
@@ -57,7 +65,18 @@ function Haccp() {
 
   // --- INIT ---
   useEffect(() => {
-      fetch(`${API_URL}/api/menu/${slug}`).then(r=>r.json()).then(setInfo);
+      fetch(`${API_URL}/api/menu/${slug}`).then(r=>r.json()).then(data => {
+          setInfo(data);
+          // Recuperiamo i dati fiscali se presenti (potrebbe servire una chiamata dedicata o inclusa nel menu)
+          // Simuliamo recupero o fetch dedicata se necessario:
+          if(data.dati_fiscali) setDatiFiscali(data.dati_fiscali);
+          else {
+             // Fallback: fetch specifica se l'API menu non li ritorna
+             fetch(`${API_URL}/api/ristorante/config/${data.id}`).then(r2=>r2.json()).then(conf => {
+                 if(conf.dati_fiscali) setDatiFiscali(conf.dati_fiscali);
+             }).catch(()=>{});
+          }
+      });
       const sess = localStorage.getItem(`haccp_session_${slug}`);
       if(sess === "true") setIsAuthorized(true);
       if(scanId) setTab('temperature');
@@ -111,9 +130,35 @@ function Haccp() {
       const data = await res.json(); return data.url;
   };
 
-  // --- EXPORT EXCEL ---
-  const downloadExcel = (tipo) => {
-      window.open(`${API_URL}/api/haccp/export/${tipo}/${info.id}`, '_blank');
+  // --- DATI SOCIETARI ---
+  const salvaDatiFiscali = async () => {
+      await fetch(`${API_URL}/api/ristorante/dati-fiscali/${info.id}`, {
+          method: 'PUT', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ dati_fiscali: datiFiscali })
+      });
+      alert("Dati societari salvati! Compariranno nelle intestazioni Excel.");
+  };
+
+  // --- EXCEL DOWNLOAD (CON MODALE) ---
+  const openDownloadModal = (type) => {
+      setDownloadType(type);
+      setShowDownloadModal(true);
+  };
+
+  const executeDownload = (range) => {
+      // range: 'week', 'month', 'year', 'all'
+      const end = new Date();
+      let start = new Date();
+      let rangeName = "Tutto";
+
+      if(range === 'week') { start.setDate(end.getDate() - 7); rangeName="Ultima Settimana"; }
+      if(range === 'month') { start.setMonth(end.getMonth() - 1); rangeName="Ultimo Mese"; }
+      if(range === 'year') { start.setFullYear(end.getFullYear() - 1); rangeName="Ultimo Anno"; }
+      if(range === 'all') { start = new Date('2020-01-01'); rangeName="Storico Completo"; }
+
+      const query = `?start=${start.toISOString()}&end=${end.toISOString()}&rangeName=${rangeName}`;
+      window.open(`${API_URL}/api/haccp/export/${downloadType}/${info.id}${query}`, '_blank');
+      setShowDownloadModal(false);
   };
 
   // --- TEMPERATURE ---
@@ -190,10 +235,10 @@ function Haccp() {
   };
   const eliminaMerce = async (id) => { if(confirm("Eliminare riga?")) { await fetch(`${API_URL}/api/haccp/merci/${id}`, {method:'DELETE'}); ricaricaDati(); } };
 
-  // --- ASSET CRUD (MODIFICATO: SERIALE, FOTO, ETICHETTA) ---
+  // --- ASSET CRUD (SERIALE, FOTO, ETICHETTA, STATO) ---
   const apriModaleAsset = (asset = null) => {
       if(asset) { setEditingAsset(asset); setAssetForm({ ...asset }); } 
-      else { setEditingAsset(null); setAssetForm({ nome:'', tipo:'frigo', range_min:0, range_max:4, marca:'', modello:'', serial_number:'', foto_url:'', etichetta_url:'' }); }
+      else { setEditingAsset(null); setAssetForm({ nome:'', tipo:'frigo', range_min:0, range_max:4, marca:'', modello:'', serial_number:'', foto_url:'', etichetta_url:'', stato:'attivo' }); }
       setShowAssetModal(true);
   };
   const salvaAsset = async (e) => {
@@ -313,7 +358,7 @@ function Haccp() {
       );
   };
 
-  // --- ETICHETTE (LOGICA AUTOMATICA GIORNI) ---
+  // --- ETICHETTE ---
   const handleLabelTypeChange = (e) => {
       const type = e.target.value;
       let days = 3;
@@ -346,11 +391,11 @@ function Haccp() {
           <div className="no-print" style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20, flexWrap:'wrap', gap:10}}>
               <div><h1 style={{margin:0, color:'#2c3e50'}}>🛡️ HACCP Control</h1></div>
               <div style={{display:'flex', gap:10, alignItems:'center'}}>
-                  {/* PULSANTI DOWNLOAD EXCEL */}
+                  {/* PULSANTI DOWNLOAD EXCEL CON MODALE */}
                   <div style={{marginRight:20, display:'flex', gap:5}}>
-                      <button onClick={()=>downloadExcel('temperature')} style={{background:'#27ae60', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Temp</button>
-                      <button onClick={()=>downloadExcel('merci')} style={{background:'#f39c12', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Merci</button>
-                      <button onClick={()=>downloadExcel('assets')} style={{background:'#34495e', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Macchine</button>
+                      <button onClick={()=>openDownloadModal('temperature')} style={{background:'#27ae60', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Temp</button>
+                      <button onClick={()=>openDownloadModal('merci')} style={{background:'#f39c12', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Merci</button>
+                      <button onClick={()=>openDownloadModal('assets')} style={{background:'#34495e', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Macchine</button>
                   </div>
 
                   {['temperature', 'merci', 'calendario', 'etichette', 'setup'].map(t => (
@@ -363,11 +408,27 @@ function Haccp() {
           </div>
       )}
 
-      {/* 1. TEMPERATURE */}
+      {/* 1. TEMPERATURE (CON GESTIONE FRIGO SPENTO) */}
       {tab === 'temperature' && (
           <div className="no-print" style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(350px, 1fr))', gap:20}}>
               {assetsToDisplay.map(asset => {
                   const todayLog = getTodayLog(asset.id);
+                  
+                  // LOGICA FRIGO SPENTO
+                  if(asset.stato === 'spento') {
+                      return (
+                          <div key={asset.id} style={{background:'#e0e0e0', padding:20, borderRadius:10, border:'2px solid #999', opacity:0.7, position:'relative'}}>
+                              <div style={{position:'absolute', top:10, right:10, background:'#555', color:'white', padding:'2px 8px', borderRadius:4, fontSize:10, fontWeight:'bold'}}>OFF</div>
+                              <h3 style={{margin:0, color:'#555'}}>🚫 {asset.nome}</h3>
+                              <p style={{margin:'5px 0', fontSize:12}}>Macchinario Spento</p>
+                              <div style={{height:40, background:'#ccc', borderRadius:5, display:'flex', alignItems:'center', justifyContent:'center', color:'#777', fontWeight:'bold', fontSize:12}}>
+                                  NESSUNA RILEVAZIONE
+                              </div>
+                          </div>
+                      );
+                  }
+
+                  // LOGICA NORMALE
                   const isInputActive = !!tempInput[asset.id];
                   const currentData = tempInput[asset.id] || {};
                   
@@ -493,7 +554,7 @@ function Haccp() {
       {/* 3. CALENDARIO */}
       {tab === 'calendario' && !scanId && renderCalendario()}
 
-      {/* 4. ETICHETTE (AUTO-DATE & GRAFICA) */}
+      {/* 4. ETICHETTE */}
       {tab === 'etichette' && !scanId && (
           <div className="no-print" style={{display:'flex', gap:20}}>
              <div style={{background:'white', padding:20, borderRadius:10, flex:1}}>
@@ -527,19 +588,33 @@ function Haccp() {
           </div>
       )}
 
-      {/* 5. SETUP (ASSET UPDATE) */}
+      {/* 5. SETUP (DATI SOCIETARI + FRIGO SPENTO) */}
       {tab === 'setup' && !scanId && (
           <div className="no-print">
+              {/* SEZIONE DATI SOCIETARI */}
+              <div style={{background:'white', padding:20, borderRadius:10, marginBottom:20, borderLeft:'5px solid #8e44ad'}}>
+                  <h3 style={{margin:'0 0 10px 0'}}>🏢 Dati Societari (Per Intestazione Excel)</h3>
+                  <div style={{display:'flex', gap:10}}>
+                      <input 
+                          value={datiFiscali} 
+                          onChange={e=>setDatiFiscali(e.target.value)} 
+                          placeholder="Es. Pizzeria Da Tony Srl - P.IVA 12345678901 - Via Roma 1, Milano" 
+                          style={{flex:1, padding:10, border:'1px solid #ccc', borderRadius:5}} 
+                      />
+                      <button onClick={salvaDatiFiscali} style={{background:'#8e44ad', color:'white', border:'none', padding:'10px 20px', borderRadius:5, cursor:'pointer'}}>SALVA</button>
+                  </div>
+              </div>
+
               <div style={{display:'flex', justifyContent:'space-between', marginBottom:20}}>
                   <h2>Macchinari</h2>
                   <button onClick={()=>apriModaleAsset()} style={{background:'#27ae60', color:'white', border:'none', padding:'10px 20px', borderRadius:5, fontWeight:'bold'}}>+ Nuova Macchina</button>
               </div>
               <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(300px, 1fr))', gap:20}}>
                   {assets.map(a => (
-                      <div key={a.id} style={{background:'white', padding:15, borderRadius:10, borderLeft:'4px solid #34495e'}}>
+                      <div key={a.id} style={{background: a.stato === 'spento' ? '#f0f0f0' : 'white', padding:15, borderRadius:10, borderLeft: a.stato === 'spento' ? '4px solid #999' : '4px solid #34495e'}}>
                           <div style={{display:'flex', justifyContent:'space-between'}}>
                               <strong>{a.nome}</strong> 
-                              <span style={{fontSize:12, color:'#666'}}>{a.tipo}</span>
+                              {a.stato === 'spento' ? <span style={{background:'#ccc', fontSize:10, padding:'2px 5px', borderRadius:3, fontWeight:'bold'}}>SPENTO</span> : <span style={{fontSize:12, color:'#666'}}>({a.tipo})</span>}
                           </div>
                           <div style={{fontSize:12, color:'#7f8c8d', margin:'5px 0'}}>
                              {a.marca} {a.modello} <br/>
@@ -574,6 +649,16 @@ function Haccp() {
                         <h3 style={{marginTop:0}}>{editingAsset ? 'Modifica Asset' : 'Nuovo Asset'}</h3>
                         <form onSubmit={salvaAsset} style={{display:'flex', flexDirection:'column', gap:10}}>
                            <input value={assetForm.nome} onChange={e=>setAssetForm({...assetForm, nome:e.target.value})} placeholder="Nome (es. Frigo 1)" style={{padding:8, border:'1px solid #ccc'}} required />
+                           
+                           {/* SWITCH ACCESO/SPENTO */}
+                           <div style={{display:'flex', alignItems:'center', gap:10, background:'#eee', padding:10, borderRadius:5}}>
+                               <label style={{fontWeight:'bold'}}>Stato Macchina:</label>
+                               <select value={assetForm.stato} onChange={e=>setAssetForm({...assetForm, stato:e.target.value})} style={{padding:5, borderRadius:3}}>
+                                   <option value="attivo">✅ ATTIVA (Accesa)</option>
+                                   <option value="spento">⛔ SPENTA (Non in uso)</option>
+                               </select>
+                           </div>
+
                            <select value={assetForm.tipo} onChange={e=>setAssetForm({...assetForm, tipo:e.target.value})} style={{padding:8, border:'1px solid #ccc'}}>
                                <option value="frigo">Frigorifero</option><option value="cella">Cella Frigo</option><option value="vetrina">Vetrina</option><option value="congelatore">Congelatore</option><option value="magazzino">Magazzino Secco</option><option value="abbattitore">Abbattitore</option>
                            </select>
@@ -603,6 +688,25 @@ function Haccp() {
                      </div>
                   </div>
               )}
+          </div>
+      )}
+
+      {/* --- MODALE DOWNLOAD EXCEL --- */}
+      {showDownloadModal && (
+          <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000}}>
+              <div style={{background:'white', padding:30, borderRadius:10, textAlign:'center', width:300}}>
+                  <h3 style={{marginTop:0}}>Scarica Excel: {downloadType === 'temperature' ? 'Temperature' : (downloadType === 'merci' ? 'Merci' : 'Macchine')}</h3>
+                  <p style={{color:'#666', fontSize:14}}>Seleziona il periodo da scaricare:</p>
+                  
+                  <div style={{display:'flex', flexDirection:'column', gap:10, marginTop:20}}>
+                      <button onClick={()=>executeDownload('week')} style={{padding:12, background:'#3498db', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Ultima Settimana</button>
+                      <button onClick={()=>executeDownload('month')} style={{padding:12, background:'#2980b9', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Ultimo Mese</button>
+                      <button onClick={()=>executeDownload('year')} style={{padding:12, background:'#8e44ad', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Ultimo Anno</button>
+                      <button onClick={()=>executeDownload('all')} style={{padding:12, background:'#2c3e50', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Tutto lo storico</button>
+                  </div>
+                  
+                  <button onClick={()=>setShowDownloadModal(false)} style={{marginTop:20, background:'transparent', border:'none', color:'#999', cursor:'pointer', textDecoration:'underline'}}>Annulla</button>
+              </div>
           </div>
       )}
 
