@@ -227,15 +227,40 @@ function Haccp() {
       setUploadingMerci(true);
       try { const url = await uploadFile(f); setMerciForm(prev => ({...prev, allegato_url: url})); } finally { setUploadingMerci(false); }
   };
-  const salvaMerci = async (e) => {
+const salvaMerci = async (e) => {
       e.preventDefault();
-      const endpoint = merciForm.id ? `${API_URL}/api/haccp/merci/${merciForm.id}` : `${API_URL}/api/haccp/merci`;
-      const method = merciForm.id ? 'PUT' : 'POST';
-      await fetch(endpoint, {
-          method, headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({...merciForm, ristorante_id: info.id, operatore: 'Staff'})
-      });
-      resetMerciForm(); ricaricaDati();
+      try {
+        const endpoint = merciForm.id ? `${API_URL}/api/haccp/merci/${merciForm.id}` : `${API_URL}/api/haccp/merci`;
+        const method = merciForm.id ? 'PUT' : 'POST';
+        
+        // --- QUI DEVE ESSERCI LA MODIFICA (Payload Sanitization) ---
+        const payload = { ...merciForm, ristorante_id: info.id, operatore: 'Staff' };
+
+        // Se questi campi sono stringhe vuote, Postgres dà errore 500. 
+        // Li trasformiamo in null per farli accettare dal database.
+        if (!payload.scadenza || payload.scadenza === "") payload.scadenza = null;
+        if (!payload.temperatura || payload.temperatura === "") payload.temperatura = null;
+        if (!payload.quantita || payload.quantita === "") payload.quantita = null;
+        // -----------------------------------------------------------
+
+        const res = await fetch(endpoint, {
+            method, 
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload) // Inviato il payload pulito
+        });
+        
+        const data = await res.json();
+        
+        if (data.success) {
+            resetMerciForm(); 
+            ricaricaDati();
+            alert("✅ Salvataggio riuscito!");
+        } else {
+            alert("❌ Errore Server: " + (data.error || "Sconosciuto"));
+        }
+      } catch (err) {
+          alert("❌ Errore Connessione: " + err.message);
+      }
   };
   const resetMerciForm = () => {
       setMerciForm({
