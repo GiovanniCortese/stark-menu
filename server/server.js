@@ -52,6 +52,19 @@ const getTimeItaly = () => {
     });
 };
 
+const getItalyDateComponents = () => {
+    const now = new Date();
+    const itTime = new Intl.DateTimeFormat('it-IT', {
+        timeZone: 'Europe/Rome',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit'
+    }).formatToParts(now);
+    
+    const parts = {};
+    itTime.forEach(p => parts[p.type] = p.value);
+    return parts; // { year: "2026", month: "01", day: "16", hour: "12", minute: "50" }
+};
+
 // ==========================================
 //          API GESTIONE ORDINI
 // ==========================================
@@ -444,7 +457,7 @@ app.delete('/api/haccp/assets/:id', async (req, res) => {
     try { await pool.query("DELETE FROM haccp_assets WHERE id=$1", [req.params.id]); res.json({success:true}); } catch(e){ res.status(500).json({error:"Err"}); }
 });
 
-// 5. GET LOGS (FILTRABILE PER CALENDARIO)
+// 5. GET LOGS (MODIFICATO: ORDER BY DESC PER AVERE SEMPRE L'ULTIMO IN CIMA)
 app.get('/api/haccp/logs/:ristorante_id', async (req, res) => {
     try {
         const { start, end } = req.query; 
@@ -457,18 +470,17 @@ app.get('/api/haccp/logs/:ristorante_id', async (req, res) => {
         const params = [req.params.ristorante_id];
 
         if (start && end) {
+            // Per il calendario, ordine cronologico
             query += ` AND l.data_ora >= $2 AND l.data_ora <= $3 ORDER BY l.data_ora ASC`;
             params.push(start, end);
         } else {
-            query += ` ORDER BY l.data_ora DESC LIMIT 100`;
+            // Per la dashboard: ORDINE DECRESCENTE (il primo è l'ultimo inserito)
+            query += ` ORDER BY l.data_ora DESC LIMIT 200`;
         }
 
         const r = await pool.query(query, params);
         res.json(r.rows);
-    } catch(e) { 
-        console.error(e);
-        res.status(500).json({error:"Err"}); 
-    }
+    } catch(e) { res.status(500).json({error:"Err"}); }
 });
 
 // 6. CREA LOG (Con Foto Prova)
@@ -483,12 +495,14 @@ app.post('/api/haccp/logs', async (req, res) => {
     } catch(e) { res.status(500).json({error:"Err"}); }
 });
 
-// 7. ETICHETTE
+// 7. ETICHETTE (FIX FUSO ORARIO LOTTO)
 app.post('/api/haccp/labels', async (req, res) => {
     try {
         const { ristorante_id, prodotto, data_scadenza, operatore, tipo_conservazione } = req.body;
-        const now = new Date();
-        const lotto = `L-${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}-${now.getHours()}${now.getMinutes()}`;
+        
+        // FIX: Generazione Lotto con Orario Italiano
+        const t = getItalyDateComponents();
+        const lotto = `L-${t.year}${t.month}${t.day}-${t.hour}${t.minute}`;
         
         const r = await pool.query(
             "INSERT INTO haccp_labels (ristorante_id, prodotto, lotto, data_produzione, data_scadenza, operatore, tipo_conservazione) VALUES ($1,$2,$3,NOW(),$4,$5,$6) RETURNING *",
@@ -497,6 +511,30 @@ app.post('/api/haccp/labels', async (req, res) => {
         res.json({success:true, label: r.rows[0]});
     } catch(e) { res.status(500).json({error:"Err"}); }
 });
+
+// --- NUOVE API: RICEVIMENTO MERCI ---
+app.get('/api/haccp/merci/:ristorante_id', async (req, res) => {
+    try {
+        const r = await pool.query("SELECT * FROM haccp_merci WHERE ristorante_id = $1 ORDER BY data_ricezione DESC, data_ora DESC LIMIT 100", [req.params.ristorante_id]);
+        res.json(r.rows);
+    } catch(e) { res.status(500).json({error:"Err"}); }
+});
+
+app.post('/api/haccp/merci', async (req, res) => {
+    try {
+        const { ristorante_id, data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore } = req.body;
+        await pool.query(
+            `INSERT INTO haccp_merci (ristorante_id, data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+            [ristorante_id, data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore]
+        );
+        res.json({success:true});
+    } catch(e) { console.error(e); res.status(500).json({error:"Err"}); }
+});
+app.delete('/api/haccp/merci/:id', async (req, res) => {
+    try { await pool.query("DELETE FROM haccp_merci WHERE id=$1", [req.params.id]); res.json({success:true}); } catch(e){ res.status(500).json({error:"Err"}); }
+});
+
 // 8. MODIFICA UN LOG ESISTENTE (Correzione Errore)
 app.put('/api/haccp/logs/:id', async (req, res) => {
     try {
