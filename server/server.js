@@ -473,15 +473,14 @@ app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
         const ristRes = await pool.query("SELECT nome, dati_fiscali FROM ristoranti WHERE id = $1", [ristorante_id]);
         const aziendaInfo = ristRes.rows[0];
 
-        // 2. Preparazione Dati (Comune a Excel e PDF)
+        // 2. Preparazione Dati
         let headers = [];
         let rows = [];
         let sheetName = "Export";
         
         if (tipo === 'temperature') {
             sheetName = "Temperature";
-            // Header per PDF/Excel
-            headers = ["Data", "Ora", "Macchina", "Temp/Stato", "Esito", "Az. Correttiva", "Op."];
+            headers = ["Data", "Ora", "Macchina", "Temp", "Esito", "Az. Correttiva", "Op."];
             
             let sql = `SELECT l.data_ora, a.nome as asset, l.valore, l.conformita, l.azione_correttiva, l.operatore 
                        FROM haccp_logs l JOIN haccp_assets a ON l.asset_id = a.id 
@@ -493,23 +492,24 @@ app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
 
             const r = await pool.query(sql, params);
             
+            // FIX CRITICO: String(val || '') previene il crash su valori null
             rows = r.rows.map(row => {
                 const d = new Date(row.data_ora);
                 const displayVal = row.valore === 'OFF' ? 'SPENTO' : `${row.valore}°C`;
                 return [
                     d.toLocaleDateString('it-IT'), 
                     d.toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'}), 
-                    row.asset,
-                    displayVal,
+                    String(row.asset || ''),
+                    String(displayVal || ''),
                     row.conformita ? "OK" : "NO",
-                    row.azione_correttiva || "", 
-                    row.operatore
+                    String(row.azione_correttiva || ""), 
+                    String(row.operatore || "")
                 ];
             });
 
         } else if (tipo === 'merci') {
             sheetName = "Ricevimento Merci";
-            headers = ["Data", "Fornitore", "Prodotto", "Condizione", "Lotto", "Kg", "Note", "Scadenza"];
+            headers = ["Data", "Fornitore", "Prodotto", "Stato", "Lotto", "Kg", "Note", "Scadenza"];
             
             let sql = `SELECT * FROM haccp_merci WHERE ristorante_id = $1`;
             const params = [ristorante_id];
@@ -525,12 +525,12 @@ app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
 
                 return [
                     new Date(row.data_ricezione).toLocaleDateString('it-IT'),
-                    row.fornitore,
-                    row.prodotto,
+                    String(row.fornitore || ''),
+                    String(row.prodotto || ''),
                     condizione,
-                    row.lotto,
-                    row.quantita,
-                    row.note,
+                    String(row.lotto || ''),
+                    String(row.quantita || ''),
+                    String(row.note || ''),
                     row.scadenza ? new Date(row.scadenza).toLocaleDateString('it-IT') : "-"
                 ];
             });
@@ -539,10 +539,10 @@ app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
             headers = ["Stato", "Nome", "Tipo", "Marca", "Range"];
             const r = await pool.query(`SELECT * FROM haccp_assets WHERE ristorante_id = $1 ORDER BY nome ASC`, [ristorante_id]);
             rows = r.rows.map(row => [
-                row.stato ? row.stato.toUpperCase() : "ATTIVO",
-                row.nome,
-                row.tipo,
-                row.marca,
+                String(row.stato ? row.stato.toUpperCase() : "ATTIVO"),
+                String(row.nome || ''),
+                String(row.tipo || ''),
+                String(row.marca || ''),
                 `${row.range_min}°C / ${row.range_max}°C`
             ]);
         }
@@ -551,44 +551,50 @@ app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
         // RAMO A: GENERAZIONE PDF
         // ==========================================
         if (format === 'pdf') {
-            const doc = new PDFDocument({ margin: 30, size: 'A4' });
+            try {
+                const doc = new PDFDocument({ margin: 30, size: 'A4' });
 
-            res.setHeader('Content-Type', 'application/pdf');
-            res.setHeader('Content-Disposition', `attachment; filename="haccp_${tipo}_${rangeName || 'report'}.pdf"`);
+                res.setHeader('Content-Type', 'application/pdf');
+                res.setHeader('Content-Disposition', `attachment; filename="haccp_${tipo}_${rangeName || 'report'}.pdf"`);
 
-            doc.pipe(res);
+                doc.pipe(res);
 
-            // Intestazione PDF
-            doc.fontSize(16).text(aziendaInfo.nome, { align: 'center', bold: true });
-            doc.fontSize(10).text(aziendaInfo.dati_fiscali || "Dati societari mancanti", { align: 'center' });
-            doc.moveDown(0.5);
-            doc.fontSize(12).text(`Report: ${sheetName}`, { align: 'center' });
-            doc.fontSize(10).text(`Periodo: ${rangeName || 'Completo'}`, { align: 'center', color: 'gray' });
-            doc.moveDown(1);
+                doc.fontSize(16).text(String(aziendaInfo.nome), { align: 'center' }); // Removed bold:true to avoid font missing error
+                doc.fontSize(10).text(String(aziendaInfo.dati_fiscali || "Dati societari mancanti"), { align: 'center' });
+                doc.moveDown(0.5);
+                doc.fontSize(12).text(`Report: ${sheetName}`, { align: 'center' });
+                doc.fontSize(10).text(`Periodo: ${rangeName || 'Completo'}`, { align: 'center', color: 'gray' });
+                doc.moveDown(1);
 
-            // Tabella PDF
-            const table = {
-                headers: headers,
-                rows: rows,
-            };
+                const table = {
+                    title: "",
+                    headers: headers,
+                    rows: rows,
+                };
 
-            await doc.table(table, {
-                prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8),
-                prepareRow: (row, indexColumn, indexRow, rect, rowData) => {
-                    doc.font("Helvetica").fontSize(8);
-                    // Evidenzia righe non conformi in rosso (solo logica base)
-                    if (tipo === 'temperature' && rowData[4] === 'NO') doc.fillColor('red');
-                    else if (tipo === 'merci' && rowData[3] !== 'CONFORME') doc.fillColor('red');
-                    else doc.fillColor('black');
-                },
-            });
+                await doc.table(table, {
+                    width: 500,
+                    prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8),
+                    prepareRow: (row, indexColumn, indexRow, rect, rowData) => {
+                        doc.font("Helvetica").fontSize(8);
+                        // Evidenzia righe non conformi in rosso
+                        if (tipo === 'temperature' && rowData[4] === 'NO') doc.fillColor('red');
+                        else if (tipo === 'merci' && rowData[3] !== 'CONFORME') doc.fillColor('red');
+                        else doc.fillColor('black');
+                    },
+                });
 
-            doc.end();
+                doc.end();
+            } catch (pdfErr) {
+                console.error("PDF Generation Error:", pdfErr);
+                // Se non abbiamo ancora inviato header, mandiamo json error
+                if (!res.headersSent) res.status(500).json({ error: "Errore generazione PDF interno" });
+            }
             return; 
         }
 
         // ==========================================
-        // RAMO B: GENERAZIONE EXCEL (Fallback default)
+        // RAMO B: GENERAZIONE EXCEL
         // ==========================================
         const rowAzienda = [aziendaInfo.dati_fiscali || `${aziendaInfo.nome}`];
         const rowPeriodo = [`Periodo: ${rangeName || 'Tutto lo storico'}`];
@@ -598,7 +604,6 @@ app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
         const workbook = xlsx.utils.book_new();
         const worksheet = xlsx.utils.aoa_to_sheet(finalData);
         
-        // Merge intestazione Excel
         if(!worksheet['!merges']) worksheet['!merges'] = [];
         worksheet['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } });
 
@@ -610,8 +615,8 @@ app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
         res.send(buffer);
 
     } catch (err) {
-        console.error("Errore Export:", err);
-        res.status(500).json({ error: "Errore Export: " + err.message });
+        console.error("Errore Export Generale:", err);
+        if (!res.headersSent) res.status(500).json({ error: "Errore Export: " + err.message });
     }
 });
 

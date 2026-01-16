@@ -475,21 +475,31 @@ const salvaMerci = async (e) => {
                   const currentData = tempInput[asset.id] || {};
                   
                   if (todayLog && !isInputActive) {
-                      const timeStr = new Date(todayLog.data_ora).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'});
-                      const isModificato = logs.filter(l => l.asset_id === asset.id && new Date(l.data_ora).toDateString() === new Date().toDateString()).length > 1;
-                      return (
-                          <div key={asset.id} style={{background:'#eafaf1', padding:20, borderRadius:10, border:'2px solid #27ae60', boxShadow:'0 2px 5px rgba(0,0,0,0.1)'}}>
-                              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                                  <h3 style={{margin:0, color:'#27ae60'}}>✅ {asset.nome}</h3>
-                                  <span style={{fontSize:'24px', fontWeight:'bold'}}>{todayLog.valore === 'OFF' ? 'SPENTO' : todayLog.valore + '°C'}</span>
-                              </div>
-                              <div style={{fontSize:'12px', color:'#555', marginTop:5}}>
-                                  {todayLog.conformita ? `Registrato alle ${timeStr}` : `⚠️ ANOMALIA - ${todayLog.azione_correttiva}`}
-                              </div>
-                              <button onClick={() => abilitaNuovaMisurazione(asset)} style={{marginTop:15, width:'100%', background:'#f39c12', color:'white', border:'none', padding:10, borderRadius:5, cursor:'pointer', fontWeight:'bold'}}>✏️ MODIFICA</button>
-                          </div>
-                      );
-                  }
+    const timeStr = new Date(todayLog.data_ora).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'});
+    
+    // CALCOLA SE È STATO MODIFICATO (più di 1 log oggi per questo asset)
+    const logsDiOggi = logs.filter(l => l.asset_id === asset.id && new Date(l.data_ora).toDateString() === new Date().toDateString());
+    const isModificato = logsDiOggi.length > 1;
+
+    return (
+        <div key={asset.id} style={{background:'#eafaf1', padding:20, borderRadius:10, border:'2px solid #27ae60', boxShadow:'0 2px 5px rgba(0,0,0,0.1)'}}>
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                <h3 style={{margin:0, color:'#27ae60'}}>✅ {asset.nome}</h3>
+                <span style={{fontSize:'24px', fontWeight:'bold'}}>{todayLog.valore === 'OFF' ? 'SPENTO' : todayLog.valore + '°C'}</span>
+            </div>
+            
+            {/* --- QUI LA MODIFICA DELLA LABEL --- */}
+            <div style={{fontSize:'12px', color:'#555', marginTop:5}}>
+                {todayLog.conformita 
+                    ? (isModificato ? `📝 Modificato alle ${timeStr}` : `Registrato alle ${timeStr}`) 
+                    : `⚠️ ANOMALIA - ${todayLog.azione_correttiva}`}
+            </div>
+            {/* ----------------------------------- */}
+
+            <button onClick={() => abilitaNuovaMisurazione(asset)} style={{marginTop:15, width:'100%', background:'#f39c12', color:'white', border:'none', padding:10, borderRadius:5, cursor:'pointer', fontWeight:'bold'}}>✏️ MODIFICA</button>
+        </div>
+    );
+}
                   
                   // --- FIX GRAFICO INPUT TEMPERATURE ---
                   return (
