@@ -495,13 +495,63 @@ const printOnlyQR = () => {
       )}
 
       {printMode === 'label' && lastLabel && (
-        <div className="print-area" style={{position:'fixed', top:0, left:0, width:'58mm', height:'40mm', background:'white', color:'black', display:'flex', flexDirection:'column', padding:'3mm', boxSizing:'border-box', fontFamily:'Arial', border:'1px solid black'}}>
-            <div style={{fontWeight:'900', fontSize:'14px', textAlign:'center', borderBottom:'2px solid black', paddingBottom:'2px', textTransform:'uppercase'}}>{lastLabel.prodotto}</div>
-            <div style={{display:'flex', justifyContent:'space-between', marginTop:'5px', fontSize:'10px'}}><span>PROD: <strong>{new Date(lastLabel.data_produzione).toLocaleDateString()}</strong></span><span>OP: {lastLabel.operatore}</span></div>
-            <div style={{marginTop:'5px', textAlign:'center'}}><div style={{fontSize:'10px'}}>SCADENZA</div><div style={{fontWeight:'900', fontSize:'16px'}}>{new Date(lastLabel.data_scadenza).toLocaleDateString()}</div></div>
-            <div style={{marginTop:'auto', fontSize:'9px', textAlign:'center', borderTop:'1px solid black', paddingTop:'2px'}}>Lotto: {lastLabel.lotto}</div>
+        <div className="print-area" style={{
+            position:'fixed', top:0, left:0, 
+            width:'58mm', height:'40mm', 
+            background:'white', color:'black', 
+            display:'flex', flexDirection:'column', 
+            padding:'2mm', boxSizing:'border-box', 
+            fontFamily:'Arial, sans-serif', 
+            border:'1px solid black' // Bordo solo per debug a video, in stampa scompare solitamente
+        }}>
+            {/* 1. NOME PRODOTTO (Titolo) */}
+            <div style={{
+                fontWeight:'900', fontSize:'12px', textAlign:'center', 
+                borderBottom:'1px solid black', paddingBottom:'2px', 
+                textTransform:'uppercase', lineHeight:'1em', marginBottom:'2px'
+            }}>
+                {lastLabel.prodotto}
+            </div>
+            
+            {/* 2. LISTA INGREDIENTI CON PRODUTTORE E LOTTO (Nuova Parte) */}
+            {/* Usiamo un font piccolo (7px) e limitiamo l'altezza per non uscire dall'etichetta */}
+            {lastLabel.ingredienti && (
+                <div style={{
+                    fontSize:'7px', textAlign:'left', marginBottom:'2px', 
+                    lineHeight:'8px', overflow:'hidden', 
+                    whiteSpace: 'pre-wrap', // Permette al testo di andare a capo
+                    maxHeight: '12mm' // Massima altezza dedicata agli ingredienti
+                }}>
+                    <span style={{fontWeight:'bold'}}>Ingr:</span> {lastLabel.ingredienti}
+                </div>
+            )}
+
+            {/* 3. INFO OPERATORE E DATA PRODUZIONE */}
+            <div style={{
+                display:'flex', justifyContent:'space-between', 
+                marginTop:'auto', fontSize:'8px', 
+                borderTop: '1px solid #ccc', paddingTop:'2px'
+            }}>
+                <span>PROD: <strong>{new Date(lastLabel.data_produzione).toLocaleDateString()}</strong></span>
+                <span>OP: {lastLabel.operatore.substring(0,8)}</span>
+            </div>
+            
+            {/* 4. DATA SCADENZA (Grande) */}
+            <div style={{textAlign:'center', marginTop:'1px'}}>
+                <div style={{fontSize:'7px', textTransform:'uppercase'}}>Scadenza</div>
+                <div style={{fontWeight:'900', fontSize:'14px'}}>{new Date(lastLabel.data_scadenza).toLocaleDateString()}</div>
+            </div>
+            
+            {/* 5. LOTTO PRODUZIONE (In fondo) */}
+            <div style={{
+                fontSize:'7px', textAlign:'center', 
+                borderTop:'1px solid black', paddingTop:'1px', marginTop:'1px'
+            }}>
+                Lotto: {lastLabel.lotto}
+            </div>
         </div>
       )}
+      
 {showQRModal && (
           <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.85)', zIndex:3000, display:'flex', alignItems:'center', justifyContent:'center'}}>
               <div style={{background:'white', padding:40, borderRadius:20, textAlign:'center', maxWidth:500, width:'90%'}}>
