@@ -472,8 +472,102 @@ app.put('/api/haccp/assets/:id', async (req, res) => {
         res.json({success:true});
     } catch(e) { res.status(500).json({error:e.message}); }
 });
+app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
+    try {
+        const { tipo, ristorante_id } = req.params;
+        const { start, end, rangeName, format } = req.query; 
+        
+        const ristRes = await pool.query("SELECT nome, dati_fiscali FROM ristoranti WHERE id = $1", [ristorante_id]);
+        const aziendaInfo = ristRes.rows[0];
 
-// server/server.js
+        let headers = [];
+        let rows = [];
+        let sheetName = "Export";
+        
+        if (tipo === 'temperature') {
+            sheetName = "Temperature";
+            headers = ["Data", "Ora", "Macchina", "Temp", "Esito", "Az. Correttiva", "Op."];
+            let sql = `SELECT l.data_ora, a.nome as asset, l.valore, l.conformita, l.azione_correttiva, l.operatore 
+                       FROM haccp_logs l JOIN haccp_assets a ON l.asset_id = a.id WHERE l.ristorante_id = $1`;
+            const params = [ristorante_id];
+            if(start && end) { sql += ` AND l.data_ora >= $2 AND l.data_ora <= $3`; params.push(start, end); }
+            sql += ` ORDER BY l.data_ora ASC`; 
+            const r = await pool.query(sql, params);
+            rows = r.rows.map(row => [
+                new Date(row.data_ora).toLocaleDateString('it-IT'), 
+                new Date(row.data_ora).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'}), 
+                String(row.asset || ''), String(row.valore === 'OFF' ? 'SPENTO' : `${row.valore}°C`),
+                row.conformita ? "OK" : "NO", String(row.azione_correttiva || ""), String(row.operatore || "")
+            ]);
+
+        } else if (tipo === 'merci') {
+            sheetName = "Ricevimento Merci";
+            headers = ["Data", "Fornitore", "Prodotto", "Condizione", "Lotto", "Kg", "Scadenza", "Note"];
+            let sql = `SELECT * FROM haccp_merci WHERE ristorante_id = $1`;
+            const params = [ristorante_id];
+            if(start && end) { sql += ` AND data_ricezione >= $2 AND data_ricezione <= $3`; params.push(start, end); }
+            sql += ` ORDER BY data_ricezione ASC`; 
+            const r = await pool.query(sql, params);
+            rows = r.rows.map(row => [
+                new Date(row.data_ricezione).toLocaleDateString('it-IT'), String(row.fornitore || ''), String(row.prodotto || ''),
+                (!row.conforme ? "TEMP KO" : (!row.integro ? "DANNEGGIATO" : "OK")),
+                String(row.lotto || ''), String(row.quantita || ''),
+                row.scadenza ? new Date(row.scadenza).toLocaleDateString('it-IT') : "-", String(row.note || '')
+            ]);
+
+        } else if (tipo === 'assets') {
+            sheetName = "Lista Macchine";
+            // AGGIUNTA MATRICOLA QUI
+            headers = ["Stato", "Nome", "Tipo", "Marca", "Matricola", "Range"]; 
+            const r = await pool.query(`SELECT * FROM haccp_assets WHERE ristorante_id = $1 ORDER BY nome ASC`, [ristorante_id]);
+            rows = r.rows.map(row => [
+                String(row.stato ? row.stato.toUpperCase() : "ATTIVO"),
+                String(row.nome || ''), String(row.tipo || ''), String(row.marca || ''),
+                String(row.serial_number || '-'), // MATRICOLA DOPO MARCA
+                `${row.range_min}°C / ${row.range_max}°C`
+            ]);
+
+        } else if (tipo === 'pulizie') { // NUOVA SEZIONE EXPORT PULIZIE
+            sheetName = "Registro Pulizie";
+            headers = ["Data", "Ora", "Area/Attrezzatura", "Detergente", "Operatore", "Esito"];
+            let sql = `SELECT * FROM haccp_cleaning WHERE ristorante_id = $1`;
+            const params = [ristorante_id];
+            if(start && end) { sql += ` AND data_ora >= $2 AND data_ora <= $3`; params.push(start, end); }
+            sql += ` ORDER BY data_ora ASC`;
+            const r = await pool.query(sql, params);
+            rows = r.rows.map(row => [
+                new Date(row.data_ora).toLocaleDateString('it-IT'),
+                new Date(row.data_ora).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'}),
+                String(row.area || ''), String(row.prodotto || ''), String(row.operatore || ''),
+                row.conformita ? "OK" : "NON CONFORME"
+            ]);
+        }
+
+        // GENERAZIONE PDF / EXCEL (Resta invariato come il tuo codice originale)
+        if (format === 'pdf') {
+            const doc = new PDFDocument({ margin: 30, size: 'A4' });
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename="haccp_${tipo}.pdf"`);
+            doc.pipe(res);
+            doc.fontSize(16).text(String(aziendaInfo.nome), { align: 'center' });
+            doc.fontSize(10).text(String(aziendaInfo.dati_fiscali || ""), { align: 'center' });
+            doc.moveDown(1);
+            doc.fontSize(12).text(`Report: ${sheetName}`, { align: 'center' });
+            doc.moveDown(1);
+            await doc.table({ headers, rows }, { width: 500 });
+            doc.end();
+        } else {
+            const finalData = [[aziendaInfo.dati_fiscali || aziendaInfo.nome], [`Report: ${sheetName}`], [""], headers, ...rows];
+            const workbook = xlsx.utils.book_new();
+            const worksheet = xlsx.utils.aoa_to_sheet(finalData);
+            xlsx.utils.book_append_sheet(workbook, worksheet, sheetName);
+            const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+            res.setHeader('Content-Disposition', `attachment; filename="haccp_${tipo}.xlsx"`);
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.send(buffer);
+        }
+    } catch (err) { res.status(500).json({ error: "Errore Export: " + err.message }); }
+});
 
 // --- API EXPORT EXCEL MIGLIORATA (Layout Pulito) ---
 app.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
@@ -761,6 +855,34 @@ app.put('/api/haccp/logs/:id', async (req, res) => {
 app.delete('/api/haccp/logs/:id', async (req, res) => {
     try {
         await pool.query("DELETE FROM haccp_logs WHERE id=$1", [req.params.id]);
+        res.json({success:true});
+    } catch(e) { res.status(500).json({error:"Err"}); }
+});
+
+// 1. GET PULIZIE
+app.get('/api/haccp/pulizie/:ristorante_id', async (req, res) => {
+    try {
+        const r = await pool.query("SELECT * FROM haccp_cleaning WHERE ristorante_id = $1 ORDER BY data_ora DESC LIMIT 100", [req.params.ristorante_id]);
+        res.json(r.rows);
+    } catch(e) { res.status(500).json({error:"Err"}); }
+});
+
+// 2. POST PULIZIA
+app.post('/api/haccp/pulizie', async (req, res) => {
+    try {
+        const { ristorante_id, area, prodotto, operatore, conformita, data_ora } = req.body;
+        await pool.query(
+            "INSERT INTO haccp_cleaning (ristorante_id, area, prodotto, operatore, conformita, data_ora) VALUES ($1, $2, $3, $4, $5, $6)",
+            [ristorante_id, area, prodotto, operatore, conformita !== undefined ? conformita : true, data_ora || new Date()]
+        );
+        res.json({success:true});
+    } catch(e) { res.status(500).json({error:e.message}); }
+});
+
+// 3. DELETE PULIZIA
+app.delete('/api/haccp/pulizie/:id', async (req, res) => {
+    try {
+        await pool.query("DELETE FROM haccp_cleaning WHERE id = $1", [req.params.id]);
         res.json({success:true});
     } catch(e) { res.status(500).json({error:"Err"}); }
 });
