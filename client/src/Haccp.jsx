@@ -1,4 +1,4 @@
-// client/src/Haccp.jsx - VERSIONE V9 (FRIGO SPENTO + DATI SOCIETARI + EXCEL TIME RANGE)
+// client/src/Haccp.jsx - VERSIONE V10 (CLEANUP & CALENDARIO ANOMALIE)
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import QRCode from 'react-qr-code'; 
@@ -18,9 +18,6 @@ function Haccp() {
   const [calendarLogs, setCalendarLogs] = useState([]); 
   const [tab, setTab] = useState('temperature'); 
   
-  // Dati Societari (NUOVO)
-  const [datiFiscali, setDatiFiscali] = useState("");
-
   // Stati Moduli
   const [tempInput, setTempInput] = useState({}); 
   const [uploadingLog, setUploadingLog] = useState(null); 
@@ -42,15 +39,15 @@ function Haccp() {
       nome:'', tipo:'frigo', range_min:0, range_max:4, 
       marca:'', modello:'', serial_number:'', 
       foto_url:'', etichetta_url:'',
-      stato: 'attivo' // NUOVO STATO
+      stato: 'attivo' 
   });
   const [uploadingAsset, setUploadingAsset] = useState(false); 
   const [uploadingLabel, setUploadingLabel] = useState(false); 
   const [showQRModal, setShowQRModal] = useState(null);
 
-  // Stati Download Excel (NUOVO)
+  // Stati Download Excel
   const [showDownloadModal, setShowDownloadModal] = useState(false);
-  const [downloadType, setDownloadType] = useState(null); // 'temperature', 'merci', 'assets'
+  const [downloadType, setDownloadType] = useState(null); 
 
   // Stati Etichette e Stampa
   const [labelData, setLabelData] = useState({ prodotto: '', giorni_scadenza: 3, operatore: '', tipo: 'positivo' });
@@ -67,15 +64,6 @@ function Haccp() {
   useEffect(() => {
       fetch(`${API_URL}/api/menu/${slug}`).then(r=>r.json()).then(data => {
           setInfo(data);
-          // Recuperiamo i dati fiscali se presenti (potrebbe servire una chiamata dedicata o inclusa nel menu)
-          // Simuliamo recupero o fetch dedicata se necessario:
-          if(data.dati_fiscali) setDatiFiscali(data.dati_fiscali);
-          else {
-             // Fallback: fetch specifica se l'API menu non li ritorna
-             fetch(`${API_URL}/api/ristorante/config/${data.id}`).then(r2=>r2.json()).then(conf => {
-                 if(conf.dati_fiscali) setDatiFiscali(conf.dati_fiscali);
-             }).catch(()=>{});
-          }
       });
       const sess = localStorage.getItem(`haccp_session_${slug}`);
       if(sess === "true") setIsAuthorized(true);
@@ -130,23 +118,13 @@ function Haccp() {
       const data = await res.json(); return data.url;
   };
 
-  // --- DATI SOCIETARI ---
-  const salvaDatiFiscali = async () => {
-      await fetch(`${API_URL}/api/ristorante/dati-fiscali/${info.id}`, {
-          method: 'PUT', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ dati_fiscali: datiFiscali })
-      });
-      alert("Dati societari salvati! Compariranno nelle intestazioni Excel.");
-  };
-
-  // --- EXCEL DOWNLOAD (CON MODALE) ---
+  // --- EXCEL DOWNLOAD ---
   const openDownloadModal = (type) => {
       setDownloadType(type);
       setShowDownloadModal(true);
   };
 
   const executeDownload = (range) => {
-      // range: 'week', 'month', 'year', 'all'
       const end = new Date();
       let start = new Date();
       let rangeName = "Tutto";
@@ -235,7 +213,7 @@ function Haccp() {
   };
   const eliminaMerce = async (id) => { if(confirm("Eliminare riga?")) { await fetch(`${API_URL}/api/haccp/merci/${id}`, {method:'DELETE'}); ricaricaDati(); } };
 
-  // --- ASSET CRUD (SERIALE, FOTO, ETICHETTA, STATO) ---
+  // --- ASSET CRUD ---
   const apriModaleAsset = (asset = null) => {
       if(asset) { setEditingAsset(asset); setAssetForm({ ...asset }); } 
       else { setEditingAsset(null); setAssetForm({ nome:'', tipo:'frigo', range_min:0, range_max:4, marca:'', modello:'', serial_number:'', foto_url:'', etichetta_url:'', stato:'attivo' }); }
@@ -257,7 +235,7 @@ function Haccp() {
       try { const url = await uploadFile(f); setAssetForm(prev => ({...prev, etichetta_url: url})); } finally { setUploadingLabel(false); }
   };
 
-  // --- CALENDARIO ---
+  // --- CALENDARIO (MODIFICATO PER ANOMALIE ESTESE) ---
   const getDaysInMonth = (date) => { 
     const year = date.getFullYear(), month = date.getMonth();
     const days = new Date(year, month + 1, 0).getDate();
@@ -312,7 +290,7 @@ function Haccp() {
                      <h2 style={{marginTop:0}}>Dettagli {selectedDayLogs.day} {monthNames[currentDate.getMonth()]}</h2>
                      
                      <div style={{display:'flex', gap:20, flexWrap:'wrap'}}>
-                         {/* COLONNA TEMPERATURE */}
+                         {/* COLONNA TEMPERATURE (MODIFICATA) */}
                          <div style={{flex:1, minWidth:300, background:'#f9f9f9', padding:15, borderRadius:5}}>
                              <h4 style={{marginTop:0, borderBottom:'2px solid #27ae60', color:'#27ae60'}}>🌡️ Temperature</h4>
                              {selectedDayLogs.logs.length === 0 ? <p style={{color:'#999'}}>Nessuna registrazione.</p> : (
@@ -324,7 +302,11 @@ function Haccp() {
                                                 <td style={{padding:5}}>{new Date(l.data_ora).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'})}</td>
                                                 <td style={{padding:5}}><strong>{l.nome_asset}</strong></td>
                                                 <td style={{padding:5}}>{l.valore}</td>
-                                                <td style={{padding:5}}>{l.conformita ? '✅' : '❌'}</td>
+                                                <td style={{padding:5}}>
+                                                    {l.conformita 
+                                                        ? <span style={{color:'green', fontWeight:'bold'}}>OK</span> 
+                                                        : <span style={{color:'red', fontWeight:'bold'}}>❌ ERR - {l.azione_correttiva}</span>}
+                                                </td>
                                             </tr>
                                         ))}
                                      </tbody>
@@ -391,7 +373,7 @@ function Haccp() {
           <div className="no-print" style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20, flexWrap:'wrap', gap:10}}>
               <div><h1 style={{margin:0, color:'#2c3e50'}}>🛡️ HACCP Control</h1></div>
               <div style={{display:'flex', gap:10, alignItems:'center'}}>
-                  {/* PULSANTI DOWNLOAD EXCEL CON MODALE */}
+                  {/* PULSANTI DOWNLOAD EXCEL */}
                   <div style={{marginRight:20, display:'flex', gap:5}}>
                       <button onClick={()=>openDownloadModal('temperature')} style={{background:'#27ae60', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Temp</button>
                       <button onClick={()=>openDownloadModal('merci')} style={{background:'#f39c12', color:'white', border:'none', padding:'5px 10px', borderRadius:3, fontSize:12, cursor:'pointer'}}>⬇ Merci</button>
@@ -408,13 +390,12 @@ function Haccp() {
           </div>
       )}
 
-      {/* 1. TEMPERATURE (CON GESTIONE FRIGO SPENTO) */}
+      {/* 1. TEMPERATURE */}
       {tab === 'temperature' && (
           <div className="no-print" style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(350px, 1fr))', gap:20}}>
               {assetsToDisplay.map(asset => {
                   const todayLog = getTodayLog(asset.id);
                   
-                  // LOGICA FRIGO SPENTO
                   if(asset.stato === 'spento') {
                       return (
                           <div key={asset.id} style={{background:'#e0e0e0', padding:20, borderRadius:10, border:'2px solid #999', opacity:0.7, position:'relative'}}>
@@ -428,7 +409,6 @@ function Haccp() {
                       );
                   }
 
-                  // LOGICA NORMALE
                   const isInputActive = !!tempInput[asset.id];
                   const currentData = tempInput[asset.id] || {};
                   
@@ -470,7 +450,7 @@ function Haccp() {
           </div>
       )}
 
-      {/* 2. RICEVIMENTO MERCI (TABELLA + FORM) */}
+      {/* 2. MERCI */}
       {tab === 'merci' && !scanId && (
           <div className="no-print">
               <div style={{background:'white', padding:20, borderRadius:10, marginBottom:20, borderLeft: merciForm.id ? '5px solid #f39c12' : '5px solid #27ae60'}}>
@@ -588,23 +568,9 @@ function Haccp() {
           </div>
       )}
 
-      {/* 5. SETUP (DATI SOCIETARI + FRIGO SPENTO) */}
+      {/* 5. SETUP (DATI SOCIETARI RIMOSSI - SOLO MACCHINE) */}
       {tab === 'setup' && !scanId && (
           <div className="no-print">
-              {/* SEZIONE DATI SOCIETARI */}
-              <div style={{background:'white', padding:20, borderRadius:10, marginBottom:20, borderLeft:'5px solid #8e44ad'}}>
-                  <h3 style={{margin:'0 0 10px 0'}}>🏢 Dati Societari (Per Intestazione Excel)</h3>
-                  <div style={{display:'flex', gap:10}}>
-                      <input 
-                          value={datiFiscali} 
-                          onChange={e=>setDatiFiscali(e.target.value)} 
-                          placeholder="Es. Pizzeria Da Tony Srl - P.IVA 12345678901 - Via Roma 1, Milano" 
-                          style={{flex:1, padding:10, border:'1px solid #ccc', borderRadius:5}} 
-                      />
-                      <button onClick={salvaDatiFiscali} style={{background:'#8e44ad', color:'white', border:'none', padding:'10px 20px', borderRadius:5, cursor:'pointer'}}>SALVA</button>
-                  </div>
-              </div>
-
               <div style={{display:'flex', justifyContent:'space-between', marginBottom:20}}>
                   <h2>Macchinari</h2>
                   <button onClick={()=>apriModaleAsset()} style={{background:'#27ae60', color:'white', border:'none', padding:'10px 20px', borderRadius:5, fontWeight:'bold'}}>+ Nuova Macchina</button>
