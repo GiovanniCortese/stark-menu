@@ -84,9 +84,14 @@ const MerciManager = ({
                                      {m.note && <div style={{fontStyle:'italic'}}>{m.note}</div>}
                                 </td>
                                 <td style={{padding:8, display:'flex', gap:5}}>
-                                    {m.allegato_url && (
-                                        <button onClick={() => handleFileAction(m.allegato_url)} style={{background:'#3498db', color:'white', border:'none', borderRadius:3, padding:'2px 5px', cursor:'pointer'}}>📎</button>
-                                    )}
+                                   {m.allegato_url && (
+    <button 
+        onClick={() => handleFileAction(m.allegato_url)} // Ora questo apre il super modale
+        style={{background:'#3498db', color:'white', border:'none', borderRadius:3, padding:'2px 5px', cursor:'pointer'}}
+    >
+        📎
+    </button>
+)}
                                     <button onClick={()=>iniziaModificaMerci(m)} style={{background:'#f39c12', color:'white', border:'none', borderRadius:3, cursor:'pointer', padding:'2px 5px'}}>✏️</button>
                                     <button onClick={()=>eliminaMerce(m.id)} style={{background:'#e74c3c', color:'white', border:'none', borderRadius:3, cursor:'pointer', padding:'2px 5px'}}>🗑️</button>
                                 </td>
