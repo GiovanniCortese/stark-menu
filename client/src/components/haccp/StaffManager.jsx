@@ -16,6 +16,7 @@ const StaffManager = ({
     const [isLoading, setIsLoading] = useState(false);
     // Stato per gestire il popup del PDF/Immagine
     const [previewDoc, setPreviewDoc] = useState(null); 
+    const [isDownloading, setIsDownloading] = useState(false);
 
     const handleUploadWrapper = async (e) => {
         const f = e.target.files[0];
@@ -38,22 +39,55 @@ const StaffManager = ({
         }
     };
 
-    // --- FUNZIONE: PREPARA IL POPUP ---
+    // --- FUNZIONE 1: PREPARA IL POPUP ---
     const handleViewFile = (doc) => {
         const isPdf = doc.nome_file.toLowerCase().endsWith('.pdf') || doc.url.toLowerCase().endsWith('.pdf');
         
-        // Se è PDF usiamo il Proxy, se è immagine usiamo l'URL diretto
-        let urlFinale = doc.url;
+        // Usiamo sempre il proxy per i PDF per l'anteprima
+        let previewUrl = doc.url;
         if (isPdf) {
-            // Usiamo il proxy per aggirare i blocchi e mostrare l'anteprima
-            urlFinale = `${API_URL}/api/proxy-download?url=${encodeURIComponent(doc.url)}&name=${encodeURIComponent(doc.nome_file)}`;
+            previewUrl = `${API_URL}/api/proxy-download?url=${encodeURIComponent(doc.url)}&name=${encodeURIComponent(doc.nome_file)}`;
         }
 
         setPreviewDoc({
-            url: urlFinale,
+            url: doc.url, // URL originale (serve per generare il proxy download)
+            previewUrl: previewUrl, // URL per visualizzare (iframe/img)
             name: doc.nome_file,
+            title: doc.tipo_doc, // <--- ORA USIAMO IL TIPO (es. "Contratto")
             type: isPdf ? 'pdf' : 'image'
         });
+    };
+
+    // --- FUNZIONE 2: DOWNLOAD FORZATO (SENZA APRIRE NUOVE FINESTRE) ---
+    const handleForceDownload = async () => {
+        if (!previewDoc) return;
+        setIsDownloading(true);
+        try {
+            // 1. Costruiamo l'URL Proxy per il download (vale sia per PDF che immagini)
+            // Questo nasconde Cloudinary e aggira i blocchi CORS
+            const proxyDownloadUrl = `${API_URL}/api/proxy-download?url=${encodeURIComponent(previewDoc.url)}&name=${encodeURIComponent(previewDoc.name)}`;
+
+            // 2. Scarichiamo il file come "Blob" (dati grezzi)
+            const response = await fetch(proxyDownloadUrl);
+            const blob = await response.blob();
+
+            // 3. Creiamo un link temporaneo invisibile per forzare il salvataggio
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = previewDoc.name; // Nome del file salvato
+            document.body.appendChild(link);
+            link.click();
+            
+            // 4. Pulizia
+            link.remove();
+            window.URL.revokeObjectURL(downloadUrl);
+        } catch (error) {
+            console.error("Errore download:", error);
+            alert("Errore durante il download del file.");
+        } finally {
+            setIsDownloading(false);
+        }
     };
 
     return (
@@ -135,7 +169,7 @@ const StaffManager = ({
                                             <td style={{padding:8}}>{d.nome_file}</td>
                                             <td style={{padding:8, display:'flex', gap:5}}>
                                                 
-                                                {/* TASTO VISUALIZZA MODIFICATO */}
+                                                {/* TASTO VISUALIZZA */}
                                                 <button
                                                     onClick={() => handleViewFile(d)}
                                                     style={{
@@ -188,20 +222,28 @@ const StaffManager = ({
                             padding:'10px 15px', background:'#ecf0f1', borderBottom:'1px solid #ccc',
                             display:'flex', justifyContent:'space-between', alignItems:'center'
                         }}>
-                            <span style={{fontWeight:'bold', color:'#2c3e50'}}>📄 {previewDoc.name}</span>
+                            {/* NOME DEL DOCUMENTO (TIPO) IN ALTO A SINISTRA */}
+                            <span style={{fontWeight:'bold', color:'#2c3e50', fontSize: 16}}>
+                                📄 {previewDoc.title} {/* Es: "Contratto", "Busta Paga" */}
+                            </span>
+                            
                             <div style={{display:'flex', gap:10}}>
-                                {/* Tasto Download Diretto */}
-                                <a 
-                                    href={previewDoc.url} 
-                                    download={previewDoc.name}
+                                {/* TASTO DOWNLOAD INTELLIGENTE */}
+                                <button 
+                                    onClick={handleForceDownload}
+                                    disabled={isDownloading}
                                     style={{
-                                        background:'#27ae60', color:'white', textDecoration:'none', 
-                                        padding:'6px 12px', borderRadius:4, fontSize:13, fontWeight:'bold'
+                                        background: isDownloading ? '#95a5a6' : '#27ae60', 
+                                        color:'white', border:'none',
+                                        padding:'6px 12px', borderRadius:4, fontSize:13, fontWeight:'bold',
+                                        cursor: isDownloading ? 'wait' : 'pointer',
+                                        display: 'flex', alignItems: 'center', gap: 5
                                     }}
                                 >
-                                    ⬇️ Scarica
-                                </a>
-                                {/* Tasto Chiudi */}
+                                    {isDownloading ? '⏳ Scaricamento...' : '⬇️ Scarica'}
+                                </button>
+
+                                {/* TASTO CHIUDI */}
                                 <button 
                                     onClick={() => setPreviewDoc(null)}
                                     style={{
@@ -218,13 +260,13 @@ const StaffManager = ({
                         <div style={{flex:1, background:'#555', overflow:'hidden', display:'flex', justifyContent:'center', alignItems:'center'}}>
                             {previewDoc.type === 'pdf' ? (
                                 <iframe 
-                                    src={previewDoc.url} 
+                                    src={previewDoc.previewUrl} 
                                     style={{width:'100%', height:'100%', border:'none'}} 
                                     title="Anteprima PDF"
                                 />
                             ) : (
                                 <img 
-                                    src={previewDoc.url} 
+                                    src={previewDoc.previewUrl} 
                                     alt="Anteprima" 
                                     style={{maxWidth:'100%', maxHeight:'100%', objectFit:'contain'}} 
                                 />
