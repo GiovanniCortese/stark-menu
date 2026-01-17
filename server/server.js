@@ -452,110 +452,93 @@ app.get('/api/haccp/labels/storico/:ristorante_id', async (req, res) => {
     } catch(e) { res.status(500).json({error: "Errore recupero storico"}); } 
 });
 
-// --- PROXY DOWNLOAD V12 (PASSEPARTOUT: TRIM CHIAVI + TENTATIVI RAW/IMAGE) ---
+// --- PROXY DOWNLOAD V13 (METODO INFALLIBILE: INTERROGAZIONE ADMIN) ---
 app.get('/api/proxy-download', async (req, res) => {
     const fileUrl = req.query.url;
     const fileName = req.query.name || 'documento.pdf';
-    
-    // 1. PULIZIA CHIAVI (FIX SPAZI VUOTI)
-    // Spesso nel copia/incolla finisce uno spazio alla fine che rompe la firma.
+
+    // 1. CONTROLLO CHIAVI
     const apiSecret = (process.env.CLOUDINARY_API_SECRET || '').trim();
     const apiKey = (process.env.CLOUDINARY_API_KEY || '').trim();
     const cloudName = (process.env.CLOUDINARY_CLOUD_NAME || '').trim();
 
-    if (!apiSecret || !apiKey || !cloudName) {
-        return res.status(500).send("ERRORE: Chiavi Cloudinary mancanti.");
-    }
+    if (!apiSecret || !apiKey || !cloudName) return res.status(500).send("ERRORE: Chiavi mancanti.");
 
-    // Riconfiguriamo Cloudinary al volo per essere sicuri di usare le chiavi pulite
-    cloudinary.config({
-        cloud_name: cloudName,
-        api_key: apiKey,
-        api_secret: apiSecret
-    });
+    // Configura Cloudinary
+    cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret });
 
     if (!fileUrl) return res.status(400).send("URL mancante");
 
+    // Moduli
     const https = require('https');
     const http = require('http');
 
-    // Funzione Helper Download
-    const tryDownload = (url) => {
-        return new Promise((resolve) => {
-            const client = url.startsWith('https') ? https : http;
-            const req = client.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
-                if (res.statusCode === 200) resolve({ ok: true, res });
-                else if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) resolve({ ok: false, redirect: res.headers.location });
-                else resolve({ ok: false, status: res.statusCode });
-            });
-            req.on('error', () => resolve({ ok: false, error: true }));
-        });
-    };
+    try {
+        console.log("🔍 V13: Analisi file in corso...");
+        
+        // ESTRAZIONE PARZIALE DELL'ID
+        // Dall'URL: .../upload/v12345/menu-app/nomefile.pdf
+        // Vogliamo solo: "menu-app/nomefile" (senza estensione e senza versione)
+        const parts = fileUrl.split('/upload/');
+        if (parts.length < 2) return res.status(400).send("URL non valido");
+        
+        let path = parts[1];
+        path = path.replace(/^v\d+\//, ''); // Rimuove versione
+        const possibleId = path.replace(/\.[^/.]+$/, ""); // Rimuove estensione .pdf
 
-    if (fileUrl.includes('cloudinary.com')) {
+        console.log(`   👉 Cerco ID: "${possibleId}" nei server Cloudinary...`);
+
+        // 2. CHIEDIAMO A CLOUDINARY I DATI REALI
+        // Proviamo prima come 'image' (99% dei PDF su Cloudinary)
+        let resource;
         try {
-            // Esempio: .../upload/v1768607586/menu-app/doc.pdf
-            const parts = fileUrl.split('/upload/');
-            if (parts.length === 2) {
-                let path = parts[1];
-                let version = null;
-                
-                // Estrai versione
-                const verMatch = path.match(/^v(\d+)\//);
-                if (verMatch) {
-                    version = verMatch[1];
-                    path = path.replace(/^v\d+\//, '');
-                }
-
-                // ID Pulito (senza estensione) e ID Raw (con estensione)
-                const publicIdClean = path.replace(/\.[^/.]+$/, ""); // "menu-app/doc"
-                const publicIdRaw = path; // "menu-app/doc.pdf"
-
-                // PREPARIAMO 3 CANDIDATI (Uno di questi è la chiave giusta)
-                const candidates = [
-                    // 1. STANDARD: Come immagine, senza estensione (Il più probabile)
-                    cloudinary.url(publicIdClean, { resource_type: 'image', type: 'upload', sign_url: true, format: 'pdf', version: version, secure: true }),
-                    
-                    // 2. RAW: Come file grezzo, CON estensione (Spesso i PDF finiscono qui)
-                    cloudinary.url(publicIdRaw, { resource_type: 'raw', type: 'upload', sign_url: true, version: version, secure: true }),
-
-                    // 3. HYBRID: Come immagine, ma mantenendo l'estensione nel nome (Raro ma possibile)
-                    cloudinary.url(publicIdRaw, { resource_type: 'image', type: 'upload', sign_url: true, format: 'pdf', version: version, secure: true })
-                ];
-
-                console.log(`🔐 Avvio tentativi V12 con Secret Key pulita (${apiSecret.length} chars)...`);
-
-                for (let i = 0; i < candidates.length; i++) {
-                    const url = candidates[i];
-                    console.log(`   👉 Tentativo ${i+1}: ${url}`);
-                    
-                    const result = await tryDownload(url);
-                    
-                    if (result.ok) {
-                        console.log("   ✅ SUCCESSO!");
-                        res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
-                        res.setHeader('Content-Type', 'application/pdf');
-                        result.res.pipe(res);
-                        return; // Stop, abbiamo vinto.
-                    } else if (result.redirect) {
-                        // Se redirect, seguilo una volta
-                        const redir = await tryDownload(result.redirect);
-                        if (redir.ok) {
-                            res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
-                            res.setHeader('Content-Type', 'application/pdf');
-                            redir.res.pipe(res);
-                            return;
-                        }
-                    }
-                }
-                return res.status(401).send("Errore 401: Nessuna combinazione di firma ha funzionato. Verifica al 100% che la API SECRET nel .env sia corretta.");
-            }
+            resource = await cloudinary.api.resource(possibleId, { resource_type: 'image' });
         } catch (e) {
-            console.error(e);
+            // Se fallisce, proviamo come 'raw' con estensione
+            try {
+                console.log("   ⚠️ Non trovato come image, provo come RAW...");
+                resource = await cloudinary.api.resource(possibleId + ".pdf", { resource_type: 'raw' });
+            } catch (e2) {
+                console.log("   ❌ File non trovato nelle API.");
+            }
         }
+
+        if (!resource) {
+            return res.status(404).send("Errore: Il file non esiste nel cloud (API Check Failed).");
+        }
+
+        console.log(`   ✅ TROVATO! ID Reale: ${resource.public_id} | Tipo: ${resource.resource_type}`);
+
+        // 3. GENERIAMO L'URL USANDO I DATI UFFICIALI
+        // Qui non possiamo sbagliare perché usiamo i dati che ci ha appena dato Cloudinary
+        const downloadUrl = cloudinary.url(resource.public_id, {
+            resource_type: resource.resource_type,
+            type: resource.type, // solitamente 'upload'
+            sign_url: true,      // FIRMA
+            format: resource.format, // pdf (se image) o null (se raw)
+            version: resource.version, // Versione ufficiale
+            secure: true
+        });
+
+        console.log("   🚀 Scarico da:", downloadUrl);
+
+        // 4. DOWNLOAD
+        const client = downloadUrl.startsWith('https') ? https : http;
+        client.get(downloadUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (response) => {
+            if (response.statusCode === 200) {
+                res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+                res.setHeader('Content-Type', 'application/pdf');
+                response.pipe(res);
+            } else {
+                console.error(`Errore Finale: ${response.statusCode}`);
+                res.status(response.statusCode).send("Errore durante il download stream.");
+            }
+        }).on('error', (err) => res.status(500).send("Errore di rete."));
+
+    } catch (e) {
+        console.error("CRASH V13:", e);
+        res.status(500).send("Errore interno server.");
     }
-    
-    res.status(500).send("Errore generico V12");
 });
 
 app.listen(port, () => console.log(`🚀 SERVER V12.2 (Porta ${port}) - TIMEZONE: ROME`));
