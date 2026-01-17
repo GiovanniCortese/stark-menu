@@ -21,16 +21,21 @@ function Haccp() {
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [password, setPassword] = useState("");
   
-  // Dati Tabellari (Ultimi 7 gg)
+  // Dati
   const [assets, setAssets] = useState([]);
   const [logs, setLogs] = useState([]); 
   const [merci, setMerci] = useState([]); 
+  // Dati Calendario (Unificati)
+  const [calendarData, setCalendarData] = useState({ logs: [], merci: [], pulizie: [], labels: [] });
+  const [calendarLogs, setCalendarLogs] = useState([]); // Legacy fallback
+  
+  const [tab, setTab] = useState('temperature'); 
   const [staffList, setStaffList] = useState([]);
 
-  // Dati Calendario (Mese intero) - NUOVO STATO UNIFICATO
-  const [calendarData, setCalendarData] = useState({ logs: [], merci: [], pulizie: [], labels: [] });
-
-  const [tab, setTab] = useState('temperature'); 
+  // Stati Staff
+  const [selectedStaff, setSelectedStaff] = useState(null);
+  const [staffDocs, setStaffDocs] = useState([]);
+  const [newDoc, setNewDoc] = useState({ tipo: 'Contratto', url: '' });
 
   // Stati Moduli
   const [tempInput, setTempInput] = useState({}); 
@@ -58,22 +63,26 @@ function Haccp() {
   const [uploadingLabel, setUploadingLabel] = useState(false); 
   const [showQRModal, setShowQRModal] = useState(null);
 
-  // Stati UI Extra & Download
+  // Stati UI Extra
+  const [previewImage, setPreviewImage] = useState(null);
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [downloadType, setDownloadType] = useState(null); 
   const [downloadFormat, setDownloadFormat] = useState('excel'); 
   const [selectedMonth, setSelectedMonth] = useState('');
-  
-  // --- NUOVO STATO ANTEPRIMA GLOBALE ---
-  const [globalPreview, setGlobalPreview] = useState(null); // { url, name, type, previewUrl }
+
+  // NUOVO STATO ANTEPRIMA GLOBALE
+  const [globalPreview, setGlobalPreview] = useState(null); 
   const [isDownloading, setIsDownloading] = useState(false);
 
   // Stati Etichette (Produzione)
   const today = new Date();
   today.setDate(today.getDate() + 3);
   const [labelData, setLabelData] = useState({ 
-      prodotto: '', giorni_scadenza: 3, scadenza_manuale: today.toISOString().split('T')[0], 
-      operatore: '', tipo: 'positivo' 
+      prodotto: '', 
+      giorni_scadenza: 3, 
+      scadenza_manuale: today.toISOString().split('T')[0], 
+      operatore: '', 
+      tipo: 'positivo' 
   });
   const [lastLabel, setLastLabel] = useState(null);
   const [printMode, setPrintMode] = useState(null);
@@ -102,7 +111,8 @@ function Haccp() {
       fetch(`${API_URL}/api/haccp/logs/${info.id}`).then(r=>r.json()).then(setLogs);
       fetch(`${API_URL}/api/haccp/merci/${info.id}`).then(r=>r.json()).then(setMerci);
       fetch(`${API_URL}/api/utenti?mode=staff&ristorante_id=${info.id}&t=${new Date().getTime()}`)
-        .then(r=>r.json()).then(data => setStaffList(Array.isArray(data) ? data : []));
+        .then(r=>r.json())
+        .then(data => setStaffList(Array.isArray(data) ? data : []));
   };
 
   const ricaricaCalendario = async () => {
@@ -113,7 +123,6 @@ function Haccp() {
       const end = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
       
       try {
-          // Fetch parallelo di tutti i dati per il mese corrente
           const [resLogs, resMerci, resPulizie, resLabels] = await Promise.all([
              fetch(`${API_URL}/api/haccp/logs/${info.id}?start=${start}&end=${end}`),
              fetch(`${API_URL}/api/haccp/merci/${info.id}?start=${start}&end=${end}`),
@@ -121,28 +130,29 @@ function Haccp() {
              fetch(`${API_URL}/api/haccp/labels/storico/${info.id}?start=${start}&end=${end}`)
           ]);
 
+          const logsData = await resLogs.json();
           setCalendarData({
-              logs: await resLogs.json(),
+              logs: logsData,
               merci: await resMerci.json(),
               pulizie: await resPulizie.json(),
               labels: await resLabels.json()
           });
+          setCalendarLogs(logsData); // Mantieni compatibilità
 
       } catch (e) { console.error("Err Cal", e); }
   };
 
-  // --- GESTIONE ANTEPRIMA & DOWNLOAD (NUOVO SISTEMA) ---
+  // --- GESTIONE FILE (Anteprima e Download) ---
   const openGlobalPreview = (url, name = "Documento") => {
       if(!url) return;
       const isPdf = url.toLowerCase().endsWith('.pdf') || url.toLowerCase().includes('.pdf');
-      // Url proxy per visualizzare se è pdf, altrimenti url diretto
       let previewUrl = url;
       if (isPdf) {
           previewUrl = `${API_URL}/api/proxy-download?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}`;
       }
       setGlobalPreview({
-          url: url, // Url originale per fetch/download
-          previewUrl: previewUrl, // Url per iframe/img
+          url: url, 
+          previewUrl: previewUrl, 
           name: name,
           type: isPdf ? 'pdf' : 'image'
       });
@@ -167,12 +177,14 @@ function Haccp() {
       finally { setIsDownloading(false); }
   };
 
-  // --- FUNZIONI STANDARD ---
+  // Funzioni compatibilità legacy (se usate nei componenti figli)
+  const handleFileAction = (url) => openGlobalPreview(url, "Allegato");
+
+  // --- LOGICA STANDARD ---
   const handleLogin = async (e) => { e.preventDefault(); try { const r = await fetch(`${API_URL}/api/auth/station`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ristorante_id: info.id, role: 'haccp', password }) }); const d = await r.json(); if(d.success) { setIsAuthorized(true); localStorage.setItem(`haccp_session_${slug}`, "true"); } else alert("Password Errata"); } catch(e) { alert("Errore connessione"); } };
   const uploadFile = async (file) => { const fd = new FormData(); fd.append('photo', file); const res = await fetch(`${API_URL}/api/upload`, { method:'POST', body:fd }); const data = await res.json(); return data.url; };
   const getTodayLog = (assetId) => { const today = new Date().toDateString(); return logs.find(l => l.asset_id === assetId && new Date(l.data_ora).toDateString() === today); };
   
-  // LOGS LOGIC
   const handleLogPhoto = async (e, assetId) => { const f = e.target.files[0]; if(!f) return; setUploadingLog(assetId); try { const url = await uploadFile(f); setTempInput(prev => ({...prev, [assetId]: { ...(prev[assetId] || {}), photo: url }})); } finally { setUploadingLog(null); } };
   const registraTemperatura = async (asset, isSpento = false) => { let val = 'OFF', conforme = true, azione = ""; if (!isSpento) { const currentInput = tempInput[asset.id] || {}; val = parseFloat(currentInput.val); if(isNaN(val) && currentInput.val !== '0') return alert("Inserisci un numero valido"); const realMin = Math.min(parseFloat(asset.range_min), parseFloat(asset.range_max)); const realMax = Math.max(parseFloat(asset.range_min), parseFloat(asset.range_max)); conforme = val >= realMin && val <= realMax; if(!conforme) { azione = prompt(`⚠️ ATTENZIONE: Temp ${val}°C fuori range.\nDescrivi azione correttiva:`, ""); if(!azione) return alert("Azione correttiva obbligatoria!"); } val = val.toString(); } else { val = "OFF"; conforme = true; azione = "Macchinario spento/inutilizzato in data odierna"; } await fetch(`${API_URL}/api/haccp/logs`, { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ristorante_id: info.id, asset_id: asset.id, operatore: 'Staff', tipo_log: 'temperatura', valore: val, conformita: conforme, azione_correttiva: azione, foto_prova_url: (tempInput[asset.id] || {}).photo || '' }) }); setTempInput(prev => { const n = {...prev}; delete n[asset.id]; return n; }); ricaricaDati(); if(scanId) navigate(`/haccp/${slug}`); };
   const abilitaNuovaMisurazione = (asset) => { const logEsistente = getTodayLog(asset.id); setTempInput(prev => ({ ...prev, [asset.id]: { val: logEsistente ? logEsistente.valore : '', photo: '' } })); };
@@ -184,19 +196,18 @@ function Haccp() {
   const iniziaModificaMerci = (m) => { setMerciForm({ ...m, data_ricezione: m.data_ricezione.split('T')[0], scadenza: m.scadenza ? m.scadenza.split('T')[0] : '' }); window.scrollTo(0,0); };
   const eliminaMerce = async (id) => { if(confirm("Eliminare riga?")) { await fetch(`${API_URL}/api/haccp/merci/${id}`, {method:'DELETE'}); ricaricaDati(); } };
 
-  // ASSETS & STAFF LOGIC
+  // ASSETS
   const apriModaleAsset = (asset = null) => { if(asset) { setEditingAsset(asset); setAssetForm({ ...asset }); } else { setEditingAsset(null); setAssetForm({ nome:'', tipo:'frigo', range_min:0, range_max:4, marca:'', modello:'', serial_number:'', foto_url:'', etichetta_url:'', stato:'attivo' }); } setShowAssetModal(true); };
   const salvaAsset = async (e) => { e.preventDefault(); const endpoint = editingAsset ? `${API_URL}/api/haccp/assets/${editingAsset.id}` : `${API_URL}/api/haccp/assets`; const method = editingAsset ? 'PUT' : 'POST'; await fetch(endpoint, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...assetForm, ristorante_id: info.id }) }); setShowAssetModal(false); ricaricaDati(); };
   const handleAssetPhoto = async (e) => { const f = e.target.files[0]; if(!f) return; setUploadingAsset(true); try { const url = await uploadFile(f); setAssetForm(prev => ({...prev, foto_url: url})); } finally { setUploadingAsset(false); } };
   const handleAssetLabel = async (e) => { const f = e.target.files[0]; if(!f) return; setUploadingLabel(true); try { const url = await uploadFile(f); setAssetForm(prev => ({...prev, etichetta_url: url})); } finally { setUploadingLabel(false); } };
   
-  // STAFF DOCS WRAPPER
-  const [selectedStaff, setSelectedStaff] = useState(null); const [staffDocs, setStaffDocs] = useState([]); const [newDoc, setNewDoc] = useState({ tipo: 'Contratto', url: '' });
+  // STAFF
   const openStaffDocs = async (user) => { setSelectedStaff(user); const r = await fetch(`${API_URL}/api/staff/docs/${user.id}`); setStaffDocs(await r.json()); };
   const uploadStaffDoc = async (e) => { const f = e.target.files[0]; if(!f) return; const url = await uploadFile(f); await fetch(`${API_URL}/api/staff/docs`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ utente_id: selectedStaff.id, tipo_doc: newDoc.tipo, nome_file: f.name, url }) }); const r = await fetch(`${API_URL}/api/staff/docs/${selectedStaff.id}`); setStaffDocs(await r.json()); setNewDoc({...newDoc, url: ''}); };
   const deleteDoc = async (id) => { if(!confirm("Eliminare documento?")) return; await fetch(`${API_URL}/api/staff/docs/${id}`, {method:'DELETE'}); const r = await fetch(`${API_URL}/api/staff/docs/${selectedStaff.id}`); setStaffDocs(await r.json()); };
 
-  // DOWNLOAD & PRINT LOGIC
+  // DOWNLOAD & PRINT
   const openDownloadModal = (type) => { setDownloadType(type); setShowDownloadModal(true); setSelectedMonth(''); };
   const executeDownload = (range) => { let start = new Date(), end = new Date(), rangeName = "Tutto"; if(range === 'week') { start.setDate(end.getDate() - 7); rangeName="Ultima Settimana"; } else if(range === 'month') { start.setMonth(end.getMonth() - 1); rangeName="Ultimo Mese"; } else if (range === 'custom-month') { if(!selectedMonth) return alert("Seleziona un mese!"); const [y, m] = selectedMonth.split('-'); start = new Date(y, m - 1, 1); end = new Date(y, m, 0, 23, 59, 59); rangeName = `Mese di ${start.toLocaleString('it-IT', { month: 'long', year: 'numeric' })}`; } else if(range === 'all') { start = new Date('2020-01-01'); rangeName="Storico Completo"; } const query = `?start=${start.toISOString()}&end=${end.toISOString()}&rangeName=${rangeName}&format=${downloadFormat}`; window.open(`${API_URL}/api/haccp/export/${downloadType}/${info.id}${query}`, '_blank'); setShowDownloadModal(false); };
   
@@ -207,155 +218,263 @@ function Haccp() {
   const printOnlyQR = () => { setPrintMode('qr'); setTimeout(() => { window.print(); setPrintMode(null); }, 500); };
 
   if(!info) return <div>Caricamento...</div>;
-  if(!isAuthorized) return <div style={{padding:50, textAlign:'center'}}><h1>🔒 Password Required</h1><form onSubmit={handleLogin}><input type="password" value={password} onChange={e=>setPassword(e.target.value)} /><button>Login</button></form></div>;
+  if(!isAuthorized) return <div className="auth-container"><h1 style={{fontSize:'24px'}}>🔒 Accesso HACCP</h1><form onSubmit={handleLogin}><input type="password" placeholder="Password Reparto" value={password} onChange={e=>setPassword(e.target.value)} /><button>Accedi</button></form></div>;
   const assetsToDisplay = scanId ? assets.filter(a => a.id.toString() === scanId) : assets.filter(a=>['frigo','cella','vetrina'].includes(a.tipo));
 
   return (
-    <div className="haccp-container" style={{minHeight:'100vh', background:'#ecf0f1', padding:20, fontFamily:'sans-serif'}}>
+    <div className="haccp-container main-wrapper">
       
       {!scanId && (
-          <div className="no-print" style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20, flexWrap:'wrap', gap:10}}>
-              <div><h1 style={{margin:0, color:'#2c3e50'}}>🛡️ HACCP Control</h1></div>
-              <div style={{display:'flex', gap:10, alignItems:'center'}}>
+          <div className="no-print header-nav">
+              <div style={{flex:1}}><h1 className="app-title">🛡️ HACCP Control</h1></div>
+              <div className="nav-buttons">
                   {['temperature', 'merci', 'pulizie', 'calendario', 'etichette', 'staff', 'setup'].map(t => (
-                    <button key={t} onClick={()=>setTab(t)} style={{padding:'10px 20px', borderRadius:5, border:'none', cursor:'pointer', fontWeight:'bold', textTransform:'uppercase', background: tab===t ? '#2c3e50' : 'white', color: tab===t ? 'white' : '#333'}}>
-                    {t==='merci' ? '📦 Merci' : (t==='setup' ? '⚙️ Macchine' : (t==='staff' ? '👥 Staff' : (t==='pulizie' ? '🧼 Pulizia' : (t==='etichette' ? '🏭 Produzione' : t))))}
+                    <button key={t} onClick={()=>setTab(t)} className={`nav-btn ${tab===t ? 'active' : ''}`}>
+                      {t==='merci' ? '📦 Merci' : (t==='setup' ? '⚙️ Macchine' : (t==='staff' ? '👥 Staff' : (t==='pulizie' ? '🧼 Pulizia' : (t==='etichette' ? '🏭 Prod.' : t))))}
                     </button>
                   ))}
-                  <button onClick={()=>{localStorage.removeItem(`haccp_session_${slug}`); setIsAuthorized(false)}} style={{background:'#e74c3c', color:'white', border:'none', padding:'10px 20px', borderRadius:5}}>ESCI</button>
+                  <button onClick={()=>{localStorage.removeItem(`haccp_session_${slug}`); setIsAuthorized(false)}} className="nav-btn logout">Esci</button>
               </div>
           </div>
       )}
 
-      {tab === 'temperature' && (
-          <TempControl 
-            assetsToDisplay={assetsToDisplay} getTodayLog={getTodayLog} tempInput={tempInput} setTempInput={setTempInput}
-            registraTemperatura={registraTemperatura} handleLogPhoto={handleLogPhoto} abilitaNuovaMisurazione={abilitaNuovaMisurazione} logs={logs} openDownloadModal={openDownloadModal}
-          />
-      )}
+      {/* --- CONTENUTI TAB --- */}
+      <div className="tab-content">
+          {tab === 'temperature' && (
+              <TempControl 
+                assetsToDisplay={assetsToDisplay} getTodayLog={getTodayLog} tempInput={tempInput} setTempInput={setTempInput}
+                registraTemperatura={registraTemperatura} handleLogPhoto={handleLogPhoto} abilitaNuovaMisurazione={abilitaNuovaMisurazione} logs={logs} openDownloadModal={openDownloadModal}
+              />
+          )}
 
-      {tab === 'merci' && !scanId && (
-          <MerciManager 
-             merci={merci} merciForm={merciForm} setMerciForm={setMerciForm} salvaMerci={salvaMerci} handleMerciPhoto={handleMerciPhoto} uploadingMerci={uploadingMerci} iniziaModificaMerci={iniziaModificaMerci} eliminaMerce={eliminaMerce} assets={assets} resetMerciForm={resetMerciForm}
-             handleFileAction={(url) => openGlobalPreview(url, "Bolla_Merce")} // USIAMO IL NUOVO MODALE
-             openDownloadModal={openDownloadModal}
-          />
-      )}
-      
-      {tab === 'pulizie' && !scanId && (
-          <CleaningManager info={info} API_URL={API_URL} staffList={staffList} openDownloadModal={openDownloadModal} />
-      )}
+          {tab === 'merci' && !scanId && (
+              <MerciManager 
+                 merci={merci} merciForm={merciForm} setMerciForm={setMerciForm} salvaMerci={salvaMerci} handleMerciPhoto={handleMerciPhoto} uploadingMerci={uploadingMerci} iniziaModificaMerci={iniziaModificaMerci} eliminaMerce={eliminaMerce} assets={assets} resetMerciForm={resetMerciForm}
+                 handleFileAction={(url) => openGlobalPreview(url, "Bolla_Merce")} 
+                 openDownloadModal={openDownloadModal}
+              />
+          )}
+          
+          {tab === 'pulizie' && !scanId && (
+              <CleaningManager info={info} API_URL={API_URL} staffList={staffList} openDownloadModal={openDownloadModal} />
+          )}
 
-      {tab === 'calendario' && !scanId && (
-          <HaccpCalendar 
-            currentDate={currentDate}
-            cambiaMese={(d) => { const n = new Date(currentDate); n.setMonth(n.getMonth() + d); setCurrentDate(n); setSelectedDayLogs(null); }}
-            
-            // PASSIAMO I DATI COMPLETI
-            calendarLogs={calendarData.logs}
-            merci={calendarData.merci}
-            pulizie={calendarData.pulizie}
-            labels={calendarData.labels}
+          {tab === 'calendario' && !scanId && (
+              <HaccpCalendar 
+                currentDate={currentDate}
+                cambiaMese={(d) => { const n = new Date(currentDate); n.setMonth(n.getMonth() + d); setCurrentDate(n); setSelectedDayLogs(null); }}
+                calendarLogs={calendarData.logs}
+                merci={calendarData.merci}
+                pulizie={calendarData.pulizie}
+                labels={calendarData.labels}
+                selectedDayLogs={selectedDayLogs}
+                setSelectedDayLogs={setSelectedDayLogs}
+                openGlobalPreview={openGlobalPreview}
+              />
+          )}
+          
+          {tab === 'staff' && !scanId && (<StaffManager staffList={staffList} selectedStaff={selectedStaff} openStaffDocs={openStaffDocs} setSelectedStaff={setSelectedStaff} newDoc={newDoc} setNewDoc={setNewDoc} uploadStaffDoc={uploadStaffDoc} uploadFile={uploadFile} staffDocs={staffDocs} deleteDoc={deleteDoc} API_URL={API_URL} handleFileAction={(url)=>openGlobalPreview(url,"Doc_Staff")} />)}
+          {tab === 'setup' && !scanId && (<AssetSetup assets={assets} apriModaleAsset={apriModaleAsset} setShowQRModal={setShowQRModal} handleFileAction={(url)=>openGlobalPreview(url, "Foto_Asset")} openDownloadModal={openDownloadModal} handlePrintQR={handlePrintQR} />)}
+          {tab === 'etichette' && !scanId && (<LabelGenerator labelData={labelData} setLabelData={setLabelData} handleLabelTypeChange={handleLabelTypeChange} handlePrintLabel={handlePrintLabel} lastLabel={lastLabel} info={info} API_URL={API_URL} staffList={staffList} handleReprint={handleReprint} openDownloadModal={openDownloadModal} merciList={merci} />)}
+      </div>
 
-            selectedDayLogs={selectedDayLogs}
-            setSelectedDayLogs={setSelectedDayLogs}
-            openGlobalPreview={openGlobalPreview} // PER APRIRE BOLLE DAL CALENDARIO
-          />
-      )}
-      
-      {tab === 'staff' && !scanId && (<StaffManager staffList={staffList} selectedStaff={selectedStaff} openStaffDocs={openStaffDocs} setSelectedStaff={setSelectedStaff} newDoc={newDoc} setNewDoc={setNewDoc} uploadStaffDoc={uploadStaffDoc} uploadFile={uploadFile} staffDocs={staffDocs} deleteDoc={deleteDoc} API_URL={API_URL} />)}
-      {tab === 'setup' && !scanId && (<AssetSetup assets={assets} apriModaleAsset={apriModaleAsset} setShowQRModal={setShowQRModal} handleFileAction={(url)=>openGlobalPreview(url, "Foto_Asset")} openDownloadModal={openDownloadModal} handlePrintQR={handlePrintQR} />)}
-      {tab === 'etichette' && !scanId && (<LabelGenerator labelData={labelData} setLabelData={setLabelData} handleLabelTypeChange={handleLabelTypeChange} handlePrintLabel={handlePrintLabel} lastLabel={lastLabel} info={info} API_URL={API_URL} staffList={staffList} handleReprint={handleReprint} openDownloadModal={openDownloadModal} merciList={merci} />)}
-
-      {/* --- MODALE DOWNLOAD REPORT (ESISTENTE) --- */}
+      {/* --- MODALE DOWNLOAD --- */}
       {showDownloadModal && (
-          <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000}}>
-              <div style={{background:'white', padding:30, borderRadius:10, textAlign:'center', width:350}}>
-                  <h3 style={{marginTop:0}}>Scarica Report</h3>
-                  <div style={{marginBottom:20, background:'#f9f9f9', padding:10, borderRadius:5}}>
-                       <p style={{margin:'0 0 10px 0', fontSize:14, fontWeight:'bold'}}>Formato:</p>
-                       <div style={{display:'flex', justifyContent:'center', gap:10}}>
-                           <button onClick={()=>setDownloadFormat('excel')} style={{background: downloadFormat==='excel'?'#27ae60':'#eee', color:downloadFormat==='excel'?'white':'black', padding:'5px 15px', border:'none', borderRadius:20, cursor:'pointer'}}>Excel</button>
-                           <button onClick={()=>setDownloadFormat('pdf')} style={{background: downloadFormat==='pdf'?'#e74c3c':'#eee', color:downloadFormat==='pdf'?'white':'black', padding:'5px 15px', border:'none', borderRadius:20, cursor:'pointer'}}>PDF</button>
+          <div className="modal-overlay">
+              <div className="modal-content small-modal">
+                  <h3>Scarica Report</h3>
+                  <div className="modal-section bg-light">
+                       <p className="bold-label">Formato:</p>
+                       <div className="flex-center gap-10">
+                           <button onClick={()=>setDownloadFormat('excel')} className={`pill-btn ${downloadFormat==='excel'?'green':'gray'}`}>Excel</button>
+                           <button onClick={()=>setDownloadFormat('pdf')} className={`pill-btn ${downloadFormat==='pdf'?'red':'gray'}`}>PDF</button>
                        </div>
                   </div>
-                  <div style={{display:'flex', flexDirection:'column', gap:10}}>
-                      <div style={{display:'flex', gap:5}}>
-                          <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} style={{flex:1, padding:10, border:'1px solid #ccc', borderRadius:5}} />
-                          <button onClick={()=>executeDownload('custom-month')} style={{padding:'0 15px', background:'#8e44ad', color:'white', border:'none', borderRadius:5, cursor:'pointer', fontWeight:'bold'}}>SCARICA</button>
+                  <div className="flex-col gap-10">
+                      <div className="flex-row gap-5">
+                          <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="input-std flex-1" />
+                          <button onClick={()=>executeDownload('custom-month')} className="btn-primary purple">SCARICA</button>
                       </div>
-                      <button onClick={()=>executeDownload('week')} style={{padding:12, background:'#3498db', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Ultima Settimana</button>
-                      <button onClick={()=>executeDownload('month')} style={{padding:12, background:'#2980b9', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Ultimi 30 Giorni</button>
-                      <button onClick={()=>executeDownload('all')} style={{padding:12, background:'#2c3e50', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Tutto lo storico</button>
+                      <button onClick={()=>executeDownload('week')} className="btn-primary blue">Ultima Settimana</button>
+                      <button onClick={()=>executeDownload('month')} className="btn-primary dark-blue">Ultimi 30 Giorni</button>
+                      <button onClick={()=>executeDownload('all')} className="btn-primary dark">Tutto lo storico</button>
                   </div>
-                  <button onClick={()=>setShowDownloadModal(false)} style={{marginTop:20, background:'transparent', border:'none', color:'#999', cursor:'pointer', textDecoration:'underline'}}>Annulla</button>
+                  <button onClick={()=>setShowDownloadModal(false)} className="btn-text">Annulla</button>
               </div>
           </div>
       )}
 
-      {/* --- MODALE ASSET (CREAZIONE/MODIFICA) --- */}
+      {/* --- MODALE ASSET --- */}
       {showAssetModal && (
-        <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', zIndex:2000, display:'flex', alignItems:'center', justifyContent:'center'}}>
-            <div style={{background:'white', padding:30, borderRadius:10, width:600, maxWidth:'90%', maxHeight:'90vh', overflowY:'auto'}}>
-                <h2 style={{marginTop:0}}>{editingAsset ? '✏️ Modifica Macchina' : '✨ Nuova Macchina'}</h2>
-                <form onSubmit={salvaAsset} style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:15}}>
-                    <div style={{gridColumn:'span 2'}}><label style={{fontSize:12, fontWeight:'bold'}}>Nome Identificativo</label><input required value={assetForm.nome} onChange={e=>setAssetForm({...assetForm, nome:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} placeholder="Es. Frigo Cucina" /></div>
-                    <div><label style={{fontSize:12, fontWeight:'bold'}}>Tipo Asset</label><select value={assetForm.tipo} onChange={e=>setAssetForm({...assetForm, tipo:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}}><option value="frigo">Frigorifero</option><option value="cella">Cella</option><option value="vetrina">Vetrina</option><option value="congelatore">Congelatore</option><option value="abbattitore">Abbattitore</option><option value="altro">Altro</option></select></div>
-                    <div><label style={{fontSize:12, fontWeight:'bold'}}>Stato</label><select value={assetForm.stato} onChange={e=>setAssetForm({...assetForm, stato:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}}><option value="attivo">Attivo</option><option value="manutenzione">Manutenzione</option><option value="spento">Spento</option></select></div>
-                    <div><label style={{fontSize:12, fontWeight:'bold'}}>Range Min (°C)</label><input type="number" step="0.1" value={assetForm.range_min} onChange={e=>setAssetForm({...assetForm, range_min:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
-                    <div><label style={{fontSize:12, fontWeight:'bold'}}>Range Max (°C)</label><input type="number" step="0.1" value={assetForm.range_max} onChange={e=>setAssetForm({...assetForm, range_max:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
-                    <div><label style={{fontSize:12, fontWeight:'bold'}}>Marca</label><input value={assetForm.marca} onChange={e=>setAssetForm({...assetForm, marca:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
-                    <div><label style={{fontSize:12, fontWeight:'bold'}}>Modello</label><input value={assetForm.modello} onChange={e=>setAssetForm({...assetForm, modello:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
-                    <div style={{gridColumn:'span 2'}}><label style={{fontSize:12, fontWeight:'bold'}}>Serial Number</label><input value={assetForm.serial_number} onChange={e=>setAssetForm({...assetForm, serial_number:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
+        <div className="modal-overlay">
+            <div className="modal-content medium-modal">
+                <h2 className="modal-title">{editingAsset ? '✏️ Modifica Macchina' : '✨ Nuova Macchina'}</h2>
+                <form onSubmit={salvaAsset} className="grid-form">
+                    <div className="span-2"><label className="lbl">Nome Identificativo</label><input required value={assetForm.nome} onChange={e=>setAssetForm({...assetForm, nome:e.target.value})} className="input-std" placeholder="Es. Frigo Cucina" /></div>
+                    <div><label className="lbl">Tipo</label><select value={assetForm.tipo} onChange={e=>setAssetForm({...assetForm, tipo:e.target.value})} className="input-std"><option value="frigo">Frigorifero</option><option value="cella">Cella</option><option value="vetrina">Vetrina</option><option value="congelatore">Congelatore</option><option value="abbattitore">Abbattitore</option><option value="altro">Altro</option></select></div>
+                    <div><label className="lbl">Stato</label><select value={assetForm.stato} onChange={e=>setAssetForm({...assetForm, stato:e.target.value})} className="input-std"><option value="attivo">Attivo</option><option value="manutenzione">Manutenzione</option><option value="spento">Spento</option></select></div>
+                    <div><label className="lbl">Min °C</label><input type="number" step="0.1" value={assetForm.range_min} onChange={e=>setAssetForm({...assetForm, range_min:e.target.value})} className="input-std" /></div>
+                    <div><label className="lbl">Max °C</label><input type="number" step="0.1" value={assetForm.range_max} onChange={e=>setAssetForm({...assetForm, range_max:e.target.value})} className="input-std" /></div>
+                    <div><label className="lbl">Marca</label><input value={assetForm.marca} onChange={e=>setAssetForm({...assetForm, marca:e.target.value})} className="input-std" /></div>
+                    <div><label className="lbl">Modello</label><input value={assetForm.modello} onChange={e=>setAssetForm({...assetForm, modello:e.target.value})} className="input-std" /></div>
+                    <div className="span-2"><label className="lbl">Serial Number</label><input value={assetForm.serial_number} onChange={e=>setAssetForm({...assetForm, serial_number:e.target.value})} className="input-std" /></div>
                     
-                    <div style={{gridColumn:'span 2', display:'flex', gap:10}}>
-                        <div style={{flex:1}}><label style={{fontSize:12, fontWeight:'bold'}}>Foto</label><input type="file" onChange={handleAssetPhoto} style={{fontSize:11}} />{assetForm.foto_url && <span style={{fontSize:10, color:'green'}}>✅ OK</span>}</div>
-                        <div style={{flex:1}}><label style={{fontSize:12, fontWeight:'bold'}}>Etichetta</label><input type="file" onChange={handleAssetLabel} style={{fontSize:11}} />{assetForm.etichetta_url && <span style={{fontSize:10, color:'green'}}>✅ OK</span>}</div>
+                    <div className="span-2 flex-row gap-10 stack-mobile">
+                        <div className="flex-1"><label className="lbl">Foto</label><input type="file" onChange={handleAssetPhoto} className="input-file" />{assetForm.foto_url && <span className="success-text">✅ OK</span>}</div>
+                        <div className="flex-1"><label className="lbl">Etichetta</label><input type="file" onChange={handleAssetLabel} className="input-file" />{assetForm.etichetta_url && <span className="success-text">✅ OK</span>}</div>
                     </div>
                     
-                    <div style={{gridColumn:'span 2', display:'flex', gap:10, marginTop:10}}><button type="button" onClick={()=>setShowAssetModal(false)} style={{flex:1, padding:10, background:'#ccc', border:'none', borderRadius:5}}>Annulla</button><button type="submit" style={{flex:1, padding:10, background:'#27ae60', color:'white', border:'none', borderRadius:5, fontWeight:'bold'}}>{editingAsset ? 'AGGIORNA' : 'CREA'}</button></div>
+                    <div className="span-2 flex-row gap-10 mt-10">
+                        <button type="button" onClick={()=>setShowAssetModal(false)} className="btn-cancel flex-1">Annulla</button>
+                        <button type="submit" className="btn-confirm flex-1">{editingAsset ? 'AGGIORNA' : 'CREA'}</button>
+                    </div>
                 </form>
             </div>
         </div>
       )}
 
-      {/* --- SUPER MODALE ANTEPRIMA (Bolla / Foto) CON DOWNLOAD --- */}
+      {/* --- SUPER MODALE ANTEPRIMA --- */}
       {globalPreview && (
-          <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.85)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center'}}>
-              <div style={{background:'white', width:'90%', height:'90%', maxWidth:'1000px', borderRadius:8, display:'flex', flexDirection:'column', overflow:'hidden', boxShadow:'0 0 20px rgba(0,0,0,0.5)'}}>
-                  <div style={{padding:'10px 15px', background:'#ecf0f1', borderBottom:'1px solid #ccc', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                      <span style={{fontWeight:'bold', color:'#2c3e50', fontSize:16}}>📄 {globalPreview.name}</span>
-                      <div style={{display:'flex', gap:10}}>
-                          <button onClick={handleForceDownload} disabled={isDownloading} style={{background: isDownloading ? '#95a5a6' : '#27ae60', color:'white', border:'none', padding:'6px 12px', borderRadius:4, fontSize:13, fontWeight:'bold', cursor: isDownloading ? 'wait' : 'pointer', display:'flex', alignItems:'center', gap:5}}>
-                              {isDownloading ? '⏳ Scaricamento...' : '⬇️ Scarica'}
+          <div className="modal-overlay z-high">
+              <div className="modal-content large-preview">
+                  <div className="preview-header">
+                      <span className="preview-title">📄 {globalPreview.name}</span>
+                      <div className="flex-row gap-10">
+                          <button onClick={handleForceDownload} disabled={isDownloading} className={`btn-icon ${isDownloading ? 'gray' : 'green'}`}>
+                              {isDownloading ? '⏳' : '⬇️'}
                           </button>
-                          <button onClick={() => setGlobalPreview(null)} style={{background:'#e74c3c', color:'white', border:'none', padding:'6px 12px', borderRadius:4, cursor:'pointer', fontWeight:'bold'}}>Chiudi X</button>
+                          <button onClick={() => setGlobalPreview(null)} className="btn-icon red">X</button>
                       </div>
                   </div>
-                  <div style={{flex:1, background:'#555', overflow:'hidden', display:'flex', justifyContent:'center', alignItems:'center'}}>
+                  <div className="preview-body">
                       {globalPreview.type === 'pdf' ? (
-                          <iframe src={globalPreview.previewUrl} style={{width:'100%', height:'100%', border:'none'}} title="Anteprima PDF" />
+                          <iframe src={globalPreview.previewUrl} className="preview-frame" title="Anteprima" />
                       ) : (
-                          <img src={globalPreview.previewUrl} alt="Anteprima" style={{maxWidth:'100%', maxHeight:'100%', objectFit:'contain'}} />
+                          <img src={globalPreview.previewUrl} alt="Anteprima" className="preview-img" />
                       )}
                   </div>
               </div>
           </div>
       )}
       
-      {/* ... QR Code Modal e Print Styles ... */}
-      {showQRModal && (<div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.85)', zIndex:3000, display:'flex', alignItems:'center', justifyContent:'center'}}><div style={{background:'white', padding:40, borderRadius:20, textAlign:'center', maxWidth:500, width:'90%'}}><h2 style={{margin:'0 0 20px 0', color:'#2c3e50'}}>{showQRModal.nome}</h2><div style={{background:'white', padding:20, display:'inline-block'}}><QRCode value={`${window.location.origin}/haccp/${slug}/scan/${showQRModal.id}`} size={250} /></div><div style={{marginTop:30, display:'flex', gap:10, justifyContent:'center'}}><button onClick={printOnlyQR} style={{background:'#2c3e50', color:'white', border:'none', padding:'12px 25px', borderRadius:8, fontSize:16, cursor:'pointer'}}>🖨️ Stampa QR</button><button onClick={()=>setShowQRModal(null)} style={{background:'#e74c3c', color:'white', border:'none', padding:'12px 25px', borderRadius:8, fontSize:16, cursor:'pointer'}}>Chiudi</button></div></div></div>)}
-      {printMode === 'qr' && showQRModal && (<div className="print-area" style={{position:'fixed', top:0, left:0, width:'100%', height:'100%', background:'white', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'}}><h1 style={{fontSize:'40px', marginBottom:20}}>{showQRModal.nome}</h1><QRCode value={`${window.location.origin}/haccp/${slug}/scan/${showQRModal.id}`} size={400} /><p style={{marginTop:20, fontSize:'20px'}}>Scansiona per registrare la temperatura</p></div>)}
+      {/* --- QR Code & Print --- */}
+      {showQRModal && (<div className="modal-overlay z-max"><div className="modal-content small-modal center-text"><h2 className="mb-20 dark-text">{showQRModal.nome}</h2><div className="qr-box"><QRCode value={`${window.location.origin}/haccp/${slug}/scan/${showQRModal.id}`} size={250} /></div><div className="mt-30 flex-center gap-10"><button onClick={printOnlyQR} className="btn-primary dark">🖨️ Stampa QR</button><button onClick={()=>setShowQRModal(null)} className="btn-primary red">Chiudi</button></div></div></div>)}
+      {printMode === 'qr' && showQRModal && (<div className="print-area qr-print"><h1 className="big-text">{showQRModal.nome}</h1><QRCode value={`${window.location.origin}/haccp/${slug}/scan/${showQRModal.id}`} size={400} /><p className="mt-20">Scansiona per registrare la temperatura</p></div>)}
       {printMode === 'label' && lastLabel && (
-        <div className="print-area" style={{position:'fixed', top:0, left:0, width:'58mm', height:'40mm', background:'white', color:'black', display:'flex', flexDirection:'column', padding:'2mm', boxSizing:'border-box', fontFamily:'Arial, sans-serif', border:'1px solid black'}}>
-            <div style={{fontWeight:'900', fontSize:'12px', textAlign:'center', borderBottom:'1px solid black', paddingBottom:'2px', textTransform:'uppercase', lineHeight:'1em', marginBottom:'2px'}}>{lastLabel.prodotto}</div>
-            {lastLabel.ingredienti && (<div style={{fontSize:'7px', textAlign:'left', marginBottom:'2px', lineHeight:'8px', overflow:'hidden', whiteSpace: 'pre-wrap', maxHeight: '12mm'}}><span style={{fontWeight:'bold'}}>Ingr:</span> {lastLabel.ingredienti}</div>)}
-            <div style={{display:'flex', justifyContent:'space-between', marginTop:'auto', fontSize:'8px', borderTop: '1px solid #ccc', paddingTop:'2px'}}><span>PROD: <strong>{new Date(lastLabel.data_produzione).toLocaleDateString()}</strong></span><span>OP: {lastLabel.operatore.substring(0,8)}</span></div>
-            <div style={{textAlign:'center', marginTop:'1px'}}><div style={{fontSize:'7px', textTransform:'uppercase'}}>Scadenza</div><div style={{fontWeight:'900', fontSize:'14px'}}>{new Date(lastLabel.data_scadenza).toLocaleDateString()}</div></div>
-            <div style={{fontSize:'7px', textAlign:'center', borderTop:'1px solid black', paddingTop:'1px', marginTop:'1px'}}>Lotto: {lastLabel.lotto}</div>
+        <div className="print-area label-print">
+            <div className="lbl-title">{lastLabel.prodotto}</div>
+            {lastLabel.ingredienti && (<div className="lbl-ingr"><span className="bold">Ingr:</span> {lastLabel.ingredienti}</div>)}
+            <div className="lbl-footer"><span>PROD: <strong>{new Date(lastLabel.data_produzione).toLocaleDateString()}</strong></span><span>OP: {lastLabel.operatore.substring(0,8)}</span></div>
+            <div className="lbl-center"><div className="lbl-small">Scadenza</div><div className="lbl-big">{new Date(lastLabel.data_scadenza).toLocaleDateString()}</div></div>
+            <div className="lbl-bottom">Lotto: {lastLabel.lotto}</div>
         </div>
       )}
-      <style>{`@media print { .no-print { display: none !important; } .print-area { z-index: 9999; display: flex !important; } body { margin: 0; padding: 0; } @page { margin: 0; size: auto; } }`}</style>
+
+      {/* --- CSS RESPONSIVE & MOBILE --- */}
+      <style>{`
+        /* RESET & BASE */
+        .haccp-container { min-height: 100vh; background: #ecf0f1; padding: 20px; font-family: sans-serif; box-sizing: border-box; }
+        .main-wrapper { max-width: 100%; overflow-x: hidden; }
+        
+        /* HEADER */
+        .header-nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+        .app-title { margin: 0; color: #2c3e50; font-size: 24px; }
+        
+        /* NAVIGATION */
+        .nav-buttons { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+        .nav-btn { padding: 10px 15px; border-radius: 5px; border: none; cursor: pointer; font-weight: bold; text-transform: uppercase; background: white; color: #333; font-size: 13px; }
+        .nav-btn.active { background: #2c3e50; color: white; }
+        .nav-btn.logout { background: #e74c3c; color: white; }
+
+        /* AUTH */
+        .auth-container { padding: 50px; text-align: center; }
+        .auth-container input { padding: 10px; margin-right: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        .auth-container button { padding: 10px 20px; background: #2c3e50; color: white; border: none; border-radius: 4px; }
+
+        /* MODALS (RESPONSIVE) */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 2000; padding: 10px; }
+        .modal-content { background: white; padding: 20px; border-radius: 10px; width: 100%; max-height: 90vh; overflow-y: auto; box-sizing: border-box; }
+        .small-modal { max-width: 350px; }
+        .medium-modal { max-width: 600px; }
+        .large-preview { width: 95%; max-width: 1000px; height: 90%; display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+        .z-high { z-index: 9999; }
+        .z-max { z-index: 3000; }
+        
+        /* PREVIEW MODAL */
+        .preview-header { padding: 10px 15px; background: #ecf0f1; border-bottom: 1px solid #ccc; display: flex; justify-content: space-between; align-items: center; }
+        .preview-title { font-weight: bold; color: #2c3e50; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 70%; }
+        .preview-body { flex: 1; background: #555; overflow: hidden; display: flex; justify-content: center; align-items: center; }
+        .preview-frame { width: 100%; height: 100%; border: none; }
+        .preview-img { max-width: 100%; max-height: 100%; object-fit: contain; }
+
+        /* FORM GRIDS */
+        .grid-form { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .span-2 { grid-column: span 2; }
+        .input-std { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        .lbl { font-size: 12px; font-weight: bold; display: block; margin-bottom: 3px; }
+        .flex-row { display: flex; }
+        .flex-col { display: flex; flex-direction: column; }
+        .flex-center { display: flex; justify-content: center; align-items: center; }
+        .gap-10 { gap: 10px; } .gap-5 { gap: 5px; }
+        .flex-1 { flex: 1; }
+        
+        /* BUTTONS */
+        .btn-primary { padding: 12px; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .btn-cancel { background: #ccc; border: none; padding: 10px; border-radius: 5px; cursor: pointer; }
+        .btn-confirm { background: #27ae60; color: white; border: none; padding: 10px; border-radius: 5px; font-weight: bold; cursor: pointer; }
+        .btn-icon { padding: 6px 12px; border-radius: 4px; border: none; cursor: pointer; font-weight: bold; color: white; }
+        .btn-text { margin-top: 20px; background: transparent; border: none; color: #999; cursor: pointer; text-decoration: underline; }
+        .pill-btn { padding: 5px 15px; border: none; border-radius: 20px; cursor: pointer; }
+        
+        /* COLORS */
+        .green { background: #27ae60; } .red { background: #e74c3c; } .gray { background: #eee; color: black; }
+        .blue { background: #3498db; } .dark-blue { background: #2980b9; } .purple { background: #8e44ad; } .dark { background: #2c3e50; }
+        .bg-light { background: #f9f9f9; }
+        
+        /* PRINT STYLES */
+        .print-area { position: fixed; top: 0; left: 0; background: white; z-index: 9999; display: flex; flex-direction: column; }
+        .qr-print { width: 100%; height: 100%; align-items: center; justify-content: center; }
+        .label-print { width: 58mm; height: 40mm; color: black; padding: 2mm; box-sizing: border-box; font-family: Arial, sans-serif; border: 1px solid black; }
+        .lbl-title { font-weight: 900; font-size: 12px; text-align: center; border-bottom: 1px solid black; padding-bottom: 2px; text-transform: uppercase; line-height: 1em; margin-bottom: 2px; }
+        .lbl-ingr { font-size: 7px; text-align: left; margin-bottom: 2px; line-height: 8px; overflow: hidden; white-space: pre-wrap; max-height: 12mm; }
+        .lbl-footer { display: flex; justify-content: space-between; margin-top: auto; font-size: 8px; border-top: 1px solid #ccc; padding-top: 2px; }
+        .lbl-center { text-align: center; margin-top: 1px; }
+        .lbl-small { font-size: 7px; text-transform: uppercase; }
+        .lbl-big { font-weight: 900; font-size: 14px; }
+        .lbl-bottom { font-size: 7px; text-align: center; border-top: 1px solid black; padding-top: 1px; margin-top: 1px; }
+
+        /* --- MOBILE OVERRIDES --- */
+        @media (max-width: 768px) {
+            .haccp-container { padding: 10px; }
+            .header-nav { flex-direction: column; align-items: stretch; text-align: center; }
+            .nav-buttons { justify-content: center; overflow-x: auto; white-space: nowrap; padding-bottom: 5px; }
+            .nav-btn { flex: 0 0 auto; font-size: 12px; padding: 8px 12px; }
+            
+            /* Grids become 1 column */
+            .grid-form { grid-template-columns: 1fr; }
+            .span-2 { grid-column: span 1; }
+            
+            /* Stack elements */
+            .stack-mobile { flex-direction: column; }
+            
+            /* Tables need horizontal scroll */
+            table { display: block; overflow-x: auto; white-space: nowrap; }
+            
+            /* Calendar adjustments */
+            .calendar-grid { grid-template-columns: repeat(7, 1fr); font-size: 10px; }
+            
+            /* Modals full width */
+            .modal-content { width: 100%; max-width: 100%; border-radius: 0; height: 100%; max-height: 100%; }
+            .small-modal, .medium-modal { border-radius: 10px; height: auto; }
+        }
+
+        @media print { 
+            .no-print { display: none !important; } 
+            .print-area { display: flex !important; } 
+            body { margin: 0; padding: 0; } 
+            @page { margin: 0; size: auto; } 
+        }
+      `}</style>
     </div>
   );
 }
