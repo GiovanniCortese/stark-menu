@@ -14,6 +14,8 @@ const StaffManager = ({
 }) => {
     
     const [isLoading, setIsLoading] = useState(false);
+    // Stato per gestire il popup del PDF/Immagine
+    const [previewDoc, setPreviewDoc] = useState(null); 
 
     const handleUploadWrapper = async (e) => {
         const f = e.target.files[0];
@@ -36,21 +38,22 @@ const StaffManager = ({
         }
     };
 
-    // --- FUNZIONE PER GESTIRE APERTURA FILE ---
+    // --- FUNZIONE: PREPARA IL POPUP ---
     const handleViewFile = (doc) => {
-        const isPdf = doc.url.toLowerCase().includes('.pdf') || doc.nome_file.toLowerCase().endsWith('.pdf');
+        const isPdf = doc.nome_file.toLowerCase().endsWith('.pdf') || doc.url.toLowerCase().endsWith('.pdf');
         
+        // Se è PDF usiamo il Proxy, se è immagine usiamo l'URL diretto
+        let urlFinale = doc.url;
         if (isPdf) {
-            // 💡 SOLUZIONE: Passiamo tramite il proxy del tuo server
-            // Usiamo encodeURIComponent per evitare che caratteri speciali rompano l'URL
-            const proxyUrl = `${API_URL}/api/proxy-download?url=${encodeURIComponent(doc.url)}&name=${encodeURIComponent(doc.nome_file)}`;
-            
-            // Apriamo in una nuova finestra (popup del browser)
-            window.open(proxyUrl, '_blank', 'noopener,noreferrer');
-        } else {
-            // Se è un'immagine, Cloudinary va bene diretto
-            window.open(doc.url, '_blank');
+            // Usiamo il proxy per aggirare i blocchi e mostrare l'anteprima
+            urlFinale = `${API_URL}/api/proxy-download?url=${encodeURIComponent(doc.url)}&name=${encodeURIComponent(doc.nome_file)}`;
         }
+
+        setPreviewDoc({
+            url: urlFinale,
+            name: doc.nome_file,
+            type: isPdf ? 'pdf' : 'image'
+        });
     };
 
     return (
@@ -132,7 +135,7 @@ const StaffManager = ({
                                             <td style={{padding:8}}>{d.nome_file}</td>
                                             <td style={{padding:8, display:'flex', gap:5}}>
                                                 
-                                                {/* MODIFICA QUI: Usiamo un button che chiama la funzione intelligente */}
+                                                {/* TASTO VISUALIZZA MODIFICATO */}
                                                 <button
                                                     onClick={() => handleViewFile(d)}
                                                     style={{
@@ -167,6 +170,70 @@ const StaffManager = ({
                     </div>
                 )}
             </div>
+
+            {/* --- MODALE POPUP ANTEPRIMA --- */}
+            {previewDoc && (
+                <div style={{
+                    position:'fixed', top:0, left:0, right:0, bottom:0, 
+                    background:'rgba(0,0,0,0.85)', zIndex:9999, 
+                    display:'flex', alignItems:'center', justifyContent:'center'
+                }}>
+                    <div style={{
+                        background:'white', width:'90%', height:'90%', maxWidth:'1000px', 
+                        borderRadius:8, display:'flex', flexDirection:'column', overflow:'hidden',
+                        boxShadow: '0 0 20px rgba(0,0,0,0.5)'
+                    }}>
+                        {/* HEADER DEL POPUP */}
+                        <div style={{
+                            padding:'10px 15px', background:'#ecf0f1', borderBottom:'1px solid #ccc',
+                            display:'flex', justifyContent:'space-between', alignItems:'center'
+                        }}>
+                            <span style={{fontWeight:'bold', color:'#2c3e50'}}>📄 {previewDoc.name}</span>
+                            <div style={{display:'flex', gap:10}}>
+                                {/* Tasto Download Diretto */}
+                                <a 
+                                    href={previewDoc.url} 
+                                    download={previewDoc.name}
+                                    style={{
+                                        background:'#27ae60', color:'white', textDecoration:'none', 
+                                        padding:'6px 12px', borderRadius:4, fontSize:13, fontWeight:'bold'
+                                    }}
+                                >
+                                    ⬇️ Scarica
+                                </a>
+                                {/* Tasto Chiudi */}
+                                <button 
+                                    onClick={() => setPreviewDoc(null)}
+                                    style={{
+                                        background:'#e74c3c', color:'white', border:'none', 
+                                        padding:'6px 12px', borderRadius:4, cursor:'pointer', fontWeight:'bold'
+                                    }}
+                                >
+                                    Chiudi X
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* CORPO DEL POPUP (IFRAME o IMG) */}
+                        <div style={{flex:1, background:'#555', overflow:'hidden', display:'flex', justifyContent:'center', alignItems:'center'}}>
+                            {previewDoc.type === 'pdf' ? (
+                                <iframe 
+                                    src={previewDoc.url} 
+                                    style={{width:'100%', height:'100%', border:'none'}} 
+                                    title="Anteprima PDF"
+                                />
+                            ) : (
+                                <img 
+                                    src={previewDoc.url} 
+                                    alt="Anteprima" 
+                                    style={{maxWidth:'100%', maxHeight:'100%', objectFit:'contain'}} 
+                                />
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
         </div>
     );
 };
