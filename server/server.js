@@ -452,92 +452,105 @@ app.get('/api/haccp/labels/storico/:ristorante_id', async (req, res) => {
     } catch(e) { res.status(500).json({error: "Errore recupero storico"}); } 
 });
 
-// --- PROXY DOWNLOAD V13 (METODO INFALLIBILE: INTERROGAZIONE ADMIN) ---
+// --- PROXY DOWNLOAD V14 (METODO IBRIDO: ADMIN + FORZATURA AUTH) ---
 app.get('/api/proxy-download', async (req, res) => {
     const fileUrl = req.query.url;
     const fileName = req.query.name || 'documento.pdf';
 
-    // 1. CONTROLLO CHIAVI
+    // 1. SETUP CLOUDINARY
     const apiSecret = (process.env.CLOUDINARY_API_SECRET || '').trim();
     const apiKey = (process.env.CLOUDINARY_API_KEY || '').trim();
     const cloudName = (process.env.CLOUDINARY_CLOUD_NAME || '').trim();
 
-    if (!apiSecret || !apiKey || !cloudName) return res.status(500).send("ERRORE: Chiavi mancanti.");
-
-    // Configura Cloudinary
+    if (!apiSecret || !apiKey || !cloudName) return res.status(500).send("Chiavi mancanti.");
+    
     cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret });
 
     if (!fileUrl) return res.status(400).send("URL mancante");
 
-    // Moduli
+    // Helper Download
     const https = require('https');
     const http = require('http');
+    const tryDownload = (url) => {
+        return new Promise((resolve) => {
+            const client = url.startsWith('https') ? https : http;
+            const r = client.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
+                if (res.statusCode === 200) resolve({ ok: true, res });
+                else resolve({ ok: false, status: res.statusCode });
+            });
+            r.on('error', () => resolve({ ok: false, error: true }));
+        });
+    };
 
     try {
-        console.log("🔍 V13: Analisi file in corso...");
-        
-        // ESTRAZIONE PARZIALE DELL'ID
-        // Dall'URL: .../upload/v12345/menu-app/nomefile.pdf
-        // Vogliamo solo: "menu-app/nomefile" (senza estensione e senza versione)
+        console.log("🔍 V14: Avvio procedura di sblocco...");
+
+        // 2. RECUPERO DATI REALI DAL SERVER (Come in V13)
+        // Estraiamo l'ID "grezzo" dall'URL per interrogarlo
         const parts = fileUrl.split('/upload/');
         if (parts.length < 2) return res.status(400).send("URL non valido");
-        
-        let path = parts[1];
-        path = path.replace(/^v\d+\//, ''); // Rimuove versione
-        const possibleId = path.replace(/\.[^/.]+$/, ""); // Rimuove estensione .pdf
+        let path = parts[1].replace(/^v\d+\//, ''); // via versione vecchia
+        const lookupId = path.replace(/\.[^/.]+$/, ""); // via estensione
 
-        console.log(`   👉 Cerco ID: "${possibleId}" nei server Cloudinary...`);
-
-        // 2. CHIEDIAMO A CLOUDINARY I DATI REALI
-        // Proviamo prima come 'image' (99% dei PDF su Cloudinary)
+        // Chiediamo a Cloudinary i dati CERTIFICATI
         let resource;
         try {
-            resource = await cloudinary.api.resource(possibleId, { resource_type: 'image' });
+            resource = await cloudinary.api.resource(lookupId, { resource_type: 'image' });
         } catch (e) {
-            // Se fallisce, proviamo come 'raw' con estensione
-            try {
-                console.log("   ⚠️ Non trovato come image, provo come RAW...");
-                resource = await cloudinary.api.resource(possibleId + ".pdf", { resource_type: 'raw' });
-            } catch (e2) {
-                console.log("   ❌ File non trovato nelle API.");
-            }
+            console.log("   ⚠️ Fallito lookup immagine, provo raw...");
+            try { resource = await cloudinary.api.resource(lookupId + ".pdf", { resource_type: 'raw' }); } catch(e2){}
         }
 
-        if (!resource) {
-            return res.status(404).send("Errore: Il file non esiste nel cloud (API Check Failed).");
-        }
+        if (!resource) return res.status(404).send("File non trovato nell'account.");
 
-        console.log(`   ✅ TROVATO! ID Reale: ${resource.public_id} | Tipo: ${resource.resource_type}`);
+        console.log(`   ✅ Dati Reali: ID=${resource.public_id} | Ver=${resource.version}`);
 
-        // 3. GENERIAMO L'URL USANDO I DATI UFFICIALI
-        // Qui non possiamo sbagliare perché usiamo i dati che ci ha appena dato Cloudinary
-        const downloadUrl = cloudinary.url(resource.public_id, {
+        // 3. GENERAZIONE DOPPIO URL (La Strategia Vincente)
+        // Proviamo due chiavi: una standard e una che forza il canale "authenticated"
+        
+        const candidates = [];
+
+        // OPZIONE A: Canale Authenticated (Spesso richiesto per i PDF bloccati)
+        candidates.push(cloudinary.url(resource.public_id, {
             resource_type: resource.resource_type,
-            type: resource.type, // solitamente 'upload'
-            sign_url: true,      // FIRMA
-            format: resource.format, // pdf (se image) o null (se raw)
-            version: resource.version, // Versione ufficiale
+            type: 'authenticated', // <--- FORZIAMO QUESTO
+            sign_url: true,
+            format: resource.format,
+            version: resource.version, // <--- USIAMO LA VERSIONE REALE TROVATA
             secure: true
-        });
+        }));
 
-        console.log("   🚀 Scarico da:", downloadUrl);
+        // OPZIONE B: Canale Upload Standard (Fallback)
+        candidates.push(cloudinary.url(resource.public_id, {
+            resource_type: resource.resource_type,
+            type: 'upload',
+            sign_url: true,
+            format: resource.format,
+            version: resource.version,
+            secure: true
+        }));
 
-        // 4. DOWNLOAD
-        const client = downloadUrl.startsWith('https') ? https : http;
-        client.get(downloadUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (response) => {
-            if (response.statusCode === 200) {
+        // 4. TENTATIVO DI SCARICAMENTO
+        for (const url of candidates) {
+            console.log(`   👉 Provo sblocco con: ${url}`);
+            const result = await tryDownload(url);
+            
+            if (result.ok) {
+                console.log("   🚀 SBLOCCO RIUSCITO!");
                 res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
                 res.setHeader('Content-Type', 'application/pdf');
-                response.pipe(res);
+                result.res.pipe(res);
+                return;
             } else {
-                console.error(`Errore Finale: ${response.statusCode}`);
-                res.status(response.statusCode).send("Errore durante il download stream.");
+                console.log(`      ❌ Fallito con status: ${result.status}`);
             }
-        }).on('error', (err) => res.status(500).send("Errore di rete."));
+        }
+
+        res.status(401).send("Errore 401 Persistente: Cloudinary sta bloccando l'accesso API.");
 
     } catch (e) {
-        console.error("CRASH V13:", e);
-        res.status(500).send("Errore interno server.");
+        console.error(e);
+        res.status(500).send("Errore Server V14");
     }
 });
 
