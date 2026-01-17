@@ -573,6 +573,99 @@ const printOnlyQR = () => {
           </div>
       )}
 
+{/* --- MODALE CREAZIONE/MODIFICA MACCHINA --- */}
+{showAssetModal && (
+    <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', zIndex:2000, display:'flex', alignItems:'center', justifyContent:'center'}}>
+        <div style={{background:'white', padding:30, borderRadius:10, width:600, maxWidth:'90%', maxHeight:'90vh', overflowY:'auto'}}>
+            <h2 style={{marginTop:0}}>{editingAsset ? '✏️ Modifica Macchina' : '✨ Nuova Macchina'}</h2>
+            
+            <form onSubmit={salvaAsset} style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:15}}>
+                
+                {/* Nome e Tipo */}
+                <div style={{gridColumn:'span 2'}}>
+                    <label style={{fontSize:12, fontWeight:'bold'}}>Nome Identificativo</label>
+                    <input required value={assetForm.nome} onChange={e=>setAssetForm({...assetForm, nome:e.target.value})} placeholder="Es. Frigo Cucina 1" style={{width:'100%', padding:8, border:'1px solid #ddd', borderRadius:4}} />
+                </div>
+                
+                <div>
+                    <label style={{fontSize:12, fontWeight:'bold'}}>Tipo Asset</label>
+                    <select value={assetForm.tipo} onChange={e=>setAssetForm({...assetForm, tipo:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd', borderRadius:4}}>
+                        <option value="frigo">Frigorifero</option>
+                        <option value="cella">Cella Frigo</option>
+                        <option value="vetrina">Vetrina</option>
+                        <option value="congelatore">Congelatore</option>
+                        <option value="abbattitore">Abbattitore</option>
+                        <option value="altro">Altro</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label style={{fontSize:12, fontWeight:'bold'}}>Stato</label>
+                    <select value={assetForm.stato} onChange={e=>setAssetForm({...assetForm, stato:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd', borderRadius:4}}>
+                        <option value="attivo">✅ Attivo</option>
+                        <option value="manutenzione">🛠️ In Manutenzione</option>
+                        <option value="spento">🛑 Spento</option>
+                        <option value="dismissed">🗑️ Dismesso</option>
+                    </select>
+                </div>
+
+                {/* Range Temperature */}
+                <div>
+                    <label style={{fontSize:12, fontWeight:'bold'}}>Range Min (°C)</label>
+                    <input type="number" step="0.1" value={assetForm.range_min} onChange={e=>setAssetForm({...assetForm, range_min:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd', borderRadius:4}} />
+                </div>
+                <div>
+                    <label style={{fontSize:12, fontWeight:'bold'}}>Range Max (°C)</label>
+                    <input type="number" step="0.1" value={assetForm.range_max} onChange={e=>setAssetForm({...assetForm, range_max:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd', borderRadius:4}} />
+                </div>
+
+                {/* Dettagli Tecnici */}
+                <div>
+                    <label style={{fontSize:12, fontWeight:'bold'}}>Marca</label>
+                    <input value={assetForm.marca} onChange={e=>setAssetForm({...assetForm, marca:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd', borderRadius:4}} />
+                </div>
+                <div>
+                    <label style={{fontSize:12, fontWeight:'bold'}}>Modello</label>
+                    <input value={assetForm.modello} onChange={e=>setAssetForm({...assetForm, modello:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd', borderRadius:4}} />
+                </div>
+                <div style={{gridColumn:'span 2'}}>
+                    <label style={{fontSize:12, fontWeight:'bold'}}>Serial Number / Matricola</label>
+                    <input value={assetForm.serial_number} onChange={e=>setAssetForm({...assetForm, serial_number:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd', borderRadius:4}} />
+                </div>
+
+                {/* Upload Foto */}
+                <div style={{gridColumn:'span 2', display:'flex', gap:10}}>
+                    <div style={{flex:1}}>
+                        <label style={{fontSize:12, fontWeight:'bold', display:'block', marginBottom:5}}>Foto Macchina</label>
+                        <div style={{display:'flex', gap:5}}>
+                            <input type="file" accept="image/*" onChange={handleAssetPhoto} style={{fontSize:11}} />
+                            {uploadingAsset && <span style={{fontSize:10}}>Caricamento...</span>}
+                        </div>
+                        {assetForm.foto_url && <div style={{fontSize:10, color:'green', marginTop:2}}>✅ Foto caricata</div>}
+                    </div>
+                    <div style={{flex:1}}>
+                        <label style={{fontSize:12, fontWeight:'bold', display:'block', marginBottom:5}}>Etichetta Energetica / Manuale</label>
+                        <div style={{display:'flex', gap:5}}>
+                            <input type="file" accept="image/*,.pdf" onChange={handleAssetLabel} style={{fontSize:11}} />
+                            {uploadingLabel && <span style={{fontSize:10}}>Caricamento...</span>}
+                        </div>
+                        {assetForm.etichetta_url && <div style={{fontSize:10, color:'green', marginTop:2}}>✅ File caricato</div>}
+                    </div>
+                </div>
+
+                {/* Pulsanti Azione */}
+                <div style={{gridColumn:'span 2', display:'flex', gap:10, marginTop:10}}>
+                    <button type="button" onClick={()=>setShowAssetModal(false)} style={{flex:1, padding:12, background:'#ccc', border:'none', borderRadius:5, cursor:'pointer'}}>Annulla</button>
+                    <button type="submit" style={{flex:1, padding:12, background:'#27ae60', color:'white', border:'none', borderRadius:5, fontWeight:'bold', cursor:'pointer'}}>
+                        {editingAsset ? 'AGGIORNA MACCHINA' : 'CREA MACCHINA'}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+)}
+
+
       {/* 2. LA VERSIONE PER LA STAMPA (Invisibile finché non stampi) */}
       {printMode === 'qr' && showQRModal && (
         <div className="print-area" style={{position:'fixed', top:0, left:0, width:'100%', height:'100%', background:'white', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'}}>
