@@ -452,14 +452,13 @@ app.get('/api/haccp/labels/storico/:ristorante_id', async (req, res) => {
     } catch(e) { res.status(500).json({error: "Errore recupero storico"}); } 
 });
 
-// --- PROXY DOWNLOAD V10 (FIX VERSIONE + FIRMA CORRETTA) ---
+// --- PROXY DOWNLOAD V11 (FIX DOPPIA "V" - VERSIONE FINALE) ---
 app.get('/api/proxy-download', async (req, res) => {
     const fileUrl = req.query.url;
     const fileName = req.query.name || 'documento.pdf';
     
-    // 1. CHECK RAPIDO: LE VARIABILI CI SONO?
     if (!process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
-        return res.status(500).send("ERRORE: Chiavi Cloudinary mancanti nel server.");
+        return res.status(500).send("ERRORE: Chiavi Cloudinary mancanti.");
     }
 
     if (!fileUrl) return res.status(400).send("URL mancante");
@@ -470,45 +469,47 @@ app.get('/api/proxy-download', async (req, res) => {
 
     let downloadUrl = fileUrl;
 
-    // 2. GENERAZIONE URL FIRMATO CON VERSIONE ESATTA
+    // 1. GENERAZIONE URL FIRMATO
     if (fileUrl.includes('cloudinary.com')) {
         try {
-            // Esempio URL: .../upload/v1768607586/menu-app/wv5vftsaf2texzowylxi.pdf
+            // Esempio URL: .../upload/v1768607586/menu-app/doc.pdf
             const parts = fileUrl.split('/upload/');
             
             if (parts.length === 2) {
-                let path = parts[1]; // v1768607586/menu-app/wv5vftsaf2texzowylxi.pdf
+                let path = parts[1]; 
                 
-                // A. ESTRAIAMO LA VERSIONE (Fondamentale per la firma!)
+                // A. ESTRAIAMO LA VERSIONE
                 let version = null;
-                const versionMatch = path.match(/^(v\d+)\//);
+                // MODIFICA QUI: Catturiamo solo i NUMERI dopo la v
+                const versionMatch = path.match(/^v(\d+)\//); 
                 if (versionMatch) {
-                    version = versionMatch[1]; // es: "v1768607586"
-                    // Rimuoviamo la versione dal path per ottenere l'ID pulito
-                    path = path.replace(/^(v\d+)\//, ''); 
+                    version = versionMatch[1]; // Ora contiene solo "1768607586" (senza la v)
+                    
+                    // Rimuoviamo l'intero blocco v12345/ dal path
+                    path = path.replace(/^v\d+\//, ''); 
                 }
 
                 // B. ESTRAIAMO IL PUBLIC ID
-                const publicId = path.replace(/\.[^/.]+$/, ""); // via .pdf -> "menu-app/wv5vftsaf2texzowylxi"
+                const publicId = path.replace(/\.[^/.]+$/, ""); // via .pdf
                 
-                // C. GENERIAMO L'URL INCLUDENDO LA VERSIONE
+                // C. GENERIAMO L'URL
                 downloadUrl = cloudinary.url(publicId, {
-                    resource_type: 'image', // I PDF sono gestiti come immagini
-                    type: 'upload',         // Sono nella cartella pubblica, ma bloccati
-                    sign_url: true,         // Genera firma
+                    resource_type: 'image', 
+                    type: 'upload',         
+                    sign_url: true,         
                     format: 'pdf',
-                    version: version,       // <--- QUESTO È IL FIX: Usiamo la versione originale!
+                    version: version,       // Ora passiamo solo il numero, Cloudinary aggiungerà la 'v' singola
                     secure: true
                 });
                 
-                console.log("✅ URL Firmato Correttamente (V10):", downloadUrl);
+                console.log("✅ URL Corretto (V11):", downloadUrl);
             }
         } catch (e) {
-            console.error("Errore generazione URL V10:", e);
+            console.error("Errore generazione:", e);
         }
     }
 
-    // 3. SCARICAMENTO
+    // 2. SCARICAMENTO
     const client = downloadUrl.startsWith('https') ? https : http;
     const options = {
         headers: { 'User-Agent': 'Mozilla/5.0' }
@@ -517,8 +518,7 @@ app.get('/api/proxy-download', async (req, res) => {
     client.get(downloadUrl, options, (response) => {
         // Gestione Redirect
         if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-             const newUrl = response.headers.location;
-             client.get(newUrl, options, (res2) => {
+             client.get(response.headers.location, options, (res2) => {
                  if(res2.statusCode !== 200) return res.status(res2.statusCode).send("Errore dopo redirect.");
                  res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
                  res.setHeader('Content-Type', 'application/pdf');
@@ -528,8 +528,8 @@ app.get('/api/proxy-download', async (req, res) => {
         }
 
         if (response.statusCode !== 200) {
-            console.error(`Errore V10: ${response.statusCode} - URL: ${downloadUrl}`);
-            return res.status(response.statusCode).send(`Errore Cloudinary ${response.statusCode}: Firma non valida.`);
+            console.error(`Errore V11: ${response.statusCode} - URL: ${downloadUrl}`);
+            return res.status(response.statusCode).send(`Errore Cloudinary ${response.statusCode}: Verifica logs.`);
         }
 
         res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
