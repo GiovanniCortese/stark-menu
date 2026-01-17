@@ -452,91 +452,110 @@ app.get('/api/haccp/labels/storico/:ristorante_id', async (req, res) => {
     } catch(e) { res.status(500).json({error: "Errore recupero storico"}); } 
 });
 
-// --- PROXY DOWNLOAD V11 (FIX DOPPIA "V" - VERSIONE FINALE) ---
+// --- PROXY DOWNLOAD V12 (PASSEPARTOUT: TRIM CHIAVI + TENTATIVI RAW/IMAGE) ---
 app.get('/api/proxy-download', async (req, res) => {
     const fileUrl = req.query.url;
     const fileName = req.query.name || 'documento.pdf';
     
-    if (!process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+    // 1. PULIZIA CHIAVI (FIX SPAZI VUOTI)
+    // Spesso nel copia/incolla finisce uno spazio alla fine che rompe la firma.
+    const apiSecret = (process.env.CLOUDINARY_API_SECRET || '').trim();
+    const apiKey = (process.env.CLOUDINARY_API_KEY || '').trim();
+    const cloudName = (process.env.CLOUDINARY_CLOUD_NAME || '').trim();
+
+    if (!apiSecret || !apiKey || !cloudName) {
         return res.status(500).send("ERRORE: Chiavi Cloudinary mancanti.");
     }
 
+    // Riconfiguriamo Cloudinary al volo per essere sicuri di usare le chiavi pulite
+    cloudinary.config({
+        cloud_name: cloudName,
+        api_key: apiKey,
+        api_secret: apiSecret
+    });
+
     if (!fileUrl) return res.status(400).send("URL mancante");
 
-    // Moduli
     const https = require('https');
     const http = require('http');
 
-    let downloadUrl = fileUrl;
-
-    // 1. GENERAZIONE URL FIRMATO
-    if (fileUrl.includes('cloudinary.com')) {
-        try {
-            // Esempio URL: .../upload/v1768607586/menu-app/doc.pdf
-            const parts = fileUrl.split('/upload/');
-            
-            if (parts.length === 2) {
-                let path = parts[1]; 
-                
-                // A. ESTRAIAMO LA VERSIONE
-                let version = null;
-                // MODIFICA QUI: Catturiamo solo i NUMERI dopo la v
-                const versionMatch = path.match(/^v(\d+)\//); 
-                if (versionMatch) {
-                    version = versionMatch[1]; // Ora contiene solo "1768607586" (senza la v)
-                    
-                    // Rimuoviamo l'intero blocco v12345/ dal path
-                    path = path.replace(/^v\d+\//, ''); 
-                }
-
-                // B. ESTRAIAMO IL PUBLIC ID
-                const publicId = path.replace(/\.[^/.]+$/, ""); // via .pdf
-                
-                // C. GENERIAMO L'URL
-                downloadUrl = cloudinary.url(publicId, {
-                    resource_type: 'image', 
-                    type: 'upload',         
-                    sign_url: true,         
-                    format: 'pdf',
-                    version: version,       // Ora passiamo solo il numero, Cloudinary aggiungerà la 'v' singola
-                    secure: true
-                });
-                
-                console.log("✅ URL Corretto (V11):", downloadUrl);
-            }
-        } catch (e) {
-            console.error("Errore generazione:", e);
-        }
-    }
-
-    // 2. SCARICAMENTO
-    const client = downloadUrl.startsWith('https') ? https : http;
-    const options = {
-        headers: { 'User-Agent': 'Mozilla/5.0' }
+    // Funzione Helper Download
+    const tryDownload = (url) => {
+        return new Promise((resolve) => {
+            const client = url.startsWith('https') ? https : http;
+            const req = client.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
+                if (res.statusCode === 200) resolve({ ok: true, res });
+                else if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) resolve({ ok: false, redirect: res.headers.location });
+                else resolve({ ok: false, status: res.statusCode });
+            });
+            req.on('error', () => resolve({ ok: false, error: true }));
+        });
     };
 
-    client.get(downloadUrl, options, (response) => {
-        // Gestione Redirect
-        if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-             client.get(response.headers.location, options, (res2) => {
-                 if(res2.statusCode !== 200) return res.status(res2.statusCode).send("Errore dopo redirect.");
-                 res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
-                 res.setHeader('Content-Type', 'application/pdf');
-                 res2.pipe(res);
-             });
-             return;
+    if (fileUrl.includes('cloudinary.com')) {
+        try {
+            // Esempio: .../upload/v1768607586/menu-app/doc.pdf
+            const parts = fileUrl.split('/upload/');
+            if (parts.length === 2) {
+                let path = parts[1];
+                let version = null;
+                
+                // Estrai versione
+                const verMatch = path.match(/^v(\d+)\//);
+                if (verMatch) {
+                    version = verMatch[1];
+                    path = path.replace(/^v\d+\//, '');
+                }
+
+                // ID Pulito (senza estensione) e ID Raw (con estensione)
+                const publicIdClean = path.replace(/\.[^/.]+$/, ""); // "menu-app/doc"
+                const publicIdRaw = path; // "menu-app/doc.pdf"
+
+                // PREPARIAMO 3 CANDIDATI (Uno di questi è la chiave giusta)
+                const candidates = [
+                    // 1. STANDARD: Come immagine, senza estensione (Il più probabile)
+                    cloudinary.url(publicIdClean, { resource_type: 'image', type: 'upload', sign_url: true, format: 'pdf', version: version, secure: true }),
+                    
+                    // 2. RAW: Come file grezzo, CON estensione (Spesso i PDF finiscono qui)
+                    cloudinary.url(publicIdRaw, { resource_type: 'raw', type: 'upload', sign_url: true, version: version, secure: true }),
+
+                    // 3. HYBRID: Come immagine, ma mantenendo l'estensione nel nome (Raro ma possibile)
+                    cloudinary.url(publicIdRaw, { resource_type: 'image', type: 'upload', sign_url: true, format: 'pdf', version: version, secure: true })
+                ];
+
+                console.log(`🔐 Avvio tentativi V12 con Secret Key pulita (${apiSecret.length} chars)...`);
+
+                for (let i = 0; i < candidates.length; i++) {
+                    const url = candidates[i];
+                    console.log(`   👉 Tentativo ${i+1}: ${url}`);
+                    
+                    const result = await tryDownload(url);
+                    
+                    if (result.ok) {
+                        console.log("   ✅ SUCCESSO!");
+                        res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+                        res.setHeader('Content-Type', 'application/pdf');
+                        result.res.pipe(res);
+                        return; // Stop, abbiamo vinto.
+                    } else if (result.redirect) {
+                        // Se redirect, seguilo una volta
+                        const redir = await tryDownload(result.redirect);
+                        if (redir.ok) {
+                            res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+                            res.setHeader('Content-Type', 'application/pdf');
+                            redir.res.pipe(res);
+                            return;
+                        }
+                    }
+                }
+                return res.status(401).send("Errore 401: Nessuna combinazione di firma ha funzionato. Verifica al 100% che la API SECRET nel .env sia corretta.");
+            }
+        } catch (e) {
+            console.error(e);
         }
-
-        if (response.statusCode !== 200) {
-            console.error(`Errore V11: ${response.statusCode} - URL: ${downloadUrl}`);
-            return res.status(response.statusCode).send(`Errore Cloudinary ${response.statusCode}: Verifica logs.`);
-        }
-
-        res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
-        res.setHeader('Content-Type', 'application/pdf');
-        response.pipe(res);
-
-    }).on('error', (err) => res.status(500).send("Errore di rete."));
+    }
+    
+    res.status(500).send("Errore generico V12");
 });
 
 app.listen(port, () => console.log(`🚀 SERVER V12.2 (Porta ${port}) - TIMEZONE: ROME`));
