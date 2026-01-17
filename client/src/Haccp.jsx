@@ -407,6 +407,26 @@ function Haccp() {
         .preview-frame { width: 100%; height: 100%; border: none; }
         .preview-img { max-width: 100%; max-height: 100%; object-fit: contain; }
 
+        /* --- STILI TEMPERATURE (MOBILE OPTIMIZED) --- */
+        .temp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+        .temp-card { padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); position: relative; }
+        .temp-card.active { background: white; border-top: 5px solid #bdc3c7; }
+        .temp-card.done { background: #eafaf1; border: 2px solid #27ae60; }
+        .temp-card.spento { background: #e0e0e0; border: 2px solid #999; opacity: 0.8; }
+        .btn-download-report { background: #27ae60; color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 14px; }
+        .temp-card-input-area { display: flex; gap: 10px; align-items: stretch; height: 45px; }
+        .temp-input { flex: 1; border-radius: 5px; border: 1px solid #ddd; font-size: 18px; text-align: center; font-weight: bold; min-width: 0; }
+        .temp-actions { display: flex; gap: 5px; }
+        .btn-action { border: none; border-radius: 5px; cursor: pointer; font-weight: bold; display: flex; align-items: center; justify-content: center; font-size: 12px; height: 100%; }
+        .btn-action.off { width: 45px; background: #95a5a6; color: white; font-size: 10px; }
+        .btn-action.photo { width: 45px; background: #f1f2f6; border: 1px solid #ddd; cursor: pointer; font-size: 18px; }
+        .btn-action.photo.has-photo { background: #2ecc71; border-color: #27ae60; color: white; }
+        .btn-action.save { width: 60px; background: #2c3e50; color: white; }
+        .btn-modify { margin-top: 15px; width: 100%; background: #f39c12; color: white; border: none; padding: 10px; borderRadius: 5px; font-weight: bold; cursor: pointer; }
+        .btn-cancel-edit { margin-top: 5px; width: 100%; font-size: 10px; background: transparent; border: none; color: #999; cursor: pointer; text-decoration: underline; }
+        .badge-off { position: absolute; top: 10px; right: 10px; background: #555; color: white; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; }
+        .status-box-off { height: 40px; background: #ccc; border-radius: 5px; display: flex; align-items: center; justify-content: center; color: #777; font-weight: bold; font-size: 12px; margin-top: 10px; }
+
         /* FORM GRIDS */
         .grid-form { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
         .span-2 { grid-column: span 2; }
@@ -466,6 +486,18 @@ function Haccp() {
             /* Modals full width */
             .modal-content { width: 100%; max-width: 100%; border-radius: 0; height: 100%; max-height: 100%; }
             .small-modal, .medium-modal { border-radius: 10px; height: auto; }
+        }
+
+        /* --- MOBILE TWEAKS PER TEMPERATURE (< 480px) --- */
+        @media (max-width: 480px) {
+            /* Forza 1 colonna per le card */
+            .temp-grid { grid-template-columns: 1fr; gap: 15px; } 
+
+            /* Se lo schermo è MOLTO piccolo, metti i bottoni SOTTO l'input */
+            .temp-card-input-area { flex-wrap: wrap; height: auto; }
+            .temp-input { width: 100%; height: 45px; margin-bottom: 5px; }
+            .temp-actions { width: 100%; display: flex; justify-content: space-between; height: 40px; }
+            .btn-action { flex: 1; } /* Bottoni larghi uguali */
         }
 
         @media print { 
