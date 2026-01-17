@@ -452,105 +452,104 @@ app.get('/api/haccp/labels/storico/:ristorante_id', async (req, res) => {
     } catch(e) { res.status(500).json({error: "Errore recupero storico"}); } 
 });
 
-// --- PROXY DOWNLOAD V14 (METODO IBRIDO: ADMIN + FORZATURA AUTH) ---
+// --- PROXY DOWNLOAD V15 (METODO TOKEN "SKELETON KEY") ---
 app.get('/api/proxy-download', async (req, res) => {
     const fileUrl = req.query.url;
     const fileName = req.query.name || 'documento.pdf';
 
-    // 1. SETUP CLOUDINARY
+    // 1. RECUPERO E PULIZIA CHIAVI (Fondamentale)
     const apiSecret = (process.env.CLOUDINARY_API_SECRET || '').trim();
     const apiKey = (process.env.CLOUDINARY_API_KEY || '').trim();
     const cloudName = (process.env.CLOUDINARY_CLOUD_NAME || '').trim();
 
     if (!apiSecret || !apiKey || !cloudName) return res.status(500).send("Chiavi mancanti.");
     
+    // Riconfigurazione forzata per essere sicuri
     cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret });
 
     if (!fileUrl) return res.status(400).send("URL mancante");
 
-    // Helper Download
     const https = require('https');
     const http = require('http');
-    const tryDownload = (url) => {
-        return new Promise((resolve) => {
-            const client = url.startsWith('https') ? https : http;
-            const r = client.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
-                if (res.statusCode === 200) resolve({ ok: true, res });
-                else resolve({ ok: false, status: res.statusCode });
-            });
-            r.on('error', () => resolve({ ok: false, error: true }));
-        });
-    };
 
     try {
-        console.log("🔍 V14: Avvio procedura di sblocco...");
+        console.log("🔓 V15: Generazione Token di Accesso Universale...");
 
-        // 2. RECUPERO DATI REALI DAL SERVER (Come in V13)
-        // Estraiamo l'ID "grezzo" dall'URL per interrogarlo
+        // 2. ESTRAZIONE DATI PURI DALL'URL
+        // URL originale: .../image/upload/v1768609472/menu-app/doc.pdf
         const parts = fileUrl.split('/upload/');
         if (parts.length < 2) return res.status(400).send("URL non valido");
-        let path = parts[1].replace(/^v\d+\//, ''); // via versione vecchia
-        const lookupId = path.replace(/\.[^/.]+$/, ""); // via estensione
-
-        // Chiediamo a Cloudinary i dati CERTIFICATI
-        let resource;
-        try {
-            resource = await cloudinary.api.resource(lookupId, { resource_type: 'image' });
-        } catch (e) {
-            console.log("   ⚠️ Fallito lookup immagine, provo raw...");
-            try { resource = await cloudinary.api.resource(lookupId + ".pdf", { resource_type: 'raw' }); } catch(e2){}
-        }
-
-        if (!resource) return res.status(404).send("File non trovato nell'account.");
-
-        console.log(`   ✅ Dati Reali: ID=${resource.public_id} | Ver=${resource.version}`);
-
-        // 3. GENERAZIONE DOPPIO URL (La Strategia Vincente)
-        // Proviamo due chiavi: una standard e una che forza il canale "authenticated"
         
-        const candidates = [];
-
-        // OPZIONE A: Canale Authenticated (Spesso richiesto per i PDF bloccati)
-        candidates.push(cloudinary.url(resource.public_id, {
-            resource_type: resource.resource_type,
-            type: 'authenticated', // <--- FORZIAMO QUESTO
-            sign_url: true,
-            format: resource.format,
-            version: resource.version, // <--- USIAMO LA VERSIONE REALE TROVATA
-            secure: true
-        }));
-
-        // OPZIONE B: Canale Upload Standard (Fallback)
-        candidates.push(cloudinary.url(resource.public_id, {
-            resource_type: resource.resource_type,
-            type: 'upload',
-            sign_url: true,
-            format: resource.format,
-            version: resource.version,
-            secure: true
-        }));
-
-        // 4. TENTATIVO DI SCARICAMENTO
-        for (const url of candidates) {
-            console.log(`   👉 Provo sblocco con: ${url}`);
-            const result = await tryDownload(url);
-            
-            if (result.ok) {
-                console.log("   🚀 SBLOCCO RIUSCITO!");
-                res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
-                res.setHeader('Content-Type', 'application/pdf');
-                result.res.pipe(res);
-                return;
-            } else {
-                console.log(`      ❌ Fallito con status: ${result.status}`);
-            }
+        let pathPart = parts[1]; // v1768609472/menu-app/doc.pdf
+        
+        // Estraiamo la versione numerica (es. 1768609472)
+        let version = "";
+        const verMatch = pathPart.match(/^v(\d+)\//);
+        if (verMatch) {
+            version = verMatch[1];
+            pathPart = pathPart.replace(/^v\d+\//, ''); // Rimuove v123/ dal path
         }
+        
+        // Puliamo l'ID (senza estensione)
+        const publicId = pathPart.replace(/\.[^/.]+$/, ""); 
 
-        res.status(401).send("Errore 401 Persistente: Cloudinary sta bloccando l'accesso API.");
+        console.log(`   👉 Target: ID=${publicId} | Ver=${version}`);
+
+        // 3. COSTRUZIONE MANUALE URL (Senza SDK)
+        // Costruiamo l'URL "pulito" senza firme s--xxx-- che possono rompersi
+        const baseUrl = `https://res.cloudinary.com/${cloudName}/image/upload/v${version}/${publicId}.pdf`;
+
+        // 4. GENERAZIONE TOKEN "PASSEPARTOUT"
+        // Invece di firmare l'URL, creiamo un token che autorizza l'accesso a TUTTO per 300 secondi.
+        // ACL "/*" significa "dai accesso a qualsiasi file con questo token" (sicuro perché lo usiamo solo qui)
+        const token = cloudinary.utils.generate_auth_token({
+            key: apiSecret,
+            acl: "/*", 
+            duration: 300 // Valido 5 minuti
+        });
+
+        const finalUrl = `${baseUrl}?token=${token}`;
+        
+        console.log("   🎟️ Token Generato. Scarico da URL sicuro...");
+
+        // 5. DOWNLOAD
+        const client = finalUrl.startsWith('https') ? https : http;
+        
+        client.get(finalUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (response) => {
+            // Gestione Redirect (se il token ci manda altrove)
+            if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+                console.log("   ↪️ Redirect intercettato...");
+                client.get(response.headers.location, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res2) => {
+                    if (res2.statusCode === 200) {
+                        res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+                        res.setHeader('Content-Type', 'application/pdf');
+                        res2.pipe(res);
+                    } else {
+                        res.status(res2.statusCode).send("Errore dopo redirect token.");
+                    }
+                });
+                return;
+            }
+
+            if (response.statusCode !== 200) {
+                console.error(`   ❌ Errore V15: ${response.statusCode}`);
+                return res.status(response.statusCode).send("Errore 401: Anche il Token Universale è stato rifiutato. Verifica le impostazioni 'Strict' su Cloudinary.");
+            }
+
+            // Successo
+            console.log("   🚀 SUCCESSO! File inviato.");
+            res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+            res.setHeader('Content-Type', 'application/pdf');
+            response.pipe(res);
+
+        }).on('error', (err) => {
+            console.error(err);
+            res.status(500).send("Errore di rete.");
+        });
 
     } catch (e) {
-        console.error(e);
-        res.status(500).send("Errore Server V14");
+        console.error("CRASH V15:", e);
+        res.status(500).send("Errore interno V15");
     }
 });
 
