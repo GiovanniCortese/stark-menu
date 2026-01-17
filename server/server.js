@@ -452,19 +452,17 @@ app.get('/api/haccp/labels/storico/:ristorante_id', async (req, res) => {
     } catch(e) { res.status(500).json({error: "Errore recupero storico"}); } 
 });
 
-// --- PROXY DOWNLOAD V15 (METODO TOKEN "SKELETON KEY") ---
+// --- PROXY DOWNLOAD FINALE (PULITO & ROBUSTO) ---
 app.get('/api/proxy-download', async (req, res) => {
     const fileUrl = req.query.url;
     const fileName = req.query.name || 'documento.pdf';
 
-    // 1. RECUPERO E PULIZIA CHIAVI (Fondamentale)
+    // 1. Configurazione Cloudinary
     const apiSecret = (process.env.CLOUDINARY_API_SECRET || '').trim();
     const apiKey = (process.env.CLOUDINARY_API_KEY || '').trim();
     const cloudName = (process.env.CLOUDINARY_CLOUD_NAME || '').trim();
 
-    if (!apiSecret || !apiKey || !cloudName) return res.status(500).send("Chiavi mancanti.");
-    
-    // Riconfigurazione forzata per essere sicuri
+    if (!apiSecret || !apiKey || !cloudName) return res.status(500).send("Errore config server.");
     cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret });
 
     if (!fileUrl) return res.status(400).send("URL mancante");
@@ -473,83 +471,63 @@ app.get('/api/proxy-download', async (req, res) => {
     const http = require('http');
 
     try {
-        console.log("🔓 V15: Generazione Token di Accesso Universale...");
-
-        // 2. ESTRAZIONE DATI PURI DALL'URL
-        // URL originale: .../image/upload/v1768609472/menu-app/doc.pdf
+        // 2. Estrazione ID dall'URL
         const parts = fileUrl.split('/upload/');
         if (parts.length < 2) return res.status(400).send("URL non valido");
         
-        let pathPart = parts[1]; // v1768609472/menu-app/doc.pdf
-        
-        // Estraiamo la versione numerica (es. 1768609472)
-        let version = "";
-        const verMatch = pathPart.match(/^v(\d+)\//);
-        if (verMatch) {
-            version = verMatch[1];
-            pathPart = pathPart.replace(/^v\d+\//, ''); // Rimuove v123/ dal path
+        // Pulizia stringa per ottenere l'ID puro (es. "menu-app/documento")
+        let path = parts[1].replace(/^v\d+\//, ''); 
+        const publicId = path.replace(/\.[^/.]+$/, "");
+
+        // 3. Lookup dei dati reali su Cloudinary
+        // Questo passaggio ci assicura di avere l'ID e la Versione corretti al 100%
+        let resource;
+        try {
+            resource = await cloudinary.api.resource(publicId, { resource_type: 'image' });
+        } catch (e) {
+            try { resource = await cloudinary.api.resource(publicId + ".pdf", { resource_type: 'raw' }); } catch(e2){}
         }
-        
-        // Puliamo l'ID (senza estensione)
-        const publicId = pathPart.replace(/\.[^/.]+$/, ""); 
 
-        console.log(`   👉 Target: ID=${publicId} | Ver=${version}`);
+        if (!resource) return res.status(404).send("File non trovato.");
 
-        // 3. COSTRUZIONE MANUALE URL (Senza SDK)
-        // Costruiamo l'URL "pulito" senza firme s--xxx-- che possono rompersi
-        const baseUrl = `https://res.cloudinary.com/${cloudName}/image/upload/v${version}/${publicId}.pdf`;
-
-        // 4. GENERAZIONE TOKEN "PASSEPARTOUT"
-        // Invece di firmare l'URL, creiamo un token che autorizza l'accesso a TUTTO per 300 secondi.
-        // ACL "/*" significa "dai accesso a qualsiasi file con questo token" (sicuro perché lo usiamo solo qui)
-        const token = cloudinary.utils.generate_auth_token({
-            key: apiSecret,
-            acl: "/*", 
-            duration: 300 // Valido 5 minuti
+        // 4. Generazione URL Firmato Sicuro
+        // Usiamo i dati reali restituiti da Cloudinary
+        const downloadUrl = cloudinary.url(resource.public_id, {
+            resource_type: resource.resource_type,
+            type: resource.type, // Mantiene il tipo corretto (upload o authenticated)
+            sign_url: true,
+            format: resource.format,
+            version: resource.version,
+            secure: true
         });
 
-        const finalUrl = `${baseUrl}?token=${token}`;
-        
-        console.log("   🎟️ Token Generato. Scarico da URL sicuro...");
-
-        // 5. DOWNLOAD
-        const client = finalUrl.startsWith('https') ? https : http;
-        
-        client.get(finalUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (response) => {
-            // Gestione Redirect (se il token ci manda altrove)
+        // 5. Download Stream
+        const client = downloadUrl.startsWith('https') ? https : http;
+        client.get(downloadUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (response) => {
+            // Gestione Redirect
             if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-                console.log("   ↪️ Redirect intercettato...");
                 client.get(response.headers.location, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res2) => {
-                    if (res2.statusCode === 200) {
-                        res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
-                        res.setHeader('Content-Type', 'application/pdf');
-                        res2.pipe(res);
-                    } else {
-                        res.status(res2.statusCode).send("Errore dopo redirect token.");
-                    }
+                    res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+                    res.setHeader('Content-Type', 'application/pdf');
+                    res2.pipe(res);
                 });
                 return;
             }
 
             if (response.statusCode !== 200) {
-                console.error(`   ❌ Errore V15: ${response.statusCode}`);
-                return res.status(response.statusCode).send("Errore 401: Anche il Token Universale è stato rifiutato. Verifica le impostazioni 'Strict' su Cloudinary.");
+                return res.status(response.statusCode).send("Errore download file.");
             }
 
             // Successo
-            console.log("   🚀 SUCCESSO! File inviato.");
             res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
             res.setHeader('Content-Type', 'application/pdf');
             response.pipe(res);
 
-        }).on('error', (err) => {
-            console.error(err);
-            res.status(500).send("Errore di rete.");
-        });
+        }).on('error', (err) => res.status(500).send("Errore rete."));
 
     } catch (e) {
-        console.error("CRASH V15:", e);
-        res.status(500).send("Errore interno V15");
+        console.error("Proxy Error:", e.message);
+        res.status(500).send("Errore interno.");
     }
 });
 
