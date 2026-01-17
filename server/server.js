@@ -452,24 +452,14 @@ app.get('/api/haccp/labels/storico/:ristorante_id', async (req, res) => {
     } catch(e) { res.status(500).json({error: "Errore recupero storico"}); } 
 });
 
-// --- PROXY DOWNLOAD V9 (DEBUG CHIAVI + FIX PDF) ---
+// --- PROXY DOWNLOAD V10 (FIX VERSIONE + FIRMA CORRETTA) ---
 app.get('/api/proxy-download', async (req, res) => {
     const fileUrl = req.query.url;
     const fileName = req.query.name || 'documento.pdf';
     
-    // 1. CONTROLLO DI SICUREZZA VARIABILI AMBIENTE
-    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
-    const apiKey = process.env.CLOUDINARY_API_KEY;
-    const apiSecret = process.env.CLOUDINARY_API_SECRET;
-
-    // Stampiamo nei log (console di Render) se le chiavi ci sono
-    console.log("--- DEBUG CLOUDINARY ---");
-    console.log("Cloud Name caricato:", cloudName ? "SÌ (" + cloudName + ")" : "❌ NO (Manca nel .env!)");
-    console.log("API Key caricata:", apiKey ? "SÌ" : "❌ NO");
-    console.log("API Secret caricato:", apiSecret ? "SÌ (lunghezza: " + apiSecret.length + ")" : "❌ NO");
-
-    if (!cloudName || !apiKey || !apiSecret) {
-        return res.status(500).send("ERRORE CONFIGURAZIONE SERVER: Mancano le chiavi Cloudinary nel file .env o su Render.");
+    // 1. CHECK RAPIDO: LE VARIABILI CI SONO?
+    if (!process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+        return res.status(500).send("ERRORE: Chiavi Cloudinary mancanti nel server.");
     }
 
     if (!fileUrl) return res.status(400).send("URL mancante");
@@ -480,35 +470,45 @@ app.get('/api/proxy-download', async (req, res) => {
 
     let downloadUrl = fileUrl;
 
-    // 2. RICOSTRUZIONE URL FIRMATO (SPECIFICO PER PDF PROTETTI)
+    // 2. GENERAZIONE URL FIRMATO CON VERSIONE ESATTA
     if (fileUrl.includes('cloudinary.com')) {
         try {
-            // Estrae Public ID
-            // Es: .../image/upload/v12345/cartella/file.pdf
+            // Esempio URL: .../upload/v1768607586/menu-app/wv5vftsaf2texzowylxi.pdf
             const parts = fileUrl.split('/upload/');
+            
             if (parts.length === 2) {
-                let path = parts[1];
-                path = path.replace(/^v\d+\//, ''); // Rimuove v12345/
-                const publicId = path.replace(/\.[^/.]+$/, ""); // Rimuove .pdf
+                let path = parts[1]; // v1768607586/menu-app/wv5vftsaf2texzowylxi.pdf
                 
-                // NOTA: Usiamo 'image' come resource_type perché Cloudinary tratta i PDF come immagini per la delivery
-                // Usiamo 'upload' come type ma con sign_url: true
+                // A. ESTRAIAMO LA VERSIONE (Fondamentale per la firma!)
+                let version = null;
+                const versionMatch = path.match(/^(v\d+)\//);
+                if (versionMatch) {
+                    version = versionMatch[1]; // es: "v1768607586"
+                    // Rimuoviamo la versione dal path per ottenere l'ID pulito
+                    path = path.replace(/^(v\d+)\//, ''); 
+                }
+
+                // B. ESTRAIAMO IL PUBLIC ID
+                const publicId = path.replace(/\.[^/.]+$/, ""); // via .pdf -> "menu-app/wv5vftsaf2texzowylxi"
+                
+                // C. GENERIAMO L'URL INCLUDENDO LA VERSIONE
                 downloadUrl = cloudinary.url(publicId, {
-                    resource_type: 'image',
-                    type: 'upload',      // I PDF sono in upload (non authenticated) ma richiedono firma
-                    sign_url: true,      // Genera la firma s--xxxxx--
+                    resource_type: 'image', // I PDF sono gestiti come immagini
+                    type: 'upload',         // Sono nella cartella pubblica, ma bloccati
+                    sign_url: true,         // Genera firma
                     format: 'pdf',
+                    version: version,       // <--- QUESTO È IL FIX: Usiamo la versione originale!
                     secure: true
                 });
                 
-                console.log("Tentativo URL Firmato:", downloadUrl);
+                console.log("✅ URL Firmato Correttamente (V10):", downloadUrl);
             }
         } catch (e) {
-            console.error("Errore generazione URL:", e);
+            console.error("Errore generazione URL V10:", e);
         }
     }
 
-    // 3. ESECUZIONE DOWNLOAD
+    // 3. SCARICAMENTO
     const client = downloadUrl.startsWith('https') ? https : http;
     const options = {
         headers: { 'User-Agent': 'Mozilla/5.0' }
@@ -518,8 +518,6 @@ app.get('/api/proxy-download', async (req, res) => {
         // Gestione Redirect
         if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
              const newUrl = response.headers.location;
-             console.log("Seguo redirect verso:", newUrl);
-             // Semplice gestione redirect a 1 livello
              client.get(newUrl, options, (res2) => {
                  if(res2.statusCode !== 200) return res.status(res2.statusCode).send("Errore dopo redirect.");
                  res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
@@ -530,8 +528,8 @@ app.get('/api/proxy-download', async (req, res) => {
         }
 
         if (response.statusCode !== 200) {
-            console.error(`Errore Download: ${response.statusCode} - URL: ${downloadUrl}`);
-            return res.status(response.statusCode).send(`Errore Cloudinary ${response.statusCode}: Verifica le chiavi nel log del server.`);
+            console.error(`Errore V10: ${response.statusCode} - URL: ${downloadUrl}`);
+            return res.status(response.statusCode).send(`Errore Cloudinary ${response.statusCode}: Firma non valida.`);
         }
 
         res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
