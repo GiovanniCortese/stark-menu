@@ -1,16 +1,31 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Middleware Base
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
-app.use('/api', require('./routes/auth'));
-app.use('/api', require('./routes/ordini'));
-app.use('/api', require('./routes/menu'));
-app.use('/api/haccp', require('./routes/haccp'));
-app.use('/api', require('./routes/main'));
+// --- IMPORT DEI MODULI (ROTTE) ---
+const authRoutes = require('./routes/authRoutes');
+const menuRoutes = require('./routes/menuRoutes');
+const orderRoutes = require('./routes/orderRoutes');
+const haccpRoutes = require('./routes/haccpRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
-app.listen(port, () => console.log(`🚀 SERVER V13.0 (MODULAR) - Porta ${port}`));
+// --- UTILIZZO DELLE ROTTE ---
+// Montiamo tutto alla radice ('/') perché le rotte nei file hanno già il prefisso /api/...
+// Questo garantisce compatibilità 100% con il frontend attuale.
+app.use('/', authRoutes);
+app.use('/', menuRoutes);
+app.use('/', orderRoutes);
+app.use('/', haccpRoutes);
+app.use('/', adminRoutes);
+
+// Route di verifica
+app.get('/', (req, res) => res.send('🚀 SERVER V13 (MODULAR) ATTIVO!'));
+
+app.listen(port, () => console.log(`🚀 SERVER V13 avviato su porta ${port}`));
