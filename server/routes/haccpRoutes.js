@@ -5,6 +5,7 @@ const { getItalyDateComponents } = require('../utils/time');
 const { uploadFile } = require('../config/storage'); // <--- QUESTA MANCAVA
 const PDFDocument = require('pdfkit-table');
 const xlsx = require('xlsx');
+const OpenAI = require('openai'); // Aggiungi questo import in alto
 
 // Assets
 router.get('/api/haccp/assets/:ristorante_id', async (req, res) => { try { const r = await pool.query("SELECT * FROM haccp_assets WHERE ristorante_id = $1 ORDER BY tipo, nome", [req.params.ristorante_id]); res.json(r.rows); } catch(e) { res.status(500).json({error:"Err"}); } });
@@ -33,8 +34,60 @@ router.get('/api/haccp/pulizie/:ristorante_id', async (req, res) => { try { cons
 router.post('/api/haccp/pulizie', async (req, res) => { try { const { ristorante_id, area, prodotto, operatore, conformita, data_ora } = req.body; await pool.query("INSERT INTO haccp_cleaning (ristorante_id, area, prodotto, operatore, conformita, data_ora) VALUES ($1, $2, $3, $4, $5, $6)", [ristorante_id, area, prodotto, operatore, conformita !== undefined ? conformita : true, data_ora || new Date()]); res.json({success:true}); } catch(e) { res.status(500).json({error:e.message}); } });
 router.delete('/api/haccp/pulizie/:id', async (req, res) => { try { await pool.query("DELETE FROM haccp_cleaning WHERE id = $1", [req.params.id]); res.json({success:true}); } catch(e) { res.status(500).json({error:"Err"}); } });
 
-// --- GESTIONE RICETTE & AUTO-MATCHING ---
+// ROTTA INTELLIGENTE: Scansione Bolla con AI
+router.post('/api/haccp/scan-bolla', uploadFile.single('photo'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ error: "Nessuna foto inviata" });
+        if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: "Manca API Key OpenAI" });
 
+        // 1. Converti immagine in Base64
+        const base64Image = req.file.buffer.toString('base64');
+        const dataUrl = `data:${req.file.mimetype};base64,${base64Image}`;
+
+        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+        // 2. Chiedi a GPT-4o di analizzare
+        const response = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: [
+                {
+                    role: "system",
+                    content: `Sei un esperto HACCP. Analizza l'immagine di questa bolla di accompagnamento / fattura.
+                    Estrai i dati e restituisci SOLO un oggetto JSON valido (senza markdown) con questa struttura:
+                    {
+                        "fornitore":Str,
+                        "data_ricezione": "YYYY-MM-DD", 
+                        "prodotti": [
+                            { "nome": Str, "quantita": Str, "lotto": Str (o null), "scadenza": "YYYY-MM-DD" (o null, stima se c'è scritto 'consumare entro') }
+                        ]
+                    }.
+                    Se non trovi la data ricezione usa la data odierna. Se i prodotti sono tanti, elencali tutti.`
+                },
+                {
+                    role: "user",
+                    content: [
+                        { type: "text", text: "Analizza questa bolla." },
+                        { type: "image_url", image_url: { url: dataUrl } }
+                    ]
+                }
+            ],
+            max_tokens: 1000
+        });
+
+        // 3. Pulisci e invia il JSON
+        let text = response.choices[0].message.content;
+        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        const data = JSON.parse(text);
+
+        res.json({ success: true, data });
+
+    } catch (e) {
+        console.error("Errore AI:", e);
+        res.status(500).json({ error: "Errore durante l'analisi AI: " + e.message });
+    }
+});
+
+// --- GESTIONE RICETTE & AUTO-MATCHING ---
 // 1. Prendi tutte le ricette del ristorante
 router.get('/api/haccp/ricette/:ristorante_id', async (req, res) => {
     try {
