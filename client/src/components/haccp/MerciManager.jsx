@@ -13,7 +13,7 @@ const MerciManager = ({
     const scanInputRef = useRef(null);
 
     // Funzione che gestisce l'invio della foto all'AI
-    const handleScanBolla = async (e) => {
+   const handleScanBolla = async (e) => {
         const file = e.target.files[0];
         if(!file) return;
 
@@ -21,20 +21,40 @@ const MerciManager = ({
         const fd = new FormData();
         fd.append('photo', file);
 
+        // TIMEOUT DI SICUREZZA (Nuovo)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 secondi max
+
         try {
-            const res = await fetch(`${API_URL}/api/haccp/scan-bolla`, { method: 'POST', body: fd });
+            const res = await fetch(`${API_URL}/api/haccp/scan-bolla`, { 
+                method: 'POST', 
+                body: fd,
+                signal: controller.signal // Collega il timeout
+            });
+            
+            clearTimeout(timeoutId); // Ferma il timer se risponde
+
+            if (!res.ok) {
+                const errData = await res.json();
+                throw new Error(errData.error || "Errore Server");
+            }
+
             const json = await res.json();
             
             if(json.success) {
-                setScannedData(json.data); // Salva i dati trovati e apre il "mini modale" di scelta
+                setScannedData(json.data);
             } else {
                 alert("Errore AI: " + json.error);
             }
         } catch(err) {
-            alert("Errore di connessione col server AI");
+            if (err.name === 'AbortError') {
+                alert("⏳ Tempo scaduto! La foto è troppo pesante o la connessione è lenta. Riprova.");
+            } else {
+                alert("❌ Errore: " + err.message);
+            }
         } finally {
             setIsScanning(false);
-            e.target.value = null; // Reset input
+            e.target.value = null;
         }
     };
 
