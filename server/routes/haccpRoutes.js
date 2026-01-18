@@ -2,17 +2,20 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
 const { getItalyDateComponents } = require('../utils/time');
-// RIMUOVI O COMMENTA QUESTA RIGA VECCHIA:
-// const { uploadFile } = require('../config/storage'); 
 
-// AGGIUNGI QUESTO PER GESTIRE L'UPLOAD IN RAM (SICURO PER VERCEL):
+// --- MODIFICA FONDAMENTALE PER VERCEL ---
+// 1. Importiamo Multer direttamente
 const multer = require('multer');
-const storage = multer.memoryStorage(); // Salva in RAM, non su disco
+
+// 2. Configuriamo l'archiviazione in RAM (MemoryStorage)
+// Vercel NON permette di salvare file su disco (dest: 'uploads/'), farebbe crashare tutto subito.
+const storage = multer.memoryStorage();
 const uploadFile = multer({ storage: storage });
+// ----------------------------------------
 
 const PDFDocument = require('pdfkit-table');
 const xlsx = require('xlsx');
-const OpenAI = require('openai');
+const OpenAI = require('openai'); // Assicurati che questo ci sia
 
 // TEST ROUTE
 router.get('/api/haccp/test-scan', (req, res) => {
@@ -49,61 +52,61 @@ router.delete('/api/haccp/pulizie/:id', async (req, res) => { try { await pool.q
 // ROTTA INTELLIGENTE: Scansione Bolla con AI (Versione Robusta per Produzione)
 router.post('/api/haccp/scan-bolla', uploadFile.single('photo'), async (req, res) => {
     try {
-        if (!req.file) return res.status(400).json({ error: "Nessuna foto inviata" });
-        if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: "Configurazione Server: Manca API Key" });
+        console.log("1. Richiesta ricevuta dal server..."); // Log di debug
+
+        if (!req.file) {
+            console.error("ERRORE: Nessun file arrivato al server");
+            return res.status(400).json({ error: "Nessuna foto inviata" });
+        }
+        
+        console.log(`2. File ricevuto in RAM: ${req.file.size} bytes`);
+
+        if (!process.env.OPENAI_API_KEY) {
+            console.error("ERRORE: Manca API KEY su Vercel");
+            return res.status(500).json({ error: "Configurazione Server: Manca API Key" });
+        }
 
         const base64Image = req.file.buffer.toString('base64');
         const dataUrl = `data:${req.file.mimetype};base64,${base64Image}`;
 
+        console.log("3. Invio richiesta a OpenAI...");
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
         try {
             const response = await openai.chat.completions.create({
-    model: "gpt-4o",
-    messages: [
-        {
-            role: "system",
-            content: `Sei un assistente data-entry. Estrai i dati dalla bolla in JSON: { "fornitore": "...", "data_ricezione": "YYYY-MM-DD", "prodotti": [{ "nome": "...", "quantita": "...", "lotto": "...", "scadenza": "YYYY-MM-DD" }] }`
-        },
-        {
-            role: "user",
-            content: [
-                { type: "text", text: "Estrai dati." },
-                { 
-                    type: "image_url", 
-                    image_url: { 
-                        url: dataUrl, 
-                        detail: "low" // <--- CAMBIA QUESTO DA "high" A "low" !! (FONDAMENTALE)
-                    } 
-                }
-            ]
-        }
-    ],
-    max_tokens: 500, // Riduciamo anche i token massimi per velocizzare
-    temperature: 0
-});
+                model: "gpt-4o",
+                messages: [
+                    {
+                        role: "system",
+                        content: `Sei un assistente data-entry. Estrai i dati dalla bolla in JSON rigoroso: { "fornitore": "...", "data_ricezione": "YYYY-MM-DD", "prodotti": [{ "nome": "...", "quantita": "...", "lotto": "...", "scadenza": "YYYY-MM-DD" }] }`
+                    },
+                    {
+                        role: "user",
+                        content: [
+                            { type: "text", text: "Estrai dati." },
+                            { type: "image_url", image_url: { url: dataUrl, detail: "low" } } // Usa LOW per velocità
+                        ]
+                    }
+                ],
+                max_tokens: 500,
+                temperature: 0
+            });
 
+            console.log("4. Risposta OpenAI ricevuta!");
             let text = response.choices[0].message.content;
-            // Pulizia JSON aggressiva (spesso GPT aggiunge '''json ... ''')
             text = text.replace(/```json/g, '').replace(/```/g, '').trim();
             
             const data = JSON.parse(text);
             res.json({ success: true, data });
 
         } catch (openaiError) {
-            console.error("OpenAI API Error:", openaiError);
-            
-            // Gestione specifica errore limiti (429)
-            if (openaiError.status === 429) {
-                return res.status(429).json({ error: "Il sistema è momentaneamente occupato (Rate Limit). Riprova tra 10 secondi." });
-            }
-            
-            throw openaiError; // Rilancia per il catch generico
+            console.error("OpenAI Error:", openaiError);
+            throw openaiError;
         }
 
     } catch (e) {
-        console.error("Errore Generico Scan:", e);
-        res.status(500).json({ error: "Errore lettura bolla. Prova a scattare una foto più nitida." });
+        console.error("ERRORE CRITICO SCAN:", e); // Questo apparirà nei log di Vercel
+        res.status(500).json({ error: "Errore interno: " + e.message });
     }
 });
 
