@@ -65,9 +65,8 @@ const MerciManager = ({
         setIsScanning(true);
         
         try {
-            // 1. COMPRESSIONE: Riduciamo la foto PRIMA di inviarla
-            // Questo è il passaggio magico che risolve il timeout
-            const compressedFile = await resizeImage(file, 1000, 0.6); // Max 1000px, qualità 60%
+            // 1. COMPRESSIONE (Fondamentale)
+            const compressedFile = await resizeImage(file, 1000, 0.6);
             
             const fd = new FormData();
             fd.append('photo', compressedFile);
@@ -78,33 +77,32 @@ const MerciManager = ({
                 body: fd
             });
 
-            // 3. LETTURA RISPOSTA PIÙ SICURA
-            // Leggiamo prima come testo per vedere se è un errore HTML di Vercel
-            const textResponse = await res.text();
+            // 3. LETTURA DIAGNOSTICA
+            const textResponse = await res.text(); // Leggiamo il testo grezzo
             
             try {
-                const json = JSON.parse(textResponse); // Proviamo a convertirlo in JSON
-                
-                if (!json.success) {
-                    throw new Error(json.error || "Errore dell'IA");
-                }
+                const json = JSON.parse(textResponse); // Proviamo a convertirlo
+                if (!json.success) throw new Error(json.error || "Errore dell'IA");
                 setScannedData(json.data); // Successo!
-
             } catch (jsonError) {
-                // Se siamo qui, il server ha risposto con HTML (Errore 504 o 500) invece che JSON
-                console.error("Risposta server non valida:", textResponse);
-                if(textResponse.includes("504") || textResponse.includes("TIMEOUT")) {
-                    throw new Error("Il server ci ha messo troppo tempo. Riprova con una foto più piccola o con meno testo.");
-                } else {
-                    throw new Error("Errore di connessione col server (JSON Parse Error).");
-                }
+                // SE SIAMO QUI, IL SERVER HA DATO UN ERRORE HTML/TESTO
+                console.error("Risposta Server Errata:", textResponse);
+                
+                // MOSTRA L'ERRORE VERO A VIDEO (i primi 200 caratteri)
+                alert("⚠️ IL SERVER HA RISPOSTO CON UN ERRORE:\n\n" + textResponse.substring(0, 300));
+                
+                throw new Error("Risposta server non valida. Vedi alert sopra.");
             }
 
         } catch(err) {
-            alert("❌ Errore Scan: " + err.message);
+            console.error(err);
+            // Non mostriamo un altro alert se abbiamo già mostrato quello sopra
+            if (!err.message.includes("Vedi alert sopra")) {
+                alert("❌ Errore Scan: " + err.message);
+            }
         } finally {
             setIsScanning(false);
-            e.target.value = null; // Resetta input file
+            e.target.value = null;
         }
     };
 
