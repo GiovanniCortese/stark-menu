@@ -2,10 +2,17 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
 const { getItalyDateComponents } = require('../utils/time');
-const { uploadFile } = require('../config/storage'); // <--- QUESTA MANCAVA
+// RIMUOVI O COMMENTA QUESTA RIGA VECCHIA:
+// const { uploadFile } = require('../config/storage'); 
+
+// AGGIUNGI QUESTO PER GESTIRE L'UPLOAD IN RAM (SICURO PER VERCEL):
+const multer = require('multer');
+const storage = multer.memoryStorage(); // Salva in RAM, non su disco
+const uploadFile = multer({ storage: storage });
+
 const PDFDocument = require('pdfkit-table');
 const xlsx = require('xlsx');
-const OpenAI = require('openai'); // Aggiungi questo import in alto
+const OpenAI = require('openai');
 
 // TEST ROUTE
 router.get('/api/haccp/test-scan', (req, res) => {
