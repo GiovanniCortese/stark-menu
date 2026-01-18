@@ -153,6 +153,115 @@ router.delete('/api/haccp/ricette/:id', async (req, res) => {
     }
 });
 
+// 5. Modifica Ricetta
+router.put('/api/haccp/ricette/:id', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const { nome, ingredienti } = req.body;
+        
+        // Aggiorna nome
+        await client.query("UPDATE haccp_ricette SET nome = $1 WHERE id = $2", [nome, req.params.id]);
+
+        // Aggiorna ingredienti (Strategia: Cancella tutti e reinserisci)
+        await client.query("DELETE FROM haccp_ricette_ingredienti WHERE ricetta_id = $1", [req.params.id]);
+        
+        if (Array.isArray(ingredienti)) {
+            for (const ing of ingredienti) {
+                await client.query(
+                    "INSERT INTO haccp_ricette_ingredienti (ricetta_id, ingrediente_nome) VALUES ($1, $2)",
+                    [req.params.id, ing]
+                );
+            }
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true });
+    } catch (e) {
+        await client.query('ROLLBACK');
+        res.status(500).json({ error: e.message });
+    } finally {
+        client.release();
+    }
+});
+
+// 6. Export Ricette (Excel)
+router.get('/api/haccp/export-ricette/:ristorante_id', async (req, res) => {
+    try {
+        const { ristorante_id } = req.params;
+        const query = `
+            SELECT r.nome, 
+            STRING_AGG(ri.ingrediente_nome, ', ') as ingredienti
+            FROM haccp_ricette r
+            LEFT JOIN haccp_ricette_ingredienti ri ON r.id = ri.ricetta_id
+            WHERE r.ristorante_id = $1
+            GROUP BY r.id, r.nome
+            ORDER BY r.nome ASC
+        `;
+        const result = await pool.query(query, [ristorante_id]);
+
+        const wb = xlsx.utils.book_new();
+        const ws = xlsx.utils.json_to_sheet(result.rows); // Colonne: nome, ingredienti
+        xlsx.utils.book_append_sheet(wb, ws, "Ricette");
+        
+        const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+        res.setHeader('Content-Disposition', 'attachment; filename="ricettario.xlsx"');
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(buffer);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// 7. Import Ricette (Excel)
+// Formato atteso Excel: Colonna A "Nome", Colonna B "Ingredienti" (separati da virgola)
+router.post('/api/haccp/import-ricette', uploadFile.single('file'), async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: "File mancante" });
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
+        const sheetName = workbook.SheetNames[0];
+        const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]); // Array di oggetti
+
+        const { ristorante_id } = req.body;
+
+        for (const row of data) {
+            const nome = row['nome'] || row['Nome'];
+            const ingString = row['ingredienti'] || row['Ingredienti'];
+
+            if (nome && ingString) {
+                // Crea Ricetta
+                const resRic = await client.query(
+                    "INSERT INTO haccp_ricette (ristorante_id, nome) VALUES ($1, $2) RETURNING id",
+                    [ristorante_id, nome]
+                );
+                const newId = resRic.rows[0].id;
+
+                // Splitta ingredienti e inserisci
+                const ingArr = ingString.split(',').map(s => s.trim());
+                for (const ing of ingArr) {
+                    if(ing) {
+                        await client.query(
+                            "INSERT INTO haccp_ricette_ingredienti (ricetta_id, ingrediente_nome) VALUES ($1, $2)",
+                            [newId, ing]
+                        );
+                    }
+                }
+            }
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true });
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error(e);
+        res.status(500).json({ error: "Errore Import: " + e.message });
+    } finally {
+        client.release();
+    }
+});
+
 // EXPORT Labels
 router.get('/api/haccp/export/labels/:ristorante_id', async (req, res) => {
     try {
