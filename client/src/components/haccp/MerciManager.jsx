@@ -59,23 +59,23 @@ const MerciManager = ({
 
     // Funzione che gestisce l'invio della foto all'AI
    const handleScanBolla = async (e) => {
-        const file = e.target.files[0];
-        if(!file) return;
+    const file = e.target.files[0];
+    if(!file) return;
 
-        setIsScanning(true);
+    setIsScanning(true);
+    
+    try {
+        // MODIFICA QUI: 800px di larghezza e qualità 0.5 (50%)
+        // Questo renderà il file piccolissimo (50-80KB) per un upload istantaneo
+        const compressedFile = await resizeImage(file, 800, 0.5); 
         
-        try {
-            // 1. COMPRESSIONE (Fondamentale)
-            const compressedFile = await resizeImage(file, 1000, 0.6);
-            
-            const fd = new FormData();
-            fd.append('photo', compressedFile);
+        const fd = new FormData();
+        fd.append('photo', compressedFile);
 
-            // 2. INVIO AL SERVER
-            const res = await fetch(`${API_URL}/api/haccp/scan-bolla`, { 
-                method: 'POST', 
-                body: fd
-            });
+        const res = await fetch(`${API_URL}/api/haccp/scan-bolla`, { 
+            method: 'POST', 
+            body: fd
+        });
 
             // 3. LETTURA DIAGNOSTICA
             const textResponse = await res.text(); // Leggiamo il testo grezzo

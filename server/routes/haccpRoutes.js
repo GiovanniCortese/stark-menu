@@ -52,31 +52,29 @@ router.post('/api/haccp/scan-bolla', uploadFile.single('photo'), async (req, res
 
         try {
             const response = await openai.chat.completions.create({
-                model: "gpt-4o",
-                messages: [
-                    {
-                        role: "system",
-                        content: `Sei un assistente data-entry esperto in bolle di consegna ristorazione. 
-                        Analizza l'immagine. Estrai i dati in JSON rigoroso:
-                        {
-                            "fornitore": "Nome Fornitore",
-                            "data_ricezione": "YYYY-MM-DD" (se assente usa oggi), 
-                            "prodotti": [
-                                { "nome": "Nome Prodotto", "quantita": "es. 10kg", "lotto": "Codice o null", "scadenza": "YYYY-MM-DD o null" }
-                            ]
-                        }`
-                    },
-                    {
-                        role: "user",
-                        content: [
-                            { type: "text", text: "Estrai dati bolla." },
-                            { type: "image_url", image_url: { url: dataUrl, detail: "high" } } // detail: high costa un po' di più ma legge meglio le scritte piccole
-                        ]
-                    }
-                ],
-                max_tokens: 1000,
-                temperature: 0 // Temperatura 0 rende l'AI più deterministica e meno "creativa"
-            });
+    model: "gpt-4o",
+    messages: [
+        {
+            role: "system",
+            content: `Sei un assistente data-entry. Estrai i dati dalla bolla in JSON: { "fornitore": "...", "data_ricezione": "YYYY-MM-DD", "prodotti": [{ "nome": "...", "quantita": "...", "lotto": "...", "scadenza": "YYYY-MM-DD" }] }`
+        },
+        {
+            role: "user",
+            content: [
+                { type: "text", text: "Estrai dati." },
+                { 
+                    type: "image_url", 
+                    image_url: { 
+                        url: dataUrl, 
+                        detail: "low" // <--- CAMBIA QUESTO DA "high" A "low" !! (FONDAMENTALE)
+                    } 
+                }
+            ]
+        }
+    ],
+    max_tokens: 500, // Riduciamo anche i token massimi per velocizzare
+    temperature: 0
+});
 
             let text = response.choices[0].message.content;
             // Pulizia JSON aggressiva (spesso GPT aggiunge '''json ... ''')
