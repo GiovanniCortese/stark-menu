@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
 const { getItalyDateComponents } = require('../utils/time');
+const { uploadFile } = require('../config/storage'); // <--- QUESTA MANCAVA
 const PDFDocument = require('pdfkit-table');
 const xlsx = require('xlsx');
 
