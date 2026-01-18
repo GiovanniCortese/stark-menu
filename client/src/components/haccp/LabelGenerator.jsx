@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import RecipeSelector from './RecipeSelector'; // <--- NUOVO IMPORT
 
 const LabelGenerator = ({ 
     labelData, setLabelData, handleLabelTypeChange, handlePrintLabel: originalHandlePrintLabel, 
@@ -21,6 +22,29 @@ const LabelGenerator = ({
 
     useEffect(() => { caricaStorico(); }, [lastLabel, info.id]);
 
+    // --- NUOVA LOGICA: GESTIONE RICETTA CARICATA ---
+    const handleRecipeLoaded = (risultatiMatching, nomeRicetta) => {
+        // 1. Imposta il nome del prodotto
+        setLabelData(prev => ({ ...prev, prodotto: nomeRicetta }));
+        
+        // 2. Prepara la lista ingredienti basandosi sul match del magazzino
+        const nuoviIngredienti = [];
+        
+        risultatiMatching.forEach(match => {
+            if (match.found) {
+                // Se trovato in magazzino, aggiungi il dettaglio completo (Lotto, Scadenza...)
+                nuoviIngredienti.push(match.text);
+            } else {
+                // Se NON trovato, aggiungi con un marcatore speciale per evidenziarlo
+                nuoviIngredienti.push(`⚠️ MANCANTE: ${match.ingrediente_base}`);
+            }
+        });
+        
+        // 3. Aggiorna lo stato degli ingredienti selezionati
+        setSelectedIngredients(nuoviIngredienti);
+    };
+    // ------------------------------------------------
+
     const handleDateChange = (e) => {
         const dateStr = e.target.value;
         if(!dateStr) return;
@@ -38,7 +62,7 @@ const LabelGenerator = ({
         setLabelData({ ...labelData, giorni_scadenza: days, scadenza_manuale: newDate.toISOString().split('T')[0] });
     };
 
-    // --- LOGICA INGREDIENTI ---
+    // --- LOGICA INGREDIENTI MANUALI ---
     const today = new Date();
     const merciDisponibili = merciList.filter(m => {
         if(!m.scadenza) return true; 
@@ -47,7 +71,6 @@ const LabelGenerator = ({
         const scadenzaZero = new Date(scadenzaDate.getFullYear(), scadenzaDate.getMonth(), scadenzaDate.getDate());
         return scadenzaZero >= todayZero; 
     }).sort((a,b) => {
-        // Ordina prima per nome prodotto, poi per scadenza
         if (a.prodotto < b.prodotto) return -1;
         if (a.prodotto > b.prodotto) return 1;
         if(!a.scadenza) return 1; 
@@ -77,7 +100,7 @@ const LabelGenerator = ({
 
     const handleCreateOnly = async (e) => {
         e.preventDefault();
-        const ingredientiString = selectedIngredients.join(', '); // Crea stringa unica
+        const ingredientiString = selectedIngredients.join(', '); 
         const scadenza = labelData.scadenza_manuale ? new Date(labelData.scadenza_manuale) : new Date();
         if(!labelData.scadenza_manuale) scadenza.setDate(scadenza.getDate() + parseInt(labelData.giorni_scadenza));
 
@@ -106,7 +129,12 @@ const LabelGenerator = ({
         <div className="no-print">
             <div style={{background:'white', padding:20, borderRadius:10, marginBottom:20, borderLeft:'5px solid #2980b9'}}>
                 <h3>🏭 Produzione / Abbattimento</h3>
-                <form onSubmit={handleCreateOnly} style={{display:'flex', flexWrap:'wrap', gap:10, alignItems:'flex-end'}}>
+
+                {/* --- NUOVO COMPONENTE RICETTE --- */}
+                <RecipeSelector info={info} API_URL={API_URL} onIngredientsLoaded={handleRecipeLoaded} />
+                {/* -------------------------------- */}
+
+                <form onSubmit={handleCreateOnly} style={{display:'flex', flexWrap:'wrap', gap:10, alignItems:'flex-end', marginTop: 20}}>
                     <div style={{flex:2, minWidth:200}}><label style={{fontSize:11}}>Prodotto / Piatto</label>
                         <input value={labelData.prodotto} onChange={e=>setLabelData({...labelData, prodotto:e.target.value})} placeholder="Es. Lasagna" style={{width:'100%', padding:8, border:'1px solid #ddd'}} required />
                     </div>
@@ -119,9 +147,8 @@ const LabelGenerator = ({
                                 onChange={e=>setCurrentIngredient(e.target.value)} 
                                 style={{flex:1, padding:8, border:'1px solid #ddd', borderRadius:4}}
                             >
-                                <option value="">-- Seleziona Ingrediente --</option>
+                                <option value="">-- Seleziona Ingrediente Manualmente --</option>
                                 {merciDisponibili.map(m => (
-                                    // MODIFICA QUI: Aggiunto Fornitore nel value e nel testo
                                     <option 
                                         key={m.id} 
                                         value={`${m.prodotto} - ${m.fornitore} (L:${m.lotto})`} 
@@ -136,13 +163,22 @@ const LabelGenerator = ({
                             </select>
                             <button type="button" onClick={addIngredient} style={{background:'#27ae60', color:'white', border:'none', borderRadius:4, width:40, fontSize:20, cursor:'pointer'}}>+</button>
                         </div>
+                        
                         <div style={{marginTop:10, display:'flex', flexWrap:'wrap', gap:5}}>
-                            {selectedIngredients.map((ing, idx) => (
-                                <span key={idx} style={{background:'#dfe6e9', padding:'2px 8px', borderRadius:10, fontSize:11, display:'flex', alignItems:'center', gap:5}}>
-                                    {ing}
-                                    <span onClick={()=>removeIngredient(idx)} style={{cursor:'pointer', color:'#c0392b', fontWeight:'bold'}}>×</span>
-                                </span>
-                            ))}
+                            {selectedIngredients.map((ing, idx) => {
+                                // Controllo se è un ingrediente mancante per colorarlo diversamente
+                                const isMissing = ing.startsWith('⚠️');
+                                return (
+                                    <span key={idx} style={{
+                                        background: isMissing ? '#e67e22' : '#dfe6e9', // Arancione se manca, Grigio se ok
+                                        color: isMissing ? 'white' : 'black',
+                                        padding:'2px 8px', borderRadius:10, fontSize:11, display:'flex', alignItems:'center', gap:5
+                                    }}>
+                                        {ing}
+                                        <span onClick={()=>removeIngredient(idx)} style={{cursor:'pointer', color: isMissing ? 'white' : '#c0392b', fontWeight:'bold'}}>×</span>
+                                    </span>
+                                );
+                            })}
                             {selectedIngredients.length === 0 && <span style={{fontSize:11, color:'#999'}}>Nessun ingrediente aggiunto.</span>}
                         </div>
                     </div>

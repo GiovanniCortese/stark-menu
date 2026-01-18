@@ -32,6 +32,127 @@ router.get('/api/haccp/pulizie/:ristorante_id', async (req, res) => { try { cons
 router.post('/api/haccp/pulizie', async (req, res) => { try { const { ristorante_id, area, prodotto, operatore, conformita, data_ora } = req.body; await pool.query("INSERT INTO haccp_cleaning (ristorante_id, area, prodotto, operatore, conformita, data_ora) VALUES ($1, $2, $3, $4, $5, $6)", [ristorante_id, area, prodotto, operatore, conformita !== undefined ? conformita : true, data_ora || new Date()]); res.json({success:true}); } catch(e) { res.status(500).json({error:e.message}); } });
 router.delete('/api/haccp/pulizie/:id', async (req, res) => { try { await pool.query("DELETE FROM haccp_cleaning WHERE id = $1", [req.params.id]); res.json({success:true}); } catch(e) { res.status(500).json({error:"Err"}); } });
 
+// --- GESTIONE RICETTE & AUTO-MATCHING ---
+
+// 1. Prendi tutte le ricette del ristorante
+router.get('/api/haccp/ricette/:ristorante_id', async (req, res) => {
+    try {
+        const { ristorante_id } = req.params;
+        // Prende ricette e, in un array aggregato, gli ingredienti
+        const query = `
+            SELECT r.id, r.nome, r.descrizione, 
+            COALESCE(JSON_AGG(ri.ingrediente_nome) FILTER (WHERE ri.ingrediente_nome IS NOT NULL), '[]') as ingredienti
+            FROM haccp_ricette r
+            LEFT JOIN haccp_ricette_ingredienti ri ON r.id = ri.ricetta_id
+            WHERE r.ristorante_id = $1
+            GROUP BY r.id
+            ORDER BY r.nome ASC
+        `;
+        const result = await pool.query(query, [ristorante_id]);
+        res.json(result.rows);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// 2. Crea una nuova Ricetta
+router.post('/api/haccp/ricette', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const { ristorante_id, nome, ingredienti } = req.body; // ingredienti è un array ["Farina", "Uova"]
+        
+        // Inserisci testata ricetta
+        const resRicetta = await client.query(
+            "INSERT INTO haccp_ricette (ristorante_id, nome) VALUES ($1, $2) RETURNING id",
+            [ristorante_id, nome]
+        );
+        const ricettaId = resRicetta.rows[0].id;
+
+        // Inserisci ingredienti
+        if (Array.isArray(ingredienti)) {
+            for (const ing of ingredienti) {
+                await client.query(
+                    "INSERT INTO haccp_ricette_ingredienti (ricetta_id, ingrediente_nome) VALUES ($1, $2)",
+                    [ricettaId, ing]
+                );
+            }
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true });
+    } catch (e) {
+        await client.query('ROLLBACK');
+        res.status(500).json({ error: e.message });
+    } finally {
+        client.release();
+    }
+});
+
+// 3. LA LOGICA "SMART MATCH" (Il cuore della richiesta)
+router.get('/api/haccp/ricette/match/:id', async (req, res) => {
+    try {
+        const { id } = req.params; // ID della ricetta
+        const { ristorante_id } = req.query;
+
+        // Recupera gli ingredienti richiesti dalla ricetta
+        const ingRes = await pool.query("SELECT ingrediente_nome FROM haccp_ricette_ingredienti WHERE ricetta_id = $1", [id]);
+        const ingredientiRichiesti = ingRes.rows.map(r => r.ingrediente_nome);
+
+        const risultati = [];
+
+        // Per ogni ingrediente richiesto, cerca nel magazzino
+        for (const ingName of ingredientiRichiesti) {
+            // Cerca il prodotto più recente in magazzino che contenga il nome (ILIKE = case insensitive)
+            // Esclude prodotti scaduti
+            const matchQuery = `
+                SELECT prodotto, fornitore, lotto, scadenza 
+                FROM haccp_merci 
+                WHERE ristorante_id = $1 
+                AND prodotto ILIKE $2 
+                AND (scadenza IS NULL OR scadenza >= CURRENT_DATE)
+                ORDER BY data_ricezione DESC 
+                LIMIT 1
+            `;
+            // %nome% permette di trovare "Farina 00" cercando "Farina"
+            const matchRes = await pool.query(matchQuery, [ristorante_id, `%${ingName}%`]);
+
+            if (matchRes.rows.length > 0) {
+                // TROVATO!
+                const item = matchRes.rows[0];
+                risultati.push({
+                    ingrediente_base: ingName,
+                    found: true,
+                    text: `${item.prodotto} - ${item.fornitore} (L:${item.lotto})`,
+                    dati_match: item
+                });
+            } else {
+                // NON TROVATO (O SCADUTO)
+                risultati.push({
+                    ingrediente_base: ingName,
+                    found: false,
+                    text: `${ingName} (MANCANTE)`,
+                    dati_match: null
+                });
+            }
+        }
+
+        res.json({ success: true, risultati });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// 4. Elimina Ricetta
+router.delete('/api/haccp/ricette/:id', async (req, res) => {
+    try {
+        await pool.query("DELETE FROM haccp_ricette WHERE id = $1", [req.params.id]);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // EXPORT Labels
 router.get('/api/haccp/export/labels/:ristorante_id', async (req, res) => {
     try {
