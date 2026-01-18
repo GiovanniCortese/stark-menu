@@ -12,49 +12,99 @@ const MerciManager = ({
     const [scannedData, setScannedData] = useState(null); // Contiene il JSON dell'AI
     const scanInputRef = useRef(null);
 
+    const resizeImage = (file, maxWidth = 1000, quality = 0.7) => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+
+                // Calcola le nuove dimensioni mantenendo le proporzioni
+                if (width > height) {
+                    if (width > maxWidth) {
+                        height *= maxWidth / width;
+                        width = maxWidth;
+                    }
+                } else {
+                    if (height > maxWidth) {
+                        width *= maxWidth / height;
+                        height = maxWidth;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // Converte in file leggero (JPEG)
+                canvas.toBlob((blob) => {
+                    if (!blob) return reject(new Error("Errore compressione"));
+                    const resizedFile = new File([blob], file.name, {
+                        type: 'image/jpeg',
+                        lastModified: Date.now(),
+                    });
+                    resolve(resizedFile);
+                }, 'image/jpeg', quality);
+            };
+        };
+        reader.onerror = (error) => reject(error);
+    });
+};
+
     // Funzione che gestisce l'invio della foto all'AI
    const handleScanBolla = async (e) => {
         const file = e.target.files[0];
         if(!file) return;
 
         setIsScanning(true);
-        const fd = new FormData();
-        fd.append('photo', file);
-
-        // TIMEOUT DI SICUREZZA (Nuovo)
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 secondi max
-
+        
         try {
+            // 1. COMPRESSIONE: Riduciamo la foto PRIMA di inviarla
+            // Questo è il passaggio magico che risolve il timeout
+            const compressedFile = await resizeImage(file, 1000, 0.6); // Max 1000px, qualità 60%
+            
+            const fd = new FormData();
+            fd.append('photo', compressedFile);
+
+            // 2. INVIO AL SERVER
             const res = await fetch(`${API_URL}/api/haccp/scan-bolla`, { 
                 method: 'POST', 
-                body: fd,
-                signal: controller.signal // Collega il timeout
+                body: fd
             });
-            
-            clearTimeout(timeoutId); // Ferma il timer se risponde
 
-            if (!res.ok) {
-                const errData = await res.json();
-                throw new Error(errData.error || "Errore Server");
+            // 3. LETTURA RISPOSTA PIÙ SICURA
+            // Leggiamo prima come testo per vedere se è un errore HTML di Vercel
+            const textResponse = await res.text();
+            
+            try {
+                const json = JSON.parse(textResponse); // Proviamo a convertirlo in JSON
+                
+                if (!json.success) {
+                    throw new Error(json.error || "Errore dell'IA");
+                }
+                setScannedData(json.data); // Successo!
+
+            } catch (jsonError) {
+                // Se siamo qui, il server ha risposto con HTML (Errore 504 o 500) invece che JSON
+                console.error("Risposta server non valida:", textResponse);
+                if(textResponse.includes("504") || textResponse.includes("TIMEOUT")) {
+                    throw new Error("Il server ci ha messo troppo tempo. Riprova con una foto più piccola o con meno testo.");
+                } else {
+                    throw new Error("Errore di connessione col server (JSON Parse Error).");
+                }
             }
 
-            const json = await res.json();
-            
-            if(json.success) {
-                setScannedData(json.data);
-            } else {
-                alert("Errore AI: " + json.error);
-            }
         } catch(err) {
-            if (err.name === 'AbortError') {
-                alert("⏳ Tempo scaduto! La foto è troppo pesante o la connessione è lenta. Riprova.");
-            } else {
-                alert("❌ Errore: " + err.message);
-            }
+            alert("❌ Errore Scan: " + err.message);
         } finally {
             setIsScanning(false);
-            e.target.value = null;
+            e.target.value = null; // Resetta input file
         }
     };
 
