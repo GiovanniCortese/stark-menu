@@ -6,7 +6,11 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // Middleware Base
-app.use(cors({ origin: '*' }));
+app.use(cors({ 
+    origin: '*', 
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Aggiungi questo per sicurezza
+    allowedHeaders: ['Content-Type', 'Authorization'] 
+}));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
