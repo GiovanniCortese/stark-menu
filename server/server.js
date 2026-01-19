@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE JARVIS V40 (STABLE & CLEAN) 🌍
+// server/server.js - VERSIONE JARVIS V40 (STABLE & FIX 405) 🌍
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -31,7 +31,7 @@ const corsOptions = {
 
 // Applica CORS a tutte le richieste
 app.use(cors(corsOptions));
-// ⚠️ FIX 405: Abilita esplicitamente le richieste "Preflight" (OPTIONS)
+// ⚠️ FIX 405: Abilita esplicitamente le richieste "Preflight" (OPTIONS) per evitare il blocco upload
 app.options('*', cors(corsOptions));
 
 // --- 2. LOGGER DIAGNOSTICO ---
