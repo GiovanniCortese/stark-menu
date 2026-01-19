@@ -77,7 +77,14 @@ router.post('/api/haccp/scan-bolla', uploadFile.single('photo'), async (req, res
         // 3. Pulisci e invia il JSON
         let text = response.choices[0].message.content;
         text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        const data = JSON.parse(text);
+        let data;
+try {
+    data = JSON.parse(text);
+} catch (e) {
+    console.error("Risposta IA non valida:", text);
+    // Restituisci un errore gentile al frontend invece di far esplodere il server
+    return res.status(400).json({ error: "L'IA non è riuscita a leggere la foto. Riprova con una più nitida." });
+}
 
         res.json({ success: true, data });
 
