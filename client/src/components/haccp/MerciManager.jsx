@@ -65,46 +65,47 @@ const MerciManager = ({
     setIsScanning(true);
     
     try {
-        // MODIFICA QUI: 800px di larghezza e qualità 0.5 (50%)
-        // Questo renderà il file piccolissimo (50-80KB) per un upload istantaneo
-        const compressedFile = await resizeImage(file, 800, 0.5); 
+        // 1. COMPRESSIONE AGGRESSIVA
+        // Riduciamo a max 600px (basta per l'AI) e qualità 0.5
+        // Questo porterà la foto da 5MB a circa 50-80KB
+        const compressedFile = await resizeImage(file, 600, 0.5); 
         
+        // 2. DEBUG VISIVO (Ti dirà quanto è grande il file prima di inviarlo)
+        // alert(`Sto inviando una foto di: ${(compressedFile.size / 1024).toFixed(2)} KB`); 
+
         const fd = new FormData();
         fd.append('photo', compressedFile);
 
+        // 3. INVIO CON GESTIONE ERRORI DI RETE
         const res = await fetch(`${API_URL}/api/haccp/scan-bolla`, { 
             method: 'POST', 
             body: fd
         });
 
-            // 3. LETTURA DIAGNOSTICA
-            const textResponse = await res.text(); // Leggiamo il testo grezzo
-            
-            try {
-                const json = JSON.parse(textResponse); // Proviamo a convertirlo
-                if (!json.success) throw new Error(json.error || "Errore dell'IA");
-                setScannedData(json.data); // Successo!
-            } catch (jsonError) {
-                // SE SIAMO QUI, IL SERVER HA DATO UN ERRORE HTML/TESTO
-                console.error("Risposta Server Errata:", textResponse);
-                
-                // MOSTRA L'ERRORE VERO A VIDEO (i primi 200 caratteri)
-                alert("⚠️ IL SERVER HA RISPOSTO CON UN ERRORE:\n\n" + textResponse.substring(0, 300));
-                
-                throw new Error("Risposta server non valida. Vedi alert sopra.");
-            }
-
-        } catch(err) {
-            console.error(err);
-            // Non mostriamo un altro alert se abbiamo già mostrato quello sopra
-            if (!err.message.includes("Vedi alert sopra")) {
-                alert("❌ Errore Scan: " + err.message);
-            }
-        } finally {
-            setIsScanning(false);
-            e.target.value = null;
+        // Se la rete fallisce (es. server irraggiungibile), fetch non restituisce res.ok
+        if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(`Errore Server (${res.status}): ${errText}`);
         }
-    };
+
+        // 4. LETTURA RISPOSTA
+        const json = await res.json();
+        
+        if (!json.success) {
+            throw new Error(json.error || "L'IA non ha restituito dati validi");
+        }
+
+        setScannedData(json.data); // Successo!
+
+    } catch(err) {
+        console.error(err);
+        // Mostriamo l'errore vero sul telefono
+        alert("❌ ERRORE SCANSIONE:\n" + err.message);
+    } finally {
+        setIsScanning(false);
+        e.target.value = null; // Reset input per poter rifare la foto
+    }
+};
 
     // Funzione per "importare" un singolo prodotto trovato dall'AI nel form
     const importaProdotto = (prod) => {
