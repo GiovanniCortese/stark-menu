@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE JARVIS V34 (CORS PRO & MODULAR) 🌍
+// server/server.js - VERSIONE JARVIS V36 (DEBUG & LOGGING ATTIVI) 🌍
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -12,7 +12,7 @@ const allowedOrigins = [
     'https://www.cosaedovemangiare.com',
     'https://cosaedovemangiare.com',
     'https://www.cosaedovemangiare.it',
-    'https://stark-menu.vercel.app',   // <--- AGGIUNTO QUESTO (era nei log di errore)
+    // 'https://stark-menu.vercel.app', // RIMOSSO: Vecchio dominio eliminato
     'http://localhost:5173',
     'http://localhost:3000'
 ];
@@ -29,15 +29,21 @@ app.use(cors({
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], 
     allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true // Importante per mantenere le sessioni se servono
+    credentials: true 
 }));
+
+// --- [NUOVO] LOGGER DI DIAGNOSTICA ---
+// Questo serve per vedere sui Log di Render se la richiesta della foto arriva davvero
+app.use((req, res, next) => {
+    console.log(`📡 [${new Date().toLocaleTimeString('it-IT')}] RICHIESTA: ${req.method} ${req.url}`);
+    next();
+});
 
 // --- 2. GESTIONE UPLOAD (Foto Piatti/HACCP) ---
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // --- 3. IMPORT DEI MODULI (ROTTE) ---
-// ⚠️ Assicurati che questi file esistano nella cartella /routes!
 const authRoutes = require('./routes/authRoutes');
 const menuRoutes = require('./routes/menuRoutes');
 const orderRoutes = require('./routes/orderRoutes');
@@ -58,12 +64,9 @@ app.get('/', (req, res) => {
 });
 
 // --- AVVIO SERVER ---
-// Se siamo in locale (o su un server classico) usiamo la porta.
-// Su Vercel, non serve specificare la porta, ci pensa lui.
 app.listen(port, () => {
-    console.log(`🚀 JARVIS SERVER V35 avviato su porta ${port}`);
+    console.log(`🚀 JARVIS SERVER V36 avviato su porta ${port}`);
     console.log(`🌍 Domini autorizzati: ${allowedOrigins.length}`);
 });
 
-// Opzionale: export per test, ma su Render conta app.listen
 module.exports = app;
