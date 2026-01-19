@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE JARVIS V36 (DEBUG & LOGGING ATTIVI) 🌍
+// server/server.js - VERSIONE JARVIS V37 (DIAGNOSTICA TOTALE) 🌍
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -6,25 +6,38 @@ const cors = require('cors');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// --- 1. CONFIGURAZIONE SICUREZZA DOMINI (CORS) ---
-// Qui definiamo chi ha il permesso di parlare con JARVIS
+// --- 0. DIAGNOSTICA AVVIO (Verifica Chiavi) ---
+console.log("------------------------------------------------");
+console.log("🚀 JARVIS SERVER V37 IN AVVIO...");
+if (process.env.OPENAI_API_KEY) {
+    console.log(`🔑 STATO OPENAI: Chiave trovata! (Inizia con: ${process.env.OPENAI_API_KEY.substring(0, 7)}...)`);
+} else {
+    console.error("❌ STATO OPENAI: CHIAVE MANCANTE! Verifica le variabili su Render.");
+}
+console.log("------------------------------------------------");
+
+// --- 1. LOGGER DI PRIMO LIVELLO (Vede TUTTO, anche gli errori CORS) ---
+app.use((req, res, next) => {
+    console.log(`📡 [${new Date().toLocaleTimeString('it-IT')}] INGRESSO: ${req.method} ${req.url}`);
+    next();
+});
+
+// --- 2. CONFIGURAZIONE SICUREZZA DOMINI (CORS) ---
 const allowedOrigins = [
     'https://www.cosaedovemangiare.com',
     'https://cosaedovemangiare.com',
     'https://www.cosaedovemangiare.it',
-    // 'https://stark-menu.vercel.app', // RIMOSSO: Vecchio dominio eliminato
     'http://localhost:5173',
     'http://localhost:3000'
 ];
 
 app.use(cors({ 
     origin: function (origin, callback) {
-        // Permetti richieste server-to-server (senza origin) o se l'origine è nella lista
         if (!origin || allowedOrigins.indexOf(origin) !== -1) {
             callback(null, true);
         } else {
-            console.log("⚠️ RICHIESTA BLOCCATA DA:", origin);
-            callback(new Error('Accesso negato dalla policy CORS di Jarvis'));
+            console.log(`🚫 CORS BLOCCATO: Origine non valida -> ${origin}`);
+            callback(new Error('Accesso negato dalla policy CORS'));
         }
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], 
@@ -32,41 +45,36 @@ app.use(cors({
     credentials: true 
 }));
 
-// --- [NUOVO] LOGGER DI DIAGNOSTICA ---
-// Questo serve per vedere sui Log di Render se la richiesta della foto arriva davvero
-app.use((req, res, next) => {
-    console.log(`📡 [${new Date().toLocaleTimeString('it-IT')}] RICHIESTA: ${req.method} ${req.url}`);
-    next();
-});
-
-// --- 2. GESTIONE UPLOAD (Foto Piatti/HACCP) ---
+// --- 3. GESTIONE UPLOAD ---
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// --- 3. IMPORT DEI MODULI (ROTTE) ---
+// --- 4. IMPORT ROUTE ---
 const authRoutes = require('./routes/authRoutes');
 const menuRoutes = require('./routes/menuRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const haccpRoutes = require('./routes/haccpRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 
-// --- 4. UTILIZZO DELLE ROTTE ---
+// --- 5. ATTIVAZIONE ROUTE ---
 app.use('/', authRoutes);
 app.use('/', menuRoutes);
 app.use('/', orderRoutes);
 app.use('/', haccpRoutes);
 app.use('/', adminRoutes);
 
-// --- 5. ROUTE DI VERIFICA (REDIRECT) ---
-app.get('/', (req, res) => {
-    // Se chiamano la root del server, li mandiamo al portale
-    res.redirect('https://www.cosaedovemangiare.it');
+// --- 6. GESTIONE ERRORI GLOBALE (Per evitare risposte vuote) ---
+app.use((err, req, res, next) => {
+    console.error("🔥 ERRORE CRITICO SERVER:", err.message);
+    // Se l'errore è di CORS o Multer, lo diciamo al frontend invece di stare zitti
+    if (!res.headersSent) {
+        res.status(500).json({ error: "Errore interno del server: " + err.message });
+    }
 });
 
-// --- AVVIO SERVER ---
+// --- AVVIO ---
 app.listen(port, () => {
-    console.log(`🚀 JARVIS SERVER V36 avviato su porta ${port}`);
-    console.log(`🌍 Domini autorizzati: ${allowedOrigins.length}`);
+    console.log(`✅ Server in ascolto su porta ${port}`);
 });
 
 module.exports = app;
