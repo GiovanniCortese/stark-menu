@@ -58,52 +58,60 @@ const MerciManager = ({
 };
 
     // Funzione che gestisce l'invio della foto all'AI
-   const handleScanBolla = async (e) => {
+  const handleScanBolla = async (e) => {
     const file = e.target.files[0];
     if(!file) return;
 
     setIsScanning(true);
     
     try {
-        // 1. COMPRESSIONE AGGRESSIVA
-        // Riduciamo a max 600px (basta per l'AI) e qualità 0.5
-        // Questo porterà la foto da 5MB a circa 50-80KB
+        // 1. COMPRESSIONE (lasciamo invariata la logica che già funziona)
         const compressedFile = await resizeImage(file, 600, 0.5); 
         
-        // 2. DEBUG VISIVO (Ti dirà quanto è grande il file prima di inviarlo)
-        // alert(`Sto inviando una foto di: ${(compressedFile.size / 1024).toFixed(2)} KB`); 
-
         const fd = new FormData();
         fd.append('photo', compressedFile);
 
-        // 3. INVIO CON GESTIONE ERRORI DI RETE
+        // 2. INVIO RICHIESTA
+        // Nota: Assicurati che API_URL sia passato correttamente come abbiamo visto prima
         const res = await fetch(`${API_URL}/api/haccp/scan-bolla`, { 
             method: 'POST', 
             body: fd
         });
 
-        // Se la rete fallisce (es. server irraggiungibile), fetch non restituisce res.ok
+        // 3. GESTIONE RISPOSTA "INTELLIGENTE"
         if (!res.ok) {
-            const errText = await res.text();
-            throw new Error(`Errore Server (${res.status}): ${errText}`);
+            // Invece di lanciare subito l'errore, proviamo a leggere il messaggio gentile del server
+            let messaggioGentile = "Non siamo riusciti a leggere la foto.";
+            try {
+                const errJson = await res.json();
+                if (errJson.error) {
+                    // Prendi SOLO la frase "L'IA non è riuscita..." togliendo tutto il resto
+                    messaggioGentile = errJson.error;
+                }
+            } catch (jsonError) {
+                // Se il server non risponde in JSON, usiamo un fallback
+                messaggioGentile = "Errore di connessione o foto non valida.";
+            }
+            // Lanciamo l'errore solo con il testo pulito
+            throw new Error(messaggioGentile);
         }
 
-        // 4. LETTURA RISPOSTA
+        // 4. SUCCESSO
         const json = await res.json();
-        
         if (!json.success) {
-            throw new Error(json.error || "L'IA non ha restituito dati validi");
+            throw new Error(json.error || "Dati non validi.");
         }
 
-        setScannedData(json.data); // Successo!
+        setScannedData(json.data);
 
     } catch(err) {
         console.error(err);
-        // Mostriamo l'errore vero sul telefono
-        alert("❌ ERRORE SCANSIONE:\n" + err.message);
+        // ECCO IL NUOVO POPUP PULITO
+        // \n\n serve a mandare a capo il testo per renderlo più leggibile
+        alert("📷 FOTO NON CHIARA\n\n" + err.message); 
     } finally {
         setIsScanning(false);
-        e.target.value = null; // Reset input per poter rifare la foto
+        e.target.value = null; 
     }
 };
 
