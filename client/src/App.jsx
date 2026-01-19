@@ -1,5 +1,5 @@
-// client/src/App.jsx - FIX DEFINITIVO REDIRECT HOME 🚀
-import { useEffect } from 'react'; 
+// client/src/App.jsx - VERSIONE V35 (HARD REDIRECT) ☢️
+import { useEffect, useState } from 'react'; 
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Cucina from './Cucina';
 import Bar from './Bar'; 
@@ -13,38 +13,23 @@ import './App.css';
 import Dashboard from './Dashboard';
 import Haccp from './Haccp';
 
-// --- COMPONENTE RIMBALZO ---
-const RedirectToIt = () => {
-  useEffect(() => {
-    // Usa replace invece di href per non lasciare traccia nella cronologia
-    console.log("🔄 Tentativo di reindirizzamento verso .it...");
-    window.location.replace("https://www.cosaedovemangiare.it");
-  }, []);
-  
-  return (
-    <div style={{
-      height:'100vh', 
-      background:'#000', 
-      color:'#fff', 
-      display:'flex', 
-      alignItems:'center', 
-      justifyContent:'center',
-      fontSize: '20px',
-      fontFamily: 'sans-serif'
-    }}>
-      🔄 Reindirizzamento in corso...
-    </div>
-  );
-};
-
 function App() {
+  // --- CONTROLLO NUCLEARE ---
+  // Questo codice viene eseguito PRIMA di disegnare qualsiasi cosa.
+  // Se siamo sulla Home (/) e NON siamo in localhost, reindirizza subito.
+  const path = window.location.pathname;
+  const isLocal = window.location.hostname.includes("localhost");
+  
+  if ((path === "/" || path === "") && !isLocal) {
+      window.location.replace("https://www.cosaedovemangiare.it");
+      return null; // Non renderizza nulla, schermata bianca istantanea
+  }
+  // --------------------------
+
   return (
     <BrowserRouter>
       <Routes>
-        {/* 1. LA HOME PAGE (Priorità Assoluta) */}
-        <Route path="/" element={<RedirectToIt />} />
-
-        {/* 2. ALTRE PAGINE STAFF */}
+        {/* ROTTE STAFF */}
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/login" element={<Login />} />
         <Route path="/admin/:slug" element={<Admin />} />
@@ -57,8 +42,7 @@ function App() {
         <Route path="/haccp/:slug" element={<Haccp />} />
         <Route path="/haccp/:slug/scan/:scanId" element={<Haccp />} />
 
-        {/* 3. IL MENU (Cattura tutto il resto) */}
-        {/* Usiamo path="*" come fallback di sicurezza se :slug fallisce, ma :slug è preferibile */}
+        {/* MENU */}
         <Route path="/:slug" element={<Menu />} />
       </Routes>
     </BrowserRouter>
