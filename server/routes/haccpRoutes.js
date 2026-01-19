@@ -3,91 +3,44 @@ const router = express.Router();
 const pool = require('../config/db');
 const multer = require('multer');
 const OpenAI = require('openai');
-const { getItalyDateComponents } = require('../utils/time'); // Assicuriamoci di importare le utility
 
-// --- CONFIGURAZIONE UPLOAD (RAM) ---
-// Fondamentale per Render/Vercel: non salviamo su disco
+// --- SETUP MEMORIA RAM (Fondamentale per Render) ---
 const storage = multer.memoryStorage();
 const uploadFile = multer({ storage: storage });
 
-// --- AI SETUP ---
 let openai = null;
 if (process.env.OPENAI_API_KEY) {
     openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 }
 
-// ---------------------------------------------------------
-// ROTTA INTELLIGENTE: SCAN BOLLA (POST)
-// ---------------------------------------------------------
+// --- ROTTA AI SCAN ---
 router.post('/api/haccp/scan-bolla', uploadFile.single('photo'), async (req, res) => {
-    console.log("🤖 AI SCAN: Inizio elaborazione...");
-
+    console.log("🤖 AI SCAN: Richiesta arrivata al Router!");
+    
     try {
-        // 1. Controlli Preliminari
-        if (!req.file) {
-            console.warn("⚠️ AI SCAN: Nessun file ricevuto.");
-            return res.status(400).json({ error: "Nessuna foto inviata" });
-        }
-        if (!openai) {
-            console.error("❌ AI SCAN: Configurazione OpenAI mancante sul server.");
-            return res.status(500).json({ error: "Server non configurato per AI (Manca Key)" });
-        }
+        if (!req.file) return res.status(400).json({ error: "Nessuna foto ricevuta" });
+        if (!openai) return res.status(500).json({ error: "Server senza chiave OpenAI" });
 
-        console.log(`📸 File ricevuto: ${req.file.originalname} (${(req.file.size / 1024).toFixed(2)} KB)`);
+        console.log(`📸 Foto ricevuta: ${(req.file.size/1024).toFixed(2)} KB`);
 
-        // 2. Conversione Immagine per OpenAI
         const base64Image = req.file.buffer.toString('base64');
         const dataUrl = `data:${req.file.mimetype};base64,${base64Image}`;
 
-        // 3. Chiamata a GPT-4o
         const response = await openai.chat.completions.create({
             model: "gpt-4o",
             messages: [
-                {
-                    role: "system",
-                    content: `Sei un esperto data-entry HACCP. Analizza la foto della bolla/fattura.
-                    Estrai SOLO un JSON valido con questa struttura esatta:
-                    {
-                        "fornitore": "Nome Fornitore o 'Sconosciuto'",
-                        "data_ricezione": "YYYY-MM-DD" (usa la data del documento o oggi),
-                        "prodotti": [
-                            { 
-                                "nome": "Nome Prodotto", 
-                                "quantita": "es. 2kg o 3 pezzi", 
-                                "lotto": "Codice Lotto o ''", 
-                                "scadenza": "YYYY-MM-DD o ''" 
-                            }
-                        ]
-                    }
-                    Non aggiungere altro testo, solo il JSON.`
-                },
-                {
-                    role: "user",
-                    content: [
-                        { type: "text", text: "Estrai i dati da questa bolla." },
-                        { type: "image_url", image_url: { url: dataUrl, detail: "low" } }
-                    ]
-                }
+                { role: "system", content: "Estrai JSON valido: { \"fornitore\": \"...\", \"data_ricezione\": \"YYYY-MM-DD\", \"prodotti\": [{ \"nome\": \"...\", \"quantita\": \"...\", \"lotto\": \"...\", \"scadenza\": \"YYYY-MM-DD\" }] }" },
+                { role: "user", content: [{ type: "text", text: "Analizza bolla." }, { type: "image_url", image_url: { url: dataUrl, detail: "low" } }] }
             ],
-            max_tokens: 1000,
-            temperature: 0
+            max_tokens: 800
         });
 
-        // 4. Parsing Risposta
-        let text = response.choices[0].message.content;
-        console.log("✅ Risposta OpenAI ricevuta. Parsing...");
-        
-        // Pulizia Markdown (se presente)
-        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        
-        const data = JSON.parse(text);
-        
-        // Risposta al Client
-        res.json({ success: true, data });
+        let text = response.choices[0].message.content.replace(/```json/g, '').replace(/```/g, '').trim();
+        res.json({ success: true, data: JSON.parse(text) });
 
     } catch (e) {
-        console.error("🔥 ERRORE AI SCAN:", e);
-        res.status(500).json({ error: "Errore analisi: " + e.message });
+        console.error("🔥 ERRORE AI:", e);
+        res.status(500).json({ error: e.message });
     }
 });
 

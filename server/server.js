@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE JARVIS V42 (X-RAY MODE) 🌍
+// server/server.js - VERSIONE JARVIS V43 (OPEN GATE & DEBUG) 🌍
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -6,45 +6,27 @@ const cors = require('cors');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// --- 0. LOGGER "RAGGI X" (Messaggio spostato IN CIMA) ---
-// Ora vedremo la richiesta PRIMA che il CORS possa bloccarla
+// --- 0. LOGGER "RAGGI X" (Vede tutto quello che tocca il server) ---
 app.use((req, res, next) => {
-    console.log(`📡 [${new Date().toLocaleTimeString('it-IT')}] INGRESSO: ${req.method} ${req.url}`);
-    console.log(`   👉 Origin dichiarata: ${req.headers.origin || 'Nessuna (Server/Postman)'}`);
+    console.log(`📡 [${new Date().toLocaleTimeString('it-IT')}] ${req.method} ${req.url}`);
+    // Se c'è un'origine, la stampiamo per capire chi sta chiamando
+    if (req.headers.origin) console.log(`   👉 Origin: ${req.headers.origin}`);
     next();
 });
 
-// --- 1. CONFIGURAZIONE SICUREZZA (CORS "Blindato") ---
-const allowedOrigins = [
-    'https://www.cosaedovemangiare.com',
-    'https://cosaedovemangiare.com',
-    'https://www.cosaedovemangiare.it',
-    'https://stark-menu.vercel.app',   // <--- FONDAMENTALE per i telefoni con cache vecchia
-    'http://localhost:5173',
-    'http://localhost:3000'
-];
-
+// --- 1. SICUREZZA "PORTE APERTE" (Per sbloccare la cache dei telefoni) ---
 const corsOptions = {
-    origin: function (origin, callback) {
-        // Se l'origine è nella lista o è vuota (es. server-to-server), entra
-        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-            callback(null, true);
-        } else {
-            console.log(`🚫 BLOCCO CORS ATTIVATO: L'origine '${origin}' non è in lista.`);
-            callback(new Error('Accesso negato dalla policy CORS (Origin non valida)'));
-        }
-    },
+    origin: true, // <--- Accetta QUALSIASI origine (riflette quella in ingresso)
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: '*', // <--- Accetta QUALSIASI header (importante per i file/multipart)
     credentials: true
 };
 
-// Applica le regole
+// Applica CORS
 app.use(cors(corsOptions));
-// Gestisce le richieste di "controllo" (quelle che causano l'errore 405)
-app.options('*', cors(corsOptions));
+app.options('*', cors(corsOptions)); // Risponde OK a tutti i preflight
 
-// --- 2. GESTIONE FILE (50MB) ---
+// --- 2. GESTIONE UPLOAD MAXI ---
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -52,7 +34,7 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 const authRoutes = require('./routes/authRoutes');
 const menuRoutes = require('./routes/menuRoutes');
 const orderRoutes = require('./routes/orderRoutes');
-const haccpRoutes = require('./routes/haccpRoutes'); // <--- Qui c'è l'AI
+const haccpRoutes = require('./routes/haccpRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 
 // --- 4. ATTIVAZIONE ROTTE ---
@@ -62,20 +44,20 @@ app.use('/', orderRoutes);
 app.use('/', haccpRoutes);
 app.use('/', adminRoutes);
 
-// --- 5. GESTIONE ERRORI ---
+// --- 5. GESTIONE ERRORI GLOBALE ---
 app.use((err, req, res, next) => {
-    console.error("🔥 ERRORE CRITICO SERVER:", err.message);
+    console.error("🔥 ERRORE CRITICO:", err.stack);
     if (!res.headersSent) {
-        res.status(500).json({ error: "Errore interno del server (V42): " + err.message });
+        res.status(500).json({ error: "Errore Server V43: " + err.message });
     }
 });
 
 // --- AVVIO ---
 app.listen(port, () => {
-    console.log(`🚀 JARVIS SERVER V42 ONLINE su porta ${port}`);
+    console.log(`🚀 JARVIS SERVER V43 (OPEN MODE) su porta ${port}`);
     if (process.env.OPENAI_API_KEY) {
         console.log(`🔑 OpenAI Key: Presente (${process.env.OPENAI_API_KEY.substring(0, 5)}...)`);
     } else {
-        console.error("❌ ERRORE: OpenAI Key NON trovata nelle variabili!");
+        console.error("❌ ERRORE: OpenAI Key NON trovata!");
     }
 });
