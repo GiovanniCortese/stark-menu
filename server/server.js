@@ -52,9 +52,10 @@ app.use('/', orderRoutes);
 app.use('/', haccpRoutes);
 app.use('/', adminRoutes);
 
-// --- 5. ROUTE DI VERIFICA ---
+// --- 5. ROUTE DI VERIFICA (REDIRECT) ---
 app.get('/', (req, res) => {
-    res.send('🤖 JARVIS SYSTEM ONLINE - Ready to Serve on cosaedovemangiare.com');
+    // Se chiamano la root del server, li mandiamo al portale
+    res.redirect('https://www.cosaedovemangiare.it');
 });
 
 // --- AVVIO SERVER ---
