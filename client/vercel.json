@@ -1,20 +1,20 @@
 {
-  "redirects": [
+  "version": 2,
+  "builds": [
     {
-      "source": "/",
-      "destination": "https://www.cosaedovemangiare.it",
-      "permanent": false
+      "src": "server.js",
+      "use": "@vercel/node"
     }
   ],
-  "rewrites": [
+  "routes": [
     {
-      "source": "/(.*)",
-      "destination": "/index.html"
+      "src": "/",
+      "status": 307,
+      "headers": { "Location": "https://www.cosaedovemangiare.it" }
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/server.js"
     }
-  ],
-  "functions": {
-    "api/**/*": {
-      "maxDuration": 60
-    }
-  }
+  ]
 }

@@ -59,7 +59,15 @@ app.get('/', (req, res) => {
 });
 
 // --- AVVIO SERVER ---
-app.listen(port, () => {
-    console.log(`🚀 JARVIS SERVER V34 avviato su porta ${port}`);
-    console.log(`🌍 Domini autorizzati: ${allowedOrigins.length}`);
-});
+// Se siamo in locale (o su un server classico) usiamo la porta.
+// Su Vercel, non serve specificare la porta, ci pensa lui.
+if (process.env.NODE_ENV !== 'production') {
+    const port = process.env.PORT || 3000;
+    app.listen(port, () => {
+        console.log(`🚀 JARVIS SERVER V34 avviato su porta ${port}`);
+        console.log(`🌍 Domini autorizzati: ${allowedOrigins.length}`);
+    });
+}
+
+// FONDAMENTALE PER VERCEL: Esportare l'app
+module.exports = app;
