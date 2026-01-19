@@ -9,10 +9,10 @@ const port = process.env.PORT || 3000;
 // --- 1. CONFIGURAZIONE SICUREZZA DOMINI (CORS) ---
 // Qui definiamo chi ha il permesso di parlare con JARVIS
 const allowedOrigins = [
-    'https://www.cosaedovemangiare.com', // Il nuovo dominio
+    'https://www.cosaedovemangiare.com',
     'https://cosaedovemangiare.com',
     'https://www.cosaedovemangiare.it',
-    'https://stark-menu.vercel.app',     // <--- AGGIUNGI QUESTO (è quello che vedo nei log)
+    'https://stark-menu.vercel.app',   // <--- AGGIUNTO QUESTO (era nei log di errore)
     'http://localhost:5173',
     'http://localhost:3000'
 ];
@@ -60,13 +60,10 @@ app.get('/', (req, res) => {
 // --- AVVIO SERVER ---
 // Se siamo in locale (o su un server classico) usiamo la porta.
 // Su Vercel, non serve specificare la porta, ci pensa lui.
-if (process.env.NODE_ENV !== 'production') {
-    const port = process.env.PORT || 3000;
-    app.listen(port, () => {
-        console.log(`🚀 JARVIS SERVER V34 avviato su porta ${port}`);
-        console.log(`🌍 Domini autorizzati: ${allowedOrigins.length}`);
-    });
-}
+app.listen(port, () => {
+    console.log(`🚀 JARVIS SERVER V35 avviato su porta ${port}`);
+    console.log(`🌍 Domini autorizzati: ${allowedOrigins.length}`);
+});
 
-// FONDAMENTALE PER VERCEL: Esportare l'app
+// Opzionale: export per test, ma su Render conta app.listen
 module.exports = app;
