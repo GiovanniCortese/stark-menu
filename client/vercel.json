@@ -1,4 +1,11 @@
 {
+  "redirects": [
+    {
+      "source": "/",
+      "destination": "https://www.cosaedovemangiare.it",
+      "permanent": false
+    }
+  ],
   "rewrites": [
     {
       "source": "/(.*)",
