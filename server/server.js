@@ -9,13 +9,12 @@ const port = process.env.PORT || 3000;
 // --- 1. CONFIGURAZIONE SICUREZZA DOMINI (CORS) ---
 // Qui definiamo chi ha il permesso di parlare con JARVIS
 const allowedOrigins = [
-    'https://www.cosaedovemangiare.com', // Il tuo Nuovo Dominio PRO
-    'https://cosaedovemangiare.com',     // Redirect
-    'https://www.cosaedovemangiare.it',  // Il Portale (fondamentale per la "Maschera")
-    'https://menu.cosaedovemangiare.it', // I vecchi menu Legacy
-    'https://app.cosaedovemangiare.it',  // Eventuali sottodomini futuri
-    'http://localhost:5173',             // Sviluppo Locale (Frontend Vite)
-    'http://localhost:3000'              // Sviluppo Locale (Backend)
+    'https://www.cosaedovemangiare.com', // Il nuovo dominio
+    'https://cosaedovemangiare.com',
+    'https://www.cosaedovemangiare.it',
+    'https://stark-menu.vercel.app',     // <--- AGGIUNGI QUESTO (è quello che vedo nei log)
+    'http://localhost:5173',
+    'http://localhost:3000'
 ];
 
 app.use(cors({ 

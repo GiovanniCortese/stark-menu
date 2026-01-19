@@ -1,20 +1,15 @@
 {
-  "version": 2,
-  "builds": [
+  "redirects": [
     {
-      "src": "server.js",
-      "use": "@vercel/node"
+      "source": "/",
+      "destination": "https://www.cosaedovemangiare.it",
+      "permanent": false
     }
   ],
-  "routes": [
+  "rewrites": [
     {
-      "src": "/",
-      "status": 307,
-      "headers": { "Location": "https://www.cosaedovemangiare.it" }
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/server.js"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
