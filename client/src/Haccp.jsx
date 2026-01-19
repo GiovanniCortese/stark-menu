@@ -247,13 +247,14 @@ function Haccp() {
               />
           )}
 
-          {tab === 'merci' && !scanId && (
-              <MerciManager 
-                 merci={merci} merciForm={merciForm} setMerciForm={setMerciForm} salvaMerci={salvaMerci} handleMerciPhoto={handleMerciPhoto} uploadingMerci={uploadingMerci} iniziaModificaMerci={iniziaModificaMerci} eliminaMerce={eliminaMerce} assets={assets} resetMerciForm={resetMerciForm}
-                 handleFileAction={(url) => openGlobalPreview(url, "Bolla_Merce")} 
-                 openDownloadModal={openDownloadModal}
-              />
-          )}
+         {tab === 'merci' && !scanId && (
+    <MerciManager 
+       API_URL={API_URL}  // <--- AGGIUNGI QUESTA RIGA QUI!
+       merci={merci} merciForm={merciForm} setMerciForm={setMerciForm} salvaMerci={salvaMerci} handleMerciPhoto={handleMerciPhoto} uploadingMerci={uploadingMerci} iniziaModificaMerci={iniziaModificaMerci} eliminaMerce={eliminaMerce} assets={assets} resetMerciForm={resetMerciForm}
+       handleFileAction={(url) => openGlobalPreview(url, "Bolla_Merce")} 
+       openDownloadModal={openDownloadModal}
+    />
+)}
           
           {tab === 'pulizie' && !scanId && (
               <CleaningManager info={info} API_URL={API_URL} staffList={staffList} openDownloadModal={openDownloadModal} />
