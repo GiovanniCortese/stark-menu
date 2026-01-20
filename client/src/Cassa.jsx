@@ -1,7 +1,7 @@
 // client/src/Cassa.jsx - VERSIONE V45 (FIX LOGICA LOG: BLOCCHI ORDINATI) 💶
+import { io } from "socket.io-client"; // Aggiungi questo in alto
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { io } from "socket.io-client"; // Aggiungi questo in alto
 
 function Cassa() {
   const { slug } = useParams();
@@ -152,37 +152,34 @@ function Cassa() {
         .catch(e => console.error("Errore storico:", e));
   };
 
-useEffect(() => {
-    if (isAuthorized && infoRistorante?.id) {
-      
-      if (tab === 'attivi') {
-          // --- MODALITÀ LIVE (Tavoli Attivi) ---
-          
-          // 1. Carica subito i dati appena entri nel tab
-          aggiornaDati();
+// SOSTITUISCI useEffect
+  useEffect(() => {
+    if (!isAuthorized || !infoRistorante?.id) return;
 
-          // 2. Attiva la connessione WebSocket
-          const socket = io(API_URL);
-          socket.emit('join_room', infoRistorante.id);
+    if (tab === 'attivi') {
+        console.log("🔌 Cassa Live: Connessione Socket...");
+        aggiornaDati();
 
-          // 3. Ascolta gli aggiornamenti in tempo reale
-          socket.on('refresh_ordini', () => {
-              console.log("⚡ Aggiornamento Cassa ricevuto!");
-              aggiornaDati();
-          });
+        const socket = io(API_URL, { transports: ['websocket'] });
 
-          // 4. Se cambi tab (vai su storico) o esci, chiudi la connessione
-          return () => {
-              socket.disconnect();
-          };
+        socket.on('connect', () => {
+            console.log("✅ Cassa Connessa al canale:", infoRistorante.id);
+            socket.emit('join_room', String(infoRistorante.id));
+        });
 
-      } else {
-          // --- MODALITÀ STATICA (Storico) ---
-          // Carica i dati una volta sola, niente socket
-          caricaStorico();
-      }
+        socket.on('refresh_ordini', () => {
+            console.log("🔥 UPDATE RICEVUTO IN CASSA");
+            aggiornaDati();
+        });
+
+        return () => {
+            console.log("❌ Chiusura Socket Cassa");
+            socket.disconnect();
+        };
+    } else {
+        caricaStorico();
     }
-  }, [isAuthorized, infoRistorante, tab]);
+  }, [isAuthorized, infoRistorante?.id, tab]);
 
   // --- AZIONI SUI PRODOTTI ---
   const modificaStatoProdotto = async (ord, indexDaModificare) => {
