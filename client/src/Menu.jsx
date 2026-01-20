@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - VERSIONE AGGIORNATA (Descrizione Cat, Unità Misura, No €)
+// client/src/Menu.jsx - AGGIORNATO (Minimo Qta, Coperti Calculation)
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'; 
 import { dictionary, getContent } from './translations';
@@ -60,6 +60,8 @@ function Menu() {
   const [selectedPiatto, setSelectedPiatto] = useState(null);
   const [showCheckout, setShowCheckout] = useState(false);
   const [tempVarianti, setTempVarianti] = useState({ rimozioni: [], aggiunte: [] });
+  const [qtyModal, setQtyModal] = useState(1); // Stato per quantità nel modale
+  const [numCoperti, setNumCoperti] = useState(1); // Stato per numero persone (Coperti)
   
   const { slug } = useParams();
   const currentSlug = slug || 'pizzeria-stark';
@@ -105,7 +107,12 @@ function Menu() {
       .catch(err => { console.error("Errore Menu:", err); setError(true); });
   }, [currentSlug]);
 
-  const apriModale = (piatto) => { setSelectedPiatto(piatto); setTempVarianti({ rimozioni: [], aggiunte: [] }); };
+  const apriModale = (piatto) => { 
+      setSelectedPiatto(piatto); 
+      setTempVarianti({ rimozioni: [], aggiunte: [] });
+      // Se c'è un minimo (es. 7 etti), parti da quello. Altrimenti 1.
+      setQtyModal(piatto.qta_minima ? parseFloat(piatto.qta_minima) : 1);
+  };
   
   const getDefaultCourse = (piatto) => {
       if (piatto.categoria_is_bar) return 0; 
@@ -117,9 +124,13 @@ function Menu() {
       return 3; 
   };
 
-  const aggiungiAlCarrello = (piatto) => {
+  const aggiungiAlCarrello = (piatto, qtySpecific = 1) => {
+      // Se viene chiamato dalla lista (non modale) e c'è un minimo > 1, apri modale per sicurezza o usa minimo
+      let finalQty = qtySpecific;
+      if (qtySpecific === 1 && piatto.qta_minima > 1) finalQty = parseFloat(piatto.qta_minima);
+
       const tempId = Date.now() + Math.random();
-      const item = { ...piatto, tempId, course: getDefaultCourse(piatto) };
+      const item = { ...piatto, tempId, course: getDefaultCourse(piatto), qty: finalQty };
       setCarrello([...carrello, item]);
       setSelectedPiatto(null);
       if(navigator.vibrate) navigator.vibrate(50);
@@ -149,24 +160,43 @@ function Menu() {
           tavoloFinale = t;
           setTavoloStaff(t); 
       }
-      if(!confirm(`${t?.confirm || "CONFERMA E INVIA"}?`)) return;
+      
+      // Calcolo Totale Finale (Prodotti + Coperto)
+      const totaleProdotti = carrello.reduce((a,b)=>a+(Number(b.prezzo) * (b.qty || 1)), 0);
+      const costoCoperto = (style.prezzo_coperto || 0) * numCoperti;
+      const totaleOrdine = totaleProdotti + costoCoperto;
+
+      let confirmMsg = `${t?.confirm || "CONFERMA E INVIA"}?\n\nTotale: ${totaleOrdine.toFixed(2)}€`;
+      if(costoCoperto > 0) confirmMsg += `\n(Inclusi ${costoCoperto.toFixed(2)}€ per ${numCoperti} coperti)`;
+
+      if(!confirm(confirmMsg)) return;
 
       const stepPresenti = [...new Set(carrello.filter(c => !c.categoria_is_bar).map(c => c.course))].sort((a,b)=>a-b);
       const mapNuoviCorsi = {};
       stepPresenti.forEach((vecchioCorso, index) => { mapNuoviCorsi[vecchioCorso] = index + 1; });
 
       const prodottiNormalizzati = carrello.map(p => ({
-          id: p.id, nome: p.nome, prezzo: p.prezzo, 
+          id: p.id, 
+          nome: p.qty > 1 ? `${p.nome} (x${p.qty}${p.unita_misura})` : p.nome, // Hack per visualizzare qta nello scontrino
+          prezzo: Number(p.prezzo) * (p.qty || 1), // Prezzo totale riga
           course: !p.categoria_is_bar ? (mapNuoviCorsi[p.course] || 1) : p.course,
-          is_bar: p.categoria_is_bar, is_pizzeria: p.categoria_is_pizzeria,
-          stato: 'in_attesa', varianti_scelte: p.varianti_scelte,
-          unita_misura: p.unita_misura // Passiamo anche l'unità
+          is_bar: p.categoria_is_bar, 
+          is_pizzeria: p.categoria_is_pizzeria,
+          stato: 'in_attesa', 
+          varianti_scelte: p.varianti_scelte,
+          unita_misura: p.unita_misura,
+          qty_originale: p.qty // Salviamo anche il dato grezzo
       }));
 
       const payload = {
-          ristorante_id: ristoranteId, tavolo: tavoloFinale, utente_id: finalUserId,
-          cliente: user ? user.nome : "Ospite", cameriere: isStaff ? user.nome : null,
-          prodotti: prodottiNormalizzati, totale: carrello.reduce((a,b)=>a+Number(b.prezzo),0)
+          ristorante_id: ristoranteId, 
+          tavolo: tavoloFinale, 
+          utente_id: finalUserId,
+          cliente: user ? user.nome : "Ospite", 
+          cameriere: isStaff ? user.nome : null,
+          prodotti: prodottiNormalizzati, 
+          totale: totaleOrdine,
+          coperti: numCoperti // INVIO COPERTI
       };
 
       try {
@@ -277,7 +307,7 @@ function Menu() {
                       const unitaMisura = prodotto.unita_misura ? ` ${prodotto.unita_misura}` : '';
 
                       return (
-                        <div key={prodotto.id} className="card" onClick={() => prodotto.immagine_url ? apriModale(prodotto) : null} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', cursor: prodotto.immagine_url ? 'pointer' : 'default', backgroundColor: cardBg, borderBottom: `1px solid ${cardBorder}` }}>
+                        <div key={prodotto.id} className="card" onClick={() => apriModale(prodotto)} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', cursor: 'pointer', backgroundColor: cardBg, borderBottom: `1px solid ${cardBorder}` }}>
                           {prodotto.immagine_url && <img src={prodotto.immagine_url} style={{ width: '70px', height: '70px', objectFit: 'cover', borderRadius: '5px', flexShrink: 0 }} />}
                           <div className="info" style={{ flex: 1 }}>
                             <h3 style={{ margin: '0 0 2px 0', fontSize: '16px', color: style.text || '#222', lineHeight: '1.2' }}>{nomeProdotto}</h3>
@@ -294,8 +324,7 @@ function Menu() {
                             </div>
                           </div>
                           <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
-                            {hasVar && ( <button className="notranslate" onClick={(e) => { e.stopPropagation(); apriModale(prodotto); }} style={{ background: 'transparent', border: '1px solid #ccc', color: '#555', borderRadius: '5px', padding: '5px 8px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}>{t?.modify || "MODIFICA"}✏️</button> )}
-                            <button className="notranslate" onClick={(e) => { e.stopPropagation(); aggiungiAlCarrello(prodotto); }} style={{ background: btnBg, color: btnText, borderRadius: '50%', width: '35px', height: '35px', border: 'none', fontSize: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>+</button>
+                            <button className="notranslate" onClick={(e) => { e.stopPropagation(); apriModale(prodotto); }} style={{ background: btnBg, color: btnText, borderRadius: '50%', width: '35px', height: '35px', border: 'none', fontSize: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>+</button>
                           </div>
                         </div>
                       )
@@ -359,9 +388,14 @@ function Menu() {
                 const baseList = v.base || [];
                 const addList = v.aggiunte?.length > 0 ? v.aggiunte : (selectedPiatto.categoria_varianti || []);
                 const extraPrezzo = (tempVarianti?.aggiunte || []).reduce((acc, item) => acc + item.prezzo, 0);
-                const prezzoFinale = Number(selectedPiatto.prezzo) + extraPrezzo;
+                
+                // CALCOLO PREZZO CON QUANTITÀ
+                const prezzoBaseUnitario = Number(selectedPiatto.prezzo);
+                const prezzoTotalePiatto = (prezzoBaseUnitario * qtyModal) + extraPrezzo;
+
                 const nomePiattoModal = getContent(selectedPiatto, 'nome', lang);
                 const descPiattoModal = getContent(selectedPiatto, 'descrizione', lang);
+                const minimo = selectedPiatto.qta_minima ? parseFloat(selectedPiatto.qta_minima) : 1;
                 
                 return (
                 <div style={{ background: modalBg, color: modalText, borderRadius: '10px', overflow: 'hidden', maxWidth: '600px', width: '100%', maxHeight:'95vh', overflowY:'auto', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', position:'relative', display:'flex', flexDirection:'column' }} onClick={e => e.stopPropagation()}>
@@ -369,6 +403,29 @@ function Menu() {
                     <div style={{padding:'20px'}}>
                         <h2 style={{margin:'0 0 5px 0', fontSize:'1.8rem', color: '#000', fontWeight:'800'}}>{nomePiattoModal}</h2>
                         <p style={{color:'#666', fontSize:'1rem', lineHeight:'1.4'}}>{descPiattoModal}</p>
+                        
+                        {/* SELETTORE QUANTITA' SE UNITA MISURA PRESENTE */}
+                        {selectedPiatto.unita_misura && (
+                            <div style={{marginTop:'15px', padding:'10px', background:'#e1f5fe', borderRadius:'8px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                                <div>
+                                    <div style={{fontSize:'12px', fontWeight:'bold', color:'#0277bd', textTransform:'uppercase'}}>Quantità ({selectedPiatto.unita_misura})</div>
+                                    <div style={{fontSize:'10px', color:'#555'}}>Minimo: {minimo}</div>
+                                </div>
+                                <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+                                    <button 
+                                        onClick={() => setQtyModal(q => Math.max(minimo, q - 1))} // STEP 1 per semplicità
+                                        style={{width:30, height:30, borderRadius:'50%', border:'none', background:'white', color:'#0277bd', fontSize:'18px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.1)'}}
+                                        disabled={qtyModal <= minimo}
+                                    >-</button>
+                                    <span style={{fontSize:'20px', fontWeight:'bold', color:'#0277bd'}}>{qtyModal}</span>
+                                    <button 
+                                        onClick={() => setQtyModal(q => q + 1)}
+                                        style={{width:30, height:30, borderRadius:'50%', border:'none', background:'white', color:'#0277bd', fontSize:'18px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.1)'}}
+                                    >+</button>
+                                </div>
+                            </div>
+                        )}
+
                         {selectedPiatto.allergeni && selectedPiatto.allergeni.length > 0 && ( <div className="notranslate" style={{ marginTop: '15px', padding: '10px', background: 'rgba(0,0,0,0.03)', borderRadius: '8px' }}> {selectedPiatto.allergeni.filter(a => !a.includes("❄️")).length > 0 && ( <div style={{ fontSize: '11px', color: '#e74c3c', fontWeight: '900', textTransform: 'uppercase', marginBottom: '4px' }}>⚠️ {t?.allergens || "Allergeni"}: {selectedPiatto.allergeni.filter(a => !a.includes("❄️")).join(', ')}</div> )} {selectedPiatto.allergeni.some(a => a.includes("❄️")) && ( <div style={{ fontSize: '11px', color: '#3498db', fontWeight: '900', textTransform: 'uppercase' }}>❄️ {t?.frozen || "Surgelato"}</div> )} </div> )}
                         <div style={{marginTop:'20px', borderTop:'1px solid #eee', paddingTop:'15px'}}>
                             {baseList.length > 0 && ( <div style={{marginBottom:'20px'}}><h4 className="notranslate" style={{margin:'0 0 10px 0', color:'#333'}}>{t?.ingredients || "Ingredienti"} (Togli)</h4><div style={{display:'flex', flexWrap:'wrap', gap:'10px'}}>{baseList.map(ing => { const isRemoved = tempVarianti.rimozioni.includes(ing); return ( <div key={ing} onClick={() => { const newRimozioni = isRemoved ? tempVarianti.rimozioni.filter(i => i !== ing) : [...tempVarianti.rimozioni, ing]; setTempVarianti({...tempVarianti, rimozioni: newRimozioni}); }} style={{ padding:'8px 12px', borderRadius:'20px', fontSize:'0.9rem', cursor:'pointer', background: isRemoved ? '#ffebee' : '#e8f5e9', color: isRemoved ? '#c62828' : '#2e7d32', border: isRemoved ? '1px solid #ef9a9a' : '1px solid #a5d6a7', textDecoration: isRemoved ? 'line-through' : 'none' }}>{isRemoved ? `No ${ing}` : ing}</div> ) })}</div></div> )}
@@ -376,8 +433,8 @@ function Menu() {
                         </div>
                     </div>
                     <div style={{padding:'20px', background:'#f9f9f9', borderTop:'1px solid #ddd', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                        <div className="notranslate" style={{fontSize:'1.5rem', fontWeight:'bold', color: '#000'}}>{prezzoFinale.toFixed(2)} € {selectedPiatto.unita_misura}</div>
-                        <button className="notranslate" onClick={() => { aggiungiAlCarrello({ ...selectedPiatto, nome: nomePiattoModal, prezzo: prezzoFinale, varianti_scelte: tempVarianti }); }} style={{ background: priceColor, color: 'white', padding: '12px 25px', borderRadius: '30px', fontWeight: 'bold', border: 'none', cursor: 'pointer', fontSize: '1rem' }}>{canOrder ? (t?.add || "AGGIUNGI") : "LISTA"}</button>
+                        <div className="notranslate" style={{fontSize:'1.5rem', fontWeight:'bold', color: '#000'}}>{prezzoTotalePiatto.toFixed(2)} €</div>
+                        <button className="notranslate" onClick={() => { aggiungiAlCarrello({ ...selectedPiatto, nome: nomePiattoModal, prezzo: prezzoBaseUnitario, varianti_scelte: tempVarianti }, qtyModal); }} style={{ background: priceColor, color: 'white', padding: '12px 25px', borderRadius: '30px', fontWeight: 'bold', border: 'none', cursor: 'pointer', fontSize: '1rem' }}>{canOrder ? (t?.add || "AGGIUNGI") : "LISTA"}</button>
                     </div>
                     <button onClick={() => setSelectedPiatto(null)} style={{position:'absolute', top:'15px', right:'15px', background:'white', color:'black', border:'none', borderRadius:'50%', width:'35px', height:'35px', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.2)'}}>✕</button>
                 </div>
@@ -413,6 +470,22 @@ function Menu() {
               </div>
               <div style={{flex:1, overflowY:'auto', maxWidth:'600px', margin:'0 auto', width:'100%'}}>
                   {carrello.length === 0 && <p className="notranslate" style={{color: style?.text || '#fff', textAlign:'center'}}>{t?.empty_cart || "Il carrello è vuoto"}</p>}
+                  
+                  {/* SELETTORE COPERTI */}
+                  {style.prezzo_coperto > 0 && carrello.length > 0 && (
+                      <div style={{background: 'rgba(255,255,255,0.1)', padding:'15px', borderRadius:'10px', marginBottom:'20px', display:'flex', alignItems:'center', justifyContent:'space-between'}}>
+                          <div>
+                            <div style={{fontWeight:'bold', fontSize:'16px'}}>👥 Numero Persone</div>
+                            <div style={{fontSize:'12px', opacity:0.8}}>Coperto: {Number(style.prezzo_coperto).toFixed(2)}€ a persona</div>
+                          </div>
+                          <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+                                <button onClick={() => setNumCoperti(n => Math.max(1, n - 1))} style={{width:30, height:30, borderRadius:'50%', border:'none', fontSize:'18px', cursor:'pointer', fontWeight:'bold'}}>-</button>
+                                <span style={{fontSize:'18px', fontWeight:'bold'}}>{numCoperti}</span>
+                                <button onClick={() => setNumCoperti(n => n + 1)} style={{width:30, height:30, borderRadius:'50%', border:'none', fontSize:'18px', cursor:'pointer', fontWeight:'bold'}}>+</button>
+                          </div>
+                      </div>
+                  )}
+
                   {(() => {
                       const itemsCucina = carrello.filter(i => !i.categoria_is_bar);
                       const coursePresenti = [...new Set(itemsCucina.map(i => i.course))].sort();
@@ -423,15 +496,20 @@ function Menu() {
                               <h3 className="notranslate" style={{ margin:'0 0 10px 0', color: coloriPortata[index] || '#ccc', borderBottom:`2px solid ${coloriPortata[index] || '#ccc'}`, display:'inline-block', paddingRight:20 }}>{nomePortata[courseNum] || `PORTATA ${courseNum}`}</h3>
                               {itemsCucina.filter(i => i.course === courseNum).map(item => {
                                   const v = typeof item.varianti === 'string' ? JSON.parse(item.varianti || '{}') : (item.varianti || {});
+                                  const qtaLabel = item.qty > 1 ? `x ${item.qty} ${item.unita_misura || ''}` : '';
+                                  const totaleRiga = Number(item.prezzo) * (item.qty || 1);
+
                                   return (
                                     <div key={item.tempId} style={{background:'rgba(255,255,255,0.1)', borderRadius:10, padding:15, marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                                         <div style={{flex: 1}}>
-                                            <div style={{fontWeight:'bold', fontSize:'1.1rem', color: titleColor}}>{item.nome}</div>
+                                            <div style={{fontWeight:'bold', fontSize:'1.1rem', color: titleColor}}>
+                                                {item.nome} {qtaLabel && <span style={{color: priceColor, fontSize:'0.9rem'}}>({qtaLabel})</span>}
+                                            </div>
                                             {item.descrizione && ( <div style={{fontSize:'12px', color:'#ccc', fontStyle:'italic', marginTop:'4px', lineHeight:'1.2'}}>{item.descrizione}</div> )}
                                             {v.base && v.base.length > 0 && ( <div style={{fontSize:'11px', color:'#999', marginTop:'4px'}}><span className="notranslate">🧂 {t?.ingredients || "Ingredienti"}:</span> {v.base.join(', ')}</div> )}
                                             {item.allergeni && item.allergeni.length > 0 && ( <div className="notranslate" style={{ marginTop: '6px' }}>{item.allergeni.filter(a => !a.includes("❄️")).length > 0 && (<div style={{ fontSize: '10px', color: '#ff7675', fontWeight: 'bold', textTransform: 'uppercase' }}>⚠️ {t?.allergens || "Allergeni"}: {item.allergeni.filter(a => !a.includes("❄️")).join(', ')}</div>)}{item.allergeni.some(a => a.includes("❄️")) && (<div style={{ fontSize: '10px', color: '#74b9ff', fontWeight: 'bold', marginTop: '2px', textTransform: 'uppercase' }}>❄️ {t?.frozen || "Surgelato"}</div>)}</div>)}
                                             {item.varianti_scelte && ( <div style={{marginTop:'8px', display:'flex', flexWrap:'wrap', gap:'5px'}}>{item.varianti_scelte.rimozioni?.map((ing, i) => ( <span key={i} style={{background:'#c0392b', color:'white', fontSize:'10px', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold'}}>NO {ing}</span> ))}{item.varianti_scelte.aggiunte?.map((ing, i) => ( <span key={i} style={{background:'#27ae60', color:'white', fontSize:'10px', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold'}}>+ {ing.nome}</span> ))}</div> )}
-                                            <div className="notranslate" style={{color: priceColor, fontSize:'0.9rem', marginTop: '8px', fontWeight: 'bold'}}>{Number(item.prezzo).toFixed(2)} € {item.unita_misura}</div>
+                                            <div className="notranslate" style={{color: priceColor, fontSize:'0.9rem', marginTop: '8px', fontWeight: 'bold'}}>{totaleRiga.toFixed(2)} €</div>
                                         </div>
                                         <div className="notranslate" style={{display:'flex', flexDirection:'column', gap:5, marginLeft: '10px'}}>
                                             <div style={{display:'flex', gap:5, marginBottom: 5}}><button onClick={() => cambiaUscita(item.tempId, -1)} style={{background:'#ecf0f1', color:'#333', border: 'none', fontSize:'0.8rem', padding:'5px 8px', borderRadius:'4px', cursor: 'pointer'}}>⬆️</button><button onClick={() => cambiaUscita(item.tempId, 1)} style={{background:'#ecf0f1', color:'#333', border: 'none', fontSize:'0.8rem', padding:'5px 8px', borderRadius:'4px', cursor: 'pointer'}}>⬇️</button></div>
@@ -449,15 +527,24 @@ function Menu() {
                            {carrello.filter(i => i.categoria_is_bar).map(item => (
                                <div key={item.tempId} style={{display:'flex', justifyContent:'space-between', alignItems:'center', background:'rgba(255,255,255,0.05)', padding:'10px', marginBottom:'5px', borderRadius:'8px'}}>
                                    <div style={{flex:1}}>
-                                        <div style={{color: titleColor, fontWeight:'bold', fontSize:'16px'}}>{item.nome}</div>
-                                        <div className="notranslate" style={{color: '#888', fontSize:'12px'}}>{Number(item.prezzo).toFixed(2)} € {item.unita_misura}</div>
+                                        <div style={{color: titleColor, fontWeight:'bold', fontSize:'16px'}}>
+                                            {item.nome} {item.qty > 1 && <span style={{fontSize:'0.8em'}}>x{item.qty}</span>}
+                                        </div>
+                                        <div className="notranslate" style={{color: '#888', fontSize:'12px'}}>{(Number(item.prezzo) * (item.qty||1)).toFixed(2)} €</div>
                                    </div>
                                    <button className="notranslate" onClick={() => rimuoviDalCarrello(item.tempId)} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'5px', cursor:'pointer'}}>✕</button>
                                </div>
                            ))}
                       </div>
                   )}
+
+                  {/* TOTALE FINALE */}
                   <div className="notranslate" style={{marginTop:'20px', borderTop:`1px solid ${style?.text||'#ccc'}`, paddingTop:'20px'}}>
+                      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:'1.2rem', fontWeight:'bold', marginBottom:'15px'}}>
+                          <span>TOTALE (con Coperto):</span>
+                          <span>{(carrello.reduce((a,b)=>a+(Number(b.prezzo)*(b.qty||1)), 0) + ((style.prezzo_coperto||0)*numCoperti)).toFixed(2)} €</span>
+                      </div>
+
                       {carrello.length > 0 && (canOrder || isStaffQui) && ( 
                           <button onClick={inviaOrdine} style={{ width:'100%', padding:'15px', fontSize:'18px', background: '#159709ff', color:'white', border:`1px solid ${style?.text||'#ccc'}`, borderRadius:'30px', fontWeight:'bold', cursor:'pointer' }}>
                               {isStaffQui ? "INVIA ORDINE STAFF 🚀" : (t?.confirm || "CONFERMA E INVIA") + " 🚀"}

@@ -11,7 +11,6 @@ router.get('/api/menu/:slug', async (req, res) => {
         if (rist.rows.length === 0) return res.status(404).json({ error: "Non trovato" }); 
         const data = rist.rows[0]; 
         
-        // Recuperiamo anche la descrizione della categoria
         const menu = await pool.query(`SELECT p.*, p.traduzioni as traduzioni, c.is_bar as categoria_is_bar, c.is_pizzeria as categoria_is_pizzeria, c.posizione as categoria_posizione, c.nome as categoria_nome, c.descrizione as categoria_descrizione, c.varianti_default as categoria_varianti, c.traduzioni as categoria_traduzioni FROM prodotti p LEFT JOIN categorie c ON p.categoria = c.nome AND p.ristorante_id = c.ristorante_id WHERE p.ristorante_id = $1 ORDER BY c.posizione ASC, p.posizione ASC`, [data.id]); 
         
         res.json({ 
@@ -26,7 +25,8 @@ router.get('/api/menu/:slug', async (req, res) => {
                 colore_modal_bg: data.colore_modal_bg, colore_modal_text: data.colore_modal_text, info_footer: data.info_footer, 
                 url_allergeni: data.url_allergeni, colore_footer_text: data.colore_footer_text, dimensione_footer: data.dimensione_footer, 
                 allineamento_footer: data.allineamento_footer, url_menu_giorno: data.url_menu_giorno, url_menu_pdf: data.url_menu_pdf,
-                nascondi_euro: data.nascondi_euro // NUOVO CAMPO
+                nascondi_euro: data.nascondi_euro,
+                prezzo_coperto: data.prezzo_coperto // NUOVO
             }, 
             subscription_active: data.account_attivo !== false, 
             kitchen_active: data.cucina_super_active !== false, 
@@ -44,14 +44,14 @@ router.get('/api/categorie/:ristorante_id', async (req, res) => { try { const r 
 router.put('/api/categorie/:id', async (req, res) => { try { const { nome, is_bar, is_pizzeria, descrizione, varianti_default, traduzioni } = req.body; await pool.query('UPDATE categorie SET nome=$1, is_bar=$2, is_pizzeria=$3, descrizione=$4, varianti_default=$5, traduzioni=$6 WHERE id=$7', [nome, is_bar, is_pizzeria, descrizione, varianti_default, JSON.stringify(traduzioni || {}), req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
 router.delete('/api/categorie/:id', async (req, res) => { const client = await pool.connect(); try { await client.query('BEGIN'); const { id } = req.params; const catRes = await client.query('SELECT nome, ristorante_id FROM categorie WHERE id = $1', [id]); if (catRes.rows.length > 0) { const { nome, ristorante_id } = catRes.rows[0]; await client.query('DELETE FROM prodotti WHERE categoria = $1 AND ristorante_id = $2', [nome, ristorante_id]); } await client.query('DELETE FROM categorie WHERE id = $1', [id]); await client.query('COMMIT'); res.json({ success: true }); } catch (e) { await client.query('ROLLBACK'); res.status(500).json({ error: "Errore durante l'eliminazione" }); } finally { client.release(); } });
 
-// Gestione Prodotti (AGGIORNATO CON unita_misura)
+// Gestione Prodotti (AGGIORNATO CON qta_minima)
 router.post('/api/prodotti', async (req, res) => { 
     try { 
-        const { nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, immagine_url, varianti, allergeni, traduzioni, unita_misura } = req.body; 
+        const { nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, immagine_url, varianti, allergeni, traduzioni, unita_misura, qta_minima } = req.body; 
         const max = await pool.query('SELECT MAX(posizione) as max FROM prodotti WHERE ristorante_id = $1', [ristorante_id]); 
         const nuovaPosizione = (max.rows[0].max || 0) + 1; 
-        const queryText = `INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, immagine_url, posizione, varianti, allergeni, traduzioni, unita_misura) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`; 
-        const values = [nome, prezzo, categoria, sottocategoria || "", descrizione || "", ristorante_id, immagine_url || "", nuovaPosizione, varianti || '{}', JSON.stringify(allergeni || []), JSON.stringify(traduzioni || {}), unita_misura || ""]; 
+        const queryText = `INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, immagine_url, posizione, varianti, allergeni, traduzioni, unita_misura, qta_minima) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`; 
+        const values = [nome, prezzo, categoria, sottocategoria || "", descrizione || "", ristorante_id, immagine_url || "", nuovaPosizione, varianti || '{}', JSON.stringify(allergeni || []), JSON.stringify(traduzioni || {}), unita_misura || "", qta_minima || 1]; 
         await pool.query(queryText, values); 
         res.json({ success: true }); 
     } catch (e) { res.status(500).json({ error: e.message }); } 
@@ -61,15 +61,15 @@ router.put('/api/prodotti/riordina', async (req, res) => { const { prodotti } = 
 
 router.put('/api/prodotti/:id', async (req, res) => { 
     try { 
-        const { nome, prezzo, categoria, sottocategoria, descrizione, immagine_url, varianti, allergeni, traduzioni, unita_misura } = req.body; 
-        await pool.query('UPDATE prodotti SET nome=$1, prezzo=$2, categoria=$3, sottocategoria=$4, descrizione=$5, immagine_url=$6, varianti=$8, allergeni=$9, traduzioni=$10, unita_misura=$11 WHERE id=$7', [nome, prezzo, categoria, sottocategoria, descrizione, immagine_url, req.params.id, varianti, JSON.stringify(allergeni || []), JSON.stringify(traduzioni || {}), unita_misura || ""]); 
+        const { nome, prezzo, categoria, sottocategoria, descrizione, immagine_url, varianti, allergeni, traduzioni, unita_misura, qta_minima } = req.body; 
+        await pool.query('UPDATE prodotti SET nome=$1, prezzo=$2, categoria=$3, sottocategoria=$4, descrizione=$5, immagine_url=$6, varianti=$8, allergeni=$9, traduzioni=$10, unita_misura=$11, qta_minima=$12 WHERE id=$7', [nome, prezzo, categoria, sottocategoria, descrizione, immagine_url, req.params.id, varianti, JSON.stringify(allergeni || []), JSON.stringify(traduzioni || {}), unita_misura || "", qta_minima || 1]); 
         res.json({ success: true }); 
     } catch (e) { res.status(500).json({ error: "Errore salvataggio prodotto" }); } 
 });
 
 router.delete('/api/prodotti/:id', async (req, res) => { try { await pool.query('DELETE FROM prodotti WHERE id=$1', [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
 
-// Import Excel Menu (SMART UPSERT)
+// Import Excel Menu (Upsert + Unità + Minimo)
 router.post('/api/import-excel', uploadFile.single('file'), async (req, res) => { 
     const { ristorante_id } = req.body; 
     if (!req.file || !ristorante_id) return res.status(400).json({ error: "Dati mancanti." }); 
@@ -91,7 +91,9 @@ router.post('/api/import-excel', uploadFile.single('file'), async (req, res) => 
             const categoria = row['Categoria'] ? String(row['Categoria']).trim() : "Generale"; 
             const sottocategoria = row['Sottocategoria'] ? String(row['Sottocategoria']).trim() : ""; 
             const descrizione = row['Descrizione'] ? String(row['Descrizione']).trim() : ""; 
-            const unita = row['Unita'] ? String(row['Unita']).trim() : ""; // Supporto nuova colonna
+            const unita = row['Unita'] ? String(row['Unita']).trim() : ""; 
+            const minimo = row['Minimo'] ? parseFloat(String(row['Minimo']).replace(',', '.')) : 1; // NUOVO
+
             const allergeniStr = row['Allergeni'] || ""; 
             const allergeniArr = allergeniStr.split(',').map(s => s.trim()).filter(Boolean); 
 
@@ -106,7 +108,6 @@ router.post('/api/import-excel', uploadFile.single('file'), async (req, res) => 
                 }).filter(Boolean); 
             } 
 
-            // Categorie: Crea se non esiste
             let catCheck = await client.query('SELECT * FROM categorie WHERE nome = $1 AND ristorante_id = $2', [categoria, ristorante_id]); 
             if (catCheck.rows.length === 0) { 
                 await client.query('INSERT INTO categorie (nome, posizione, ristorante_id, descrizione, varianti_default) VALUES ($1, $2, $3, $4, $5)', [categoria, nextCatPos++, ristorante_id, "", JSON.stringify(variantiCatJson)]); 
@@ -127,20 +128,19 @@ router.post('/api/import-excel', uploadFile.single('file'), async (req, res) => 
             } 
             const variantiProdotto = { base: baseArr, aggiunte: aggiunteArr }; 
             
-            // Logica SMART UPSERT (Aggiorna se esiste, Inserisci se nuovo)
             const prodCheck = await client.query('SELECT id FROM prodotti WHERE nome = $1 AND ristorante_id = $2', [nome, ristorante_id]);
             
             if (prodCheck.rows.length > 0) {
-                // AGGIORNA
+                // UPDATE
                 await client.query(
-                    `UPDATE prodotti SET prezzo=$1, categoria=$2, sottocategoria=$3, descrizione=$4, varianti=$5, allergeni=$6, unita_misura=$7 WHERE id=$8`,
-                    [prezzo, categoria, sottocategoria, descrizione, JSON.stringify(variantiProdotto), JSON.stringify(allergeniArr), unita, prodCheck.rows[0].id]
+                    `UPDATE prodotti SET prezzo=$1, categoria=$2, sottocategoria=$3, descrizione=$4, varianti=$5, allergeni=$6, unita_misura=$7, qta_minima=$8 WHERE id=$9`,
+                    [prezzo, categoria, sottocategoria, descrizione, JSON.stringify(variantiProdotto), JSON.stringify(allergeniArr), unita, minimo, prodCheck.rows[0].id]
                 );
             } else {
-                // INSERISCI
+                // INSERT
                 await client.query(
-                    `INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, posizione, varianti, allergeni, unita_misura) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-                    [nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, nextProdPos++, JSON.stringify(variantiProdotto), JSON.stringify(allergeniArr), unita]
+                    `INSERT INTO prodotti (nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, posizione, varianti, allergeni, unita_misura, qta_minima) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+                    [nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, nextProdPos++, JSON.stringify(variantiProdotto), JSON.stringify(allergeniArr), unita, minimo]
                 );
             }
         } 
@@ -153,7 +153,7 @@ router.post('/api/import-excel', uploadFile.single('file'), async (req, res) => 
     } finally { client.release(); } 
 });
 
-// Export Excel Menu (Aggiornato con Unità)
-router.get('/api/export-excel/:ristorante_id', async (req, res) => { try { const result = await pool.query(`SELECT p.*, c.varianti_default as cat_varianti FROM prodotti p LEFT JOIN categorie c ON p.categoria = c.nome AND p.ristorante_id = c.ristorante_id WHERE p.ristorante_id = $1 ORDER BY c.posizione, p.posizione`, [req.params.ristorante_id]); const dataForExcel = result.rows.map(row => { let baseStr = "", aggiunteStr = "", catVarStr = "", allergeniStr = ""; try { const v = typeof row.varianti === 'string' ? JSON.parse(row.varianti) : (row.varianti || {}); if(v.base && Array.isArray(v.base)) baseStr = v.base.join(', '); if(v.aggiunte && Array.isArray(v.aggiunte)) { aggiunteStr = v.aggiunte.map(a => `${a.nome}:${Number(a.prezzo).toFixed(2)}`).join(', '); } } catch(e) {} try { const cv = typeof row.cat_varianti === 'string' ? JSON.parse(row.cat_varianti) : (row.cat_varianti || []); if(Array.isArray(cv)) { catVarStr = cv.map(a => `${a.nome}:${Number(a.prezzo).toFixed(2)}`).join(', '); } } catch(e) {} try { const all = typeof row.allergeni === 'string' ? JSON.parse(row.allergeni) : (row.allergeni || []); if(Array.isArray(all)) { allergeniStr = all.join(', '); } } catch(e) {} return { "Categoria": row.categoria, "Varianti Categoria (Default)": catVarStr, "Sottocategoria": row.sottocategoria || "", "Nome": row.nome, "Prezzo": row.prezzo, "Unita": row.unita_misura || "", "Descrizione": row.descrizione || "", "Ingredienti Base (Rimovibili)": baseStr, "Aggiunte Prodotto (Formato Nome:Prezzo)": aggiunteStr, "Allergeni": allergeniStr }; }); const workbook = xlsx.utils.book_new(); const worksheet = xlsx.utils.json_to_sheet(dataForExcel); const wscols = [{wch:15}, {wch:30}, {wch:15}, {wch:25}, {wch:10}, {wch:10}, {wch:30}, {wch:30}, {wch:30}, {wch:30}]; worksheet['!cols'] = wscols; xlsx.utils.book_append_sheet(workbook, worksheet, "Menu"); const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' }); res.setHeader('Content-Disposition', 'attachment; filename="menu_export_completo.xlsx"'); res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); res.send(buffer); } catch (err) { res.status(500).json({ error: "Errore durante l'esportazione Excel" }); } });
+// Export Excel Menu
+router.get('/api/export-excel/:ristorante_id', async (req, res) => { try { const result = await pool.query(`SELECT p.*, c.varianti_default as cat_varianti FROM prodotti p LEFT JOIN categorie c ON p.categoria = c.nome AND p.ristorante_id = c.ristorante_id WHERE p.ristorante_id = $1 ORDER BY c.posizione, p.posizione`, [req.params.ristorante_id]); const dataForExcel = result.rows.map(row => { let baseStr = "", aggiunteStr = "", catVarStr = "", allergeniStr = ""; try { const v = typeof row.varianti === 'string' ? JSON.parse(row.varianti) : (row.varianti || {}); if(v.base && Array.isArray(v.base)) baseStr = v.base.join(', '); if(v.aggiunte && Array.isArray(v.aggiunte)) { aggiunteStr = v.aggiunte.map(a => `${a.nome}:${Number(a.prezzo).toFixed(2)}`).join(', '); } } catch(e) {} try { const cv = typeof row.cat_varianti === 'string' ? JSON.parse(row.cat_varianti) : (row.cat_varianti || []); if(Array.isArray(cv)) { catVarStr = cv.map(a => `${a.nome}:${Number(a.prezzo).toFixed(2)}`).join(', '); } } catch(e) {} try { const all = typeof row.allergeni === 'string' ? JSON.parse(row.allergeni) : (row.allergeni || []); if(Array.isArray(all)) { allergeniStr = all.join(', '); } } catch(e) {} return { "Categoria": row.categoria, "Varianti Categoria (Default)": catVarStr, "Sottocategoria": row.sottocategoria || "", "Nome": row.nome, "Prezzo": row.prezzo, "Unita": row.unita_misura || "", "Minimo": row.qta_minima || 1, "Descrizione": row.descrizione || "", "Ingredienti Base (Rimovibili)": baseStr, "Aggiunte Prodotto (Formato Nome:Prezzo)": aggiunteStr, "Allergeni": allergeniStr }; }); const workbook = xlsx.utils.book_new(); const worksheet = xlsx.utils.json_to_sheet(dataForExcel); const wscols = [{wch:15}, {wch:30}, {wch:15}, {wch:25}, {wch:10}, {wch:10}, {wch:10}, {wch:30}, {wch:30}, {wch:30}, {wch:30}]; worksheet['!cols'] = wscols; xlsx.utils.book_append_sheet(workbook, worksheet, "Menu"); const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' }); res.setHeader('Content-Disposition', 'attachment; filename="menu_export_completo.xlsx"'); res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); res.send(buffer); } catch (err) { res.status(500).json({ error: "Errore durante l'esportazione Excel" }); } });
 
 module.exports = router;

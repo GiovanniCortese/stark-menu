@@ -1,4 +1,4 @@
-// client/src/components_admin/AdminMenu.jsx - AGGIORNATO (Unità Misura & Toggle €)
+// client/src/components_admin/AdminMenu.jsx - AGGIORNATO (Loading Excel, Minimo Qta, Coperto)
 import { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import ProductRow from './ProductRow';
@@ -59,7 +59,7 @@ const ImageUploader = ({ type, currentUrl, icon, config, setConfig, API_URL }) =
 function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL, ricaricaDati }) {
   const [nuovoPiatto, setNuovoPiatto] = useState({ 
       nome: '', prezzo: '', categoria: '', sottocategoria: '', descrizione: '', immagine_url: '',
-      ingredienti_base: '', varianti_str: '', allergeni: [], unita_misura: '' // AGGIUNTO
+      ingredienti_base: '', varianti_str: '', allergeni: [], unita_misura: '', qta_minima: 1 
   });
   
   const [traduzioniInput, setTraduzioniInput] = useState({ 
@@ -69,6 +69,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
   const [editId, setEditId] = useState(null); 
   const [uploading, setUploading] = useState(false);
+  const [importing, setImporting] = useState(false); // NUOVO STATO PER LOADER EXCEL
 
   if (!config || !categorie || !menu) {
       return <div style={{padding:'40px', textAlign:'center', color:'#666'}}>🔄 Caricamento Menu...</div>;
@@ -91,7 +92,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const handleSaveStyle = async () => {
     try {
         await fetch(`${API_URL}/api/ristorante/style/${user.id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config) });
-        alert("✨ Impostazioni e footer salvati!");
+        alert("✨ Impostazioni, Coperto e Footer salvati!");
     } catch(e) { alert("Errore salvataggio"); }
   };
 
@@ -132,7 +133,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
           await fetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }); 
           alert(editId ? "✅ Piatto aggiornato!" : "✅ Piatto creato!");
           
-          setNuovoPiatto({ nome:'', prezzo:'', categoria:cat, sottocategoria: '', descrizione:'', immagine_url:'', varianti_str: '', ingredienti_base: '', allergeni: [], unita_misura: '' }); 
+          setNuovoPiatto({ nome:'', prezzo:'', categoria:cat, sottocategoria: '', descrizione:'', immagine_url:'', varianti_str: '', ingredienti_base: '', allergeni: [], unita_misura: '', qta_minima: 1 }); 
           setTraduzioniInput({ en: { nome: '', descrizione: '' }, de: { nome: '', descrizione: '' } }); 
           
           setEditId(null); ricaricaDati(); 
@@ -147,8 +148,22 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
   const handleImportExcel = async (e) => {
     const file = e.target.files[0]; if(!file) return;
+    setImporting(true); // ATTIVA LOADER
     const formData = new FormData(); formData.append('file', file); formData.append('ristorante_id', user.id);
-    try { const res = await fetch(`${API_URL}/api/import-excel`, { method: 'POST', body: formData }); const data = await res.json(); if(data.success) { alert(data.message); ricaricaDati(); } else alert("Errore: " + data.error); } catch(err) { alert("Errore Connessione"); }
+    try { 
+        const res = await fetch(`${API_URL}/api/import-excel`, { method: 'POST', body: formData }); 
+        const data = await res.json(); 
+        if(data.success) { 
+            alert(data.message); 
+            ricaricaDati(); 
+        } else {
+            alert("Errore: " + data.error); 
+        }
+    } catch(err) { 
+        alert("Errore Connessione"); 
+    } finally {
+        setImporting(false); // DISATTIVA LOADER
+    }
   };
 
   const cancellaPiatto = async (id) => { if(confirm("Sei sicuro di voler eliminare questo piatto?")) { await fetch(`${API_URL}/api/prodotti/${id}`, {method:'DELETE'}); ricaricaDati(); }};
@@ -158,7 +173,14 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       let variantiObj = { base: [], aggiunte: [] }; 
       try { variantiObj = typeof piatto.varianti === 'string' ? JSON.parse(piatto.varianti) : piatto.varianti || { base: [], aggiunte: [] }; } catch(e) {} 
       
-      setNuovoPiatto({ ...piatto, unita_misura: piatto.unita_misura || '', allergeni: piatto.allergeni || [], ingredienti_base: (variantiObj.base || []).join(', '), varianti_str: (variantiObj.aggiunte || []).map(v => `${v.nome}:${v.prezzo}`).join(', ') }); 
+      setNuovoPiatto({ 
+          ...piatto, 
+          unita_misura: piatto.unita_misura || '', 
+          qta_minima: piatto.qta_minima || 1, // Recupera minimo
+          allergeni: piatto.allergeni || [], 
+          ingredienti_base: (variantiObj.base || []).join(', '), 
+          varianti_str: (variantiObj.aggiunte || []).map(v => `${v.nome}:${v.prezzo}`).join(', ') 
+      }); 
       
       const tr = piatto.traduzioni || {};
       setTraduzioniInput({
@@ -171,7 +193,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
   const annullaModifica = () => { 
       setEditId(null); 
-      setNuovoPiatto({ nome:'', prezzo:'', categoria:categorie.length > 0 ? categorie[0].nome : '', sottocategoria: '', descrizione:'', immagine_url:'', varianti_str: '', ingredienti_base: '', allergeni: [], unita_misura: '' }); 
+      setNuovoPiatto({ nome:'', prezzo:'', categoria:categorie.length > 0 ? categorie[0].nome : '', sottocategoria: '', descrizione:'', immagine_url:'', varianti_str: '', ingredienti_base: '', allergeni: [], unita_misura: '', qta_minima: 1 }); 
       setTraduzioniInput({ en: { nome: '', descrizione: '' }, de: { nome: '', descrizione: '' } }); 
   };
 
@@ -200,6 +222,18 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   return (
     <div style={containerStyle}>
         
+        {/* OVERLAY LOADING EXCEL */}
+        {importing && (
+            <div style={{
+                position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(255,255,255,0.8)', 
+                zIndex:9999, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'
+            }}>
+                <div style={{fontSize:'50px'}}>📥</div>
+                <h2 style={{color:'#3498db'}}>Sto elaborando il Menu Excel...</h2>
+                <p>Potrebbe richiedere qualche secondo.</p>
+            </div>
+        )}
+
         <div style={{...cardStyle, display:'flex', justifyContent:'space-between', alignItems:'center', background: headerBg, color:'white', border:'none'}}>
             <div>
                 <h2 style={{margin:0, fontSize:'24px'}}>{headerTitle}</h2>
@@ -255,16 +289,28 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                                   <label style={labelStyle}>Prezzo</label>
                                   <input type="number" placeholder="0.00" value={nuovoPiatto.prezzo} onChange={e => setNuovoPiatto({...nuovoPiatto, prezzo: e.target.value})} style={inputStyle} step="0.10" required />
                               </div>
-                               {/* CAMPO UNITÀ */}
-                              <div style={{width:'100px'}}>
+                               {/* CAMPO UNITÀ & MINIMO */}
+                              <div style={{width:'80px'}}>
                                     <label style={labelStyle}>Unità</label>
                                     <input 
                                         type="text" 
-                                        placeholder="es. /hg" 
+                                        placeholder="/hg" 
                                         value={nuovoPiatto.unita_misura || ''} 
                                         onChange={e => setNuovoPiatto({...nuovoPiatto, unita_misura: e.target.value})} 
                                         style={inputStyle} 
-                                        title="Utile per carne al peso (es. /hg) o pezzi (es. /pz)"
+                                    />
+                                </div>
+                                <div style={{width:'80px'}}>
+                                    <label style={labelStyle}>Minimo</label>
+                                    <input 
+                                        type="number" 
+                                        placeholder="1" 
+                                        value={nuovoPiatto.qta_minima || 1} 
+                                        onChange={e => setNuovoPiatto({...nuovoPiatto, qta_minima: e.target.value})} 
+                                        style={inputStyle}
+                                        min="0.1"
+                                        step="0.1" 
+                                        title="Quantità minima ordinabile"
                                     />
                                 </div>
                           </div>
@@ -399,10 +445,23 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
         </div>
 
 <div style={{ ...cardStyle, borderLeft: '5px solid #8e44ad' }}>
-    <h3 style={{ marginBottom: '25px', color: '#2c3e50' }}>⚖️ Configurazione Footer & Allegati</h3>
+    <h3 style={{ marginBottom: '25px', color: '#2c3e50' }}>⚖️ Configurazione Footer & Coperto</h3>
+
+    {/* SEZIONE COPERTO */}
+    <div style={{marginBottom:'20px', padding:'15px', background:'#fdfefe', borderRadius:'8px', border:'1px solid #bbdefb'}}>
+         <label style={labelStyle}>💰 Costo Coperto (€)</label>
+         <input 
+            type="number" 
+            value={config.prezzo_coperto || 0}
+            onChange={e => setConfig({...config, prezzo_coperto: e.target.value})}
+            style={{...inputStyle, width:'100%', maxWidth:'150px'}}
+            step="0.10"
+         />
+         <p style={{margin:'5px 0 0 0', fontSize:'12px', color:'#666'}}>Verrà aggiunto automaticamente al checkout moltiplicato per il numero di persone.</p>
+    </div>
 
     <div style={{ marginBottom: '30px' }}>
-        <label style={labelStyle}>📝 Testo a piè di pagina (es. Coperto 5€)</label>
+        <label style={labelStyle}>📝 Testo a piè di pagina (Info aggiuntive)</label>
         <textarea 
             value={config.info_footer || ''}
             onChange={e => setConfig({...config, info_footer: e.target.value})}
