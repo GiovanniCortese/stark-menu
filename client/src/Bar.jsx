@@ -1,7 +1,7 @@
 // client/src/Bar.jsx - VERSIONE V5 (FIX VARIANTI & RAGGRUPPAMENTO SICURO) 🍹
+import { io } from "socket.io-client"; // Aggiungi questo in alto
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { io } from "socket.io-client"; // Aggiungi questo in alto
 
 function Bar() {
   const [ordini, setOrdini] = useState([]);
@@ -71,29 +71,43 @@ const handleLogin = async (e) => {
         .catch(e => console.error("Polling error:", e));
   };
 
-useEffect(() => { 
-      if(isAuthorized && infoRistorante?.id) { 
-          // 1. Carica subito i dati all'avvio
-          aggiorna(); 
+// SOSTITUISCI IL VECCHIO useEffect CON QUESTO:
+  useEffect(() => {
+    // 1. Controllo di sicurezza: Non fare nulla se non ho ancora l'ID del ristorante
+    if (!isAuthorized || !infoRistorante?.id) return;
 
-          // 2. Connetti al Socket
-          const socket = io(API_URL);
+    console.log("🔌 Tentativo connessione Socket per Ristorante:", infoRistorante.id);
 
-          // 3. Entra nella "stanza" del ristorante
-          socket.emit('join_room', infoRistorante.id);
+    // 2. Carica i dati iniziali (Polling una tantum per partire aggiornati)
+    aggiorna();
 
-          // 4. Ascolta l'evento: se qualcuno cambia qualcosa, ricarica!
-          socket.on('refresh_ordini', () => {
-              console.log("⚡ Dati aggiornati via Socket!");
-              aggiorna();
-          });
+    // 3. Configurazione Socket
+    const socket = io(API_URL, {
+        transports: ['websocket'], // Forza WebSocket per evitare ritardi
+        reconnectionAttempts: 5    // Riprova se cade la linea
+    });
 
-          // Pulizia quando esci dalla pagina
-          return () => {
-              socket.disconnect();
-          };
-      } 
-  }, [isAuthorized, infoRistorante]);
+    // 4. Appena connesso, entra nella stanza
+    socket.on('connect', () => {
+        console.log("✅ Socket Connesso! ID:", socket.id);
+        // Forziamo l'ID a stringa per sicurezza
+        socket.emit('join_room', String(infoRistorante.id));
+    });
+
+    // 5. Ascolta l'evento di aggiornamento
+    socket.on('refresh_ordini', () => {
+        console.log("🔥 EVENTO SOCKET RICEVUTO: Aggiornamento dati...");
+        aggiorna();
+    });
+
+    // 6. Pulizia alla chiusura
+    return () => {
+        console.log("❌ Disconnessione Socket");
+        socket.disconnect();
+    };
+
+    // NOTA: Aggiunto infoRistorante.id alle dipendenze per riavviare se cambia
+  }, [isAuthorized, infoRistorante?.id]);
 
 const segnaBibitaServita = async (ordineId, prodottiAttuali, indices) => {
       // FIX ATOMICO: Aggiorniamo ogni bibita singolarmente usando l'endpoint sicuro.
