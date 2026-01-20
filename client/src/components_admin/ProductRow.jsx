@@ -26,12 +26,13 @@ const ProductRow = memo(({ prodotto, avviaModifica, eliminaProdotto, isDragging 
         background: isDragging ? '#f0f9ff' : 'white', 
         border: isDragging ? '1px solid #2980b9' : '1px solid #ddd',
         borderRadius: '8px',
-        padding: '12px', // Un po' più di spazio
+        padding: '12px',
         display: 'flex',
-        alignItems: 'center', // Allinea al centro verticalmente se è corto, o in alto se lungo? Meglio 'flex-start' se c'è molto testo
+        alignItems: 'center', 
         justifyContent: 'space-between',
         boxShadow: isDragging ? '0 5px 15px rgba(0,0,0,0.2)' : '0 2px 5px rgba(0,0,0,0.05)',
-        minHeight: '80px' // Altezza minima per contenere le info
+        minHeight: '80px',
+        marginBottom: '10px' // Aggiunto margine per separare le card
     };
 
     return (
@@ -56,14 +57,24 @@ const ProductRow = memo(({ prodotto, avviaModifica, eliminaProdotto, isDragging 
                 {/* --- BLOCCO DATI TESTUALI COMPLETI --- */}
                 <div style={{flex:1, overflow:'hidden', display:'flex', flexDirection:'column', gap:'2px'}}>
                     
-                    {/* RIGA 1: NOME + PREZZO + CATEGORIA */}
+                    {/* RIGA 1: NOME + PREZZO + UNITÀ + MINIMO */}
                     <div style={{display:'flex', alignItems:'center', flexWrap:'wrap', gap:'8px'}}>
                         <span style={{fontWeight:'bold', fontSize:'16px', color:'#2c3e50'}}>
                             {prodotto.nome}
                         </span>
+                        
+                        {/* BADGE PREZZO E UNITÀ */}
                         <span style={{fontSize:'13px', color:'#27ae60', fontWeight:'bold', background:'#e8f8f5', padding:'2px 6px', borderRadius:'4px'}}>
                             {Number(prodotto.prezzo).toFixed(2)} €
+                            {prodotto.unita_misura && <span style={{fontSize:'11px', color:'#219150', marginLeft:'3px'}}>{prodotto.unita_misura}</span>}
                         </span>
+
+                        {/* BADGE MINIMO ORDINE (Se > 1) */}
+                        {parseFloat(prodotto.qta_minima) > 1 && (
+                            <span style={{fontSize:'11px', color:'#e67e22', fontWeight:'bold', background:'#fff3e0', padding:'2px 6px', borderRadius:'4px', border:'1px solid #ffe0b2'}}>
+                                Min: {parseFloat(prodotto.qta_minima)}
+                            </span>
+                        )}
                     </div>
 
                     {/* RIGA 2: DESCRIZIONE (se c'è) */}

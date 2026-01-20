@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - FIXED: Matita Modifica, Logica Peso vs Standard
+// client/src/Menu.jsx - FIXED: Scroll Categoria, Header Mobile, Quick Add
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'; 
 import { dictionary, getContent } from './translations';
@@ -113,7 +113,6 @@ function Menu() {
       setQtyModal(piatto.qta_minima ? parseFloat(piatto.qta_minima) : 1);
   };
   
-  // Forza tutti i piatti non-bar alla prima portata
   const getDefaultCourse = (piatto) => {
       if (piatto.categoria_is_bar) return 0; 
       return 1; 
@@ -207,7 +206,22 @@ function Menu() {
   const footerBtnStyle = { background: 'transparent', border: `1px solid ${style.colore_footer_text || '#888'}`, color: style.colore_footer_text || '#888', boxSizing: 'border-box', width: '100%', maxWidth: '280px', padding: '12px 15px', borderRadius:'30px', cursor:'pointer', fontSize:'13px', fontWeight:'bold', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', margin: '0 auto' };
   
   const categorieUniche = [...new Set(menu.map(p => p.categoria_nome || p.categoria))];
-  const toggleAccordion = (catNome) => { if (activeCategory === catNome) { setActiveCategory(null); setActiveSubCategory(null); } else { setActiveCategory(catNome); setActiveSubCategory(null); }};
+  
+  // --- SCROLL AUTOMATICO ---
+  const toggleAccordion = (catNome) => { 
+      if (activeCategory === catNome) { 
+          setActiveCategory(null); 
+          setActiveSubCategory(null); 
+      } else { 
+          setActiveCategory(catNome); 
+          setActiveSubCategory(null);
+          // Scrolla all'elemento dopo breve ritardo per render
+          setTimeout(() => {
+              const elem = document.getElementById(`cat-${catNome}`);
+              if(elem) elem.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 100);
+      }
+  };
   const toggleSubAccordion = (subName) => setActiveSubCategory(activeSubCategory === subName ? null : subName);
 
   if(isSuspended) return <div style={{padding:50, textAlign:'center', color:'red', background: bg, minHeight:'100vh'}}><h1>⛔ SERVIZIO SOSPESO</h1></div>;
@@ -222,6 +236,8 @@ function Menu() {
       {!showCheckout && (
       <div style={{ width: '100%', minHeight: '260px', backgroundImage: style.cover ? `url(${style.cover})` : 'none', backgroundColor: '#333', backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', padding: '30px 20px', overflow: 'hidden' }}>
           <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0.1))', zIndex: 1 }}></div>
+          
+          {/* USER BADGE */}
           <div className="notranslate" style={{position:'absolute', top:'20px', right:'20px', zIndex: 100}}>
             {user ? ( 
                 <div onClick={() => navigate('/dashboard')} style={{ background: 'rgba(255,255,255,0.9)', padding:'6px 12px', borderRadius:'20px', cursor:'pointer', display:'flex', alignItems:'center', gap:5, boxShadow:'0 2px 5px rgba(0,0,0,0.3)', fontSize:'12px', fontWeight:'bold', color:'#333' }}>
@@ -233,7 +249,9 @@ function Menu() {
                 </button> 
             )}
           </div>
-          <div style={{position:'relative', zIndex: 2, display:'flex', flexDirection:'column', alignItems:'center', gap:'15px', width:'100%'}}>
+
+          {/* LOGO & TITLE - Aggiunto marginTop per evitare sovrapposizione mobile */}
+          <div style={{position:'relative', zIndex: 2, display:'flex', flexDirection:'column', alignItems:'center', gap:'15px', width:'100%', marginTop: '50px'}}>
               {style.logo ? ( <div style={{ width: '110px', height: '110px', background: 'white', padding: '5px', borderRadius: '50%', boxShadow: '0 5px 20px rgba(0,0,0,0.5)', display: 'flex', alignItems:'center', justifyContent:'center', overflow: 'hidden' }}><img src={style.logo} style={{ width:'100%', height:'100%', objectFit:'contain' }} /></div> ) : ( <div style={{fontSize:'40px', background:'white', padding:10, borderRadius:'50%'}}>🍽️</div> )}
               {!style.logo && ( <h1 style={{ margin: 0, color: '#fff', fontSize:'26px', fontWeight:'800', textShadow: '0 2px 4px rgba(0,0,0,0.8)', textAlign: 'center', lineHeight: '1.2' }}>{ristorante}</h1> )}
               <div className="notranslate" style={{ background: tavoloBg, color: tavoloText, padding: '6px 18px', borderRadius: '50px', fontSize: '14px', fontWeight: 'bold', boxShadow: '0 3px 10px rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.3)' }}>📍 Tavolo {numeroTavolo}</div>
@@ -249,7 +267,8 @@ function Menu() {
       {/* --- MENU --- */}
 <div style={{ paddingBottom: '10px', marginTop: '10px', width: '100%', maxWidth: '600px', margin: '0 auto' }}>
   {categorieUniche.map(catNome => (
-    <div key={catNome} className="accordion-item" style={{ marginBottom: '2px', borderRadius: '5px', overflow: 'hidden', width: '100%' }}>
+    // AGGIUNTO ID PER SCROLLING
+    <div key={catNome} id={`cat-${catNome}`} className="accordion-item" style={{ marginBottom: '2px', borderRadius: '5px', overflow: 'hidden', width: '100%' }}>
       <div onClick={() => toggleAccordion(catNome)} style={{ background: activeCategory === catNome ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.1)', color: titleColor, padding: '15px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: activeCategory === catNome ? `1px solid ${priceColor}` : 'none' }}>
         <h2 style={{ margin: 0, fontSize: '18px', color: titleColor, width: '100%' }}>{catNome}</h2>
         <span style={{ color: titleColor }}>{activeCategory === catNome ? '▼' : '▶'}</span>
@@ -290,11 +309,6 @@ function Menu() {
                       const v = typeof prodotto.varianti === 'string' ? JSON.parse(prodotto.varianti || '{}') : (prodotto.varianti || {});
                       const ingStr = (v.base || []).join(', ');
                       
-                      // LOGICA PULSANTI:
-                      // 1. Varianti (ingredienti base o aggiunte) -> Mostra matita
-                      // 2. Unità misura (peso) -> Il (+) apre il modale
-                      // 3. Niente unità misura -> Il (+) aggiunge diretto
-
                       const hasBase = v.base && v.base.length > 0;
                       const hasExtras = (v.aggiunte && v.aggiunte.length > 0) || (prodotto.categoria_varianti && prodotto.categoria_varianti.length > 0);
                       const hasVarianti = hasBase || hasExtras;
@@ -342,7 +356,7 @@ function Menu() {
                                         // Se c'è unità di misura (peso), deve aprire il modale per la quantità
                                         apriModale(prodotto);
                                     } else {
-                                        // Altrimenti aggiunge diretto (anche se ci sono varianti, se l'utente clicca + le salta)
+                                        // Altrimenti aggiunge diretto
                                         aggiungiAlCarrello(prodotto);
                                     }
                                 }} 
@@ -413,7 +427,6 @@ function Menu() {
                 const addList = v.aggiunte?.length > 0 ? v.aggiunte : (selectedPiatto.categoria_varianti || []);
                 const extraPrezzo = (tempVarianti?.aggiunte || []).reduce((acc, item) => acc + item.prezzo, 0);
                 
-                // CALCOLO PREZZO CON QUANTITÀ
                 const prezzoBaseUnitario = Number(selectedPiatto.prezzo);
                 const prezzoTotalePiatto = (prezzoBaseUnitario * qtyModal) + extraPrezzo;
 
@@ -428,7 +441,6 @@ function Menu() {
                         <h2 style={{margin:'0 0 5px 0', fontSize:'1.8rem', color: '#000', fontWeight:'800'}}>{nomePiattoModal}</h2>
                         <p style={{color:'#666', fontSize:'1rem', lineHeight:'1.4'}}>{descPiattoModal}</p>
                         
-                        {/* SELETTORE QUANTITA' SE UNITA MISURA PRESENTE */}
                         {selectedPiatto.unita_misura && (
                             <div style={{marginTop:'15px', padding:'10px', background:'#e1f5fe', borderRadius:'8px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                                 <div>
