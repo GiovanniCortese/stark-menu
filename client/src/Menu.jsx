@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - VERSIONE FIX LINGUA (NO BARRA, NO TEDESCO)
+// client/src/Menu.jsx - VERSIONE AGGIORNATA (Descrizione Cat, Unità Misura, No €)
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'; 
 import { dictionary, getContent } from './translations';
@@ -10,28 +10,21 @@ function Menu() {
   const [style, setStyle] = useState({});
   const [tavoloStaff, setTavoloStaff] = useState("");
 
-  // HOOK PER LA NAVIGAZIONE
   const navigate = useNavigate();
-  
-  // --- LINGUA & GOOGLE TRANSLATE ---
-  // Default: Italiano. Opzioni: it, en.
   const [lang, setLang] = useState('it'); 
   const t = dictionary[lang] || dictionary['it']; 
 
   useEffect(() => {
-    // Funzione di Init esposta globalmente
     window.googleTranslateElementInit = () => {
       if (window.google && window.google.translate) {
           new window.google.translate.TranslateElement({
             pageLanguage: 'it',
-            includedLanguages: 'it,en', // SOLO IT e EN
+            includedLanguages: 'it,en', 
             autoDisplay: false,
             layout: window.google.translate.TranslateElement.InlineLayout.HORIZONTAL
           }, 'google_translate_element');
       }
     };
-
-    // Caricamento script Google se non presente
     if (!document.getElementById('google-translate-script')) {
       const script = document.createElement('script');
       script.id = 'google-translate-script';
@@ -43,22 +36,18 @@ function Menu() {
 
   const cambiaLingua = (selectedLang) => {
       setLang(selectedLang); 
-      
-      // Pilotiamo il widget nascosto di Google
       const changeGoogle = () => {
           const googleCombo = document.querySelector('.goog-te-combo');
           if (googleCombo) {
               googleCombo.value = selectedLang;
               googleCombo.dispatchEvent(new Event('change'));
           } else {
-              // Riprova se il widget non è ancora pronto
               setTimeout(changeGoogle, 500); 
           }
       };
       changeGoogle();
   };
 
-  // --- STATI FILE & CARRELLO ---
   const [urlFileAttivo, setUrlFileAttivo] = useState("");
   const [titoloFile, setTitoloFile] = useState("");
   const [showFileModal, setShowFileModal] = useState(false);
@@ -103,8 +92,6 @@ function Menu() {
           } else { alert("Errore: " + (data.error || "Riprova")); }
       } catch(e) { alert("Errore connessione"); }
   };
-
-  const logout = () => { if(confirm("Vuoi uscire?")) { setUser(null); localStorage.removeItem('stark_user'); } };
 
   useEffect(() => {
     fetch(`${API_URL}/api/menu/${currentSlug}`)
@@ -172,7 +159,8 @@ function Menu() {
           id: p.id, nome: p.nome, prezzo: p.prezzo, 
           course: !p.categoria_is_bar ? (mapNuoviCorsi[p.course] || 1) : p.course,
           is_bar: p.categoria_is_bar, is_pizzeria: p.categoria_is_pizzeria,
-          stato: 'in_attesa', varianti_scelte: p.varianti_scelte
+          stato: 'in_attesa', varianti_scelte: p.varianti_scelte,
+          unita_misura: p.unita_misura // Passiamo anche l'unità
       }));
 
       const payload = {
@@ -207,46 +195,30 @@ function Menu() {
     <div style={{minHeight:'100vh', background: bg, color: text, fontFamily: font, paddingBottom:80}}>
       <style>{`:root { color-scheme: light; } * { box-sizing: border-box; margin: 0; padding: 0; } body, html { background-color: ${bg} !important; color: ${text} !important; overflow-x: hidden; width: 100%; top: 0 !important; }`}</style>
       
-      {/* WIDGET GOOGLE INVISIBILE */}
       <div id="google_translate_element"></div>
 
       {!showCheckout && (
       <div style={{ width: '100%', minHeight: '260px', backgroundImage: style.cover ? `url(${style.cover})` : 'none', backgroundColor: '#333', backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', padding: '30px 20px', overflow: 'hidden' }}>
           <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0.1))', zIndex: 1 }}></div>
           <div className="notranslate" style={{position:'absolute', top:'20px', right:'20px', zIndex: 100}}>
-    {user ? ( 
-        // --- MODIFICA QUI: Invece di logout, andiamo alla dashboard ---
-        <div onClick={() => navigate('/dashboard')} style={{ 
-            background: 'rgba(255,255,255,0.9)', 
-            padding:'6px 12px', 
-            borderRadius:'20px', 
-            cursor:'pointer', 
-            display:'flex', 
-            alignItems:'center', 
-            gap:5, 
-            boxShadow:'0 2px 5px rgba(0,0,0,0.3)', 
-            fontSize:'12px', 
-            fontWeight:'bold', 
-            color:'#333' 
-        }}>
-            👤 {user.nome.split(' ')[0]} (Area Personale)
-        </div>
-    ) : ( 
-        <button onClick={() => setShowAuthModal(true)} style={{ background: priceColor, color:'white', border:'none', padding:'8px 15px', borderRadius:'20px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.3)', fontSize:'12px' }}>
-            Accedi
-        </button> 
-    )}
-</div>
+            {user ? ( 
+                <div onClick={() => navigate('/dashboard')} style={{ background: 'rgba(255,255,255,0.9)', padding:'6px 12px', borderRadius:'20px', cursor:'pointer', display:'flex', alignItems:'center', gap:5, boxShadow:'0 2px 5px rgba(0,0,0,0.3)', fontSize:'12px', fontWeight:'bold', color:'#333' }}>
+                    👤 {user.nome.split(' ')[0]} (Area Personale)
+                </div>
+            ) : ( 
+                <button onClick={() => setShowAuthModal(true)} style={{ background: priceColor, color:'white', border:'none', padding:'8px 15px', borderRadius:'20px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.3)', fontSize:'12px' }}>
+                    Accedi
+                </button> 
+            )}
+          </div>
           <div style={{position:'relative', zIndex: 2, display:'flex', flexDirection:'column', alignItems:'center', gap:'15px', width:'100%'}}>
               {style.logo ? ( <div style={{ width: '110px', height: '110px', background: 'white', padding: '5px', borderRadius: '50%', boxShadow: '0 5px 20px rgba(0,0,0,0.5)', display: 'flex', alignItems:'center', justifyContent:'center', overflow: 'hidden' }}><img src={style.logo} style={{ width:'100%', height:'100%', objectFit:'contain' }} /></div> ) : ( <div style={{fontSize:'40px', background:'white', padding:10, borderRadius:'50%'}}>🍽️</div> )}
               {!style.logo && ( <h1 style={{ margin: 0, color: '#fff', fontSize:'26px', fontWeight:'800', textShadow: '0 2px 4px rgba(0,0,0,0.8)', textAlign: 'center', lineHeight: '1.2' }}>{ristorante}</h1> )}
               <div className="notranslate" style={{ background: tavoloBg, color: tavoloText, padding: '6px 18px', borderRadius: '50px', fontSize: '14px', fontWeight: 'bold', boxShadow: '0 3px 10px rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.3)' }}>📍 Tavolo {numeroTavolo}</div>
               
-              {/* --- BANDIERINE DI COMANDO (SOLO IT/EN) --- */}
               <div className="notranslate" style={{display:'flex', gap:'10px', justifyContent:'center', marginTop:'10px'}}>
                 <button onClick={()=>cambiaLingua('it')} style={{opacity: lang==='it'?1:0.5, border:'none', background:'none', fontSize:'24px', cursor:'pointer', padding:0}}>🇮🇹</button>
                 <button onClick={()=>cambiaLingua('en')} style={{opacity: lang==='en'?1:0.5, border:'none', background:'none', fontSize:'24px', cursor:'pointer', padding:0}}>🇬🇧</button>
-                {/* RIMOSSO TEDESCO */}
             </div>
           </div>
       </div>
@@ -263,6 +235,16 @@ function Menu() {
 
       {activeCategory === catNome && (
         <div className="accordion-content" style={{ padding: '0', background: 'rgba(0,0,0,0.2)', width: '100%' }}>
+            
+          {/* --- DESCRIZIONE CATEGORIA (VISIBILE PRIMA DEI PIATTI) --- */}
+          {(() => {
+              const sampleProd = menu.find(p => (p.categoria_nome || p.categoria) === catNome);
+              const catDesc = sampleProd ? sampleProd.categoria_descrizione : "";
+              if (catDesc) {
+                  return <div style={{padding:'15px', fontStyle:'italic', color: style.text, opacity:0.8, fontSize:'14px', borderBottom:`1px solid ${style.card_border || '#eee'}`, background:'rgba(255,255,255,0.05)'}}>{catDesc}</div>;
+              }
+          })()}
+
           {(() => {
             const piattiCat = menu.filter(p => (p.categoria_nome || p.categoria) === catNome);
             const sottoCats = piattiCat.reduce((acc, p) => {
@@ -287,10 +269,12 @@ function Menu() {
                       const v = typeof prodotto.varianti === 'string' ? JSON.parse(prodotto.varianti || '{}') : (prodotto.varianti || {});
                       const ingStr = (v.base || []).join(', ');
                       const hasVar = (v.base?.length > 0) || (v.aggiunte?.length > 0) || (prodotto.categoria_varianti?.length > 0);
-
-                      // MULTILINGUA STATICO PRIMA DI GOOGLE
                       const nomeProdotto = getContent(prodotto, 'nome', lang);
                       const descProdotto = getContent(prodotto, 'descrizione', lang);
+                      
+                      // LOGICA PREZZO CON UNITÀ E TOGGLE €
+                      const simboloEuro = style.nascondi_euro ? '' : '€';
+                      const unitaMisura = prodotto.unita_misura ? ` ${prodotto.unita_misura}` : '';
 
                       return (
                         <div key={prodotto.id} className="card" onClick={() => prodotto.immagine_url ? apriModale(prodotto) : null} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', cursor: prodotto.immagine_url ? 'pointer' : 'default', backgroundColor: cardBg, borderBottom: `1px solid ${cardBorder}` }}>
@@ -305,7 +289,9 @@ function Menu() {
                                 {prodotto.allergeni.some(a => a.includes("❄️")) && ( <div className="notranslate" style={{ fontSize: '10px', color: '#3498db', fontWeight: 'bold', textTransform: 'uppercase' }}>❄️ {t?.frozen || "Surgelato"}</div> )}
                               </div>
                             )}
-                            <div className="notranslate" style={{ fontSize: '14px', fontWeight: 'bold', color: priceColor, marginTop: '2px' }}>{Number(prodotto.prezzo).toFixed(2)} €</div>
+                            <div className="notranslate" style={{ fontSize: '14px', fontWeight: 'bold', color: priceColor, marginTop: '2px' }}>
+                                {Number(prodotto.prezzo).toFixed(2)} {simboloEuro}{unitaMisura}
+                            </div>
                           </div>
                           <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
                             {hasVar && ( <button className="notranslate" onClick={(e) => { e.stopPropagation(); apriModale(prodotto); }} style={{ background: 'transparent', border: '1px solid #ccc', color: '#555', borderRadius: '5px', padding: '5px 8px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}>{t?.modify || "MODIFICA"}✏️</button> )}
@@ -325,7 +311,6 @@ function Menu() {
   ))}
 </div>
 
-      {/* --- FOOTER & TASTI FILE (NOTRANSLATE) --- */}
       <div className="notranslate" style={{ textAlign: style.allineamento_footer || 'center', padding: '20px 20px 60px 20px', opacity: 0.9 }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px', marginBottom: '25px' }}>
             {style.url_menu_giorno && ( <button onClick={() => { setUrlFileAttivo(style.url_menu_giorno); setTitoloFile("Menù del Giorno 🥗"); setShowFileModal(true); }} style={footerBtnStyle}><span>🥗</span> MENÙ DEL GIORNO</button> )}
@@ -336,7 +321,6 @@ function Menu() {
         <div style={{ marginTop: 15, fontSize: 10, color: style.colore_footer_text || style.text, opacity: 0.5 }}>Powered by StarkMenu</div>
       </div>
 
-      {/* --- MODALI (FILE, LOGIN, DETTAGLIO PIATTO, CARRELLO) --- */}
       {showFileModal && urlFileAttivo && (
         <div style={{ position:'fixed', top:0, left:0, right:0, bottom:0, background: 'rgba(0,0,0,0.95)', zIndex: 5000, display:'flex', alignItems:'center', justifyContent:'center', padding:'10px' }} onClick={() => setShowFileModal(false)}>
             <div style={{ background: modalBg, color: modalText, width:'100%', maxWidth:'800px', maxHeight:'90vh', borderRadius:'15px', position:'relative', display:'flex', flexDirection:'column', overflow:'hidden', boxShadow: '0 10px 40px rgba(0,0,0,0.5)' }} onClick={e => e.stopPropagation()}>
@@ -392,7 +376,7 @@ function Menu() {
                         </div>
                     </div>
                     <div style={{padding:'20px', background:'#f9f9f9', borderTop:'1px solid #ddd', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                        <div className="notranslate" style={{fontSize:'1.5rem', fontWeight:'bold', color: '#000'}}>{prezzoFinale.toFixed(2)} €</div>
+                        <div className="notranslate" style={{fontSize:'1.5rem', fontWeight:'bold', color: '#000'}}>{prezzoFinale.toFixed(2)} € {selectedPiatto.unita_misura}</div>
                         <button className="notranslate" onClick={() => { aggiungiAlCarrello({ ...selectedPiatto, nome: nomePiattoModal, prezzo: prezzoFinale, varianti_scelte: tempVarianti }); }} style={{ background: priceColor, color: 'white', padding: '12px 25px', borderRadius: '30px', fontWeight: 'bold', border: 'none', cursor: 'pointer', fontSize: '1rem' }}>{canOrder ? (t?.add || "AGGIUNGI") : "LISTA"}</button>
                     </div>
                     <button onClick={() => setSelectedPiatto(null)} style={{position:'absolute', top:'15px', right:'15px', background:'white', color:'black', border:'none', borderRadius:'50%', width:'35px', height:'35px', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.2)'}}>✕</button>
@@ -447,7 +431,7 @@ function Menu() {
                                             {v.base && v.base.length > 0 && ( <div style={{fontSize:'11px', color:'#999', marginTop:'4px'}}><span className="notranslate">🧂 {t?.ingredients || "Ingredienti"}:</span> {v.base.join(', ')}</div> )}
                                             {item.allergeni && item.allergeni.length > 0 && ( <div className="notranslate" style={{ marginTop: '6px' }}>{item.allergeni.filter(a => !a.includes("❄️")).length > 0 && (<div style={{ fontSize: '10px', color: '#ff7675', fontWeight: 'bold', textTransform: 'uppercase' }}>⚠️ {t?.allergens || "Allergeni"}: {item.allergeni.filter(a => !a.includes("❄️")).join(', ')}</div>)}{item.allergeni.some(a => a.includes("❄️")) && (<div style={{ fontSize: '10px', color: '#74b9ff', fontWeight: 'bold', marginTop: '2px', textTransform: 'uppercase' }}>❄️ {t?.frozen || "Surgelato"}</div>)}</div>)}
                                             {item.varianti_scelte && ( <div style={{marginTop:'8px', display:'flex', flexWrap:'wrap', gap:'5px'}}>{item.varianti_scelte.rimozioni?.map((ing, i) => ( <span key={i} style={{background:'#c0392b', color:'white', fontSize:'10px', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold'}}>NO {ing}</span> ))}{item.varianti_scelte.aggiunte?.map((ing, i) => ( <span key={i} style={{background:'#27ae60', color:'white', fontSize:'10px', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold'}}>+ {ing.nome}</span> ))}</div> )}
-                                            <div className="notranslate" style={{color: priceColor, fontSize:'0.9rem', marginTop: '8px', fontWeight: 'bold'}}>{Number(item.prezzo).toFixed(2)} €</div>
+                                            <div className="notranslate" style={{color: priceColor, fontSize:'0.9rem', marginTop: '8px', fontWeight: 'bold'}}>{Number(item.prezzo).toFixed(2)} € {item.unita_misura}</div>
                                         </div>
                                         <div className="notranslate" style={{display:'flex', flexDirection:'column', gap:5, marginLeft: '10px'}}>
                                             <div style={{display:'flex', gap:5, marginBottom: 5}}><button onClick={() => cambiaUscita(item.tempId, -1)} style={{background:'#ecf0f1', color:'#333', border: 'none', fontSize:'0.8rem', padding:'5px 8px', borderRadius:'4px', cursor: 'pointer'}}>⬆️</button><button onClick={() => cambiaUscita(item.tempId, 1)} style={{background:'#ecf0f1', color:'#333', border: 'none', fontSize:'0.8rem', padding:'5px 8px', borderRadius:'4px', cursor: 'pointer'}}>⬇️</button></div>
@@ -464,7 +448,10 @@ function Menu() {
                            <h3 style={{color: '#3498db', margin:'0 0 10px 0', fontSize:'16px', textTransform:'uppercase'}}>🍹 BEVANDE & BAR</h3>
                            {carrello.filter(i => i.categoria_is_bar).map(item => (
                                <div key={item.tempId} style={{display:'flex', justifyContent:'space-between', alignItems:'center', background:'rgba(255,255,255,0.05)', padding:'10px', marginBottom:'5px', borderRadius:'8px'}}>
-                                   <div style={{flex:1}}><div style={{color: titleColor, fontWeight:'bold', fontSize:'16px'}}>{item.nome}</div><div className="notranslate" style={{color: '#888', fontSize:'12px'}}>{Number(item.prezzo).toFixed(2)} €</div></div>
+                                   <div style={{flex:1}}>
+                                        <div style={{color: titleColor, fontWeight:'bold', fontSize:'16px'}}>{item.nome}</div>
+                                        <div className="notranslate" style={{color: '#888', fontSize:'12px'}}>{Number(item.prezzo).toFixed(2)} € {item.unita_misura}</div>
+                                   </div>
                                    <button className="notranslate" onClick={() => rimuoviDalCarrello(item.tempId)} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'5px', cursor:'pointer'}}>✕</button>
                                </div>
                            ))}

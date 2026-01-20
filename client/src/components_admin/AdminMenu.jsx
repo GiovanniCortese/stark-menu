@@ -1,4 +1,4 @@
-// client/src/components_admin/AdminMenu.jsx - V56 FINAL FIX FLUIDITÀ
+// client/src/components_admin/AdminMenu.jsx - AGGIORNATO (Unità Misura & Toggle €)
 import { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import ProductRow from './ProductRow';
@@ -10,7 +10,6 @@ const LISTA_ALLERGENI = [
   "Prodotto Surgelato/Abbattuto ❄️" 
 ];
 
-// --- SPOSTATO FUORI PER EVITARE RERENDER E PERDITA FOCUS ---
 const ImageUploader = ({ type, currentUrl, icon, config, setConfig, API_URL }) => (
     <div style={{marginTop:'5px'}}>
         {currentUrl ? (
@@ -60,10 +59,9 @@ const ImageUploader = ({ type, currentUrl, icon, config, setConfig, API_URL }) =
 function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL, ricaricaDati }) {
   const [nuovoPiatto, setNuovoPiatto] = useState({ 
       nome: '', prezzo: '', categoria: '', sottocategoria: '', descrizione: '', immagine_url: '',
-      ingredienti_base: '', varianti_str: '', allergeni: [] 
+      ingredienti_base: '', varianti_str: '', allergeni: [], unita_misura: '' // AGGIUNTO
   });
   
-  // STATO PER LE TRADUZIONI
   const [traduzioniInput, setTraduzioniInput] = useState({ 
     en: { nome: '', descrizione: '' },
     de: { nome: '', descrizione: '' }
@@ -72,7 +70,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const [editId, setEditId] = useState(null); 
   const [uploading, setUploading] = useState(false);
 
-  // --- SAFE MODE ---
   if (!config || !categorie || !menu) {
       return <div style={{padding:'40px', textAlign:'center', color:'#666'}}>🔄 Caricamento Menu...</div>;
   }
@@ -81,7 +78,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const isMasterBlock = config.cucina_super_active === false; 
   const isCucinaAperta = config.ordini_abilitati;
 
-  // --- LOGICA VISIVA HEADER ---
   let headerBg = isCucinaAperta ? 'linear-gradient(135deg, #2ecc71 0%, #27ae60 100%)' : 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)';
   let headerTitle = isCucinaAperta ? "✅ Servizio Attivo" : "🛑 Servizio Sospeso";
   let headerDesc = isCucinaAperta ? "I clienti possono inviare ordini." : "Gli ordini sono bloccati.";
@@ -92,11 +88,10 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       headerDesc = "L'amministrazione centrale ha disabilitato gli ordini per questo locale.";
   }
 
-  // --- HANDLERS ---
   const handleSaveStyle = async () => {
     try {
         await fetch(`${API_URL}/api/ristorante/style/${user.id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config) });
-        alert("✨ Info Footer e Allegati Salvati!");
+        alert("✨ Impostazioni e footer salvati!");
     } catch(e) { alert("Errore salvataggio"); }
   };
 
@@ -137,7 +132,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
           await fetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }); 
           alert(editId ? "✅ Piatto aggiornato!" : "✅ Piatto creato!");
           
-          setNuovoPiatto({ nome:'', prezzo:'', categoria:cat, sottocategoria: '', descrizione:'', immagine_url:'', varianti_str: '', ingredienti_base: '', allergeni: [] }); 
+          setNuovoPiatto({ nome:'', prezzo:'', categoria:cat, sottocategoria: '', descrizione:'', immagine_url:'', varianti_str: '', ingredienti_base: '', allergeni: [], unita_misura: '' }); 
           setTraduzioniInput({ en: { nome: '', descrizione: '' }, de: { nome: '', descrizione: '' } }); 
           
           setEditId(null); ricaricaDati(); 
@@ -163,7 +158,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       let variantiObj = { base: [], aggiunte: [] }; 
       try { variantiObj = typeof piatto.varianti === 'string' ? JSON.parse(piatto.varianti) : piatto.varianti || { base: [], aggiunte: [] }; } catch(e) {} 
       
-      setNuovoPiatto({ ...piatto, allergeni: piatto.allergeni || [], ingredienti_base: (variantiObj.base || []).join(', '), varianti_str: (variantiObj.aggiunte || []).map(v => `${v.nome}:${v.prezzo}`).join(', ') }); 
+      setNuovoPiatto({ ...piatto, unita_misura: piatto.unita_misura || '', allergeni: piatto.allergeni || [], ingredienti_base: (variantiObj.base || []).join(', '), varianti_str: (variantiObj.aggiunte || []).map(v => `${v.nome}:${v.prezzo}`).join(', ') }); 
       
       const tr = piatto.traduzioni || {};
       setTraduzioniInput({
@@ -176,7 +171,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
   const annullaModifica = () => { 
       setEditId(null); 
-      setNuovoPiatto({ nome:'', prezzo:'', categoria:categorie.length > 0 ? categorie[0].nome : '', sottocategoria: '', descrizione:'', immagine_url:'', varianti_str: '', ingredienti_base: '', allergeni: [] }); 
+      setNuovoPiatto({ nome:'', prezzo:'', categoria:categorie.length > 0 ? categorie[0].nome : '', sottocategoria: '', descrizione:'', immagine_url:'', varianti_str: '', ingredienti_base: '', allergeni: [], unita_misura: '' }); 
       setTraduzioniInput({ en: { nome: '', descrizione: '' }, de: { nome: '', descrizione: '' } }); 
   };
 
@@ -197,7 +192,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
     await fetch(`${API_URL}/api/prodotti/riordina`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prodotti: piattiDestinazioneFinali.map(p => ({ id: p.id, posizione: p.posizione, categoria: destCat })) }) });
   };
 
-  // --- STILI ---
   const containerStyle = { maxWidth: '1200px', margin: '0 auto', fontFamily: "'Inter', sans-serif", color: '#333' };
   const cardStyle = { background: 'white', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', padding: '25px', marginBottom: '30px', border: '1px solid #f0f0f0', boxSizing: 'border-box' };
   const inputStyle = { width: '100%', padding: '12px 15px', borderRadius: '8px', border: '1px solid #e0e0e0', fontSize: '14px', background: '#f9f9f9', transition: 'all 0.3s', boxSizing: 'border-box' };
@@ -206,7 +200,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   return (
     <div style={containerStyle}>
         
-        {/* 1. HEADER & STATUS */}
         <div style={{...cardStyle, display:'flex', justifyContent:'space-between', alignItems:'center', background: headerBg, color:'white', border:'none'}}>
             <div>
                 <h2 style={{margin:0, fontSize:'24px'}}>{headerTitle}</h2>
@@ -220,7 +213,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             )}
         </div>
 
-        {/* 2. EXCEL TOOLS */}
         <div style={{...cardStyle, display:'flex', justifyContent:'space-between', alignItems:'center', padding:'15px 25px', background:'#f8f9fa'}}>
             <div style={{display:'flex', alignItems:'center', gap:'15px'}}>
                 <span style={{fontSize:'24px'}}>📊</span>
@@ -232,13 +224,12 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             <div style={{display:'flex', gap:'10px'}}>
                 <button onClick={() => window.open(`${API_URL}/api/export-excel/${user.id}`, '_blank')} style={{background:'white', border:'1px solid #ddd', padding:'8px 15px', borderRadius:'6px', cursor:'pointer', fontWeight:'600', color:'#333'}}>📤 Scarica Menu</button>
                 <div style={{position:'relative'}}>
-                    <button style={{background:'#3498db', color:'white', border:'none', padding:'8px 15px', borderRadius:'6px', cursor:'pointer', fontWeight:'600'}}>📥 Carica Excel</button>
+                    <button style={{background:'#3498db', color:'white', border:'none', padding:'8px 15px', borderRadius:'6px', cursor:'pointer', fontWeight:'600'}}>📥 Carica Excel (Aggiorna/Crea)</button>
                     <input type="file" accept=".xlsx, .xls" onChange={handleImportExcel} style={{position:'absolute', inset:0, opacity:0, cursor:'pointer'}} />
                 </div>
             </div>
         </div>
 
-        {/* 3. EDITOR PIATTI */}
         <div style={{opacity: isAbbonamentoAttivo ? 1 : 0.5, pointerEvents: isAbbonamentoAttivo ? 'auto' : 'none'}}>
             <div style={{...cardStyle, borderLeft: editId ? '5px solid #3498db' : '5px solid #2ecc71'}}>
                   <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px'}}>
@@ -248,7 +239,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
                  <form onSubmit={handleSalvaPiatto} style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '25px'}}>
                       
-                      {/* Colonna Sinistra */}
                       <div style={{display:'flex', flexDirection:'column', gap:'15px'}}>
                           <div>
                               <label style={labelStyle}>Nome del Piatto *</label>
@@ -262,9 +252,21 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                                   </select>
                               </div>
                               <div style={{flex:1}}>
-                                  <label style={labelStyle}>Prezzo (€)</label>
+                                  <label style={labelStyle}>Prezzo</label>
                                   <input type="number" placeholder="0.00" value={nuovoPiatto.prezzo} onChange={e => setNuovoPiatto({...nuovoPiatto, prezzo: e.target.value})} style={inputStyle} step="0.10" required />
                               </div>
+                               {/* CAMPO UNITÀ */}
+                              <div style={{width:'100px'}}>
+                                    <label style={labelStyle}>Unità</label>
+                                    <input 
+                                        type="text" 
+                                        placeholder="es. /hg" 
+                                        value={nuovoPiatto.unita_misura || ''} 
+                                        onChange={e => setNuovoPiatto({...nuovoPiatto, unita_misura: e.target.value})} 
+                                        style={inputStyle} 
+                                        title="Utile per carne al peso (es. /hg) o pezzi (es. /pz)"
+                                    />
+                                </div>
                           </div>
                           <div>
                               <label style={labelStyle}>Descrizione</label>
@@ -296,7 +298,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                           </div>
                       </div>
 
-                      {/* Colonna Destra */}
                       <div style={{display:'flex', flexDirection:'column', gap:'15px'}}>
                           <div style={{background:'#fffcf0', padding:'15px', borderRadius:'8px', border:'1px solid #f9e79f', boxSizing:'border-box'}}>
                               <label style={{...labelStyle, color:'#d4ac0d'}}>🧂 Varianti & Ingredienti</label>
@@ -339,10 +340,8 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                   </form>
             </div>
 
-            {/* 4. LISTA MENU DRAG & DROP (FIX LOGICA) */}
             <DragDropContext onDragEnd={onDragEnd}>
                 {categorie && categorie.map(cat => {
-                    // FILTRIAMO I PRODOTTI PER QUESTA CATEGORIA QUI
                     const prodottiCategoria = menu
                         .filter(p => p.categoria === cat.nome)
                         .sort((a, b) => (a.posizione || 0) - (b.posizione || 0));
@@ -354,7 +353,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                                 {cat.nome}
                             </h3>
                             
-                            {/* USIAMO UN ID UNIVOCO PER DROPPABLE */}
                             <Droppable droppableId={`cat-${cat.nome}`}>
                                 {(provided) => (
                                     <div 
@@ -380,7 +378,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                                                             transform: provided.draggableProps.style?.transform,
                                                         }}
                                                     >
-                                                        {/* Passiamo la funzione con il nome corretto */}
                                                         <ProductRow 
                                                             prodotto={prodotto} 
                                                             avviaModifica={avviaModifica} 
@@ -401,11 +398,9 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             </DragDropContext>
         </div>
 
-{/* 5. INFO LEGALI & FILE ALLEGATI */}
 <div style={{ ...cardStyle, borderLeft: '5px solid #8e44ad' }}>
     <h3 style={{ marginBottom: '25px', color: '#2c3e50' }}>⚖️ Configurazione Footer & Allegati</h3>
 
-    {/* TESTO FOOTER */}
     <div style={{ marginBottom: '30px' }}>
         <label style={labelStyle}>📝 Testo a piè di pagina (es. Coperto 5€)</label>
         <textarea 
@@ -415,10 +410,21 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
         />
     </div>
 
-    {/* GRIGLIA ALLEGATI A 3 COLONNE */}
+    {/* TOGGLE NASCONDI EURO */}
+    <div style={{marginBottom:'20px', padding:'15px', background:'#f3e5f5', borderRadius:'8px', border:'1px solid #e1bee7'}}>
+         <label style={{display:'flex', alignItems:'center', gap:'10px', cursor:'pointer', fontWeight:'bold', color:'#8e44ad'}}>
+            <input 
+                type="checkbox" 
+                checked={config.nascondi_euro || false} 
+                onChange={(e) => setConfig({...config, nascondi_euro: e.target.checked})} 
+            />
+            <span>Nascondi simbolo "€" (Mostra solo il numero)</span>
+        </label>
+        <p style={{margin:'5px 0 0 25px', fontSize:'12px', color:'#666'}}>Se attivo, "12.00 €" diventerà "12.00"</p>
+    </div>
+
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
         
-        {/* 1. MENU DEL GIORNO */}
         <div style={{ border: '1px solid #eee', padding: '15px', borderRadius: '10px' }}>
             <label style={labelStyle}>📅 Menù del Giorno</label>
             <ImageUploader 
@@ -429,7 +435,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             />
         </div>
 
-        {/* 2. MENU COMPLETO */}
         <div style={{ border: '1px solid #eee', padding: '15px', borderRadius: '10px' }}>
             <label style={labelStyle}>📄 Menù PDF</label>
             <ImageUploader 
@@ -440,7 +445,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             />
         </div>
 
-        {/* 3. ALLERGENI */}
         <div style={{ border: '1px solid #eee', padding: '15px', borderRadius: '10px' }}>
             <label style={labelStyle}>📋 Lista Allergeni</label>
             <ImageUploader 
