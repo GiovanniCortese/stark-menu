@@ -1,7 +1,9 @@
+// client/src/components_admin/AdminSicurezza.jsx - REDESIGN GRAFICO
 import { useState, useEffect } from 'react';
 
 function AdminSicurezza({ user, API_URL }) {
-const [passwords, setPasswords] = useState({ pw_cassa: '', pw_cucina: '', pw_pizzeria: '', pw_bar: '', pw_haccp: '' }); // <--- AGGIUNTO
+    const [passwords, setPasswords] = useState({ pw_cassa: '', pw_cucina: '', pw_pizzeria: '', pw_bar: '', pw_haccp: '' });
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         fetch(`${API_URL}/api/ristorante/config/${user.id}`)
@@ -14,55 +16,57 @@ const [passwords, setPasswords] = useState({ pw_cassa: '', pw_cucina: '', pw_piz
                     pw_bar: data.pw_bar || '1234',
                     pw_haccp: data.pw_haccp || '1234'
                 });
+                setLoading(false);
             });
     }, [user.id]);
 
     const handleSave = async () => {
         try {
-            await fetch(`${API_URL}/api/ristorante/security/${user.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(passwords)
-            });
-            alert("✅ Password Reparti Aggiornate!");
-        } catch (e) { alert("Errore"); }
+            await fetch(`${API_URL}/api/ristorante/security/${user.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(passwords) });
+            alert("✅ Password Reparti Aggiornate con successo!");
+        } catch (e) { alert("Errore connessione"); }
     };
 
-    const rowStyle = { marginBottom: 15, padding: 10, background: '#f9f9f9', borderRadius: 5, border: '1px solid #ddd' };
-    const labelStyle = { display: 'block', fontWeight: 'bold', marginBottom: 5, color: '#333' };
-    const inputStyle = { width: '100%', padding: 10, borderRadius: 5, border: '1px solid #ccc', fontSize: '16px' };
+    const SecurityCard = ({ title, icon, field, color }) => (
+        <div style={{background: 'white', padding: '20px', borderRadius: '12px', border: '1px solid #eee', boxShadow: '0 4px 15px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', gap: '10px'}}>
+            <div style={{display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '5px'}}>
+                <div style={{background: color, width: '40px', height: '40px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', color: 'white'}}>
+                    {icon}
+                </div>
+                <div>
+                    <h4 style={{margin: 0, color: '#333'}}>{title}</h4>
+                    <span style={{fontSize: '11px', color: '#888'}}>Codice accesso</span>
+                </div>
+            </div>
+            <input 
+                type="text" 
+                value={passwords[field]} 
+                onChange={e => setPasswords({...passwords, [field]: e.target.value})} 
+                style={{width: '100%', padding: '12px', borderRadius: '8px', border: '2px solid #f0f0f0', fontSize: '18px', textAlign: 'center', fontWeight: 'bold', color: '#333', letterSpacing: '2px', outline: 'none', background:'#fafafa', boxSizing:'border-box'}}
+            />
+        </div>
+    );
+
+    if (loading) return <div>Caricamento sicurezza...</div>;
 
     return (
-        <div className="card">
-            <h3>🔐 Gestione Accessi Staff</h3>
-            <p style={{fontSize:'0.9rem', color:'#666', marginBottom:20}}>Imposta qui le password che i tuoi dipendenti useranno per accedere ai loro reparti.</p>
-            
-            <div style={rowStyle}>
-                <label style={labelStyle}>💰 Password CASSA</label>
-                <input type="text" value={passwords.pw_cassa} onChange={e => setPasswords({...passwords, pw_cassa: e.target.value})} style={inputStyle} />
+        <div style={{maxWidth: '1200px', margin: '0 auto'}}>
+            <div style={{textAlign: 'center', marginBottom: '40px'}}>
+                <h2 style={{fontSize: '2rem', marginBottom: '10px', color: '#2c3e50'}}>🔐 Centro Sicurezza & Accessi</h2>
+                <p style={{color: '#7f8c8d'}}>Gestisci i codici PIN per permettere al tuo staff di accedere ai vari reparti.</p>
             </div>
 
-            <div style={rowStyle}>
-                <label style={labelStyle}>👨‍🍳 Password CUCINA</label>
-                <input type="text" value={passwords.pw_cucina} onChange={e => setPasswords({...passwords, pw_cucina: e.target.value})} style={inputStyle} />
+            <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '25px', marginBottom: '40px'}}>
+                <SecurityCard title="Reparto Cassa" icon="💰" field="pw_cassa" color="#9b59b6" />
+                <SecurityCard title="Reparto Cucina" icon="👨‍🍳" field="pw_cucina" color="#e67e22" />
+                <SecurityCard title="Reparto Pizzeria" icon="🍕" field="pw_pizzeria" color="#c0392b" />
+                <SecurityCard title="Reparto Bar" icon="🍹" field="pw_bar" color="#1abc9c" />
+                <SecurityCard title="Admin HACCP" icon="🛡️" field="pw_haccp" color="#34495e" />
             </div>
 
-            <div style={rowStyle}>
-                <label style={labelStyle}>🍕 Password PIZZERIA</label>
-                <input type="text" value={passwords.pw_pizzeria} onChange={e => setPasswords({...passwords, pw_pizzeria: e.target.value})} style={inputStyle} />
-            </div>
-
-            <div style={rowStyle}>
-                <label style={labelStyle}>🍹 Password BAR</label>
-                <input type="text" value={passwords.pw_bar} onChange={e => setPasswords({...passwords, pw_bar: e.target.value})} style={inputStyle} />
-            </div>
-
-            <div style={rowStyle}>
-    <label style={labelStyle}>🛡️ Password HACCP (Admin/Controllo)</label>
-    <input type="text" value={passwords.pw_haccp} onChange={e => setPasswords({...passwords, pw_haccp: e.target.value})} style={inputStyle} />
-</div>
-
-            <button onClick={handleSave} className="btn-invia" style={{width:'100%', marginTop:10, background:'#2c3e50'}}>SALVA PASSWORD</button>
+            <button onClick={handleSave} style={{display: 'block', width: '100%', maxWidth: '400px', margin: '0 auto', padding: '18px', background: '#2c3e50', color: 'white', border: 'none', borderRadius: '50px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 10px 20px rgba(44, 62, 80, 0.3)', transform: 'scale(1)', transition: 'transform 0.2s'}}>
+                💾 SALVA TUTTE LE PASSWORD
+            </button>
         </div>
     );
 }

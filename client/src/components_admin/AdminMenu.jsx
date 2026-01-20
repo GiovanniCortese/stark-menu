@@ -1,4 +1,4 @@
-// client/src/components_admin/AdminMenu.jsx - FULL WIDTH FIX
+// client/src/components_admin/AdminMenu.jsx - FULL WIDTH RESPONSIVE
 import { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import ProductRow from './ProductRow';
@@ -11,11 +11,12 @@ const LISTA_ALLERGENI = [
 ];
 
 const ImageUploader = ({ type, currentUrl, icon, config, setConfig, API_URL }) => (
-    <div style={{marginTop:'5px'}}>
+    <div style={{marginTop:'5px', flex:1, minWidth:'200px'}}>
         {currentUrl ? (
             <div style={{
                 position:'relative', border:'1px solid #27ae60', borderRadius:'8px', padding:'10px', 
-                background:'#f0fff4', textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center'
+                background:'#f0fff4', textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center',
+                height:'100%', boxSizing:'border-box', justifyContent:'center'
             }}>
                 <span style={{fontSize:'24px', marginBottom:'5px'}}>{icon}</span>
                 <span style={{fontSize:'12px', fontWeight:'bold', color:'#27ae60'}}>File Caricato!</span>
@@ -32,7 +33,8 @@ const ImageUploader = ({ type, currentUrl, icon, config, setConfig, API_URL }) =
         ) : (
             <div style={{
                 border:'2px dashed #ccc', borderRadius:'8px', padding:'15px', textAlign:'center', 
-                position:'relative', cursor:'pointer', background:'#fafafa', transition:'all 0.3s'
+                position:'relative', cursor:'pointer', background:'#fafafa', transition:'all 0.3s',
+                height:'100%', boxSizing:'border-box', display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center'
             }}>
                 <span style={{fontSize:'24px', opacity:0.5}}>{icon}</span>
                 <div style={{fontSize:'11px', color:'#666', marginTop:'5px'}}>Clicca per caricare</div>
@@ -123,6 +125,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       
       const payload = { ...nuovoPiatto, categoria: cat, ristorante_id: user.id, varianti: JSON.stringify(variantiFinali) };
       delete payload.varianti_str; delete payload.ingredienti_base;
+
       payload.traduzioni = traduzioniInput; 
 
       try {
@@ -131,8 +134,10 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
           if(!editId && categorie.length === 0) return alert("Crea prima una categoria!"); 
           await fetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }); 
           alert(editId ? "✅ Piatto aggiornato!" : "✅ Piatto creato!");
+          
           setNuovoPiatto({ nome:'', prezzo:'', categoria:cat, sottocategoria: '', descrizione:'', immagine_url:'', varianti_str: '', ingredienti_base: '', allergeni: [], unita_misura: '', qta_minima: 1 }); 
           setTraduzioniInput({ en: { nome: '', descrizione: '' }, de: { nome: '', descrizione: '' } }); 
+          
           setEditId(null); ricaricaDati(); 
       } catch(err) { alert("❌ Errore: " + err.message); }
   };
@@ -175,6 +180,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
           en: { nome: tr.en?.nome || '', descrizione: tr.en?.descrizione || '' },
           de: { nome: tr.de?.nome || '', descrizione: tr.de?.descrizione || '' }
       });
+
       window.scrollTo({ top: 0, behavior: 'smooth' }); 
   };
 
@@ -201,13 +207,8 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
     await fetch(`${API_URL}/api/prodotti/riordina`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prodotti: piattiDestinazioneFinali.map(p => ({ id: p.id, posizione: p.posizione, categoria: destCat })) }) });
   };
 
-  // --- STILI AGGIORNATI FULL WIDTH ---
-  const containerStyle = { 
-    maxWidth: '100%', 
-    margin: '0 auto', 
-    fontFamily: "'Inter', sans-serif", 
-    color: '#333' 
-  };
+  // --- STILI CSS ---
+  const containerStyle = { width: '100%', margin: '0 auto', fontFamily: "'Inter', sans-serif", color: '#333', boxSizing: 'border-box' };
   const cardStyle = { background: 'white', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', padding: '25px', marginBottom: '30px', border: '1px solid #f0f0f0', boxSizing: 'border-box' };
   const inputStyle = { width: '100%', padding: '12px 15px', borderRadius: '8px', border: '1px solid #e0e0e0', fontSize: '14px', background: '#f9f9f9', transition: 'all 0.3s', boxSizing: 'border-box' };
   const labelStyle = { fontSize: '12px', fontWeight: '600', color: '#666', marginBottom: '8px', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' };
@@ -215,27 +216,32 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   return (
     <div style={containerStyle}>
         
+        {/* OVERLAY LOADING EXCEL */}
         {importing && (
-            <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(255,255,255,0.8)', zIndex:9999, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'}}>
+            <div style={{
+                position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(255,255,255,0.8)', 
+                zIndex:9999, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'
+            }}>
                 <div style={{fontSize:'50px'}}>📥</div>
                 <h2 style={{color:'#3498db'}}>Sto elaborando il Menu Excel...</h2>
+                <p>Potrebbe richiedere qualche secondo.</p>
             </div>
         )}
 
-        <div style={{...cardStyle, display:'flex', justifyContent:'space-between', alignItems:'center', background: headerBg, color:'white', border:'none'}}>
+        <div style={{...cardStyle, display:'flex', justifyContent:'space-between', alignItems:'center', background: headerBg, color:'white', border:'none', flexWrap:'wrap', gap:'20px'}}>
             <div>
                 <h2 style={{margin:0, fontSize:'24px'}}>{headerTitle}</h2>
                 <p style={{margin:0, opacity:0.9, fontSize:'14px'}}>{headerDesc}</p>
             </div>
             
             {isAbbonamentoAttivo && !isMasterBlock && (
-                <button onClick={toggleCucina} style={{background:'white', color: isCucinaAperta ? '#27ae60' : '#c0392b', border:'none', padding:'12px 25px', borderRadius:'30px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 5px 15px rgba(0,0,0,0.2)'}}>
+                <button onClick={toggleCucina} style={{background:'white', color: isCucinaAperta ? '#27ae60' : '#c0392b', border:'none', padding:'12px 25px', borderRadius:'30px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 5px 15px rgba(0,0,0,0.2)', whiteSpace:'nowrap'}}>
                     {isCucinaAperta ? "CHIUDI ORDINI CLIENTE" : "APRI ORDINI CLIENTE"}
                 </button>
             )}
         </div>
 
-        <div style={{...cardStyle, display:'flex', justifyContent:'space-between', alignItems:'center', padding:'15px 25px', background:'#f8f9fa'}}>
+        <div style={{...cardStyle, display:'flex', justifyContent:'space-between', alignItems:'center', padding:'15px 25px', background:'#f8f9fa', flexWrap:'wrap', gap:'15px'}}>
             <div style={{display:'flex', alignItems:'center', gap:'15px'}}>
                 <span style={{fontSize:'24px'}}>📊</span>
                 <div>
@@ -243,10 +249,10 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                     <p style={{margin:0, fontSize:'12px', color:'#7f8c8d'}}>Gestisci il tuo menu massivamente.</p>
                 </div>
             </div>
-            <div style={{display:'flex', gap:'10px'}}>
-                <button onClick={() => window.open(`${API_URL}/api/export-excel/${user.id}`, '_blank')} style={{background:'white', border:'1px solid #ddd', padding:'8px 15px', borderRadius:'6px', cursor:'pointer', fontWeight:'600', color:'#333'}}>📤 Scarica Menu</button>
+            <div style={{display:'flex', gap:'10px', flexWrap:'wrap'}}>
+                <button onClick={() => window.open(`${API_URL}/api/export-excel/${user.id}`, '_blank')} style={{background:'white', border:'1px solid #ddd', padding:'8px 15px', borderRadius:'6px', cursor:'pointer', fontWeight:'600', color:'#333', whiteSpace:'nowrap'}}>📤 Scarica Menu</button>
                 <div style={{position:'relative'}}>
-                    <button style={{background:'#3498db', color:'white', border:'none', padding:'8px 15px', borderRadius:'6px', cursor:'pointer', fontWeight:'600'}}>📥 Carica Excel</button>
+                    <button style={{background:'#3498db', color:'white', border:'none', padding:'8px 15px', borderRadius:'6px', cursor:'pointer', fontWeight:'600', whiteSpace:'nowrap'}}>📥 Carica Excel</button>
                     <input type="file" accept=".xlsx, .xls" onChange={handleImportExcel} style={{position:'absolute', inset:0, opacity:0, cursor:'pointer'}} />
                 </div>
             </div>
@@ -254,39 +260,57 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
         <div style={{opacity: isAbbonamentoAttivo ? 1 : 0.5, pointerEvents: isAbbonamentoAttivo ? 'auto' : 'none'}}>
             <div style={{...cardStyle, borderLeft: editId ? '5px solid #3498db' : '5px solid #2ecc71'}}>
-                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px'}}>
+                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px', flexWrap:'wrap', gap:'10px'}}>
                       <h3 style={{margin:0, color:'#2c3e50'}}>{editId ? "✏️ Modifica Piatto" : "✨ Aggiungi Nuovo Piatto"}</h3>
                       {editId && <button onClick={annullaModifica} style={{background:'#eee', color:'#333', border:'none', padding:'5px 15px', borderRadius:'20px', cursor:'pointer', fontWeight:'bold'}}>Annulla Modifica</button>}
                   </div>
 
-                 {/* FORM CON GRIGLIA ALLARGATA */}
-                 <form onSubmit={handleSalvaPiatto} style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '30px'}}>
+                 <form onSubmit={handleSalvaPiatto} style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '25px'}}>
                       
                       <div style={{display:'flex', flexDirection:'column', gap:'15px'}}>
                           <div>
                               <label style={labelStyle}>Nome del Piatto *</label>
                               <input placeholder="Es. Spaghetti alle Vongole" value={nuovoPiatto.nome} onChange={e => setNuovoPiatto({...nuovoPiatto, nome: e.target.value})} required style={inputStyle} />
                           </div>
-                          <div style={{display:'flex', gap:'15px'}}>
-                              <div style={{flex:1}}>
+                          
+                          <div style={{display:'flex', gap:'15px', flexWrap:'wrap'}}>
+                              <div style={{flex:1, minWidth:'140px'}}>
                                   <label style={labelStyle}>Categoria</label>
                                   <select value={nuovoPiatto.categoria} onChange={e => setNuovoPiatto({...nuovoPiatto, categoria: e.target.value})} style={inputStyle}>
                                       {categorie && categorie.map(cat => <option key={cat.id} value={cat.nome}>{cat.nome}</option>)}
                                   </select>
                               </div>
-                              <div style={{flex:1}}>
+                              <div style={{flex:0.7, minWidth:'100px'}}>
                                   <label style={labelStyle}>Prezzo</label>
                                   <input type="number" placeholder="0.00" value={nuovoPiatto.prezzo} onChange={e => setNuovoPiatto({...nuovoPiatto, prezzo: e.target.value})} style={inputStyle} step="0.10" required />
                               </div>
-                              <div style={{width:'80px'}}>
+                          </div>
+
+                          <div style={{display:'flex', gap:'15px', flexWrap:'wrap'}}>
+                              <div style={{flex:1, minWidth:'100px'}}>
                                     <label style={labelStyle}>Unità</label>
-                                    <input type="text" placeholder="/hg" value={nuovoPiatto.unita_misura || ''} onChange={e => setNuovoPiatto({...nuovoPiatto, unita_misura: e.target.value})} style={inputStyle} />
+                                    <input 
+                                        type="text" 
+                                        placeholder="/hg" 
+                                        value={nuovoPiatto.unita_misura || ''} 
+                                        onChange={e => setNuovoPiatto({...nuovoPiatto, unita_misura: e.target.value})} 
+                                        style={inputStyle} 
+                                    />
                                 </div>
-                                <div style={{width:'80px'}}>
+                                <div style={{flex:1, minWidth:'100px'}}>
                                     <label style={labelStyle}>Minimo</label>
-                                    <input type="number" placeholder="1" value={nuovoPiatto.qta_minima || 1} onChange={e => setNuovoPiatto({...nuovoPiatto, qta_minima: e.target.value})} style={inputStyle} min="0.1" step="0.1" />
+                                    <input 
+                                        type="number" 
+                                        placeholder="1" 
+                                        value={nuovoPiatto.qta_minima || 1} 
+                                        onChange={e => setNuovoPiatto({...nuovoPiatto, qta_minima: e.target.value})} 
+                                        style={inputStyle}
+                                        min="0.1"
+                                        step="0.1" 
+                                    />
                                 </div>
                           </div>
+
                           <div>
                               <label style={labelStyle}>Descrizione</label>
                               <textarea placeholder="Descrivi il piatto..." value={nuovoPiatto.descrizione} onChange={e => setNuovoPiatto({...nuovoPiatto, descrizione: e.target.value})} style={{...inputStyle, minHeight:'80px', resize:'vertical'}}/>
@@ -371,14 +395,38 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                                 <span style={{background:'#eee', borderRadius:'50%', width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'14px'}}>📂</span> 
                                 {cat.nome}
                             </h3>
+                            
                             <Droppable droppableId={`cat-${cat.nome}`}>
                                 {(provided) => (
-                                    <div ref={provided.innerRef} {...provided.droppableProps} style={{paddingBottom:'50px'}}>
+                                    <div 
+                                        ref={provided.innerRef} 
+                                        {...provided.droppableProps} 
+                                        style={{paddingBottom:'50px'}}
+                                    >
                                         {prodottiCategoria.map((prodotto, index) => (
-                                            <Draggable key={String(prodotto.id)} draggableId={String(prodotto.id)} index={index}>
+                                            <Draggable 
+                                                key={String(prodotto.id)} 
+                                                draggableId={String(prodotto.id)} 
+                                                index={index}
+                                            >
                                                 {(provided, snapshot) => (
-                                                    <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} style={{...provided.draggableProps.style, marginBottom: '8px', userSelect: 'none'}}>
-                                                        <ProductRow prodotto={prodotto} avviaModifica={avviaModifica} eliminaProdotto={cancellaPiatto} isDragging={snapshot.isDragging} />
+                                                    <div
+                                                        ref={provided.innerRef}
+                                                        {...provided.draggableProps}
+                                                        {...provided.dragHandleProps}
+                                                        style={{
+                                                            ...provided.draggableProps.style,
+                                                            marginBottom: '8px',
+                                                            userSelect: 'none',
+                                                            transform: provided.draggableProps.style?.transform,
+                                                        }}
+                                                    >
+                                                        <ProductRow 
+                                                            prodotto={prodotto} 
+                                                            avviaModifica={avviaModifica} 
+                                                            eliminaProdotto={cancellaPiatto} 
+                                                            isDragging={snapshot.isDragging} 
+                                                        />
                                                     </div>
                                                 )}
                                             </Draggable>
@@ -393,80 +441,69 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             </DragDropContext>
         </div>
 
-        <div style={{ ...cardStyle, borderLeft: '5px solid #8e44ad' }}>
-            <h3 style={{ marginBottom: '25px', color: '#2c3e50' }}>⚖️ Configurazione Footer & Coperto</h3>
-            {/* ... Resto del componente Footer identico a prima ... */}
-            
-    {/* SEZIONE COPERTO */}
-    <div style={{marginBottom:'20px', padding:'15px', background:'#fdfefe', borderRadius:'8px', border:'1px solid #bbdefb'}}>
-         <label style={labelStyle}>💰 Costo Coperto (€)</label>
-         <input 
-            type="number" 
-            value={config.prezzo_coperto || 0}
-            onChange={e => setConfig({...config, prezzo_coperto: e.target.value})}
-            style={{...inputStyle, width:'100%', maxWidth:'150px'}}
-            step="0.10"
-         />
-         <p style={{margin:'5px 0 0 0', fontSize:'12px', color:'#666'}}>Verrà aggiunto automaticamente al checkout moltiplicato per il numero di persone.</p>
-    </div>
+    <div style={{ ...cardStyle, borderLeft: '5px solid #8e44ad' }}>
+    <h3 style={{ marginBottom: '25px', color: '#2c3e50' }}>⚖️ Configurazione Footer & Coperto</h3>
 
-    <div style={{ marginBottom: '30px' }}>
-        <label style={labelStyle}>📝 Testo a piè di pagina (Info aggiuntive)</label>
-        <textarea 
-            value={config.info_footer || ''}
-            onChange={e => setConfig({...config, info_footer: e.target.value})}
-            style={{ width: '100%', padding: '15px', borderRadius: '10px', border: '1px solid #ddd', minHeight: '80px', boxSizing: 'border-box' }}
-        />
-    </div>
-
-    {/* TOGGLE NASCONDI EURO */}
-    <div style={{marginBottom:'20px', padding:'15px', background:'#f3e5f5', borderRadius:'8px', border:'1px solid #e1bee7'}}>
-         <label style={{display:'flex', alignItems:'center', gap:'10px', cursor:'pointer', fontWeight:'bold', color:'#8e44ad'}}>
-            <input 
-                type="checkbox" 
-                checked={config.nascondi_euro || false} 
-                onChange={(e) => setConfig({...config, nascondi_euro: e.target.checked})} 
-            />
-            <span>Nascondi simbolo "€" (Mostra solo il numero)</span>
-        </label>
-        <p style={{margin:'5px 0 0 25px', fontSize:'12px', color:'#666'}}>Se attivo, "12.00 €" diventerà "12.00"</p>
-    </div>
-
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', alignItems:'start' }}>
         
-        <div style={{ border: '1px solid #eee', padding: '15px', borderRadius: '10px' }}>
-            <label style={labelStyle}>📅 Menù del Giorno</label>
-            <ImageUploader 
-                type="url_menu_giorno" 
-                currentUrl={config.url_menu_giorno} 
-                icon="🥗" 
-                config={config} setConfig={setConfig} API_URL={API_URL} 
-            />
+        {/* COLONNA 1: INPUT DATI */}
+        <div style={{display:'flex', flexDirection:'column', gap:'20px'}}>
+            <div style={{padding:'15px', background:'#fdfefe', borderRadius:'8px', border:'1px solid #bbdefb'}}>
+                <label style={labelStyle}>💰 Costo Coperto (€)</label>
+                <input 
+                    type="number" 
+                    value={config.prezzo_coperto || 0}
+                    onChange={e => setConfig({...config, prezzo_coperto: e.target.value})}
+                    style={{...inputStyle, width:'100%', maxWidth:'150px'}}
+                    step="0.10"
+                />
+                <p style={{margin:'5px 0 0 0', fontSize:'12px', color:'#666'}}>Aggiunto in automatico al checkout.</p>
+            </div>
+
+            <div>
+                <label style={labelStyle}>📝 Testo a piè di pagina</label>
+                <textarea 
+                    value={config.info_footer || ''}
+                    onChange={e => setConfig({...config, info_footer: e.target.value})}
+                    style={{ width: '100%', padding: '15px', borderRadius: '10px', border: '1px solid #ddd', minHeight: '80px', boxSizing: 'border-box' }}
+                />
+            </div>
+
+            <div style={{padding:'15px', background:'#f3e5f5', borderRadius:'8px', border:'1px solid #e1bee7'}}>
+                <label style={{display:'flex', alignItems:'center', gap:'10px', cursor:'pointer', fontWeight:'bold', color:'#8e44ad'}}>
+                    <input 
+                        type="checkbox" 
+                        checked={config.nascondi_euro || false} 
+                        onChange={(e) => setConfig({...config, nascondi_euro: e.target.checked})} 
+                    />
+                    <span>Nascondi simbolo "€"</span>
+                </label>
+            </div>
         </div>
 
-        <div style={{ border: '1px solid #eee', padding: '15px', borderRadius: '10px' }}>
-            <label style={labelStyle}>📄 Menù PDF</label>
-            <ImageUploader 
-                type="url_menu_pdf" 
-                currentUrl={config.url_menu_pdf} 
-                icon="📖" 
-                config={config} setConfig={setConfig} API_URL={API_URL} 
-            />
-        </div>
+        {/* COLONNA 2: UPLOAD */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '15px' }}>
+            <div style={{ border: '1px solid #eee', padding: '10px', borderRadius: '10px' }}>
+                <label style={labelStyle}>📅 Menù Giorno</label>
+                <ImageUploader type="url_menu_giorno" currentUrl={config.url_menu_giorno} icon="🥗" config={config} setConfig={setConfig} API_URL={API_URL} />
+            </div>
 
-        <div style={{ border: '1px solid #eee', padding: '15px', borderRadius: '10px' }}>
-            <label style={labelStyle}>📋 Lista Allergeni</label>
-            <ImageUploader 
-                type="url_allergeni" 
-                currentUrl={config.url_allergeni} 
-                icon="⚠️" 
-                config={config} setConfig={setConfig} API_URL={API_URL} 
-            />
+            <div style={{ border: '1px solid #eee', padding: '10px', borderRadius: '10px' }}>
+                <label style={labelStyle}>📄 Menù PDF</label>
+                <ImageUploader type="url_menu_pdf" currentUrl={config.url_menu_pdf} icon="📖" config={config} setConfig={setConfig} API_URL={API_URL} />
+            </div>
+
+            <div style={{ border: '1px solid #eee', padding: '10px', borderRadius: '10px' }}>
+                <label style={labelStyle}>📋 Allergeni</label>
+                <ImageUploader type="url_allergeni" currentUrl={config.url_allergeni} icon="⚠️" config={config} setConfig={setConfig} API_URL={API_URL} />
+            </div>
         </div>
     </div>
 
-            <button onClick={handleSaveStyle} style={{ marginTop: '30px', width: '100%', padding:'15px', background:'#8e44ad', color:'white', border:'none', borderRadius:'10px', fontWeight:'bold', cursor:'pointer' }}>💾 SALVA IMPOSTAZIONI FOOTER</button>
-        </div>
+    <button onClick={handleSaveStyle} style={{ marginTop: '30px', width: '100%', padding:'15px', background:'#8e44ad', color:'white', border:'none', borderRadius:'10px', fontWeight:'bold', cursor:'pointer' }}>
+        💾 SALVA IMPOSTAZIONI FOOTER
+    </button>
+</div>
     </div>
   );
 }
