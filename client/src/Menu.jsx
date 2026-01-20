@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - AGGIORNATO (Totale Nascosto, Label Persone modificata)
+// client/src/Menu.jsx
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'; 
 import { dictionary, getContent } from './translations';
@@ -113,14 +113,10 @@ function Menu() {
       setQtyModal(piatto.qta_minima ? parseFloat(piatto.qta_minima) : 1);
   };
   
+  // --- MODIFICA 1: Tutto va di default alla portata 1 (tranne il Bar) ---
   const getDefaultCourse = (piatto) => {
       if (piatto.categoria_is_bar) return 0; 
-      const nome = (piatto.nome + " " + (piatto.categoria_nome || piatto.categoria)).toLowerCase();
-      if (nome.includes('antipast') || nome.includes('fritt') || nome.includes('stuzzich') || nome.includes('bruschet') || nome.includes('tapas')) return 1; 
-      if (nome.includes('prim') || nome.includes('pasta') || nome.includes('risott') || nome.includes('zupp')) return 2; 
-      if (nome.includes('second') || nome.includes('carn') || nome.includes('pesc') || nome.includes('grigli') || nome.includes('pizz')) return 3; 
-      if (nome.includes('dolc') || nome.includes('dessert') || nome.includes('tiramis') || nome.includes('caff')) return 4; 
-      return 3; 
+      return 1; // Forza tutto alla prima portata
   };
 
   const aggiungiAlCarrello = (piatto, qtySpecific = 1) => {
@@ -159,12 +155,10 @@ function Menu() {
           setTavoloStaff(t); 
       }
       
-      // Calcolo Totale Finale (per il backend, ma nascosto all'utente)
       const totaleProdotti = carrello.reduce((a,b)=>a+(Number(b.prezzo) * (b.qty || 1)), 0);
       const costoCoperto = (style.prezzo_coperto || 0) * numCoperti;
       const totaleOrdine = totaleProdotti + costoCoperto;
 
-      // Messaggio di conferma SENZA il totale
       let confirmMsg = `${t?.confirm || "CONFERMA E INVIA"}?`;
 
       if(!confirm(confirmMsg)) return;
@@ -264,7 +258,7 @@ function Menu() {
       {activeCategory === catNome && (
         <div className="accordion-content" style={{ padding: '0', background: 'rgba(0,0,0,0.2)', width: '100%' }}>
             
-          {/* --- DESCRIZIONE CATEGORIA (VISIBILE PRIMA DEI PIATTI) --- */}
+          {/* --- DESCRIZIONE CATEGORIA --- */}
           {(() => {
               const sampleProd = menu.find(p => (p.categoria_nome || p.categoria) === catNome);
               const catDesc = sampleProd ? sampleProd.categoria_descrizione : "";
@@ -296,7 +290,13 @@ function Menu() {
                     {sottoCats[scKey].map((prodotto) => {
                       const v = typeof prodotto.varianti === 'string' ? JSON.parse(prodotto.varianti || '{}') : (prodotto.varianti || {});
                       const ingStr = (v.base || []).join(', ');
-                      const hasVar = (v.base?.length > 0) || (v.aggiunte?.length > 0) || (prodotto.categoria_varianti?.length > 0);
+                      
+                      // --- MODIFICA 2: Controlliamo se serve il modale o no ---
+                      const hasVarianti = (v.base && v.base.length > 0) || (v.aggiunte && v.aggiunte.length > 0) || (prodotto.categoria_varianti && prodotto.categoria_varianti.length > 0);
+                      const hasUnit = !!prodotto.unita_misura; // Se c'è unità, serve il peso/qta
+                      // Se non ha varianti E non ha unità di misura, aggiungi diretto.
+                      const isQuickAdd = !hasVarianti && !hasUnit;
+
                       const nomeProdotto = getContent(prodotto, 'nome', lang);
                       const descProdotto = getContent(prodotto, 'descrizione', lang);
                       
@@ -321,7 +321,18 @@ function Menu() {
                             </div>
                           </div>
                           <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
-                            <button className="notranslate" onClick={(e) => { e.stopPropagation(); apriModale(prodotto); }} style={{ background: btnBg, color: btnText, borderRadius: '50%', width: '35px', height: '35px', border: 'none', fontSize: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>+</button>
+                            <button className="notranslate" 
+                                onClick={(e) => { 
+                                    e.stopPropagation(); 
+                                    if(isQuickAdd) {
+                                        aggiungiAlCarrello(prodotto);
+                                    } else {
+                                        apriModale(prodotto); 
+                                    }
+                                }} 
+                                style={{ background: btnBg, color: btnText, borderRadius: '50%', width: '35px', height: '35px', border: 'none', fontSize: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                                +
+                            </button>
                           </div>
                         </div>
                       )
@@ -468,12 +479,10 @@ function Menu() {
               <div style={{flex:1, overflowY:'auto', maxWidth:'600px', margin:'0 auto', width:'100%'}}>
                   {carrello.length === 0 && <p className="notranslate" style={{color: style?.text || '#fff', textAlign:'center'}}>{t?.empty_cart || "Il carrello è vuoto"}</p>}
                   
-                  {/* SELETTORE COPERTI MODIFICATO: LABEL CAMBIATA E INFO PREZZO NASCOSTO */}
                   {style.prezzo_coperto > 0 && carrello.length > 0 && (
                       <div style={{background: 'rgba(255,255,255,0.1)', padding:'15px', borderRadius:'10px', marginBottom:'20px', display:'flex', alignItems:'center', justifyContent:'space-between'}}>
                           <div>
                             <div style={{fontWeight:'bold', fontSize:'16px'}}>👥 Numero persone al tavolo</div>
-                            {/* RIMOSSA RIGA CON IL PREZZO DEL COPERTO */}
                           </div>
                           <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
                                 <button onClick={() => setNumCoperti(n => Math.max(1, n - 1))} style={{width:30, height:30, borderRadius:'50%', border:'none', fontSize:'18px', cursor:'pointer', fontWeight:'bold'}}>-</button>
@@ -535,11 +544,7 @@ function Menu() {
                       </div>
                   )}
 
-                  {/* TOTALE FINALE RIMOSSO (MANTENUTI SOLO I PULSANTI) */}
                   <div className="notranslate" style={{marginTop:'20px', borderTop:`1px solid ${style?.text||'#ccc'}`, paddingTop:'20px'}}>
-                      
-                      {/* RIMOSSO DIV DEL TOTALE */}
-
                       {carrello.length > 0 && (canOrder || isStaffQui) && ( 
                           <button onClick={inviaOrdine} style={{ width:'100%', padding:'15px', fontSize:'18px', background: '#159709ff', color:'white', border:`1px solid ${style?.text||'#ccc'}`, borderRadius:'30px', fontWeight:'bold', cursor:'pointer' }}>
                               {isStaffQui ? "INVIA ORDINE STAFF 🚀" : (t?.confirm || "CONFERMA E INVIA") + " 🚀"}
