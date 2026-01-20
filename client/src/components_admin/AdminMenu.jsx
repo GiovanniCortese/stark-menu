@@ -1,4 +1,4 @@
-// client/src/components_admin/AdminMenu.jsx - AGGIORNATO (Loading Excel, Minimo Qta, Coperto)
+// client/src/components_admin/AdminMenu.jsx - FULL WIDTH FIX
 import { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import ProductRow from './ProductRow';
@@ -69,7 +69,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
   const [editId, setEditId] = useState(null); 
   const [uploading, setUploading] = useState(false);
-  const [importing, setImporting] = useState(false); // NUOVO STATO PER LOADER EXCEL
+  const [importing, setImporting] = useState(false); 
 
   if (!config || !categorie || !menu) {
       return <div style={{padding:'40px', textAlign:'center', color:'#666'}}>🔄 Caricamento Menu...</div>;
@@ -123,7 +123,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       
       const payload = { ...nuovoPiatto, categoria: cat, ristorante_id: user.id, varianti: JSON.stringify(variantiFinali) };
       delete payload.varianti_str; delete payload.ingredienti_base;
-
       payload.traduzioni = traduzioniInput; 
 
       try {
@@ -132,10 +131,8 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
           if(!editId && categorie.length === 0) return alert("Crea prima una categoria!"); 
           await fetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }); 
           alert(editId ? "✅ Piatto aggiornato!" : "✅ Piatto creato!");
-          
           setNuovoPiatto({ nome:'', prezzo:'', categoria:cat, sottocategoria: '', descrizione:'', immagine_url:'', varianti_str: '', ingredienti_base: '', allergeni: [], unita_misura: '', qta_minima: 1 }); 
           setTraduzioniInput({ en: { nome: '', descrizione: '' }, de: { nome: '', descrizione: '' } }); 
-          
           setEditId(null); ricaricaDati(); 
       } catch(err) { alert("❌ Errore: " + err.message); }
   };
@@ -148,22 +145,13 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
   const handleImportExcel = async (e) => {
     const file = e.target.files[0]; if(!file) return;
-    setImporting(true); // ATTIVA LOADER
+    setImporting(true); 
     const formData = new FormData(); formData.append('file', file); formData.append('ristorante_id', user.id);
     try { 
         const res = await fetch(`${API_URL}/api/import-excel`, { method: 'POST', body: formData }); 
         const data = await res.json(); 
-        if(data.success) { 
-            alert(data.message); 
-            ricaricaDati(); 
-        } else {
-            alert("Errore: " + data.error); 
-        }
-    } catch(err) { 
-        alert("Errore Connessione"); 
-    } finally {
-        setImporting(false); // DISATTIVA LOADER
-    }
+        if(data.success) { alert(data.message); ricaricaDati(); } else { alert("Errore: " + data.error); }
+    } catch(err) { alert("Errore Connessione"); } finally { setImporting(false); }
   };
 
   const cancellaPiatto = async (id) => { if(confirm("Sei sicuro di voler eliminare questo piatto?")) { await fetch(`${API_URL}/api/prodotti/${id}`, {method:'DELETE'}); ricaricaDati(); }};
@@ -176,7 +164,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       setNuovoPiatto({ 
           ...piatto, 
           unita_misura: piatto.unita_misura || '', 
-          qta_minima: piatto.qta_minima || 1, // Recupera minimo
+          qta_minima: piatto.qta_minima || 1, 
           allergeni: piatto.allergeni || [], 
           ingredienti_base: (variantiObj.base || []).join(', '), 
           varianti_str: (variantiObj.aggiunte || []).map(v => `${v.nome}:${v.prezzo}`).join(', ') 
@@ -187,7 +175,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
           en: { nome: tr.en?.nome || '', descrizione: tr.en?.descrizione || '' },
           de: { nome: tr.de?.nome || '', descrizione: tr.de?.descrizione || '' }
       });
-
       window.scrollTo({ top: 0, behavior: 'smooth' }); 
   };
 
@@ -214,7 +201,13 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
     await fetch(`${API_URL}/api/prodotti/riordina`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prodotti: piattiDestinazioneFinali.map(p => ({ id: p.id, posizione: p.posizione, categoria: destCat })) }) });
   };
 
-  const containerStyle = { maxWidth: '1200px', margin: '0 auto', fontFamily: "'Inter', sans-serif", color: '#333' };
+  // --- STILI AGGIORNATI FULL WIDTH ---
+  const containerStyle = { 
+    maxWidth: '100%', 
+    margin: '0 auto', 
+    fontFamily: "'Inter', sans-serif", 
+    color: '#333' 
+  };
   const cardStyle = { background: 'white', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', padding: '25px', marginBottom: '30px', border: '1px solid #f0f0f0', boxSizing: 'border-box' };
   const inputStyle = { width: '100%', padding: '12px 15px', borderRadius: '8px', border: '1px solid #e0e0e0', fontSize: '14px', background: '#f9f9f9', transition: 'all 0.3s', boxSizing: 'border-box' };
   const labelStyle = { fontSize: '12px', fontWeight: '600', color: '#666', marginBottom: '8px', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' };
@@ -222,15 +215,10 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   return (
     <div style={containerStyle}>
         
-        {/* OVERLAY LOADING EXCEL */}
         {importing && (
-            <div style={{
-                position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(255,255,255,0.8)', 
-                zIndex:9999, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'
-            }}>
+            <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(255,255,255,0.8)', zIndex:9999, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'}}>
                 <div style={{fontSize:'50px'}}>📥</div>
                 <h2 style={{color:'#3498db'}}>Sto elaborando il Menu Excel...</h2>
-                <p>Potrebbe richiedere qualche secondo.</p>
             </div>
         )}
 
@@ -258,7 +246,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             <div style={{display:'flex', gap:'10px'}}>
                 <button onClick={() => window.open(`${API_URL}/api/export-excel/${user.id}`, '_blank')} style={{background:'white', border:'1px solid #ddd', padding:'8px 15px', borderRadius:'6px', cursor:'pointer', fontWeight:'600', color:'#333'}}>📤 Scarica Menu</button>
                 <div style={{position:'relative'}}>
-                    <button style={{background:'#3498db', color:'white', border:'none', padding:'8px 15px', borderRadius:'6px', cursor:'pointer', fontWeight:'600'}}>📥 Carica Excel (Aggiorna/Crea)</button>
+                    <button style={{background:'#3498db', color:'white', border:'none', padding:'8px 15px', borderRadius:'6px', cursor:'pointer', fontWeight:'600'}}>📥 Carica Excel</button>
                     <input type="file" accept=".xlsx, .xls" onChange={handleImportExcel} style={{position:'absolute', inset:0, opacity:0, cursor:'pointer'}} />
                 </div>
             </div>
@@ -271,7 +259,8 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                       {editId && <button onClick={annullaModifica} style={{background:'#eee', color:'#333', border:'none', padding:'5px 15px', borderRadius:'20px', cursor:'pointer', fontWeight:'bold'}}>Annulla Modifica</button>}
                   </div>
 
-                 <form onSubmit={handleSalvaPiatto} style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '25px'}}>
+                 {/* FORM CON GRIGLIA ALLARGATA */}
+                 <form onSubmit={handleSalvaPiatto} style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '30px'}}>
                       
                       <div style={{display:'flex', flexDirection:'column', gap:'15px'}}>
                           <div>
@@ -289,29 +278,13 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                                   <label style={labelStyle}>Prezzo</label>
                                   <input type="number" placeholder="0.00" value={nuovoPiatto.prezzo} onChange={e => setNuovoPiatto({...nuovoPiatto, prezzo: e.target.value})} style={inputStyle} step="0.10" required />
                               </div>
-                               {/* CAMPO UNITÀ & MINIMO */}
                               <div style={{width:'80px'}}>
                                     <label style={labelStyle}>Unità</label>
-                                    <input 
-                                        type="text" 
-                                        placeholder="/hg" 
-                                        value={nuovoPiatto.unita_misura || ''} 
-                                        onChange={e => setNuovoPiatto({...nuovoPiatto, unita_misura: e.target.value})} 
-                                        style={inputStyle} 
-                                    />
+                                    <input type="text" placeholder="/hg" value={nuovoPiatto.unita_misura || ''} onChange={e => setNuovoPiatto({...nuovoPiatto, unita_misura: e.target.value})} style={inputStyle} />
                                 </div>
                                 <div style={{width:'80px'}}>
                                     <label style={labelStyle}>Minimo</label>
-                                    <input 
-                                        type="number" 
-                                        placeholder="1" 
-                                        value={nuovoPiatto.qta_minima || 1} 
-                                        onChange={e => setNuovoPiatto({...nuovoPiatto, qta_minima: e.target.value})} 
-                                        style={inputStyle}
-                                        min="0.1"
-                                        step="0.1" 
-                                        title="Quantità minima ordinabile"
-                                    />
+                                    <input type="number" placeholder="1" value={nuovoPiatto.qta_minima || 1} onChange={e => setNuovoPiatto({...nuovoPiatto, qta_minima: e.target.value})} style={inputStyle} min="0.1" step="0.1" />
                                 </div>
                           </div>
                           <div>
@@ -336,7 +309,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                                         nuovoPiatto.immagine_url ? 
                                         <div style={{display:'flex', alignItems:'center', justifyContent:'center', gap:'10px'}}>
                                             <img src={nuovoPiatto.immagine_url} style={{width:40, height:40, borderRadius:5, objectFit:'cover'}} />
-                                            <span style={{color:'#27ae60', fontWeight:'bold'}}>Foto Caricata! (Clicca per cambiare)</span>
+                                            <span style={{color:'#27ae60', fontWeight:'bold'}}>Foto Caricata!</span>
                                         </div> : 
                                         <span style={{color:'#888'}}>Trascina qui o clicca per caricare</span>
                                     )}
@@ -398,38 +371,14 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                                 <span style={{background:'#eee', borderRadius:'50%', width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'14px'}}>📂</span> 
                                 {cat.nome}
                             </h3>
-                            
                             <Droppable droppableId={`cat-${cat.nome}`}>
                                 {(provided) => (
-                                    <div 
-                                        ref={provided.innerRef} 
-                                        {...provided.droppableProps} 
-                                        style={{paddingBottom:'50px'}}
-                                    >
+                                    <div ref={provided.innerRef} {...provided.droppableProps} style={{paddingBottom:'50px'}}>
                                         {prodottiCategoria.map((prodotto, index) => (
-                                            <Draggable 
-                                                key={String(prodotto.id)} 
-                                                draggableId={String(prodotto.id)} 
-                                                index={index}
-                                            >
+                                            <Draggable key={String(prodotto.id)} draggableId={String(prodotto.id)} index={index}>
                                                 {(provided, snapshot) => (
-                                                    <div
-                                                        ref={provided.innerRef}
-                                                        {...provided.draggableProps}
-                                                        {...provided.dragHandleProps}
-                                                        style={{
-                                                            ...provided.draggableProps.style,
-                                                            marginBottom: '8px',
-                                                            userSelect: 'none',
-                                                            transform: provided.draggableProps.style?.transform,
-                                                        }}
-                                                    >
-                                                        <ProductRow 
-                                                            prodotto={prodotto} 
-                                                            avviaModifica={avviaModifica} 
-                                                            eliminaProdotto={cancellaPiatto} 
-                                                            isDragging={snapshot.isDragging} 
-                                                        />
+                                                    <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} style={{...provided.draggableProps.style, marginBottom: '8px', userSelect: 'none'}}>
+                                                        <ProductRow prodotto={prodotto} avviaModifica={avviaModifica} eliminaProdotto={cancellaPiatto} isDragging={snapshot.isDragging} />
                                                     </div>
                                                 )}
                                             </Draggable>
@@ -444,9 +393,10 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             </DragDropContext>
         </div>
 
-<div style={{ ...cardStyle, borderLeft: '5px solid #8e44ad' }}>
-    <h3 style={{ marginBottom: '25px', color: '#2c3e50' }}>⚖️ Configurazione Footer & Coperto</h3>
-
+        <div style={{ ...cardStyle, borderLeft: '5px solid #8e44ad' }}>
+            <h3 style={{ marginBottom: '25px', color: '#2c3e50' }}>⚖️ Configurazione Footer & Coperto</h3>
+            {/* ... Resto del componente Footer identico a prima ... */}
+            
     {/* SEZIONE COPERTO */}
     <div style={{marginBottom:'20px', padding:'15px', background:'#fdfefe', borderRadius:'8px', border:'1px solid #bbdefb'}}>
          <label style={labelStyle}>💰 Costo Coperto (€)</label>
@@ -515,10 +465,8 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
         </div>
     </div>
 
-    <button onClick={handleSaveStyle} style={{ marginTop: '30px', width: '100%', padding:'15px', background:'#8e44ad', color:'white', border:'none', borderRadius:'10px', fontWeight:'bold', cursor:'pointer' }}>
-        💾 SALVA IMPOSTAZIONI FOOTER
-    </button>
-</div>
+            <button onClick={handleSaveStyle} style={{ marginTop: '30px', width: '100%', padding:'15px', background:'#8e44ad', color:'white', border:'none', borderRadius:'10px', fontWeight:'bold', cursor:'pointer' }}>💾 SALVA IMPOSTAZIONI FOOTER</button>
+        </div>
     </div>
   );
 }

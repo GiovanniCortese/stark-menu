@@ -1,4 +1,4 @@
-// client/src/components_admin/AdminGrafica.jsx - VERSIONE V4 (Full Custom Footer)
+// client/src/components_admin/AdminGrafica.jsx - FULL WIDTH FIX
 import { useState } from 'react';
 
 function AdminGrafica({ user, config, setConfig, API_URL }) {
@@ -333,7 +333,8 @@ function AdminGrafica({ user, config, setConfig, API_URL }) {
 }
 
 const styles = {
-    container: { display: 'flex', flexWrap: 'wrap', gap: '40px', maxWidth: '1200px', margin: '0 auto', fontFamily: "'Inter', sans-serif", alignItems: 'flex-start' },
+    // MODIFICATO QUI: maxWidth 100%
+    container: { display: 'flex', flexWrap: 'wrap', gap: '40px', width: '100%', margin: '0 auto', fontFamily: "'Inter', sans-serif", alignItems: 'flex-start' },
     editorColumn: { flex: '1 1 500px', paddingBottom:'50px' },
     previewColumn: { flex: '0 0 320px', display: 'flex', flexDirection: 'column', alignItems: 'center', position:'sticky', top:'20px' },
     header: { marginBottom: '30px', borderLeft: '5px solid #3498db', paddingLeft: '15px' },

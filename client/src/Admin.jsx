@@ -1,4 +1,4 @@
-// client/src/Admin.jsx - VERSIONE V42 (AGGIUNTA GESTIONE UTENTI CRM) 🔒
+// client/src/Admin.jsx - VERSIONE FULL WIDTH V42 (AGGIUNTA GESTIONE UTENTI CRM) 🔒
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import API_URL from './config'; // <--- IMPORTANTE
@@ -18,11 +18,11 @@ function Admin() {
   const navigate = useNavigate();
 
   // --- NUOVI STATI LOGIN ADMIN ---
-const [isAuthorized, setIsAuthorized] = useState(false);
-const [identifierInput, setIdentifierInput] = useState(""); // Email o Nome Utente
-const [passwordInput, setPasswordInput] = useState("");
-const [loginError, setLoginError] = useState(false);
-const [loadingLogin, setLoadingLogin] = useState(false);
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [identifierInput, setIdentifierInput] = useState(""); // Email o Nome Utente
+  const [passwordInput, setPasswordInput] = useState("");
+  const [loginError, setLoginError] = useState(false);
+  const [loadingLogin, setLoadingLogin] = useState(false);
 
   // --- STATI GLOBALI ---
   const [user, setUser] = useState(null); 
@@ -45,10 +45,8 @@ const [loadingLogin, setLoadingLogin] = useState(false);
       font_style: 'sans-serif'
   });
 
-  const API_URL = "https://stark-backend-gg17.onrender.com";
-
   // --- INIZIALIZZAZIONE E AUTH ---
-useEffect(() => {
+  useEffect(() => {
     if (!slug) return;
 
     const init = async () => {
@@ -80,7 +78,7 @@ useEffect(() => {
     };
 
     init();
-}, [slug]);
+  }, [slug]);
 
   const caricaConfigurazioniExtra = (id) => {
     // Fetch Config
@@ -114,7 +112,7 @@ useEffect(() => {
       });
   };
 
-const handleLogout = () => { 
+  const handleLogout = () => { 
       if(confirm("Uscire dal pannello?")) { 
           // CANCELLA LA NUOVA CHIAVE
           localStorage.removeItem(`stark_admin_session_${slug}`); 
@@ -122,7 +120,7 @@ const handleLogout = () => {
       } 
   };
   
-const handleAdminLogin = async (e) => {
+  const handleAdminLogin = async (e) => {
     e.preventDefault();
     setLoadingLogin(true);
     setLoginError(false);
@@ -151,7 +149,7 @@ const handleAdminLogin = async (e) => {
     } finally {
         setLoadingLogin(false);
     }
-};
+  };
   
   // --- FUNZIONI DI NAVIGAZIONE RAPIDA ---
   const apriMenuFrontend = () => window.open(`/${slug}`, '_blank');
@@ -173,39 +171,39 @@ const handleAdminLogin = async (e) => {
                 <p style={{color:'#666'}}>{user?.nome || "Accesso Riservato"}</p>
 
                 <form onSubmit={handleAdminLogin} style={{marginTop:20}}>
-    <input 
-        type="email" // Usiamo type email per validazione automatica
-        placeholder="Email Amministratore" 
-        value={identifierInput}
-        onChange={e => setIdentifierInput(e.target.value)}
-        required
-        style={{
-            width:'100%', padding:'15px', borderRadius:'8px', 
-            border: loginError ? '2px solid #e74c3c' : '1px solid #ddd',
-            fontSize:'16px', boxSizing:'border-box', marginBottom:'10px', textAlign:'center'
-        }}
-    />
-    <input 
-        type="password" 
-        placeholder="Password" 
-        value={passwordInput}
-        onChange={e => setPasswordInput(e.target.value)}
-        required
-        style={{
-            width:'100%', padding:'15px', borderRadius:'8px', 
-            border: loginError ? '2px solid #e74c3c' : '1px solid #ddd',
-            fontSize:'16px', boxSizing:'border-box', marginBottom:'10px', textAlign:'center'
-        }}
-    />
-    {loginError && <p style={{color:'#e74c3c', fontWeight:'bold', fontSize:'0.9rem'}}>Email o Password errati ⛔</p>}
-    
-    <button type="submit" disabled={loadingLogin} style={{
-        width:'100%', padding:'15px', background:'#2c3e50', color:'white', border:'none', 
-        borderRadius:'8px', fontSize:'16px', fontWeight:'bold', cursor:'pointer'
-    }}>
-        {loadingLogin ? "Verifica..." : "ACCEDI AL PANNELLO"}
-    </button>
-</form>
+                    <input 
+                        type="email" // Usiamo type email per validazione automatica
+                        placeholder="Email Amministratore" 
+                        value={identifierInput}
+                        onChange={e => setIdentifierInput(e.target.value)}
+                        required
+                        style={{
+                            width:'100%', padding:'15px', borderRadius:'8px', 
+                            border: loginError ? '2px solid #e74c3c' : '1px solid #ddd',
+                            fontSize:'16px', boxSizing:'border-box', marginBottom:'10px', textAlign:'center'
+                        }}
+                    />
+                    <input 
+                        type="password" 
+                        placeholder="Password" 
+                        value={passwordInput}
+                        onChange={e => setPasswordInput(e.target.value)}
+                        required
+                        style={{
+                            width:'100%', padding:'15px', borderRadius:'8px', 
+                            border: loginError ? '2px solid #e74c3c' : '1px solid #ddd',
+                            fontSize:'16px', boxSizing:'border-box', marginBottom:'10px', textAlign:'center'
+                        }}
+                    />
+                    {loginError && <p style={{color:'#e74c3c', fontWeight:'bold', fontSize:'0.9rem'}}>Email o Password errati ⛔</p>}
+                    
+                    <button type="submit" disabled={loadingLogin} style={{
+                        width:'100%', padding:'15px', background:'#2c3e50', color:'white', border:'none', 
+                        borderRadius:'8px', fontSize:'16px', fontWeight:'bold', cursor:'pointer'
+                    }}>
+                        {loadingLogin ? "Verifica..." : "ACCEDI AL PANNELLO"}
+                    </button>
+                </form>
                 
                 <button onClick={() => navigate('/')} style={{marginTop:20, background:'none', border:'none', color:'#999', cursor:'pointer'}}>
                     ← Torna al sito
@@ -221,7 +219,7 @@ const handleAdminLogin = async (e) => {
   // --- BLOCCO TOTALE: SE ABBONAMENTO SCADUTO ---
   if (config.account_attivo === false) {
       return (
-          <div className="container" style={{textAlign:'center', padding:'50px', maxWidth:'600px', margin:'50px auto'}}>
+          <div style={{textAlign:'center', padding:'50px', width:'100%', height:'100vh', display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center', background:'#f8f9fa'}}>
               <h1 style={{fontSize:'4rem', marginBottom:'10px'}}>⛔</h1>
               <h2 style={{color:'red', textTransform:'uppercase'}}>Abbonamento Sospeso</h2>
               <p style={{fontSize:'1.2rem', color:'#666'}}>
@@ -237,11 +235,13 @@ const handleAdminLogin = async (e) => {
       );
   }
 
+  // --- LAYOUT FULL WIDTH ---
   return (
-    <div className="container">
+    <div style={{ width: '100%', padding: '20px', boxSizing: 'border-box', minHeight: '100vh', background: '#222', color:'#fff' }}>
+      
       {/* HEADER GLOBALE */}
-     <header style={{display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'10px'}}>
-        <h1>⚙️ Admin: {user.nome}</h1>
+      <header style={{display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'10px', marginBottom: '20px', background: '#333', padding:'15px', borderRadius:'10px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)'}}>
+        <h1 style={{margin:0, fontSize:'1.5rem'}}>⚙️ Admin: {user.nome}</h1>
         <div style={{display:'flex', gap:'5px', flexWrap:'wrap'}}>
             {/* MENU PUBBLICO */}
             <button onClick={apriMenuFrontend} style={{background:'#3498db', color:'white', border:'none', padding:'8px 12px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold'}}>
@@ -262,94 +262,95 @@ const handleAdminLogin = async (e) => {
                 🍹 BAR
             </button>
             <button onClick={apriHaccp} style={{background:'#2c3e50', color:'white', border:'none', padding:'8px 12px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold'}}>
-    🛡️ HACCP
-</button>
+                🛡️ HACCP
+            </button>
             
             {/* LOGOUT */}
-            <button onClick={handleLogout} style={{background:'#333', color:'white', border:'none', padding:'8px 12px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold', marginLeft:'10px'}}>
+            <button onClick={handleLogout} style={{background:'#555', color:'white', border:'none', padding:'8px 12px', borderRadius:'5px', cursor:'pointer', fontWeight:'bold', marginLeft:'10px'}}>
                 🚪 ESCI
             </button>
         </div>
       </header>
       
-/* MENU TAB DI NAVIGAZIONE */
-<div style={{display:'flex', gap:'5px', flexWrap:'wrap', marginTop:'10px', marginBottom: '20px'}}>
-    {/* DASHBOARD: VISIBILE SOLO AD ADMIN (NON EDITOR) */}
-    {user.ruolo !== 'editor' && (
-        <button onClick={() => setTab('dashboard')} style={{background: tab==='dashboard'?'#2c3e50':'#ccc', flex:1, padding:10, border:'none', cursor:'pointer', color: tab==='dashboard'?'white':'black', fontWeight:'bold'}}>
-            📈 Home
-        </button>
-    )}
+      {/* MENU TAB DI NAVIGAZIONE */}
+      <div style={{display:'flex', gap:'5px', flexWrap:'wrap', marginBottom: '20px'}}>
+        {/* DASHBOARD: VISIBILE SOLO AD ADMIN (NON EDITOR) */}
+        {user.ruolo !== 'editor' && (
+            <button onClick={() => setTab('dashboard')} style={{background: tab==='dashboard'?'#2c3e50':'#ddd', flex:1, padding:10, border:'none', cursor:'pointer', color: tab==='dashboard'?'white':'black', fontWeight:'bold', borderRadius:'5px'}}>
+                📈 Home
+            </button>
+        )}
 
-    <button onClick={() => setTab('menu')} style={{background: tab==='menu'?'#333':'#ccc', flex:1, padding:10, border:'none', cursor:'pointer', color: tab==='menu'?'white':'black', fontWeight:'bold'}}>🍔 Menu</button>
-    <button onClick={() => setTab('categorie')} style={{background: tab==='categorie'?'#333':'#ccc', flex:1, padding:10, border:'none', cursor:'pointer', color: tab==='categorie'?'white':'black', fontWeight:'bold'}}>📂 Categorie</button>
-    <button onClick={() => setTab('style')} style={{background: tab==='style'?'#9b59b6':'#ccc', flex:1, padding:10, border:'none', cursor:'pointer', color: tab==='style'?'white':'black', fontWeight:'bold'}}>🎨 Grafica</button>
-    <button onClick={() => setTab('excel')} style={{background: tab==='excel'?'#27ae60':'#ccc', flex:1, padding:10, border:'none', cursor:'pointer', color: tab==='excel'?'white':'black', fontWeight:'bold'}}>📊 Excel</button>
-    
-    {/* UTENTI & SICUREZZA: NASCOSTI SE SEI EDITOR */}
-    {user.ruolo !== 'editor' && (
-        <>
-            <button onClick={() => setTab('users')} style={{background: tab==='users'?'#e67e22':'#ccc', flex:1, padding:10, border:'none', cursor:'pointer', color: tab==='users'?'white':'black', fontWeight:'bold'}}>👥 Utenti</button>
-            <button onClick={() => setTab('security')} style={{background: tab==='security'?'#c0392b':'#ccc', flex:1, padding:10, border:'none', cursor:'pointer', color: tab==='security'?'white':'black', fontWeight:'bold'}}>🔐 Sicurezza</button>
-        </>
-    )}
-</div>
+        <button onClick={() => setTab('menu')} style={{background: tab==='menu'?'#333':'#ddd', flex:1, padding:10, border:'none', cursor:'pointer', color: tab==='menu'?'white':'black', fontWeight:'bold', borderRadius:'5px'}}>🍔 Menu</button>
+        <button onClick={() => setTab('categorie')} style={{background: tab==='categorie'?'#333':'#ddd', flex:1, padding:10, border:'none', cursor:'pointer', color: tab==='categorie'?'white':'black', fontWeight:'bold', borderRadius:'5px'}}>📂 Categorie</button>
+        <button onClick={() => setTab('style')} style={{background: tab==='style'?'#9b59b6':'#ddd', flex:1, padding:10, border:'none', cursor:'pointer', color: tab==='style'?'white':'black', fontWeight:'bold', borderRadius:'5px'}}>🎨 Grafica</button>
+        <button onClick={() => setTab('excel')} style={{background: tab==='excel'?'#27ae60':'#ddd', flex:1, padding:10, border:'none', cursor:'pointer', color: tab==='excel'?'white':'black', fontWeight:'bold', borderRadius:'5px'}}>📊 Excel</button>
+        
+        {/* UTENTI & SICUREZZA: NASCOSTI SE SEI EDITOR */}
+        {user.ruolo !== 'editor' && (
+            <>
+                <button onClick={() => setTab('users')} style={{background: tab==='users'?'#e67e22':'#ddd', flex:1, padding:10, border:'none', cursor:'pointer', color: tab==='users'?'white':'black', fontWeight:'bold', borderRadius:'5px'}}>👥 Utenti</button>
+                <button onClick={() => setTab('security')} style={{background: tab==='security'?'#c0392b':'#ddd', flex:1, padding:10, border:'none', cursor:'pointer', color: tab==='security'?'white':'black', fontWeight:'bold', borderRadius:'5px'}}>🔐 Sicurezza</button>
+            </>
+        )}
+      </div>
 
-      {/* --- CARICAMENTO DINAMICO DEI COMPONENTI --- */}
-      
-      {tab === 'dashboard' && user.ruolo !== 'editor' && (
-    <AdminDashboard user={user} API_URL={API_URL} />
-)}
-      
-      {tab === 'menu' && (
-          <AdminMenu 
-            user={user} 
-            menu={menu} setMenu={setMenu}
-            categorie={categorie} 
-            config={config} setConfig={setConfig}
-            API_URL={API_URL} 
-            ricaricaDati={ricaricaDati} 
-          />
-      )}
+      {/* --- CARICAMENTO DINAMICO DEI COMPONENTI (FULL WIDTH) --- */}
+      <div style={{ width: '100%' }}>
+          {tab === 'dashboard' && user.ruolo !== 'editor' && (
+            <AdminDashboard user={user} API_URL={API_URL} />
+          )}
+          
+          {tab === 'menu' && (
+              <AdminMenu 
+                user={user} 
+                menu={menu} setMenu={setMenu}
+                categorie={categorie} 
+                config={config} setConfig={setConfig}
+                API_URL={API_URL} 
+                ricaricaDati={ricaricaDati} 
+              />
+          )}
 
-      {tab === 'categorie' && (
-          <AdminCategorie 
-            user={user} 
-            categorie={categorie} setCategorie={setCategorie}
-            API_URL={API_URL} 
-            ricaricaDati={ricaricaDati} 
-          />
-      )}
+          {tab === 'categorie' && (
+              <AdminCategorie 
+                user={user} 
+                categorie={categorie} setCategorie={setCategorie}
+                API_URL={API_URL} 
+                ricaricaDati={ricaricaDati} 
+              />
+          )}
 
-      {tab === 'style' && (
-          <AdminGrafica 
-            user={user} 
-            config={config} setConfig={setConfig}
-            API_URL={API_URL} 
-          />
-      )}
+          {tab === 'style' && (
+              <AdminGrafica 
+                user={user} 
+                config={config} setConfig={setConfig}
+                API_URL={API_URL} 
+              />
+          )}
 
-      {tab === 'excel' && (
-          <AdminExcel 
-            user={user} 
-            API_URL={API_URL} 
-            ricaricaDati={ricaricaDati} 
-          />
-      )}
+          {tab === 'excel' && (
+              <AdminExcel 
+                user={user} 
+                API_URL={API_URL} 
+                ricaricaDati={ricaricaDati} 
+              />
+          )}
 
-{/* NUOVO COMPONENTE UTENTI */}
-      {tab === 'users' && (
-          <AdminUsers 
-            API_URL={API_URL} 
-            user={user} 
-          />
-      )}
-{tab === 'security' && (
-    <AdminSicurezza 
-      user={user} 
-      API_URL={API_URL} 
-    />
-)}
+          {/* NUOVO COMPONENTE UTENTI */}
+          {tab === 'users' && (
+              <AdminUsers 
+                API_URL={API_URL} 
+                user={user} 
+              />
+          )}
+          {tab === 'security' && (
+            <AdminSicurezza 
+              user={user} 
+              API_URL={API_URL} 
+            />
+          )}
+      </div>
     </div>
   );
 }
