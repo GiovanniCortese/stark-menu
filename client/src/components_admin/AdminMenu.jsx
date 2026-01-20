@@ -1,5 +1,5 @@
 // client/src/components_admin/AdminMenu.jsx - FULL WIDTH RESPONSIVE
-import { useState } from 'react';
+import { useState, useRef } from 'react'; // <--- AGGIUNTO useRef
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import ProductRow from './ProductRow';
 
@@ -63,6 +63,10 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       nome: '', prezzo: '', categoria: '', sottocategoria: '', descrizione: '', immagine_url: '',
       ingredienti_base: '', varianti_str: '', allergeni: [], unita_misura: '', qta_minima: 1 
   });
+
+  // --- AGGIUNTA AI SCAN ---
+  const [isScanningMenu, setIsScanningMenu] = useState(false);
+  const menuScanRef = useRef(null);
   
   const [traduzioniInput, setTraduzioniInput] = useState({ 
     en: { nome: '', descrizione: '' },
@@ -157,6 +161,52 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
         const data = await res.json(); 
         if(data.success) { alert(data.message); ricaricaDati(); } else { alert("Errore: " + data.error); }
     } catch(err) { alert("Errore Connessione"); } finally { setImporting(false); }
+  };
+
+  // --- FUNZIONE SCANSIONE MENU (AI) ---
+  const handleMenuScan = async (e) => {
+    const file = e.target.files[0];
+    if(!file) return;
+    setIsScanningMenu(true);
+    
+    const fd = new FormData(); 
+    fd.append('photo', file);
+    
+    try {
+        const res = await fetch(`${API_URL}/api/menu/scan-photo`, { method:'POST', body:fd });
+        const data = await res.json();
+        
+        if(data.success) {
+            let count = 0;
+            for(const p of data.data) {
+                const payload = {
+                    nome: p.nome,
+                    prezzo: p.prezzo || 0,
+                    categoria: p.categoria || (categorie[0]?.nome || "Generale"),
+                    descrizione: p.descrizione || "",
+                    ristorante_id: user.id,
+                    varianti: JSON.stringify({ base: [], aggiunte: [] }),
+                    allergeni: JSON.stringify([]),
+                    traduzioni: JSON.stringify({})
+                };
+                
+                await fetch(`${API_URL}/api/prodotti`, { 
+                    method:'POST', 
+                    headers:{'Content-Type':'application/json'}, 
+                    body:JSON.stringify(payload) 
+                });
+                count++;
+            }
+            alert(`✅ Fatto! Ho aggiunto ${count} piatti dal menu cartaceo.`);
+            ricaricaDati();
+        } else {
+            alert("Errore AI: " + data.error);
+        }
+    } catch(err) { 
+        alert("Errore durante l'analisi: " + err.message); 
+    } finally { 
+        setIsScanningMenu(false); 
+    }
   };
 
   const cancellaPiatto = async (id) => { if(confirm("Sei sicuro di voler eliminare questo piatto?")) { await fetch(`${API_URL}/api/prodotti/${id}`, {method:'DELETE'}); ricaricaDati(); }};
@@ -255,6 +305,17 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                     <button style={{background:'#3498db', color:'white', border:'none', padding:'8px 15px', borderRadius:'6px', cursor:'pointer', fontWeight:'600', whiteSpace:'nowrap'}}>📥 Carica Excel</button>
                     <input type="file" accept=".xlsx, .xls" onChange={handleImportExcel} style={{position:'absolute', inset:0, opacity:0, cursor:'pointer'}} />
                 </div>
+                
+                {/* --- NUOVO BOTTONE AI SCAN --- */}
+                <button 
+                    onClick={() => menuScanRef.current.click()} 
+                    style={{background:'#8e44ad', color:'white', padding:'8px 15px', borderRadius:'6px', border:'none', cursor:'pointer', fontWeight:'600', whiteSpace:'nowrap'}}
+                >
+                    {isScanningMenu ? '🤖 Analisi...' : '📸 SCAN MENU CARTACEO'}
+                </button>
+                <input type="file" ref={menuScanRef} onChange={handleMenuScan} accept="image/*" style={{display:'none'}} />
+                {/* ----------------------------- */}
+
             </div>
         </div>
 

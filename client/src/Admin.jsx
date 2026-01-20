@@ -7,7 +7,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import AdminMenu from './components_admin/AdminMenu';
 import AdminCategorie from './components_admin/AdminCategorie';
 import AdminGrafica from './components_admin/AdminGrafica';
-import AdminExcel from './components_admin/AdminExcel';
+import AdminMagazzino from './components_admin/AdminMagazzino'; // Importalo in alto
 import AdminUsers from './components_admin/AdminUsers';
 import AdminSicurezza from './components_admin/AdminSicurezza';
 import AdminDashboard from './components_admin/AdminDashboard';
@@ -353,9 +353,9 @@ function Admin() {
             🎨 Grafica
         </button>
         
-        <button onClick={() => setTab('excel')} className="nav-btn" 
-            style={{background: tab==='excel'?'#27ae60':'white', color: tab==='excel'?'white':'#444'}}>
-            📊 Excel
+        <button onClick={() => setTab('magazzino')} className="nav-btn" 
+            style={{background: tab==='magazzino'?'#27ae60':'white', color: tab==='magazzino'?'white':'#444'}}>
+            📊 Magazzino
         </button>
         
         {user.ruolo !== 'editor' && (
@@ -407,13 +407,9 @@ function Admin() {
             />
         )}
 
-        {tab === 'excel' && (
-            <AdminExcel 
-                user={user} 
-                API_URL={API_URL} 
-                ricaricaDati={ricaricaDati} 
-            />
-        )}
+        {tab === 'magazzino' && (
+    <AdminMagazzino user={user} API_URL={API_URL} />
+)}
 
         {tab === 'users' && (
             <AdminUsers 

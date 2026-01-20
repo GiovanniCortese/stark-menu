@@ -25,7 +25,14 @@ router.get('/api/haccp/labels/storico/:ristorante_id', async (req, res) => { try
 
 // Ricevimento Merci
 router.get('/api/haccp/merci/:ristorante_id', async (req, res) => { try { const { start, end } = req.query; let sql = "SELECT * FROM haccp_merci WHERE ristorante_id = $1"; const params = [req.params.ristorante_id]; if (start && end) { sql += " AND data_ricezione >= $2 AND data_ricezione <= $3 ORDER BY data_ricezione ASC"; params.push(start, end); } else { sql += " AND data_ricezione >= NOW() - INTERVAL '7 days' ORDER BY data_ricezione DESC"; } const r = await pool.query(sql, params); res.json(r.rows); } catch(e) { res.status(500).json({error:"Err"}); } });
-router.post('/api/haccp/merci', async (req, res) => { try { const { ristorante_id, data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione } = req.body; await pool.query(`INSERT INTO haccp_merci (ristorante_id, data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`, [ristorante_id, data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione]); res.json({success:true}); } catch(e) { console.error(e); res.status(500).json({error:"Err"}); } });
+router.post('/api/haccp/merci', async (req, res) => { 
+    try { 
+        const { ristorante_id, data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione, prezzo } = req.body; 
+        await pool.query(`INSERT INTO haccp_merci (ristorante_id, data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione, prezzo) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`, 
+        [ristorante_id, data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione, prezzo || 0]); 
+        res.json({success:true}); 
+    } catch(e) { console.error(e); res.status(500).json({error:"Err"}); } 
+});
 router.put('/api/haccp/merci/:id', async (req, res) => { try { const { data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione } = req.body; await pool.query(`UPDATE haccp_merci SET data_ricezione=$1, fornitore=$2, prodotto=$3, lotto=$4, scadenza=$5, temperatura=$6, conforme=$7, integro=$8, note=$9, operatore=$10, quantita=$11, allegato_url=$12, destinazione=$13 WHERE id=$14`, [data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione, req.params.id]); res.json({success:true}); } catch(e) { res.status(500).json({error:"Err"}); } });
 router.delete('/api/haccp/merci/:id', async (req, res) => { try { await pool.query("DELETE FROM haccp_merci WHERE id=$1", [req.params.id]); res.json({success:true}); } catch(e){ res.status(500).json({error:"Err"}); } });
 
@@ -33,6 +40,38 @@ router.delete('/api/haccp/merci/:id', async (req, res) => { try { await pool.que
 router.get('/api/haccp/pulizie/:ristorante_id', async (req, res) => { try { const { start, end } = req.query; let sql = "SELECT * FROM haccp_cleaning WHERE ristorante_id = $1"; const params = [req.params.ristorante_id]; if (start && end) { sql += " AND data_ora >= $2 AND data_ora <= $3 ORDER BY data_ora ASC"; params.push(start, end); } else { sql += " AND data_ora >= NOW() - INTERVAL '7 days' ORDER BY data_ora DESC"; } const r = await pool.query(sql, params); res.json(r.rows); } catch(e) { res.status(500).json({error:"Err"}); } });
 router.post('/api/haccp/pulizie', async (req, res) => { try { const { ristorante_id, area, prodotto, operatore, conformita, data_ora } = req.body; await pool.query("INSERT INTO haccp_cleaning (ristorante_id, area, prodotto, operatore, conformita, data_ora) VALUES ($1, $2, $3, $4, $5, $6)", [ristorante_id, area, prodotto, operatore, conformita !== undefined ? conformita : true, data_ora || new Date()]); res.json({success:true}); } catch(e) { res.status(500).json({error:e.message}); } });
 router.delete('/api/haccp/pulizie/:id', async (req, res) => { try { await pool.query("DELETE FROM haccp_cleaning WHERE id = $1", [req.params.id]); res.json({success:true}); } catch(e) { res.status(500).json({error:"Err"}); } });
+
+// Statistiche Fornitori & Spese
+router.get('/api/haccp/stats/magazzino/:ristorante_id', async (req, res) => {
+    try {
+        const { ristorante_id } = req.params;
+        
+        // 1. Totale speso per fornitore
+        const speseFornitori = await pool.query(`
+            SELECT fornitore, SUM(prezzo) as totale, COUNT(*) as numero_bolle 
+            FROM haccp_merci WHERE ristorante_id = $1 
+            GROUP BY fornitore ORDER BY totale DESC
+        `, [ristorante_id]);
+
+        // 2. Ultimi movimenti (Log completo)
+        const storico = await pool.query(`
+            SELECT * FROM haccp_merci WHERE ristorante_id = $1 ORDER BY data_ricezione DESC LIMIT 500
+        `, [ristorante_id]);
+
+        // 3. Top prodotti acquistati (per spesa)
+        const topProdotti = await pool.query(`
+            SELECT prodotto, SUM(prezzo) as totale_speso, COUNT(*) as acquisti 
+            FROM haccp_merci WHERE ristorante_id = $1 
+            GROUP BY prodotto ORDER BY totale_speso DESC LIMIT 10
+        `, [ristorante_id]);
+
+        res.json({ 
+            fornitori: speseFornitori.rows, 
+            storico: storico.rows,
+            top_prodotti: topProdotti.rows
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // ROTTA INTELLIGENTE: Scansione Bolla con AI
 router.post('/api/haccp/scan-bolla', uploadFile.single('photo'), async (req, res) => {
@@ -52,16 +91,16 @@ router.post('/api/haccp/scan-bolla', uploadFile.single('photo'), async (req, res
             messages: [
                 {
                     role: "system",
-                    content: `Sei un esperto HACCP. Analizza l'immagine di questa bolla di accompagnamento / fattura.
-                    Estrai i dati e restituisci SOLO un oggetto JSON valido (senza markdown) con questa struttura:
-                    {
-                        "fornitore":Str,
-                        "data_ricezione": "YYYY-MM-DD", 
-                        "prodotti": [
-                            { "nome": Str, "quantita": Str, "lotto": Str (o null), "scadenza": "YYYY-MM-DD" (o null, stima se c'è scritto 'consumare entro') }
-                        ]
-                    }.
-                    Se non trovi la data ricezione usa la data odierna. Se i prodotti sono tanti, elencali tutti.`
+                    content: `Sei un esperto contabile e HACCP. Analizza l'immagine di questa bolla/fattura.
+Estrai i dati e restituisci SOLO un oggetto JSON valido con questa struttura:
+{
+    "fornitore": Str,
+    "data_ricezione": "YYYY-MM-DD", 
+    "prodotti": [
+        { "nome": Str, "quantita": Str, "prezzo": Number (totale riga o unitario, stima tu), "lotto": Str (o null), "scadenza": "YYYY-MM-DD" (o null) }
+    ]
+}.
+Se i prodotti sono tanti, elencali tutti.`
                 },
                 {
                     role: "user",
