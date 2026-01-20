@@ -1,4 +1,4 @@
-// client/src/Menu.jsx
+// client/src/Menu.jsx - FIXED: Matita Modifica, Logica Peso vs Standard
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'; 
 import { dictionary, getContent } from './translations';
@@ -113,10 +113,10 @@ function Menu() {
       setQtyModal(piatto.qta_minima ? parseFloat(piatto.qta_minima) : 1);
   };
   
-  // --- MODIFICA 1: Tutto va di default alla portata 1 (tranne il Bar) ---
+  // Forza tutti i piatti non-bar alla prima portata
   const getDefaultCourse = (piatto) => {
       if (piatto.categoria_is_bar) return 0; 
-      return 1; // Forza tutto alla prima portata
+      return 1; 
   };
 
   const aggiungiAlCarrello = (piatto, qtySpecific = 1) => {
@@ -258,7 +258,6 @@ function Menu() {
       {activeCategory === catNome && (
         <div className="accordion-content" style={{ padding: '0', background: 'rgba(0,0,0,0.2)', width: '100%' }}>
             
-          {/* --- DESCRIZIONE CATEGORIA --- */}
           {(() => {
               const sampleProd = menu.find(p => (p.categoria_nome || p.categoria) === catNome);
               const catDesc = sampleProd ? sampleProd.categoria_descrizione : "";
@@ -291,11 +290,15 @@ function Menu() {
                       const v = typeof prodotto.varianti === 'string' ? JSON.parse(prodotto.varianti || '{}') : (prodotto.varianti || {});
                       const ingStr = (v.base || []).join(', ');
                       
-                      // --- MODIFICA 2: Controlliamo se serve il modale o no ---
-                      const hasVarianti = (v.base && v.base.length > 0) || (v.aggiunte && v.aggiunte.length > 0) || (prodotto.categoria_varianti && prodotto.categoria_varianti.length > 0);
-                      const hasUnit = !!prodotto.unita_misura; // Se c'è unità, serve il peso/qta
-                      // Se non ha varianti E non ha unità di misura, aggiungi diretto.
-                      const isQuickAdd = !hasVarianti && !hasUnit;
+                      // LOGICA PULSANTI:
+                      // 1. Varianti (ingredienti base o aggiunte) -> Mostra matita
+                      // 2. Unità misura (peso) -> Il (+) apre il modale
+                      // 3. Niente unità misura -> Il (+) aggiunge diretto
+
+                      const hasBase = v.base && v.base.length > 0;
+                      const hasExtras = (v.aggiunte && v.aggiunte.length > 0) || (prodotto.categoria_varianti && prodotto.categoria_varianti.length > 0);
+                      const hasVarianti = hasBase || hasExtras;
+                      const hasUnit = !!prodotto.unita_misura; // e.g. "/hg"
 
                       const nomeProdotto = getContent(prodotto, 'nome', lang);
                       const descProdotto = getContent(prodotto, 'descrizione', lang);
@@ -320,14 +323,27 @@ function Menu() {
                                 {Number(prodotto.prezzo).toFixed(2)} {simboloEuro}{unitaMisura}
                             </div>
                           </div>
-                          <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+                          
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            {/* TASTO MODIFICA (Matita) - Solo se modificabile */}
+                            {hasVarianti && (
+                                <button className="notranslate" 
+                                    onClick={(e) => { e.stopPropagation(); apriModale(prodotto); }} 
+                                    style={{ background: '#f39c12', color: 'white', borderRadius: '50%', width: '30px', height: '30px', border: 'none', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                                    ✏️
+                                </button>
+                            )}
+
+                            {/* TASTO AGGIUNGI (+) */}
                             <button className="notranslate" 
                                 onClick={(e) => { 
                                     e.stopPropagation(); 
-                                    if(isQuickAdd) {
-                                        aggiungiAlCarrello(prodotto);
+                                    if(hasUnit) {
+                                        // Se c'è unità di misura (peso), deve aprire il modale per la quantità
+                                        apriModale(prodotto);
                                     } else {
-                                        apriModale(prodotto); 
+                                        // Altrimenti aggiunge diretto (anche se ci sono varianti, se l'utente clicca + le salta)
+                                        aggiungiAlCarrello(prodotto);
                                     }
                                 }} 
                                 style={{ background: btnBg, color: btnText, borderRadius: '50%', width: '35px', height: '35px', border: 'none', fontSize: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
