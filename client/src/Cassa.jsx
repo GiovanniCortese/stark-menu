@@ -1,6 +1,7 @@
 // client/src/Cassa.jsx - VERSIONE V45 (FIX LOGICA LOG: BLOCCHI ORDINATI) 💶
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
+import { io } from "socket.io-client"; // Aggiungi questo in alto
 
 function Cassa() {
   const { slug } = useParams();
@@ -151,13 +152,33 @@ function Cassa() {
         .catch(e => console.error("Errore storico:", e));
   };
 
-  useEffect(() => {
-    if (isAuthorized && infoRistorante) {
-      if(tab === 'attivi') {
+useEffect(() => {
+    if (isAuthorized && infoRistorante?.id) {
+      
+      if (tab === 'attivi') {
+          // --- MODALITÀ LIVE (Tavoli Attivi) ---
+          
+          // 1. Carica subito i dati appena entri nel tab
           aggiornaDati();
-          const i = setInterval(aggiornaDati, 2000);
-          return () => clearInterval(i);
+
+          // 2. Attiva la connessione WebSocket
+          const socket = io(API_URL);
+          socket.emit('join_room', infoRistorante.id);
+
+          // 3. Ascolta gli aggiornamenti in tempo reale
+          socket.on('refresh_ordini', () => {
+              console.log("⚡ Aggiornamento Cassa ricevuto!");
+              aggiornaDati();
+          });
+
+          // 4. Se cambi tab (vai su storico) o esci, chiudi la connessione
+          return () => {
+              socket.disconnect();
+          };
+
       } else {
+          // --- MODALITÀ STATICA (Storico) ---
+          // Carica i dati una volta sola, niente socket
           caricaStorico();
       }
     }

@@ -1,6 +1,7 @@
 // client/src/Bar.jsx - VERSIONE V5 (FIX VARIANTI & RAGGRUPPAMENTO SICURO) 🍹
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
+import { io } from "socket.io-client"; // Aggiungi questo in alto
 
 function Bar() {
   const [ordini, setOrdini] = useState([]);
@@ -70,11 +71,27 @@ const handleLogin = async (e) => {
         .catch(e => console.error("Polling error:", e));
   };
 
-  useEffect(() => { 
-      if(isAuthorized && infoRistorante) { 
+useEffect(() => { 
+      if(isAuthorized && infoRistorante?.id) { 
+          // 1. Carica subito i dati all'avvio
           aggiorna(); 
-          const i = setInterval(aggiorna, 2000); 
-          return () => clearInterval(i); 
+
+          // 2. Connetti al Socket
+          const socket = io(API_URL);
+
+          // 3. Entra nella "stanza" del ristorante
+          socket.emit('join_room', infoRistorante.id);
+
+          // 4. Ascolta l'evento: se qualcuno cambia qualcosa, ricarica!
+          socket.on('refresh_ordini', () => {
+              console.log("⚡ Dati aggiornati via Socket!");
+              aggiorna();
+          });
+
+          // Pulizia quando esci dalla pagina
+          return () => {
+              socket.disconnect();
+          };
       } 
   }, [isAuthorized, infoRistorante]);
 
