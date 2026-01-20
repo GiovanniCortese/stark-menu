@@ -152,34 +152,58 @@ function Cassa() {
         .catch(e => console.error("Errore storico:", e));
   };
 
-// SOSTITUISCI useEffect
-  useEffect(() => {
+useEffect(() => {
+    // 1. Controllo di sicurezza
     if (!isAuthorized || !infoRistorante?.id) return;
 
     if (tab === 'attivi') {
-        console.log("🔌 Cassa Live: Connessione Socket...");
+        console.log("🔌 Cassa Live: Inizializzazione Socket...");
+        
+        // Carica i dati subito (polling iniziale)
         aggiornaDati();
 
-        const socket = io(API_URL, { transports: ['websocket'] });
+        // 2. CONFIGURAZIONE SOCKET CORRETTA (Senza 'transports: websocket')
+        // Lasciamo che Socket.io scelga il metodo migliore (inizia con HTTP, poi passa a WS)
+        const socket = io(API_URL, {
+            reconnectionAttempts: 5,  // Riprova 5 volte se cade
+            reconnectionDelay: 1000,  // Aspetta 1 secondo tra i tentativi
+            autoConnect: true
+        });
 
+        // 3. EVENTI DI CONNESSIONE
         socket.on('connect', () => {
-            console.log("✅ Cassa Connessa al canale:", infoRistorante.id);
+            console.log("✅ Cassa Connessa! ID:", socket.id);
+            // Fondamentale: rientra nella stanza del ristorante
             socket.emit('join_room', String(infoRistorante.id));
         });
 
-        socket.on('refresh_ordini', () => {
-            console.log("🔥 UPDATE RICEVUTO IN CASSA");
-            aggiornaDati();
+        socket.on('connect_error', (err) => {
+            console.error("❌ Errore connessione Socket:", err.message);
         });
 
+        // 4. RICEZIONE AGGIORNAMENTI
+        socket.on('refresh_ordini', () => {
+            console.log("🔥 UPDATE RICEVUTO IN CASSA");
+            aggiornaDati(); // Ricarica la lista ordini
+            
+            // Opzionale: Vibrazione o suono
+            if(navigator.vibrate) navigator.vibrate([50, 50, 50]);
+        });
+
+        // 5. PULIZIA
         return () => {
             console.log("❌ Chiusura Socket Cassa");
+            socket.off('connect');
+            socket.off('refresh_ordini');
             socket.disconnect();
         };
     } else {
+        // Se siamo nella tab storico, carichiamo solo quello
         caricaStorico();
     }
-  }, [isAuthorized, infoRistorante?.id, tab]);
+    
+    // Riavvia l'effetto se cambiano questi parametri
+}, [isAuthorized, infoRistorante?.id, tab]);
 
   // --- AZIONI SUI PRODOTTI ---
   const modificaStatoProdotto = async (ord, indexDaModificare) => {

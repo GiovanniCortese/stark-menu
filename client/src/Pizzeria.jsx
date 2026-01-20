@@ -94,43 +94,52 @@ const handleLogin = async (e) => {
         .catch(e => console.error("Polling error:", e));
   };
 
-// SOSTITUISCI IL VECCHIO useEffect CON QUESTO:
-  useEffect(() => {
-    // 1. Controllo di sicurezza: Non fare nulla se non ho ancora l'ID del ristorante
+
+useEffect(() => {
+    // 1. Controllo di sicurezza
     if (!isAuthorized || !infoRistorante?.id) return;
 
-    console.log("🔌 Tentativo connessione Socket per Ristorante:", infoRistorante.id);
+    console.log("🔌 Inizializzazione Socket per Ristorante:", infoRistorante.id);
 
-    // 2. Carica i dati iniziali (Polling una tantum per partire aggiornati)
+    // 2. Carica i dati iniziali subito
     aggiorna();
 
-    // 3. Configurazione Socket
+    // 3. Configurazione Socket (RIMOSSO 'transports: websocket' per compatibilità Render)
     const socket = io(API_URL, {
-        transports: ['websocket'], // Forza WebSocket per evitare ritardi
-        reconnectionAttempts: 5    // Riprova se cade la linea
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        autoConnect: true
     });
 
-    // 4. Appena connesso, entra nella stanza
+    // 4. Gestione Eventi Socket
     socket.on('connect', () => {
         console.log("✅ Socket Connesso! ID:", socket.id);
-        // Forziamo l'ID a stringa per sicurezza
+        // Importante: ri-entriamo nella stanza ogni volta che ci connettiamo (anche dopo riconnessione)
         socket.emit('join_room', String(infoRistorante.id));
     });
 
-    // 5. Ascolta l'evento di aggiornamento
-    socket.on('refresh_ordini', () => {
-        console.log("🔥 EVENTO SOCKET RICEVUTO: Aggiornamento dati...");
-        aggiorna();
+    socket.on('connect_error', (err) => {
+        console.error("❌ Errore connessione Socket:", err.message);
     });
 
-    // 6. Pulizia alla chiusura
+    socket.on('refresh_ordini', () => {
+        console.log("🔥 EVENTO RICEVUTO: Aggiornamento ordini in corso...");
+        aggiorna();
+        // Feedback sonoro opzionale (se supportato dal browser)
+        if(navigator.vibrate) navigator.vibrate([100, 50, 100]);
+    });
+
+    // 5. Pulizia
     return () => {
-        console.log("❌ Disconnessione Socket");
+        console.log("🔌 Disconnessione Socket pulita");
+        socket.off('connect');
+        socket.off('refresh_ordini');
+        socket.off('connect_error');
         socket.disconnect();
     };
 
-    // NOTA: Aggiunto infoRistorante.id alle dipendenze per riavviare se cambia
-  }, [isAuthorized, infoRistorante?.id]);
+    // Dipendenze: riavvia solo se cambia l'ID o l'autorizzazione
+}, [isAuthorized, infoRistorante?.id]);
 
 const segnaPizzaPronta = async (targetItems) => {
       // FIX ATOMICO: Aggiorniamo ogni pizza singolarmente

@@ -7,9 +7,13 @@ const { getNowItaly, getTimeItaly } = require('../utils/time');
 const notifyUpdate = (req, ristorante_id) => {
     const io = req.app.get('io');
     if (io && ristorante_id) {
-        // Emette l'evento 'refresh_ordini' solo ai client nella stanza di quel ristorante
-        io.to(String(ristorante_id)).emit('refresh_ordini');
-        console.log(`🔔 Notifica inviata alla stanza: ${ristorante_id}`);
+        const room = String(ristorante_id);
+        console.log(`🔔 TENTATIVO NOTIFICA alla stanza: [${room}]`);
+        
+        // Emette l'evento a tutti nella stanza, incluso chi ha inviato (se connesso via socket)
+        io.to(room).emit('refresh_ordini'); 
+    } else {
+        console.error("⚠️ Impossibile inviare notifica Socket: IO o ID mancante");
     }
 };
 

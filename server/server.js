@@ -21,14 +21,18 @@ const io = new Server(server, {
 io.on('connection', (socket) => {
     console.log(`⚡ Client connesso: ${socket.id}`);
 
-    // Il client si unirà a una "stanza" basata sull'ID del ristorante
     socket.on('join_room', (ristorante_id) => {
-        socket.join(ristorante_id);
-        console.log(`Socket ${socket.id} è entrato nella stanza: ${ristorante_id}`);
+        // Forza conversione a stringa per evitare mismatch "1" (int) vs "1" (string)
+        const room = String(ristorante_id);
+        socket.join(room);
+        console.log(`🟢 Socket ${socket.id} entrato nella stanza: [${room}]`);
+        
+        // OPZIONALE: Invia un feedback al client per confermare l'ingresso
+        socket.emit('room_joined', room); 
     });
 
     socket.on('disconnect', () => {
-        console.log(`Socket ${socket.id} disconnesso`);
+        console.log(`🔴 Socket ${socket.id} disconnesso`);
     });
 });
 
