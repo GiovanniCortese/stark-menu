@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - FIXED: Scroll Categoria, Header Mobile, Quick Add
+// client/src/Menu.jsx - FIXED: Click Foto, Logica Unità/Peso, Scroll Categorie
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'; 
 import { dictionary, getContent } from './translations';
@@ -321,8 +321,16 @@ function Menu() {
                       const unitaMisura = prodotto.unita_misura ? ` ${prodotto.unita_misura}` : '';
 
                       return (
-                        <div key={prodotto.id} className="card" onClick={() => apriModale(prodotto)} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', cursor: 'pointer', backgroundColor: cardBg, borderBottom: `1px solid ${cardBorder}` }}>
-                          {prodotto.immagine_url && <img src={prodotto.immagine_url} style={{ width: '70px', height: '70px', objectFit: 'cover', borderRadius: '5px', flexShrink: 0 }} />}
+                        <div key={prodotto.id} className="card" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', cursor: 'default', backgroundColor: cardBg, borderBottom: `1px solid ${cardBorder}` }}>
+                          {/* FOTO - CLICCABILE SOLO QUI */}
+                          {prodotto.immagine_url && (
+                             <img 
+                                src={prodotto.immagine_url} 
+                                onClick={() => apriModale(prodotto)} // UNICO PUNTO DI APERTURA SE IMMAGINE ESISTE
+                                style={{ width: '70px', height: '70px', objectFit: 'cover', borderRadius: '5px', flexShrink: 0, cursor: 'pointer' }} 
+                             />
+                          )}
+                          
                           <div className="info" style={{ flex: 1 }}>
                             <h3 style={{ margin: '0 0 2px 0', fontSize: '16px', color: style.text || '#222', lineHeight: '1.2' }}>{nomeProdotto}</h3>
                             {descProdotto && (<p style={{ fontSize: '12px', color: '#666', margin: '0 0 2px 0', lineHeight: '1.1' }}>{descProdotto}</p>)}
@@ -353,10 +361,10 @@ function Menu() {
                                 onClick={(e) => { 
                                     e.stopPropagation(); 
                                     if(hasUnit) {
-                                        // Se c'è unità di misura (peso), deve aprire il modale per la quantità
+                                        // Se c'è unità di misura (peso) -> Apre modale
                                         apriModale(prodotto);
                                     } else {
-                                        // Altrimenti aggiunge diretto
+                                        // Altrimenti -> Aggiunge diretto
                                         aggiungiAlCarrello(prodotto);
                                     }
                                 }} 
@@ -427,6 +435,7 @@ function Menu() {
                 const addList = v.aggiunte?.length > 0 ? v.aggiunte : (selectedPiatto.categoria_varianti || []);
                 const extraPrezzo = (tempVarianti?.aggiunte || []).reduce((acc, item) => acc + item.prezzo, 0);
                 
+                // CALCOLO PREZZO CON QUANTITÀ
                 const prezzoBaseUnitario = Number(selectedPiatto.prezzo);
                 const prezzoTotalePiatto = (prezzoBaseUnitario * qtyModal) + extraPrezzo;
 
@@ -441,6 +450,7 @@ function Menu() {
                         <h2 style={{margin:'0 0 5px 0', fontSize:'1.8rem', color: '#000', fontWeight:'800'}}>{nomePiattoModal}</h2>
                         <p style={{color:'#666', fontSize:'1rem', lineHeight:'1.4'}}>{descPiattoModal}</p>
                         
+                        {/* SELETTORE QUANTITA' SE UNITA MISURA PRESENTE */}
                         {selectedPiatto.unita_misura && (
                             <div style={{marginTop:'15px', padding:'10px', background:'#e1f5fe', borderRadius:'8px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                                 <div>
