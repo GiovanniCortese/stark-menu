@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - AGGIORNATO (Minimo Qta, Coperti Calculation)
+// client/src/Menu.jsx - AGGIORNATO (Totale Nascosto, Label Persone modificata)
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'; 
 import { dictionary, getContent } from './translations';
@@ -60,8 +60,8 @@ function Menu() {
   const [selectedPiatto, setSelectedPiatto] = useState(null);
   const [showCheckout, setShowCheckout] = useState(false);
   const [tempVarianti, setTempVarianti] = useState({ rimozioni: [], aggiunte: [] });
-  const [qtyModal, setQtyModal] = useState(1); // Stato per quantità nel modale
-  const [numCoperti, setNumCoperti] = useState(1); // Stato per numero persone (Coperti)
+  const [qtyModal, setQtyModal] = useState(1); 
+  const [numCoperti, setNumCoperti] = useState(1); 
   
   const { slug } = useParams();
   const currentSlug = slug || 'pizzeria-stark';
@@ -110,7 +110,6 @@ function Menu() {
   const apriModale = (piatto) => { 
       setSelectedPiatto(piatto); 
       setTempVarianti({ rimozioni: [], aggiunte: [] });
-      // Se c'è un minimo (es. 7 etti), parti da quello. Altrimenti 1.
       setQtyModal(piatto.qta_minima ? parseFloat(piatto.qta_minima) : 1);
   };
   
@@ -125,7 +124,6 @@ function Menu() {
   };
 
   const aggiungiAlCarrello = (piatto, qtySpecific = 1) => {
-      // Se viene chiamato dalla lista (non modale) e c'è un minimo > 1, apri modale per sicurezza o usa minimo
       let finalQty = qtySpecific;
       if (qtySpecific === 1 && piatto.qta_minima > 1) finalQty = parseFloat(piatto.qta_minima);
 
@@ -161,13 +159,13 @@ function Menu() {
           setTavoloStaff(t); 
       }
       
-      // Calcolo Totale Finale (Prodotti + Coperto)
+      // Calcolo Totale Finale (per il backend, ma nascosto all'utente)
       const totaleProdotti = carrello.reduce((a,b)=>a+(Number(b.prezzo) * (b.qty || 1)), 0);
       const costoCoperto = (style.prezzo_coperto || 0) * numCoperti;
       const totaleOrdine = totaleProdotti + costoCoperto;
 
-      let confirmMsg = `${t?.confirm || "CONFERMA E INVIA"}?\n\nTotale: ${totaleOrdine.toFixed(2)}€`;
-      if(costoCoperto > 0) confirmMsg += `\n(Inclusi ${costoCoperto.toFixed(2)}€ per ${numCoperti} coperti)`;
+      // Messaggio di conferma SENZA il totale
+      let confirmMsg = `${t?.confirm || "CONFERMA E INVIA"}?`;
 
       if(!confirm(confirmMsg)) return;
 
@@ -177,15 +175,15 @@ function Menu() {
 
       const prodottiNormalizzati = carrello.map(p => ({
           id: p.id, 
-          nome: p.qty > 1 ? `${p.nome} (x${p.qty}${p.unita_misura})` : p.nome, // Hack per visualizzare qta nello scontrino
-          prezzo: Number(p.prezzo) * (p.qty || 1), // Prezzo totale riga
+          nome: p.qty > 1 ? `${p.nome} (x${p.qty}${p.unita_misura})` : p.nome,
+          prezzo: Number(p.prezzo) * (p.qty || 1),
           course: !p.categoria_is_bar ? (mapNuoviCorsi[p.course] || 1) : p.course,
           is_bar: p.categoria_is_bar, 
           is_pizzeria: p.categoria_is_pizzeria,
           stato: 'in_attesa', 
           varianti_scelte: p.varianti_scelte,
           unita_misura: p.unita_misura,
-          qty_originale: p.qty // Salviamo anche il dato grezzo
+          qty_originale: p.qty 
       }));
 
       const payload = {
@@ -196,7 +194,7 @@ function Menu() {
           cameriere: isStaff ? user.nome : null,
           prodotti: prodottiNormalizzati, 
           totale: totaleOrdine,
-          coperti: numCoperti // INVIO COPERTI
+          coperti: numCoperti 
       };
 
       try {
@@ -302,7 +300,6 @@ function Menu() {
                       const nomeProdotto = getContent(prodotto, 'nome', lang);
                       const descProdotto = getContent(prodotto, 'descrizione', lang);
                       
-                      // LOGICA PREZZO CON UNITÀ E TOGGLE €
                       const simboloEuro = style.nascondi_euro ? '' : '€';
                       const unitaMisura = prodotto.unita_misura ? ` ${prodotto.unita_misura}` : '';
 
@@ -413,7 +410,7 @@ function Menu() {
                                 </div>
                                 <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
                                     <button 
-                                        onClick={() => setQtyModal(q => Math.max(minimo, q - 1))} // STEP 1 per semplicità
+                                        onClick={() => setQtyModal(q => Math.max(minimo, q - 1))} 
                                         style={{width:30, height:30, borderRadius:'50%', border:'none', background:'white', color:'#0277bd', fontSize:'18px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.1)'}}
                                         disabled={qtyModal <= minimo}
                                     >-</button>
@@ -471,12 +468,12 @@ function Menu() {
               <div style={{flex:1, overflowY:'auto', maxWidth:'600px', margin:'0 auto', width:'100%'}}>
                   {carrello.length === 0 && <p className="notranslate" style={{color: style?.text || '#fff', textAlign:'center'}}>{t?.empty_cart || "Il carrello è vuoto"}</p>}
                   
-                  {/* SELETTORE COPERTI */}
+                  {/* SELETTORE COPERTI MODIFICATO: LABEL CAMBIATA E INFO PREZZO NASCOSTO */}
                   {style.prezzo_coperto > 0 && carrello.length > 0 && (
                       <div style={{background: 'rgba(255,255,255,0.1)', padding:'15px', borderRadius:'10px', marginBottom:'20px', display:'flex', alignItems:'center', justifyContent:'space-between'}}>
                           <div>
-                            <div style={{fontWeight:'bold', fontSize:'16px'}}>👥 Numero Persone</div>
-                            <div style={{fontSize:'12px', opacity:0.8}}>Coperto: {Number(style.prezzo_coperto).toFixed(2)}€ a persona</div>
+                            <div style={{fontWeight:'bold', fontSize:'16px'}}>👥 Numero persone al tavolo</div>
+                            {/* RIMOSSA RIGA CON IL PREZZO DEL COPERTO */}
                           </div>
                           <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
                                 <button onClick={() => setNumCoperti(n => Math.max(1, n - 1))} style={{width:30, height:30, borderRadius:'50%', border:'none', fontSize:'18px', cursor:'pointer', fontWeight:'bold'}}>-</button>
@@ -538,12 +535,10 @@ function Menu() {
                       </div>
                   )}
 
-                  {/* TOTALE FINALE */}
+                  {/* TOTALE FINALE RIMOSSO (MANTENUTI SOLO I PULSANTI) */}
                   <div className="notranslate" style={{marginTop:'20px', borderTop:`1px solid ${style?.text||'#ccc'}`, paddingTop:'20px'}}>
-                      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:'1.2rem', fontWeight:'bold', marginBottom:'15px'}}>
-                          <span>TOTALE (con Coperto):</span>
-                          <span>{(carrello.reduce((a,b)=>a+(Number(b.prezzo)*(b.qty||1)), 0) + ((style.prezzo_coperto||0)*numCoperti)).toFixed(2)} €</span>
-                      </div>
+                      
+                      {/* RIMOSSO DIV DEL TOTALE */}
 
                       {carrello.length > 0 && (canOrder || isStaffQui) && ( 
                           <button onClick={inviaOrdine} style={{ width:'100%', padding:'15px', fontSize:'18px', background: '#159709ff', color:'white', border:`1px solid ${style?.text||'#ccc'}`, borderRadius:'30px', fontWeight:'bold', cursor:'pointer' }}>
