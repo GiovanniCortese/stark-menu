@@ -1,5 +1,5 @@
-// client/src/components/haccp/MerciManager.jsx - TABELLA ESPANSA
-import React, { useState, useRef } from 'react';
+// client/src/components/haccp/MerciManager.jsx - UPDATE CON PREZZI E IVA
+import React, { useState, useEffect, useRef } from 'react';
 
 const MerciManager = ({ 
     merci, merciForm, setMerciForm, salvaMerci, handleMerciPhoto, 
@@ -12,6 +12,22 @@ const MerciManager = ({
     const [isScanning, setIsScanning] = useState(false);
     const [scannedData, setScannedData] = useState(null); 
     const scanInputRef = useRef(null);
+
+    // --- CALCOLO AUTOMATICO PREZZI ---
+    // Ascolta i cambiamenti di Quantità o Prezzo Unitario e calcola il Totale
+    useEffect(() => {
+        const qta = parseFloat(merciForm.quantita);
+        const unit = parseFloat(merciForm.prezzo_unitario);
+        
+        // Se entrambi sono numeri validi, calcola il totale
+        if (!isNaN(qta) && !isNaN(unit)) {
+            const tot = (qta * unit).toFixed(2);
+            // Aggiorna solo se diverso per evitare loop infiniti
+            if (merciForm.prezzo !== tot) {
+                setMerciForm(prev => ({ ...prev, prezzo: tot }));
+            }
+        }
+    }, [merciForm.quantita, merciForm.prezzo_unitario]);
 
     // Funzione di compressione Immagini
     const resizeImage = (file, maxWidth = 1000, quality = 0.7) => {
@@ -59,7 +75,9 @@ const MerciManager = ({
             fornitore: scannedData.fornitore || prev.fornitore,
             data_ricezione: scannedData.data_ricezione || prev.data_ricezione,
             prodotto: prod.nome, quantita: prod.quantita || '', lotto: prod.lotto || '', scadenza: prod.scadenza || '',
-            note: notaCostruita, allegato_url: scannedData.allegato_url || prev.allegato_url
+            note: notaCostruita, allegato_url: scannedData.allegato_url || prev.allegato_url,
+            // Importa il prezzo totale se presente, o lascia vuoto unitario
+            prezzo: prod.prezzo || ''
         }));
         setScannedData(prev => ({ ...prev, prodotti: prev.prodotti.filter(p => p !== prod) }));
     };
@@ -109,21 +127,33 @@ const MerciManager = ({
             <div style={{background:'white', padding:20, borderRadius:10, marginBottom:20, borderLeft: '5px solid #27ae60'}}>
                 <div style={{display:'flex', justifyContent:'space-between'}}><h3>{merciForm.id ? '✏️ Modifica' : '📥 Nuovo Arrivo'}</h3>{merciForm.id && <button onClick={resetMerciForm}>Annulla</button>}</div>
                 <form onSubmit={salvaMerci} style={{display:'flex', flexWrap:'wrap', gap:10, alignItems:'flex-end'}}>
+                    
+                    {/* Prima Riga: Info Base */}
                     <div style={{flex:1, minWidth:120}}><label style={{fontSize:11}}>Data</label><input type="date" value={merciForm.data_ricezione} onChange={e=>setMerciForm({...merciForm, data_ricezione:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required /></div>
                     <div style={{flex:2, minWidth:150}}><label style={{fontSize:11}}>Fornitore</label><input value={merciForm.fornitore} onChange={e=>setMerciForm({...merciForm, fornitore:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required /></div>
                     <div style={{flex:2, minWidth:150}}><label style={{fontSize:11}}>Prodotto</label><input value={merciForm.prodotto} onChange={e=>setMerciForm({...merciForm, prodotto:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required /></div>
-                    <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Quantità</label><input value={merciForm.quantita} onChange={e=>setMerciForm({...merciForm, quantita:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
+                    
+                    {/* Seconda Riga: Prezzi e Quantità */}
+                    <div style={{flex:1, minWidth:80}}><label style={{fontSize:11}}>Quantità</label><input type="number" step="0.01" value={merciForm.quantita} onChange={e=>setMerciForm({...merciForm, quantita:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
+                    <div style={{flex:1, minWidth:80}}><label style={{fontSize:11}}>P. Unitario</label><input type="number" step="0.01" placeholder="€ Unit" value={merciForm.prezzo_unitario || ''} onChange={e=>setMerciForm({...merciForm, prezzo_unitario:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
+                    <div style={{flex:1, minWidth:50}}><label style={{fontSize:11}}>IVA %</label><input type="text" placeholder="22" value={merciForm.iva || ''} onChange={e=>setMerciForm({...merciForm, iva:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
+                    <div style={{flex:1, minWidth:80}}><label style={{fontSize:11}}>TOTALE €</label><input type="number" step="0.01" placeholder="Totale" value={merciForm.prezzo} onChange={e=>setMerciForm({...merciForm, prezzo:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd', background:'#f0f0f0', fontWeight:'bold'}} /></div>
+
+                    {/* Terza Riga: Dettagli Tecnici */}
                     <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Lotto</label><input value={merciForm.lotto} onChange={e=>setMerciForm({...merciForm, lotto:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
                     <div style={{flex:1, minWidth:120}}><label style={{fontSize:11}}>Scadenza</label><input type="date" value={merciForm.scadenza} onChange={e=>setMerciForm({...merciForm, scadenza:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
                     <div style={{flex:1, minWidth:80}}><label style={{fontSize:11}}>Temp °C</label><input type="number" step="0.1" value={merciForm.temperatura} onChange={e=>setMerciForm({...merciForm, temperatura:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
+                    
                     <div style={{flex:1, minWidth:150}}><label style={{fontSize:11}}>Destinazione</label>
                       <select value={merciForm.destinazione} onChange={e=>setMerciForm({...merciForm, destinazione:e.target.value})} style={{width:'100%', padding:9, border:'1px solid #ddd'}}>
                           <option value="">-- Seleziona --</option>
                           {assets.map(a => <option key={a.id} value={a.nome}>{a.nome}</option>)}
                       </select>
                     </div>
+                    
                     <div style={{flex:2, minWidth:200}}><label style={{fontSize:11}}>Note (DDT)</label><input value={merciForm.note} onChange={e=>setMerciForm({...merciForm, note:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
                     <label style={{background: merciForm.allegato_url ? '#2ecc71' : '#ecf0f1', padding:'10px', borderRadius:5, cursor:'pointer', fontSize:12}}>{uploadingMerci ? "..." : "📎 Allegato"}<input type="file" accept="image/*,.pdf" onChange={handleMerciPhoto} style={{display:'none'}} /></label>
+                    
                     <div style={{display:'flex', flexDirection:'column'}}><label style={{fontSize:11}}><input type="checkbox" checked={merciForm.conforme} onChange={e=>setMerciForm({...merciForm, conforme:e.target.checked})} /> Conforme</label><label style={{fontSize:11}}><input type="checkbox" checked={merciForm.integro} onChange={e=>setMerciForm({...merciForm, integro:e.target.checked})} /> Integro</label></div>
                     <button type="submit" style={{background:'#27ae60', color:'white', border:'none', padding:'10px 20px', borderRadius:5, fontWeight:'bold'}}>SALVA</button>
                 </form>
@@ -140,6 +170,9 @@ const MerciManager = ({
                                 <th style={{padding:8}}>Fornitore</th>
                                 <th style={{padding:8}}>Prodotto</th>
                                 <th style={{padding:8}}>Qta</th>
+                                <th style={{padding:8}}>Unit.</th>
+                                <th style={{padding:8}}>IVA</th>
+                                <th style={{padding:8}}>Totale</th>
                                 <th style={{padding:8}}>Lotto</th>
                                 <th style={{padding:8}}>Scadenza</th>
                                 <th style={{padding:8}}>Temp</th>
@@ -155,6 +188,9 @@ const MerciManager = ({
                                     <td style={{padding:8}}>{m.fornitore}</td>
                                     <td style={{padding:8}}><strong>{m.prodotto}</strong></td>
                                     <td style={{padding:8}}>{m.quantita}</td>
+                                    <td style={{padding:8}}>€ {m.prezzo_unitario || '-'}</td>
+                                    <td style={{padding:8}}>{m.iva ? m.iva + '%' : '-'}</td>
+                                    <td style={{padding:8, fontWeight:'bold', color:'#27ae60'}}>€ {Number(m.prezzo).toFixed(2)}</td>
                                     <td style={{padding:8}}>{m.lotto || '-'}</td>
                                     <td style={{padding:8}}>{m.scadenza ? new Date(m.scadenza).toLocaleDateString() : '-'}</td>
                                     <td style={{padding:8}}>{m.temperatura ? m.temperatura+'°' : '-'}</td>
