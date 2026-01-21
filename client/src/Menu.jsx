@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - FINAL ROBUST VERSION (Anti-Crash & Safe Logic)
+// client/src/Menu.jsx - FIX CRASH ALLERGENI & FOTO
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'; 
 import { dictionary, getContent } from './translations';
@@ -76,21 +76,27 @@ function Menu() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [authData, setAuthData] = useState({ nome:'', email:'', password:'', telefono:'', indirizzo:'' });
 
-  // --- FUNZIONE DI SICUREZZA PER LEGGERE LE VARIANTI (ANTI-CRASH) ---
+  // --- FUNZIONI DI SICUREZZA (ANTI-CRASH) ---
   const getSafeVariants = (prodotto) => {
       if (!prodotto) return { base: [], aggiunte: [] };
       try {
-          // Gestisce sia stringhe JSON che oggetti già parsati
           const v = typeof prodotto.varianti === 'string' ? JSON.parse(prodotto.varianti || '{}') : (prodotto.varianti || {});
-          
           return {
               base: Array.isArray(v.base) ? v.base : [],
               aggiunte: Array.isArray(v.aggiunte) ? v.aggiunte : []
           };
       } catch (e) {
-          // Se il JSON è rotto, ritorna array vuoti invece di crashare
           return { base: [], aggiunte: [] };
       }
+  };
+
+  const getSafeAllergeni = (prodotto) => {
+      if (!prodotto || !prodotto.allergeni) return [];
+      try {
+          if (Array.isArray(prodotto.allergeni)) return prodotto.allergeni;
+          if (typeof prodotto.allergeni === 'string') return JSON.parse(prodotto.allergeni);
+          return [];
+      } catch (e) { return []; }
   };
 
   useEffect(() => {
@@ -125,6 +131,7 @@ function Menu() {
   }, [currentSlug]);
 
   const apriModale = (piatto) => { 
+      if(!piatto) return;
       setSelectedPiatto(piatto); 
       setTempVarianti({ rimozioni: [], aggiunte: [] });
       setQtyModal(piatto.qta_minima ? parseFloat(piatto.qta_minima) : 1);
@@ -232,7 +239,6 @@ function Menu() {
       } else { 
           setActiveCategory(catNome); 
           setActiveSubCategory(null);
-          // Scrolla all'elemento dopo breve ritardo per render
           setTimeout(() => {
               const elem = document.getElementById(`cat-${catNome}`);
               if(elem) elem.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -254,7 +260,6 @@ function Menu() {
       <div style={{ width: '100%', minHeight: '260px', backgroundImage: style.cover ? `url(${style.cover})` : 'none', backgroundColor: '#333', backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', padding: '30px 20px', overflow: 'hidden' }}>
           <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0.1))', zIndex: 1 }}></div>
           
-          {/* USER BADGE */}
           <div className="notranslate" style={{position:'absolute', top:'20px', right:'20px', zIndex: 100}}>
             {user ? ( 
                 <div onClick={() => navigate('/dashboard')} style={{ background: 'rgba(255,255,255,0.9)', padding:'6px 12px', borderRadius:'20px', cursor:'pointer', display:'flex', alignItems:'center', gap:5, boxShadow:'0 2px 5px rgba(0,0,0,0.3)', fontSize:'12px', fontWeight:'bold', color:'#333' }}>
@@ -267,7 +272,6 @@ function Menu() {
             )}
           </div>
 
-          {/* LOGO & TITLE */}
           <div style={{position:'relative', zIndex: 2, display:'flex', flexDirection:'column', alignItems:'center', gap:'15px', width:'100%', marginTop: '50px'}}>
               {style.logo ? ( <div style={{ width: '110px', height: '110px', background: 'white', padding: '5px', borderRadius: '50%', boxShadow: '0 5px 20px rgba(0,0,0,0.5)', display: 'flex', alignItems:'center', justifyContent:'center', overflow: 'hidden' }}><img src={style.logo} style={{ width:'100%', height:'100%', objectFit:'contain' }} /></div> ) : ( <div style={{fontSize:'40px', background:'white', padding:10, borderRadius:'50%'}}>🍽️</div> )}
               {!style.logo && ( <h1 style={{ margin: 0, color: '#fff', fontSize:'26px', fontWeight:'800', textShadow: '0 2px 4px rgba(0,0,0,0.8)', textAlign: 'center', lineHeight: '1.2' }}>{ristorante}</h1> )}
@@ -323,11 +327,12 @@ function Menu() {
                      <div className="menu-list" style={{ padding: '0', width: '100%' }}>
                         {sottoCats[scKey].map((prodotto) => {
                           
-                          // --- USE SAFE VARIANTS (ANTI CRASH) ---
+                          // --- ANTI CRASH: DATI SICURI ---
                           const vSafe = getSafeVariants(prodotto);
+                          const allergeniSafe = getSafeAllergeni(prodotto); // <--- ECCO IL FIX CRUCIALE
+                          
                           const baseList = vSafe.base;
                           const aggiunteList = vSafe.aggiunte;
-                          
                           const ingStr = baseList.join(', '); 
                           
                           const hasBase = baseList.length > 0;
@@ -348,7 +353,7 @@ function Menu() {
                                  <img 
                                     src={prodotto.immagine_url} 
                                     onClick={() => apriModale(prodotto)}
-                                    style={{ width: '70px', height: '70px', objectFit: 'cover', borderRadius: '5px', flexShrink: 0, cursor: 'pointer' }} 
+                                    style={{ width: '70px', height: '70px', objectFit: 'cover', borderRadius: '5px', flexShrink: 0, cursor: 'pointer', border:'1px solid #ddd' }} 
                                  />
                               )}
                               
@@ -356,35 +361,24 @@ function Menu() {
                                 <h3 style={{ margin: '0 0 2px 0', fontSize: '16px', color: style.text || '#222', lineHeight: '1.2' }}>{nomeProdotto}</h3>
                                 {descProdotto && (<p style={{ fontSize: '12px', color: '#666', margin: '0 0 2px 0', lineHeight: '1.1' }}>{descProdotto}</p>)}
                                 {ingStr && (<p style={{ fontSize: '11px', color: '#555', fontStyle: 'italic', margin: '0 0 2px 0', lineHeight: '1.1' }}><span className="notranslate" style={{ fontWeight: 'bold' }}>{t?.ingredients || "Ingredienti"}:</span> {ingStr}</p>)}
-                                {prodotto.allergeni && prodotto.allergeni.length > 0 && (
+                                
+                                {allergeniSafe.length > 0 && (
                                   <div style={{ marginTop: '2px', display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                                    {prodotto.allergeni.filter(a => !a.includes("❄️")).length > 0 && ( <div className="notranslate" style={{ fontSize: '10px', color: '#e74c3c', fontWeight: 'bold', textTransform: 'uppercase' }}>⚠️ {t?.allergens || "Allergeni"}: {prodotto.allergeni.filter(a => !a.includes("❄️")).join(', ')}</div> )}
-                                    {prodotto.allergeni.some(a => a.includes("❄️")) && ( <div className="notranslate" style={{ fontSize: '10px', color: '#3498db', fontWeight: 'bold', textTransform: 'uppercase' }}>❄️ {t?.frozen || "Surgelato"}</div> )}
+                                    {allergeniSafe.filter(a => !a.includes("❄️") && !a.includes("Surgelato")).length > 0 && ( <div className="notranslate" style={{ fontSize: '10px', color: '#e74c3c', fontWeight: 'bold', textTransform: 'uppercase' }}>⚠️ {t?.allergens || "Allergeni"}: {allergeniSafe.filter(a => !a.includes("❄️") && !a.includes("Surgelato")).join(', ')}</div> )}
+                                    {allergeniSafe.some(a => a.includes("❄️") || a.includes("Surgelato")) && ( <div className="notranslate" style={{ fontSize: '10px', color: '#3498db', fontWeight: 'bold', textTransform: 'uppercase' }}>❄️ {t?.frozen || "Surgelato"}</div> )}
                                   </div>
                                 )}
+
                                 <div className="notranslate" style={{ fontSize: '14px', fontWeight: 'bold', color: priceColor, marginTop: '2px' }}>
                                     {Number(prodotto.prezzo).toFixed(2)} {simboloEuro}{unitaMisura}
                                 </div>
                               </div>
                               
                               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                {/* TASTO MODIFICA (Matita) - Solo se modificabile */}
-                                {hasVarianti && (
-                                    <button className="notranslate" 
-                                        onClick={(e) => { 
-                                            e.stopPropagation(); 
-                                            apriModale(prodotto); 
-                                        }}
-                                        style={{ background: '#f39c12', color: 'white', borderRadius: '50%', width: '30px', height: '30px', border: 'none', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                                        ✏️
-                                    </button>
-                                )}
-
-                                {/* TASTO AGGIUNGI (+) */}
                                 <button className="notranslate" 
                                     onClick={(e) => { 
                                         e.stopPropagation(); 
-                                        if(hasUnit) {
+                                        if(hasUnit || hasVarianti) {
                                             apriModale(prodotto);
                                         } else {
                                             aggiungiAlCarrello(prodotto);
@@ -452,14 +446,13 @@ function Menu() {
       {selectedPiatto && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.9)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding:'10px' }} onClick={() => setSelectedPiatto(null)}>
             {(() => {
-                // --- USE SAFE VARIANTS (ANTI CRASH IN MODAL) ---
                 const vSafe = getSafeVariants(selectedPiatto);
+                const allergeniSafe = getSafeAllergeni(selectedPiatto);
+                
                 const baseList = vSafe.base;
                 const addList = vSafe.aggiunte.length > 0 ? vSafe.aggiunte : (selectedPiatto.categoria_varianti || []);
 
                 const extraPrezzo = (tempVarianti?.aggiunte || []).reduce((acc, item) => acc + item.prezzo, 0);
-                
-                // CALCOLO PREZZO CON QUANTITÀ
                 const prezzoBaseUnitario = Number(selectedPiatto.prezzo);
                 const prezzoTotalePiatto = (prezzoBaseUnitario * qtyModal) + extraPrezzo;
 
@@ -474,7 +467,6 @@ function Menu() {
                         <h2 style={{margin:'0 0 5px 0', fontSize:'1.8rem', color: '#000', fontWeight:'800'}}>{nomePiattoModal}</h2>
                         <p style={{color:'#666', fontSize:'1rem', lineHeight:'1.4'}}>{descPiattoModal}</p>
                         
-                        {/* SELETTORE QUANTITA' SE UNITA MISURA PRESENTE */}
                         {selectedPiatto.unita_misura && (
                             <div style={{marginTop:'15px', padding:'10px', background:'#e1f5fe', borderRadius:'8px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                                 <div>
@@ -496,7 +488,8 @@ function Menu() {
                             </div>
                         )}
 
-                        {selectedPiatto.allergeni && selectedPiatto.allergeni.length > 0 && ( <div className="notranslate" style={{ marginTop: '15px', padding: '10px', background: 'rgba(0,0,0,0.03)', borderRadius: '8px' }}> {selectedPiatto.allergeni.filter(a => !a.includes("❄️")).length > 0 && ( <div style={{ fontSize: '11px', color: '#e74c3c', fontWeight: '900', textTransform: 'uppercase', marginBottom: '4px' }}>⚠️ {t?.allergens || "Allergeni"}: {selectedPiatto.allergeni.filter(a => !a.includes("❄️")).join(', ')}</div> )} {selectedPiatto.allergeni.some(a => a.includes("❄️")) && ( <div style={{ fontSize: '11px', color: '#3498db', fontWeight: '900', textTransform: 'uppercase' }}>❄️ {t?.frozen || "Surgelato"}</div> )} </div> )}
+                        {allergeniSafe.length > 0 && ( <div className="notranslate" style={{ marginTop: '15px', padding: '10px', background: 'rgba(0,0,0,0.03)', borderRadius: '8px' }}> {allergeniSafe.filter(a => !a.includes("❄️")).length > 0 && ( <div style={{ fontSize: '11px', color: '#e74c3c', fontWeight: '900', textTransform: 'uppercase', marginBottom: '4px' }}>⚠️ {t?.allergens || "Allergeni"}: {allergeniSafe.filter(a => !a.includes("❄️")).join(', ')}</div> )} {allergeniSafe.some(a => a.includes("❄️")) && ( <div style={{ fontSize: '11px', color: '#3498db', fontWeight: '900', textTransform: 'uppercase' }}>❄️ {t?.frozen || "Surgelato"}</div> )} </div> )}
+                        
                         <div style={{marginTop:'20px', borderTop:'1px solid #eee', paddingTop:'15px'}}>
                             {baseList.length > 0 && ( <div style={{marginBottom:'20px'}}><h4 className="notranslate" style={{margin:'0 0 10px 0', color:'#333'}}>{t?.ingredients || "Ingredienti"} (Togli)</h4><div style={{display:'flex', flexWrap:'wrap', gap:'10px'}}>{baseList.map(ing => { const isRemoved = tempVarianti.rimozioni.includes(ing); return ( <div key={ing} onClick={() => { const newRimozioni = isRemoved ? tempVarianti.rimozioni.filter(i => i !== ing) : [...tempVarianti.rimozioni, ing]; setTempVarianti({...tempVarianti, rimozioni: newRimozioni}); }} style={{ padding:'8px 12px', borderRadius:'20px', fontSize:'0.9rem', cursor:'pointer', background: isRemoved ? '#ffebee' : '#e8f5e9', color: isRemoved ? '#c62828' : '#2e7d32', border: isRemoved ? '1px solid #ef9a9a' : '1px solid #a5d6a7', textDecoration: isRemoved ? 'line-through' : 'none' }}>{isRemoved ? `No ${ing}` : ing}</div> ) })}</div></div> )}
                             {addList.length > 0 && ( <div><h4 className="notranslate" style={{margin:'0 0 10px 0', color:'#333'}}>Extra 😋</h4>{addList.map((extra, idx) => { const isAdded = tempVarianti.aggiunte.some(a => a.nome === extra.nome); return ( <div key={idx} onClick={() => { const newAggiunte = isAdded ? tempVarianti.aggiunte.filter(a => a.nome !== extra.nome) : [...tempVarianti.aggiunte, extra]; setTempVarianti({...tempVarianti, aggiunte: newAggiunte}); }} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px', marginBottom:'8px', borderRadius:'8px', cursor:'pointer', background: isAdded ? '#e3f2fd' : '#f9f9f9', border: isAdded ? '1px solid #2196f3' : '1px solid #eee' }}><span style={{fontWeight: isAdded ? 'bold' : 'normal'}}>{isAdded ? '✅' : '⬜'} {extra.nome}</span><span className="notranslate" style={{fontWeight:'bold'}}>+{extra.prezzo.toFixed(2)}€</span></div> ) })}</div> )}
@@ -564,6 +557,8 @@ function Menu() {
                               <h3 className="notranslate" style={{ margin:'0 0 10px 0', color: coloriPortata[index] || '#ccc', borderBottom:`2px solid ${coloriPortata[index] || '#ccc'}`, display:'inline-block', paddingRight:20 }}>{nomePortata[courseNum] || `PORTATA ${courseNum}`}</h3>
                               {itemsCucina.filter(i => i.course === courseNum).map(item => {
                                   const v = typeof item.varianti === 'string' ? JSON.parse(item.varianti || '{}') : (item.varianti || {});
+                                  const allergeniItem = getSafeAllergeni(item);
+
                                   const qtaLabel = item.qty > 1 ? `x ${item.qty} ${item.unita_misura || ''}` : '';
                                   const totaleRiga = Number(item.prezzo) * (item.qty || 1);
 
@@ -575,7 +570,14 @@ function Menu() {
                                             </div>
                                             {item.descrizione && ( <div style={{fontSize:'12px', color:'#ccc', fontStyle:'italic', marginTop:'4px', lineHeight:'1.2'}}>{item.descrizione}</div> )}
                                             {v.base && v.base.length > 0 && ( <div style={{fontSize:'11px', color:'#999', marginTop:'4px'}}><span className="notranslate">🧂 {t?.ingredients || "Ingredienti"}:</span> {v.base.join(', ')}</div> )}
-                                            {item.allergeni && item.allergeni.length > 0 && ( <div className="notranslate" style={{ marginTop: '6px' }}>{item.allergeni.filter(a => !a.includes("❄️")).length > 0 && (<div style={{ fontSize: '10px', color: '#ff7675', fontWeight: 'bold', textTransform: 'uppercase' }}>⚠️ {t?.allergens || "Allergeni"}: {item.allergeni.filter(a => !a.includes("❄️")).join(', ')}</div>)}{item.allergeni.some(a => a.includes("❄️")) && (<div style={{ fontSize: '10px', color: '#74b9ff', fontWeight: 'bold', marginTop: '2px', textTransform: 'uppercase' }}>❄️ {t?.frozen || "Surgelato"}</div>)}</div>)}
+                                            
+                                            {allergeniItem.length > 0 && ( 
+                                                <div className="notranslate" style={{ marginTop: '6px' }}>
+                                                    {allergeniItem.filter(a => !a.includes("❄️")).length > 0 && (<div style={{ fontSize: '10px', color: '#ff7675', fontWeight: 'bold', textTransform: 'uppercase' }}>⚠️ {t?.allergens || "Allergeni"}: {allergeniItem.filter(a => !a.includes("❄️")).join(', ')}</div>)}
+                                                    {allergeniItem.some(a => a.includes("❄️")) && (<div style={{ fontSize: '10px', color: '#74b9ff', fontWeight: 'bold', marginTop: '2px', textTransform: 'uppercase' }}>❄️ {t?.frozen || "Surgelato"}</div>)}
+                                                </div>
+                                            )}
+
                                             {item.varianti_scelte && ( <div style={{marginTop:'8px', display:'flex', flexWrap:'wrap', gap:'5px'}}>{item.varianti_scelte.rimozioni?.map((ing, i) => ( <span key={i} style={{background:'#c0392b', color:'white', fontSize:'10px', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold'}}>NO {ing}</span> ))}{item.varianti_scelte.aggiunte?.map((ing, i) => ( <span key={i} style={{background:'#27ae60', color:'white', fontSize:'10px', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold'}}>+ {ing.nome}</span> ))}</div> )}
                                             <div className="notranslate" style={{color: priceColor, fontSize:'0.9rem', marginTop: '8px', fontWeight: 'bold'}}>{totaleRiga.toFixed(2)} €</div>
                                         </div>
