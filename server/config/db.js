@@ -6,9 +6,14 @@ if (!process.env.DATABASE_URL) {
     process.exit(1);
 }
 
+// Determina se serve l'SSL.
+// Su Render, la connessione interna (host finisce per .internal) NON vuole SSL.
+// La connessione esterna (o Neon) LO vuole.
+const isRenderInternal = process.env.DATABASE_URL.includes('render.internal');
+
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
+    ssl: isRenderInternal ? false : { rejectUnauthorized: false }
 });
 
 module.exports = pool;
