@@ -1,5 +1,5 @@
 // client/src/components_admin/AdminMenu.jsx - FULL WIDTH RESPONSIVE
-import { useState, useRef } from 'react'; // <--- AGGIUNTO useRef
+import { useState, useRef } from 'react'; 
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import ProductRow from './ProductRow';
 
@@ -176,9 +176,33 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
         const res = await fetch(`${API_URL}/api/menu/scan-photo`, { method:'POST', body:fd });
         const data = await res.json();
         
-        if(data.success) {
+        if(data.success && data.data) {
+            // FIX SALVATAGGIO REALE NEL DB
+            const items = data.data;
             let count = 0;
-            for(const p of data.data) {
+
+            if(!confirm(`Trovati ${items.length} piatti. Confermi l'importazione?`)) {
+                setIsScanningMenu(false);
+                return;
+            }
+
+            // 1. Gestione Categorie
+            const categorieTrovate = [...new Set(items.map(i => i.categoria))];
+            
+            // Creiamo le categorie mancanti
+            for(const nomeCat of categorieTrovate) {
+                const esiste = categorie.some(c => c.nome.toLowerCase() === nomeCat.toLowerCase());
+                if(!esiste) {
+                    await fetch(`${API_URL}/api/categorie`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ nome: nomeCat, ristorante_id: user.id })
+                    });
+                }
+            }
+
+            // 2. Creazione Prodotti
+            for(const p of items) {
                 const payload = {
                     nome: p.nome,
                     prezzo: p.prezzo || 0,
@@ -187,7 +211,8 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                     ristorante_id: user.id,
                     varianti: JSON.stringify({ base: [], aggiunte: [] }),
                     allergeni: JSON.stringify([]),
-                    traduzioni: JSON.stringify({})
+                    traduzioni: JSON.stringify({}),
+                    qta_minima: 1
                 };
                 
                 await fetch(`${API_URL}/api/prodotti`, { 
@@ -197,10 +222,10 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                 });
                 count++;
             }
-            alert(`✅ Fatto! Ho aggiunto ${count} piatti dal menu cartaceo.`);
+            alert(`✅ Fatto! Ho aggiunto ${count} piatti dal menu.`);
             ricaricaDati();
         } else {
-            alert("Errore AI: " + data.error);
+            alert("Errore AI: " + (data.error || "Nessun dato trovato"));
         }
     } catch(err) { 
         alert("Errore durante l'analisi: " + err.message); 
@@ -313,9 +338,13 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                 >
                     {isScanningMenu ? '🤖 Analisi...' : '📸 SCAN MENU CARTACEO'}
                 </button>
-                <input type="file" ref={menuScanRef} onChange={handleMenuScan} accept="image/*" style={{display:'none'}} />
-                {/* ----------------------------- */}
-
+                <input 
+                    type="file" 
+                    ref={menuScanRef}
+                    accept="image/*,application/pdf"
+                    onChange={handleMenuScan} 
+                    style={{ display: 'none' }} 
+                />               
             </div>
         </div>
 

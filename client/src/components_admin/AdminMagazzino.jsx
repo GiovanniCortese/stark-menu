@@ -177,8 +177,13 @@ function AdminMagazzino({ user, API_URL }) {
                 <div style={{background:'white', padding:30, borderRadius:10, textAlign:'center'}}>
                     {!bollaData ? (
                         <div style={{border:'3px dashed #bdc3c7', padding:50, borderRadius:20, cursor:'pointer'}} onClick={() => fileInputRef.current.click()}>
-                            <input type="file" ref={fileInputRef} onChange={handleScan} accept="image/*" style={{display:'none'}} />
-                            <div style={{fontSize:50}}>📸</div>
+<input 
+    type="file" 
+    accept="image/*,application/pdf" // Accetta Immagini E PDF
+    // capture="environment"  <--- RIMOSSO: Ora il cellulare ti chiederà cosa usare
+    onChange={handleScan} 
+    style={{ display: 'none' }} 
+/>                            <div style={{fontSize:50}}>📸</div>
                             <h3>Clicca per scansionare una Fattura o Bolla</h3>
                             <p style={{color:'#7f8c8d'}}>L'AI estrarrà Fornitore, Prodotti e Prezzi automaticamente.</p>
                             {isScanning && <p style={{color:'#e67e22', fontWeight:'bold'}}>🤖 Analisi in corso...</p>}

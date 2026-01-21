@@ -149,8 +149,13 @@ const MerciManager = ({
                 >
                     {isScanning ? '🤖 Analisi in corso...' : '📸 SCANSIONA BOLLA'}
                 </button>
-                <input type="file" ref={scanInputRef} accept="image/*" capture="environment" onChange={handleScanBolla} style={{display:'none'}} />
-            </div>
+<input 
+    type="file" 
+    accept="image/*,application/pdf" // Accetta Immagini E PDF
+    // capture="environment"  <--- RIMOSSO: Ora il cellulare ti chiederà cosa usare
+    onChange={handleScan} 
+    style={{ display: 'none' }} 
+/>            </div>
 
             {/* --- LISTA RISULTATI SCAN (Se presenti) --- */}
             {scannedData && scannedData.prodotti.length > 0 && (
