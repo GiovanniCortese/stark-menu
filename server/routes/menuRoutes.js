@@ -71,59 +71,45 @@ router.put('/api/prodotti/:id', async (req, res) => {
 router.delete('/api/prodotti/:id', async (req, res) => { try { await pool.query('DELETE FROM prodotti WHERE id=$1', [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
 
 // SCANSIONE MENU CARTACEO CON AI
-router.post('/api/menu/scan-photo', async (req, res) => {
+router.post('/api/menu/scan-photo', uploadFile.single('photo'), async (req, res) => {
     try {
-        if (!req.files || !req.files.photo) return res.status(400).json({ error: "Nessuna foto inviata" });
-        
-        const file = req.files.photo;
-        const base64Image = file.data.toString('base64');
-        const dataUrl = `data:${file.mimetype};base64,${base64Image}`;
+        if (!req.file) return res.status(400).json({ error: "Nessuna foto inviata" });
+        if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: "Manca API Key OpenAI" });
 
-        console.log("🤖 Avvio analisi AI del menu (Modalità: Ingredienti)...");
+        const base64Image = req.file.buffer.toString('base64');
+        const dataUrl = `data:${req.file.mimetype};base64,${base64Image}`;
+        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
         const response = await openai.chat.completions.create({
             model: "gpt-4o",
             messages: [
                 {
                     role: "system",
-                    content: `Sei un esperto ristoratore. Analizza la foto del menu.
-                    Estrai i piatti seguendo QUESTE REGOLE RIGIDE:
-                    1. TITOLO: Il nome del piatto.
-                    2. PREZZO: Il prezzo (numero).
-                    3. CATEGORIA: La sezione del menu (es. Antipasti, Primi, Pizze).
-                    4. INGREDIENTI: Il testo che si trova SUBITO SOTTO il titolo. NON usarlo come descrizione, usalo come lista ingredienti.
-                    
-                    Restituisci SOLO un JSON valido (senza markdown) con questa struttura array:
+                    content: `Analizza la foto di questo menù cartaceo. 
+                    Estrai i piatti e restituisci SOLO un JSON valido (array di oggetti):
                     [
-                      { 
-                        "nome": "Nome Piatto", 
-                        "prezzo": 12.00, 
-                        "categoria": "Primi", 
-                        "ingredienti": "Pomodoro, Mozzarella, Basilico" 
-                      }
-                    ]`
+                        { "nome": Str, "categoria": Str (es. Antipasti, Primi, Pizze), "descrizione": Str (ingredienti trovati), "prezzo": Number }
+                    ]
+                    Cerca di dedurre la categoria dalla posizione nel foglio.`
                 },
                 {
                     role: "user",
                     content: [
-                        { type: "text", text: "Estrai i piatti da questa foto." },
+                        { type: "text", text: "Estrai il menu da questa foto." },
                         { type: "image_url", image_url: { url: dataUrl } }
                     ]
                 }
             ],
-            max_tokens: 4000
+            max_tokens: 1500
         });
 
-        const rawContent = response.choices[0].message.content;
-        const jsonStr = rawContent.replace(/```json|```/g, '').trim();
-        const piatti = JSON.parse(jsonStr);
+        let text = response.choices[0].message.content.replace(/```json/g, '').replace(/```/g, '').trim();
+        const data = JSON.parse(text);
+        res.json({ success: true, data });
 
-        console.log(`✅ AI: Trovati ${piatti.length} piatti.`);
-        res.json({ success: true, data: piatti });
-
-    } catch (error) {
-        console.error("Errore AI:", error);
-        res.status(500).json({ error: "Errore durante l'analisi AI: " + error.message });
+    } catch (e) {
+        console.error("Errore AI Menu:", e);
+        res.status(500).json({ error: "Errore AI: " + e.message });
     }
 });
 
