@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - FIX CRASH RIEPILOGO (Checkout Safe Allergeni)
+// client/src/Menu.jsx - FIX PREZZO RIEPILOGO & CALCOLO EXTRA
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'; 
 import { dictionary, getContent } from './translations';
@@ -248,7 +248,7 @@ function Menu() {
   };
   const toggleSubAccordion = (subName) => setActiveSubCategory(activeSubCategory === subName ? null : subName);
 
-  // --- PREPARAZIONE DATI MODALE ---
+  // --- PREPARAZIONE DATI MODALE & CALCOLO PREZZI ---
   let modalData = null;
   if (selectedPiatto) {
       const vSafe = getSafeVariants(selectedPiatto);
@@ -256,9 +256,14 @@ function Menu() {
       const baseList = vSafe.base;
       const addList = vSafe.aggiunte.length > 0 ? vSafe.aggiunte : (selectedPiatto.categoria_varianti || []);
       
-      const extraPrezzo = (tempVarianti?.aggiunte || []).reduce((acc, item) => acc + item.prezzo, 0);
+      // Calcolo extra unitario
+      const extraPrezzoUnitario = (tempVarianti?.aggiunte || []).reduce((acc, item) => acc + item.prezzo, 0);
+      
+      // Prezzo Base
       const prezzoBaseUnitario = Number(selectedPiatto.prezzo);
-      const prezzoTotalePiatto = (prezzoBaseUnitario * qtyModal) + extraPrezzo;
+      
+      // FIX CALCOLO TOTALE: (Base + Extra) * Quantità
+      const prezzoTotalePiatto = (prezzoBaseUnitario + extraPrezzoUnitario) * qtyModal;
       
       modalData = {
           nome: getContent(selectedPiatto, 'nome', lang),
@@ -268,7 +273,8 @@ function Menu() {
           baseList,
           addList,
           prezzoTotale: prezzoTotalePiatto,
-          prezzoBase: prezzoBaseUnitario
+          prezzoBase: prezzoBaseUnitario,
+          extraSingle: extraPrezzoUnitario // Salviamo il costo extra singolo per passarlo al carrello
       };
   }
 
@@ -611,7 +617,7 @@ function Menu() {
                     </div>
                 </div>
 
-                {/* 4. FOOTER FISSO */}
+                {/* 4. FOOTER FISSO (Prezzo Corretto) */}
                 <div style={{
                     padding:'15px 20px', 
                     background:'white', 
@@ -624,7 +630,11 @@ function Menu() {
                     zIndex: 20
                 }}>
                     <div className="notranslate" style={{fontSize:'1.5rem', fontWeight:'800', color: '#2c3e50'}}>{modalData.prezzoTotale.toFixed(2)}€</div>
-                    <button className="notranslate" onClick={() => { aggiungiAlCarrello({ ...selectedPiatto, nome: modalData.nome, prezzo: modalData.prezzoBase, varianti_scelte: tempVarianti }, qtyModal); }} style={{ background: priceColor, color: 'white', padding: '12px 30px', borderRadius: '30px', fontWeight: 'bold', border: 'none', cursor: 'pointer', fontSize: '1.1rem', boxShadow:'0 4px 10px rgba(0,0,0,0.2)' }}>
+                    <button className="notranslate" onClick={() => { 
+                        // FIX: Passiamo il prezzo unitario COMPRENSIVO degli extra
+                        const prezzoFinaleUnitario = modalData.prezzoBase + (modalData.extraSingle || 0);
+                        aggiungiAlCarrello({ ...selectedPiatto, nome: modalData.nome, prezzo: prezzoFinaleUnitario, varianti_scelte: tempVarianti }, qtyModal); 
+                    }} style={{ background: priceColor, color: 'white', padding: '12px 30px', borderRadius: '30px', fontWeight: 'bold', border: 'none', cursor: 'pointer', fontSize: '1.1rem', boxShadow:'0 4px 10px rgba(0,0,0,0.2)' }}>
                         {canOrder ? (t?.add || "AGGIUNGI") : "LISTA"}
                     </button>
                 </div>
@@ -632,8 +642,7 @@ function Menu() {
         </div>
       )}
 
-      {/* --- FLOATING CART BAR --- */}
-      {/* FIX: Nascondi se un piatto è selezionato (modale aperto) */}
+      {/* --- FLOATING CART BAR (Nascondi se modale aperto) --- */}
       {carrello.length > 0 && !showCheckout && !selectedPiatto && (
         <div className="carrello-bar notranslate" style={{
             background: style.carrello_bg || 'white', 
