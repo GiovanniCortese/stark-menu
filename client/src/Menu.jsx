@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - FIX SCHERMATA GRIGIA & LAYOUT STICKY
+// client/src/Menu.jsx - FIX OVERLAP CARRELLO/MODALE
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'; 
 import { dictionary, getContent } from './translations';
@@ -226,7 +226,7 @@ function Menu() {
   const cardBg = style.card_bg || 'white'; const cardBorder = style.card_border || '#eee';
   const btnBg = style.btn_bg || '#27ae60'; const btnText = style.btn_text || 'white';
   const tavoloBg = style.tavolo_bg || priceColor; const tavoloText = style.tavolo_text || 'white';
-  const modalBg = style.colore_modal_bg || cardBg || '#fff'; // Fallback per evitare trasparenza
+  const modalBg = style.colore_modal_bg || cardBg || '#fff';
   const modalText = style.colore_modal_text || '#000';
   const footerBtnStyle = { background: 'transparent', border: `1px solid ${style.colore_footer_text || '#888'}`, color: style.colore_footer_text || '#888', boxSizing: 'border-box', width: '100%', maxWidth: '280px', padding: '12px 15px', borderRadius:'30px', cursor:'pointer', fontSize:'13px', fontWeight:'bold', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', margin: '0 auto' };
   
@@ -248,9 +248,7 @@ function Menu() {
   };
   const toggleSubAccordion = (subName) => setActiveSubCategory(activeSubCategory === subName ? null : subName);
 
-  // --- PREPARAZIONE DATI MODALE (SAFE) ---
-  // Calcoliamo qui i dati del modale SE esiste un piatto selezionato
-  // Questo evita errori di rendering "schermo grigio"
+  // --- PREPARAZIONE DATI MODALE ---
   let modalData = null;
   if (selectedPiatto) {
       const vSafe = getSafeVariants(selectedPiatto);
@@ -496,7 +494,7 @@ function Menu() {
           </div>
       )}
 
-{/* --- MODALE PIATTO (LAYOUT: FOTO + INFO FISSE + SCROLL INGREDIENTI) --- */}
+      {/* --- MODALE PIATTO (LAYOUT: FOTO + INFO FISSE + SCROLL INGREDIENTI) --- */}
       {selectedPiatto && modalData && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.9)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding:'10px' }} onClick={() => setSelectedPiatto(null)}>
             <div style={{ 
@@ -540,15 +538,15 @@ function Menu() {
                 {/* 2. HEADER INFO (FISSO - NON SCORRE) */}
                 <div style={{
                     padding:'20px 20px 10px 20px', 
-                    flexShrink: 0, // IMPORTANTE: impedisce che si rimpicciolisca o scorra via
+                    flexShrink: 0, 
                     background: modalBg,
-                    borderBottom: '1px solid #f0f0f0', // Linea di separazione visiva
+                    borderBottom: '1px solid #f0f0f0', 
                     zIndex: 2
                 }}>
                     <h2 style={{margin:'0 0 5px 0', fontSize:'1.6rem', color: '#000', fontWeight:'800', lineHeight:'1.2'}}>{modalData.nome}</h2>
                     <p style={{color:'#666', fontSize:'0.95rem', lineHeight:'1.4', marginBottom:'10px'}}>{modalData.desc}</p>
                     
-                    {/* Selettore Quantità (Se presente) */}
+                    {/* Selettore Quantità */}
                     {selectedPiatto.unita_misura && (
                         <div style={{marginBottom:'10px', padding:'10px', background:'#e1f5fe', borderRadius:'8px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                             <div>
@@ -572,11 +570,11 @@ function Menu() {
                     )}
                 </div>
 
-                {/* 3. CORPO SCROLLABILE (SOLO Ingredienti ed Extra) */}
+                {/* 3. CORPO SCROLLABILE */}
                 <div style={{
                     padding:'10px 20px 20px 20px', 
-                    flex: 1, // Occupa tutto lo spazio rimanente verticale
-                    overflowY: 'auto', // ABILITA LO SCROLL SOLO QUI
+                    flex: 1, 
+                    overflowY: 'auto', 
                     overflowX: 'hidden'
                 }}>
                     <div style={{marginTop:'10px'}}>
@@ -613,7 +611,7 @@ function Menu() {
                     </div>
                 </div>
 
-                {/* 4. FOOTER FISSO (Prezzo + Bottone) */}
+                {/* 4. FOOTER FISSO */}
                 <div style={{
                     padding:'15px 20px', 
                     background:'white', 
@@ -634,7 +632,9 @@ function Menu() {
         </div>
       )}
 
-      {carrello.length > 0 && !showCheckout && (
+      {/* --- FLOATING CART BAR --- */}
+      {/* FIX: Nascondi se un piatto è selezionato (modale aperto) */}
+      {carrello.length > 0 && !showCheckout && !selectedPiatto && (
         <div className="carrello-bar notranslate" style={{
             background: style.carrello_bg || 'white', 
             color: style.carrello_text || '#000',
