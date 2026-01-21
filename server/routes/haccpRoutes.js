@@ -1,11 +1,12 @@
+// server/routes/haccpRoutes.js - FIXED PER PDF E DDT
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
 const { getItalyDateComponents } = require('../utils/time');
-const { uploadFile } = require('../config/storage'); // <--- QUESTA MANCAVA
+const { uploadFile, upload, cloudinary } = require('../config/storage'); 
 const PDFDocument = require('pdfkit-table');
 const xlsx = require('xlsx');
-const OpenAI = require('openai'); // Aggiungi questo import in alto
+const OpenAI = require('openai');
 
 // Assets
 router.get('/api/haccp/assets/:ristorante_id', async (req, res) => { try { const r = await pool.query("SELECT * FROM haccp_assets WHERE ristorante_id = $1 ORDER BY tipo, nome", [req.params.ristorante_id]); res.json(r.rows); } catch(e) { res.status(500).json({error:"Err"}); } });
@@ -73,34 +74,87 @@ router.get('/api/haccp/stats/magazzino/:ristorante_id', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ROTTA INTELLIGENTE: Scansione Bolla con AI
+// ROTTA INTELLIGENTE: Scansione Bolla con AI (Supporto PDF Safe)
 router.post('/api/haccp/scan-bolla', uploadFile.single('photo'), async (req, res) => {
     try {
-        if (!req.file) return res.status(400).json({ error: "Nessuna foto inviata" });
+        if (!req.file) return res.status(400).json({ error: "Nessun file inviato" });
+        
+        // 1. Carica SEMPRE il file su Cloudinary per avere l'URL (per l'allegato)
+        // Nota: uploadFile.single usa memoryStorage, quindi dobbiamo fare l'upload stream o buffer verso Cloudinary
+        // Per semplicità qui, assumiamo che tu voglia l'URL. 
+        // Se usi la tua funzione `uploadFile` che salva su disco/cloudinary, recuperiamo l'url.
+        // Se `req.file` è buffer, dobbiamo caricarlo. 
+        
+        let fileUrl = "";
+        const isPdf = req.file.mimetype === 'application/pdf';
+
+        // Caricamento su Cloudinary tramite stream (per ottenere URL pubblico subito)
+        const uploadToCloud = () => {
+            return new Promise((resolve, reject) => {
+                const stream = cloudinary.uploader.upload_stream(
+                    { resource_type: isPdf ? 'raw' : 'image', folder: 'haccp_docs' },
+                    (error, result) => {
+                        if (error) reject(error);
+                        else resolve(result.secure_url);
+                    }
+                );
+                stream.end(req.file.buffer);
+            });
+        };
+
+        try {
+            fileUrl = await uploadToCloud();
+        } catch (err) {
+            console.error("Errore upload Cloudinary:", err);
+            // Non blocchiamo tutto, procediamo ma senza URL allegato
+        }
+
+        // 2. Se è un PDF, NON mandarlo a GPT-4o Vision (che accetta solo immagini).
+        // Restituisci i dati vuoti ma con l'URL del file, così l'utente compila a mano ma ha l'allegato.
+        if (isPdf) {
+            return res.json({ 
+                success: true, 
+                isPdf: true,
+                message: "PDF caricato! L'AI legge solo immagini per ora, ma il file è allegato.",
+                data: {
+                    fornitore: "",
+                    data_ricezione: new Date().toISOString().split('T')[0],
+                    numero_documento: "", // Campo vuoto per DDT
+                    prodotti: [],
+                    allegato_url: fileUrl // ECCOLO
+                }
+            });
+        }
+
+        // 3. Se è Immagine, procedi con AI
         if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: "Manca API Key OpenAI" });
 
-        // 1. Converti immagine in Base64
         const base64Image = req.file.buffer.toString('base64');
         const dataUrl = `data:${req.file.mimetype};base64,${base64Image}`;
 
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-        // 2. Chiedi a GPT-4o di analizzare
         const response = await openai.chat.completions.create({
             model: "gpt-4o",
             messages: [
                 {
                     role: "system",
-                    content: `Sei un esperto contabile e HACCP. Analizza l'immagine di questa bolla/fattura.
-Estrai i dati e restituisci SOLO un oggetto JSON valido con questa struttura:
-{
-    "fornitore": Str,
-    "data_ricezione": "YYYY-MM-DD", 
-    "prodotti": [
-        { "nome": Str, "quantita": Str, "prezzo": Number (totale riga o unitario, stima tu), "lotto": Str (o null), "scadenza": "YYYY-MM-DD" (o null) }
-    ]
-}.
-Se i prodotti sono tanti, elencali tutti.`
+                    content: `Sei un esperto contabile HACCP. Analizza l'immagine della bolla/fattura.
+                    Estrai:
+                    1. Fornitore
+                    2. Data Documento (formato YYYY-MM-DD)
+                    3. Numero Documento (DDT o Fattura n.)
+                    4. Prodotti (Nome, Quantità, Prezzo unitario o totale riga, Scadenza se presente o null).
+                    
+                    Restituisci SOLO un JSON valido:
+                    {
+                        "fornitore": "Nome Fornitore",
+                        "data_ricezione": "YYYY-MM-DD", 
+                        "numero_documento": "123/A",
+                        "prodotti": [
+                            { "nome": "Farina 00", "quantita": "10 kg", "prezzo": 12.50, "scadenza": null }
+                        ]
+                    }`
                 },
                 {
                     role: "user",
@@ -110,26 +164,20 @@ Se i prodotti sono tanti, elencali tutti.`
                     ]
                 }
             ],
-            max_tokens: 1000
+            max_tokens: 1500
         });
 
-        // 3. Pulisci e invia il JSON
-        let text = response.choices[0].message.content;
-        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        let data;
-try {
-    data = JSON.parse(text);
-} catch (e) {
-    console.error("Risposta IA non valida:", text);
-    // Restituisci un errore gentile al frontend invece di far esplodere il server
-    return res.status(400).json({ error: "L'IA non è riuscita a leggere la foto. Riprova con una più nitida." });
-}
+        let text = response.choices[0].message.content.replace(/```json/g, '').replace(/```/g, '').trim();
+        let data = JSON.parse(text);
+        
+        // Aggiungiamo l'URL dell'immagine caricata ai dati restituiti
+        data.allegato_url = fileUrl;
 
         res.json({ success: true, data });
 
     } catch (e) {
-        console.error("Errore AI:", e);
-        res.status(500).json({ error: "Errore durante l'analisi AI: " + e.message });
+        console.error("Errore AI/Server:", e);
+        res.status(500).json({ error: "Errore server: " + e.message });
     }
 });
 

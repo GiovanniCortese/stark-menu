@@ -76,6 +76,11 @@ router.post('/api/menu/scan-photo', uploadFile.single('photo'), async (req, res)
         if (!req.file) return res.status(400).json({ error: "Nessuna foto inviata" });
         if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: "Manca API Key OpenAI" });
 
+        // Check PDF (Stessa logica: se PDF, non scansionare visivamente per evitare crash)
+        if (req.file.mimetype === 'application/pdf') {
+             return res.status(400).json({ error: "Per il menù, carica una FOTO (JPG/PNG). I PDF non sono scansionabili dall'AI al momento." });
+        }
+
         const base64Image = req.file.buffer.toString('base64');
         const dataUrl = `data:${req.file.mimetype};base64,${base64Image}`;
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -85,12 +90,20 @@ router.post('/api/menu/scan-photo', uploadFile.single('photo'), async (req, res)
             messages: [
                 {
                     role: "system",
-                    content: `Analizza la foto di questo menù cartaceo. 
-                    Estrai i piatti e restituisci SOLO un JSON valido (array di oggetti):
+                    content: `Analizza la foto del menù cartaceo.
+                    Estrai i piatti raggruppandoli. 
+                    IMPORTANTE: Estrai gli ingredienti o la descrizione sotto il piatto e mettili nel campo "ingredienti".
+                    
+                    Restituisci SOLO un JSON valido (array):
                     [
-                        { "nome": Str, "categoria": Str (es. Antipasti, Primi, Pizze), "descrizione": Str (ingredienti trovati), "prezzo": Number }
+                        { 
+                            "nome": "Carbonara", 
+                            "categoria": "Primi", 
+                            "ingredienti": "Uova, Guanciale, Pecorino, Pepe", 
+                            "prezzo": 12.00 
+                        }
                     ]
-                    Cerca di dedurre la categoria dalla posizione nel foglio.`
+                    Se non c'è descrizione, lascia stringa vuota.`
                 },
                 {
                     role: "user",
@@ -100,7 +113,7 @@ router.post('/api/menu/scan-photo', uploadFile.single('photo'), async (req, res)
                     ]
                 }
             ],
-            max_tokens: 1500
+            max_tokens: 2000
         });
 
         let text = response.choices[0].message.content.replace(/```json/g, '').replace(/```/g, '').trim();

@@ -304,13 +304,22 @@ function Menu() {
                   </div>
                 )}
                 {(isSingleGroup || activeSubCategory === scKey) && (
-                  <div className="menu-list" style={{ padding: '0', width: '100%' }}>
+                 <div className="menu-list" style={{ padding: '0', width: '100%' }}>
                     {sottoCats[scKey].map((prodotto) => {
-                      const v = typeof prodotto.varianti === 'string' ? JSON.parse(prodotto.varianti || '{}') : (prodotto.varianti || {});
-                      const ingStr = (v.base || []).join(', ');
+                      // --- FIX CRASH QUI ---
+                      let v = {};
+                      try {
+                          v = typeof prodotto.varianti === 'string' ? JSON.parse(prodotto.varianti || '{}') : (prodotto.varianti || {});
+                      } catch(e) { v = {}; }
+
+                      // Fallback array vuoto se undefined
+                      const baseList = Array.isArray(v.base) ? v.base : [];
+                      const aggiunteList = Array.isArray(v.aggiunte) ? v.aggiunte : [];
+
+                      const ingStr = baseList.join(', '); // Ora è sicuro
                       
-                      const hasBase = v.base && v.base.length > 0;
-                      const hasExtras = (v.aggiunte && v.aggiunte.length > 0) || (prodotto.categoria_varianti && prodotto.categoria_varianti.length > 0);
+                      const hasBase = baseList.length > 0;
+                      const hasExtras = (aggiunteList.length > 0) || (prodotto.categoria_varianti && prodotto.categoria_varianti.length > 0);
                       const hasVarianti = hasBase || hasExtras;
                       const hasUnit = !!prodotto.unita_misura; // e.g. "/hg"
 
@@ -350,7 +359,11 @@ function Menu() {
                             {/* TASTO MODIFICA (Matita) - Solo se modificabile */}
                             {hasVarianti && (
                                 <button className="notranslate" 
-                                    onClick={(e) => { e.stopPropagation(); apriModale(prodotto); }} 
+                            onClick={(e) => { 
+                                e.stopPropagation(); 
+                                // Passa l'oggetto pulito o gestiscilo nel modale
+                                apriModale(prodotto); 
+                            }}
                                     style={{ background: '#f39c12', color: 'white', borderRadius: '50%', width: '30px', height: '30px', border: 'none', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                                     ✏️
                                 </button>

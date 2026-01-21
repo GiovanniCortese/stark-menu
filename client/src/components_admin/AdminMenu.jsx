@@ -215,20 +215,22 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                 }
             }
 
-            // 2. Creazione Prodotti (MODIFICATA PER GLI INGREDIENTI)
+            // 2. Creazione Prodotti (MODIFICATA)
             for(const p of items) {
-                // L'AI ora ci restituisce "ingredienti" (stringa).
-                // Lo mettiamo in "varianti.base" come array, così appare nella riga "Ingredienti Base"
+                // L'AI ora ci restituisce "ingredienti" (stringa o array)
+                // Backend menuRoutes modificato per restituire campo "ingredienti"
                 
-                const ingredientiArray = p.ingredienti 
-                    ? p.ingredienti.split(/,|e /).map(s => s.trim()).filter(Boolean) // Divide per virgola o " e "
-                    : [];
+                let ingredientiArray = [];
+                if (p.ingredienti) {
+                     // Divide per virgola se è una stringa
+                     ingredientiArray = p.ingredienti.split(/,|e /).map(s => s.trim()).filter(Boolean);
+                }
 
                 const payload = {
                     nome: p.nome,
                     prezzo: p.prezzo || 0,
                     categoria: p.categoria || (categorie[0]?.nome || "Generale"),
-                    descrizione: "", // Lasciamo vuota la descrizione, usiamo gli ingredienti
+                    descrizione: "", // Usiamo gli ingredienti per la descrizione tecnica
                     ristorante_id: user.id,
                     // QUI LA MAGIA: Salviamo gli ingredienti nella struttura "base"
                     varianti: JSON.stringify({ base: ingredientiArray, aggiunte: [] }),
