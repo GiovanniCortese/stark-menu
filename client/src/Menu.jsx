@@ -496,7 +496,7 @@ function Menu() {
           </div>
       )}
 
-      {/* --- MODALE PIATTO (VERSIONE STICKY FIXED) --- */}
+{/* --- MODALE PIATTO (LAYOUT: FOTO + INFO FISSE + SCROLL INGREDIENTI) --- */}
       {selectedPiatto && modalData && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.9)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding:'10px' }} onClick={() => setSelectedPiatto(null)}>
             <div style={{ 
@@ -514,7 +514,7 @@ function Menu() {
                 flexDirection:'column'
             }} onClick={e => e.stopPropagation()}>
                 
-                {/* 1. FOTO FISSA (NON SCORRE) */}
+                {/* 1. FOTO FISSA */}
                 {selectedPiatto.immagine_url && ( 
                     <div style={{
                         width:'100%', 
@@ -528,7 +528,7 @@ function Menu() {
                     </div> 
                 )}
 
-                {/* TASTO CHIUDI (Sopra la foto) */}
+                {/* TASTO CHIUDI */}
                 <button onClick={() => setSelectedPiatto(null)} style={{
                     position:'absolute', top:'15px', right:'15px', 
                     background:'rgba(255,255,255,0.2)', backdropFilter: 'blur(5px)',
@@ -537,18 +537,20 @@ function Menu() {
                     cursor:'pointer', zIndex: 10, fontSize:'18px', display:'flex', alignItems:'center', justifyContent:'center'
                 }}>✕</button>
 
-                {/* 2. CORPO SCROLLABILE (Descrizione, Ingredienti, Extra) */}
+                {/* 2. HEADER INFO (FISSO - NON SCORRE) */}
                 <div style={{
-                    padding:'20px', 
-                    flex: 1, 
-                    overflowY: 'auto', 
-                    overflowX: 'hidden'
+                    padding:'20px 20px 10px 20px', 
+                    flexShrink: 0, // IMPORTANTE: impedisce che si rimpicciolisca o scorra via
+                    background: modalBg,
+                    borderBottom: '1px solid #f0f0f0', // Linea di separazione visiva
+                    zIndex: 2
                 }}>
                     <h2 style={{margin:'0 0 5px 0', fontSize:'1.6rem', color: '#000', fontWeight:'800', lineHeight:'1.2'}}>{modalData.nome}</h2>
-                    <p style={{color:'#666', fontSize:'0.95rem', lineHeight:'1.4'}}>{modalData.desc}</p>
+                    <p style={{color:'#666', fontSize:'0.95rem', lineHeight:'1.4', marginBottom:'10px'}}>{modalData.desc}</p>
                     
+                    {/* Selettore Quantità (Se presente) */}
                     {selectedPiatto.unita_misura && (
-                        <div style={{marginTop:'15px', padding:'10px', background:'#e1f5fe', borderRadius:'8px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                        <div style={{marginBottom:'10px', padding:'10px', background:'#e1f5fe', borderRadius:'8px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                             <div>
                                 <div style={{fontSize:'12px', fontWeight:'bold', color:'#0277bd', textTransform:'uppercase'}}>Quantità ({selectedPiatto.unita_misura})</div>
                                 <div style={{fontSize:'10px', color:'#555'}}>Minimo: {modalData.minimo}</div>
@@ -561,9 +563,23 @@ function Menu() {
                         </div>
                     )}
 
-                    {modalData.allergeni.length > 0 && ( <div className="notranslate" style={{ marginTop: '15px', padding: '10px', background: 'rgba(0,0,0,0.03)', borderRadius: '8px' }}> {modalData.allergeni.filter(a => !a.includes("❄️")).length > 0 && ( <div style={{ fontSize: '11px', color: '#e74c3c', fontWeight: '900', textTransform: 'uppercase', marginBottom: '4px' }}>⚠️ {t?.allergens || "Allergeni"}: {modalData.allergeni.filter(a => !a.includes("❄️")).join(', ')}</div> )} {modalData.allergeni.some(a => a.includes("❄️")) && ( <div style={{ fontSize: '11px', color: '#3498db', fontWeight: '900', textTransform: 'uppercase' }}>❄️ {t?.frozen || "Surgelato"}</div> )} </div> )}
-                    
-                    <div style={{marginTop:'20px', borderTop:'1px solid #eee', paddingTop:'15px'}}>
+                    {/* Allergeni */}
+                    {modalData.allergeni.length > 0 && ( 
+                        <div className="notranslate" style={{ padding: '8px', background: 'rgba(0,0,0,0.03)', borderRadius: '8px' }}> 
+                            {modalData.allergeni.filter(a => !a.includes("❄️")).length > 0 && ( <div style={{ fontSize: '11px', color: '#e74c3c', fontWeight: '900', textTransform: 'uppercase', marginBottom: '2px' }}>⚠️ {t?.allergens || "Allergeni"}: {modalData.allergeni.filter(a => !a.includes("❄️")).join(', ')}</div> )} 
+                            {modalData.allergeni.some(a => a.includes("❄️")) && ( <div style={{ fontSize: '11px', color: '#3498db', fontWeight: '900', textTransform: 'uppercase' }}>❄️ {t?.frozen || "Surgelato"}</div> )} 
+                        </div> 
+                    )}
+                </div>
+
+                {/* 3. CORPO SCROLLABILE (SOLO Ingredienti ed Extra) */}
+                <div style={{
+                    padding:'10px 20px 20px 20px', 
+                    flex: 1, // Occupa tutto lo spazio rimanente verticale
+                    overflowY: 'auto', // ABILITA LO SCROLL SOLO QUI
+                    overflowX: 'hidden'
+                }}>
+                    <div style={{marginTop:'10px'}}>
                         {modalData.baseList.length > 0 && ( 
                             <div style={{marginBottom:'20px'}}>
                                 <h4 className="notranslate" style={{margin:'0 0 10px 0', color:'#333'}}>{t?.ingredients || "Ingredienti"} (Togli)</h4>
@@ -597,7 +613,7 @@ function Menu() {
                     </div>
                 </div>
 
-                {/* 3. FOOTER FISSO (Prezzo + Bottone) */}
+                {/* 4. FOOTER FISSO (Prezzo + Bottone) */}
                 <div style={{
                     padding:'15px 20px', 
                     background:'white', 
