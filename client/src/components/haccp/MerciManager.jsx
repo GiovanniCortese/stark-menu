@@ -1,276 +1,179 @@
+// client/src/components/haccp/MerciManager.jsx
 import React, { useState, useRef } from 'react';
 
 const MerciManager = ({ 
-    merci, merciForm, setMerciForm, salvaMerci, handleMerciPhoto, 
-    uploadingMerci, iniziaModificaMerci, eliminaMerce, assets, resetMerciForm,
-    handleFileAction, openDownloadModal,
-    API_URL 
+    merci, merciForm, setMerciForm, salvaMerci, 
+    iniziaModificaMerci, eliminaMerce, assets, resetMerciForm,
+    handleFileAction, openDownloadModal, API_URL 
 }) => {
     
-    // Stati per la scansione AI
+    // Stati Scan AI
     const [isScanning, setIsScanning] = useState(false);
     const [scannedData, setScannedData] = useState(null); 
     const scanInputRef = useRef(null);
 
-    // Funzione di compressione Immagini (NON usata per PDF)
-    const resizeImage = (file, maxWidth = 1000, quality = 0.7) => {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = (event) => {
-                const img = new Image();
-                img.src = event.target.result;
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    let width = img.width;
-                    let height = img.height;
-
-                    if (width > height) {
-                        if (width > maxWidth) {
-                            height *= maxWidth / width;
-                            width = maxWidth;
-                        }
-                    } else {
-                        if (height > maxWidth) {
-                            width *= maxWidth / height;
-                            height = maxWidth;
-                        }
-                    }
-
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, width, height);
-
-                    canvas.toBlob((blob) => {
-                        if (!blob) return reject(new Error("Errore compressione"));
-                        const resizedFile = new File([blob], file.name, {
-                            type: 'image/jpeg',
-                            lastModified: Date.now(),
-                        });
-                        resolve(resizedFile);
-                    }, 'image/jpeg', quality);
-                };
-            };
-            reader.onerror = (error) => reject(error);
-        });
-    };
-
-    // Gestione Scansione (Supporta PDF e Immagini)
-    const handleScanBolla = async (e) => {
+    // Gestione Scan (Foto o PDF)
+    const handleScan = async (e) => {
         const file = e.target.files[0];
         if(!file) return;
 
         setIsScanning(true);
-        setScannedData(null); // Reset dati precedenti
-        
+        const formData = new FormData();
+        formData.append('photo', file);
+
         try {
-            const fd = new FormData();
+            const res = await fetch(`${API_URL}/api/haccp/scan-bolla`, { method: 'POST', body: formData });
+            const data = await res.json();
 
-            // CRASH FIX: Se è PDF, NON comprimere. Invia diretto.
-            if (file.type === 'application/pdf') {
-                fd.append('photo', file);
+            if(data.success) {
+                const info = data.data; // { fornitore, data_ricezione, numero_documento, prodotti, allegato_url }
+                
+                // Salva i dati grezzi per l'uso (selezione prodotti)
+                setScannedData(info);
+                
+                // Precompila il form manuale con i dati di testata
+                // LOGICA NOTE: Inserisce Numero Documento nelle note
+                const noteDoc = info.numero_documento ? `Rif: ${info.numero_documento}` : '';
+                
+                setMerciForm(prev => ({
+                    ...prev,
+                    fornitore: info.fornitore || '',
+                    data_ricezione: info.data_ricezione || new Date().toISOString().split('T')[0],
+                    note: noteDoc, 
+                    allegato_url: info.allegato_url || ''
+                }));
+
+                alert(data.message || "✅ Documento analizzato! Seleziona i prodotti da caricare.");
             } else {
-                // Se è immagine, comprimi per velocità
-                const compressedFile = await resizeImage(file, 800, 0.6); 
-                fd.append('photo', compressedFile);
+                throw new Error(data.error);
             }
-
-            const res = await fetch(`${API_URL}/api/haccp/scan-bolla`, { 
-                method: 'POST', 
-                body: fd
-            });
-
-            if (!res.ok) {
-                let msg = "Errore durante l'analisi.";
-                try { const j = await res.json(); if(j.error) msg = j.error; } catch(e){}
-                throw new Error(msg);
-            }
-
-            const json = await res.json();
-            if (!json.success) throw new Error(json.error || "Dati non validi.");
-
-            setScannedData(json.data);
-            
-            // Se è un PDF (che l'AI non legge riga per riga), avvisa l'utente
-            if (json.isPdf) {
-                alert("📄 PDF Caricato! L'allegato è pronto. Puoi usare il tasto 'Usa Dati Testata' per compilare il form.");
-            }
-
         } catch(err) {
             console.error(err);
-            alert("⚠️ ERRORE SCANSIONE\n\n" + err.message); 
+            alert("❌ Errore Scan: " + err.message);
         } finally {
             setIsScanning(false);
-            e.target.value = null; 
+            e.target.value = null; // Reset input
         }
     };
 
-    // Importa un singolo prodotto rilevato dall'AI nel form
     const importaProdotto = (prod) => {
-        // COSTRUZIONE NOTA AUTOMATICA (DDT + DATA)
-        const docNum = scannedData.numero_documento || 'ND';
-        const docData = scannedData.data_ricezione || 'ND';
-        const notaCostruita = `Rif. Doc: ${docNum} del ${docData}`;
-
         setMerciForm(prev => ({
             ...prev,
-            fornitore: scannedData.fornitore || prev.fornitore,
-            data_ricezione: scannedData.data_ricezione || prev.data_ricezione,
-            
             prodotto: prod.nome,
-            quantita: prod.quantita || '',
-            lotto: prod.lotto || '',
+            quantita: prod.quantita,
+            prezzo: prod.prezzo || 0,
             scadenza: prod.scadenza || '',
-            
-            // QUI INSERIAMO LE NOTE FORMATTATE E L'URL ALLEGATO
-            note: notaCostruita,
-            allegato_url: scannedData.allegato_url || prev.allegato_url
+            // Mantiene i dati di testata (Fornitore, Note/DDT, Allegato) già settati
         }));
-
-        // Rimuovi dalla lista temporanea per evitare doppi inserimenti
-        setScannedData(prev => ({
-            ...prev,
-            prodotti: prev.prodotti.filter(p => p !== prod)
-        }));
-    };
-
-    // Funzione per usare solo i dati di testata (utile per PDF o bolle illeggibili)
-    const usaDatiTestata = () => {
-        const docNum = scannedData.numero_documento || 'ND';
-        const docData = scannedData.data_ricezione || 'ND';
-        const notaCostruita = `Rif. Doc: ${docNum} del ${docData}`;
-
-        setMerciForm(prev => ({
-            ...prev,
-            fornitore: scannedData.fornitore || prev.fornitore,
-            data_ricezione: scannedData.data_ricezione || prev.data_ricezione,
-            note: notaCostruita,
-            allegato_url: scannedData.allegato_url || prev.allegato_url
-        }));
-        
-        // Non chiudiamo scannedData se ci sono prodotti, ma in caso di PDF è utile
-        if (scannedData.prodotti.length === 0) setScannedData(null);
     };
 
     return (
         <div className="no-print">
-            {/* --- SEZIONE SCANSIONE AI --- */}
-            <div 
-                onClick={() => scanInputRef.current.click()}
-                style={{marginBottom: 20, padding: 15, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderRadius: 10, color: 'white', display:'flex', alignItems:'center', justifyContent:'space-between', boxShadow:'0 4px 15px rgba(0,0,0,0.2)', cursor: 'pointer'}}
-            >
-                <div>
-                    <h3 style={{margin:0, fontSize:18}}>✨ Magic Scan (AI)</h3>
-                    <p style={{margin:'5px 0 0 0', fontSize:12, opacity:0.9}}>Carica Foto o PDF: l'IA compilerà i dati e allegherà il file.</p>
-                </div>
-                <button 
-                    disabled={isScanning}
-                    style={{background:'white', color:'#764ba2', border:'none', padding:'10px 20px', borderRadius:25, fontWeight:'bold', cursor: isScanning ? 'wait' : 'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.2)'}}
-                >
-                    {isScanning ? '🤖 Analisi...' : '📸 SCANSIONA / CARICA'}
-                </button>
-                <input 
-                    type="file" 
-                    ref={scanInputRef}
-                    accept="image/*,application/pdf"
-                    onChange={handleScanBolla} 
-                    style={{ display: 'none' }} 
-                />            
-            </div>
-
-            {/* --- LISTA RISULTATI SCAN --- */}
-            {scannedData && (
-                <div style={{marginBottom: 20, padding: 15, background: '#e0f7fa', border: '2px solid #00bcd4', borderRadius: 10}}>
-                    <div style={{display:'flex', justifyContent:'space-between', marginBottom:10, alignItems:'center'}}>
-                        <div>
-                            <strong style={{color:'#006064'}}>Risultati Scansione</strong>
-                            <div style={{fontSize:11, color:'#00838f'}}>
-                                Fornitore: {scannedData.fornitore || 'ND'} | Doc: {scannedData.numero_documento || 'ND'}
-                            </div>
-                        </div>
-                        <div style={{display:'flex', gap:10}}>
-                             {/* Bottone utile per PDF o inserimenti manuali con allegato già pronto */}
-                             <button onClick={usaDatiTestata} style={{background:'#0097a7', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:11, fontWeight:'bold'}}>
-                                📝 Usa Dati Testata e Allegato
-                            </button>
-                            <button onClick={() => setScannedData(null)} style={{fontSize:11, background:'transparent', border:'none', textDecoration:'underline', cursor:'pointer', color:'#c0392b'}}>Chiudi</button>
-                        </div>
+            
+            {/* --- SEZIONE DI CARICO --- */}
+            <div style={{background:'white', padding:20, borderRadius:10, marginBottom:20, borderLeft:'5px solid #27ae60', boxShadow:'0 2px 5px rgba(0,0,0,0.1)'}}>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:15}}>
+                    <h3 style={{margin:0, color:'#2c3e50'}}>📦 Carico Merce & DDT</h3>
+                    
+                    {/* BOTTONE SCAN AI */}
+                    <div style={{display:'flex', gap:10}}>
+                        <button 
+                            onClick={() => scanInputRef.current.click()} 
+                            style={{background:'#8e44ad', color:'white', border:'none', padding:'10px 15px', borderRadius:5, cursor:'pointer', fontWeight:'bold', display:'flex', alignItems:'center', gap:5}}
+                        >
+                            📸 SCAN BOLLA / PDF
+                        </button>
+                        <input 
+                            type="file" 
+                            ref={scanInputRef} 
+                            accept="image/*,application/pdf" // ACCETTA PDF
+                            onChange={handleScan} 
+                            style={{display:'none'}} 
+                        />
                     </div>
+                </div>
 
-                    {scannedData.prodotti.length > 0 ? (
-                        <div style={{display:'flex', flexWrap:'wrap', gap:10}}>
-                            {scannedData.prodotti.map((p, idx) => (
-                                <div key={idx} onClick={() => importaProdotto(p)} style={{background:'white', padding:10, borderRadius:5, border:'1px solid #b2ebf2', cursor:'pointer', minWidth:200, flex:1, boxShadow:'0 1px 3px rgba(0,0,0,0.1)'}}>
-                                    <div style={{fontWeight:'bold', fontSize:13}}>{p.nome}</div>
-                                    <div style={{fontSize:11, color:'#555'}}>Qta: {p.quantita} | Lotto: {p.lotto || '-'}</div>
-                                    <div style={{fontSize:10, color:'#00838f', marginTop:5, fontWeight:'bold'}}>CLICCA PER IMPORTARE ⬇</div>
+                {isScanning && <div style={{padding:15, background:'#e8f6f3', color:'#16a085', borderRadius:5, marginBottom:15}}>⏳ Analisi documento in corso (AI)... Attendere...</div>}
+
+                {/* VISUALIZZATORE RISULTATI SCAN */}
+                {scannedData && (
+                    <div style={{marginBottom:20, padding:15, background:'#f9f9f9', border:'1px solid #ddd', borderRadius:5}}>
+                        <h4 style={{marginTop:0}}>Risultati Scan: {scannedData.fornitore}</h4>
+                        <div style={{display:'flex', gap:10, fontSize:13, marginBottom:10, color:'#555'}}>
+                            <span>📅 {scannedData.data_ricezione}</span>
+                            <span>📄 {scannedData.numero_documento || "Nessun N. Doc"}</span>
+                            {scannedData.allegato_url && <span style={{color:'#2980b9'}}>📎 Allegato Presente</span>}
+                        </div>
+                        
+                        <div style={{display:'flex', flexDirection:'column', gap:5}}>
+                            {scannedData.prodotti.length === 0 && <p>Nessun prodotto rilevato automaticamente. Compila sotto.</p>}
+                            {scannedData.prodotti.map((p, i) => (
+                                <div key={i} style={{display:'flex', justifyContent:'space-between', alignItems:'center', background:'white', padding:8, border:'1px solid #eee'}}>
+                                    <span><strong>{p.nome}</strong> ({p.quantita}) - € {p.prezzo}</span>
+                                    <button onClick={() => importaProdotto(p)} style={{background:'#27ae60', color:'white', border:'none', padding:'4px 10px', borderRadius:3, cursor:'pointer'}}>Usa Dati</button>
                                 </div>
                             ))}
                         </div>
-                    ) : (
-                        <div style={{fontSize:12, fontStyle:'italic', color:'#555', padding:10, background:'white', borderRadius:5}}>
-                            Nessun prodotto specifico rilevato (o file PDF). Usa "Usa Dati Testata" per compilare fornitore/data/allegato e inserire i prodotti manualmente.
+                        <button onClick={() => setScannedData(null)} style={{marginTop:10, background:'#95a5a6', color:'white', border:'none', padding:'5px 10px', borderRadius:3, cursor:'pointer'}}>Chiudi Scan</button>
+                    </div>
+                )}
+
+                {/* FORM MANUALE */}
+                <form onSubmit={salvaMerci} style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))', gap:15}}>
+                    <div>
+                        <label style={{fontSize:12, fontWeight:'bold'}}>Data Ricezione</label>
+                        <input type="date" required value={merciForm.data_ricezione} onChange={e=>setMerciForm({...merciForm, data_ricezione:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ccc', borderRadius:4}} />
+                    </div>
+                    <div>
+                        <label style={{fontSize:12, fontWeight:'bold'}}>Fornitore</label>
+                        <input type="text" placeholder="Es. Metro" required value={merciForm.fornitore} onChange={e=>setMerciForm({...merciForm, fornitore:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ccc', borderRadius:4}} />
+                    </div>
+                    <div>
+                        <label style={{fontSize:12, fontWeight:'bold'}}>Prodotto</label>
+                        <input type="text" placeholder="Es. Farina 00" required value={merciForm.prodotto} onChange={e=>setMerciForm({...merciForm, prodotto:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ccc', borderRadius:4}} />
+                    </div>
+                    <div>
+                        <label style={{fontSize:12, fontWeight:'bold'}}>Note / N. Doc</label>
+                        <input type="text" placeholder="Es. Rif. DDT 402" value={merciForm.note} onChange={e=>setMerciForm({...merciForm, note:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ccc', borderRadius:4}} />
+                    </div>
+                    <div>
+                        <label style={{fontSize:12, fontWeight:'bold'}}>Quantità</label>
+                        <input type="text" placeholder="Es. 10 kg" value={merciForm.quantita} onChange={e=>setMerciForm({...merciForm, quantita:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ccc', borderRadius:4}} />
+                    </div>
+                    <div>
+                        <label style={{fontSize:12, fontWeight:'bold'}}>Prezzo Tot (€)</label>
+                        <input type="number" step="0.01" placeholder="0.00" value={merciForm.prezzo} onChange={e=>setMerciForm({...merciForm, prezzo:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ccc', borderRadius:4}} />
+                    </div>
+                    
+                    {/* Campo Allegato Nascosto (Gestito da Scan) o Visibile se vuoi caricarlo a mano senza scan */}
+                    {merciForm.allegato_url && (
+                        <div style={{gridColumn:'1 / -1', padding:10, background:'#eaf2f8', borderRadius:4, fontSize:13}}>
+                            📎 <strong>File Allegato Pronto</strong> 
+                            <button type="button" onClick={() => setMerciForm({...merciForm, allegato_url: ''})} style={{marginLeft:10, color:'red', border:'none', background:'none', cursor:'pointer'}}>Rimuovi</button>
                         </div>
                     )}
-                </div>
-            )}
 
-            {/* --- FORM DI INSERIMENTO --- */}
-            <div style={{background:'white', padding:20, borderRadius:10, marginBottom:20, borderLeft: merciForm.id ? '5px solid #f39c12' : '5px solid #27ae60'}}>
-                <div style={{display:'flex', justifyContent:'space-between'}}>
-                    <h3>{merciForm.id ? '✏️ Modifica Arrivo Merce' : '📥 Nuovo Arrivo'}</h3>
-                    {merciForm.id && <button onClick={resetMerciForm} style={{background:'#e74c3c', color:'white', border:'none', borderRadius:5, padding:'5px 10px', cursor:'pointer'}}>Annulla Modifica</button>}
-                </div>
-                
-                <form onSubmit={salvaMerci} style={{display:'flex', flexWrap:'wrap', gap:10, alignItems:'flex-end'}}>
-                    <div style={{flex:1, minWidth:120}}><label style={{fontSize:11}}>Data Arrivo</label><input type="date" value={merciForm.data_ricezione} onChange={e=>setMerciForm({...merciForm, data_ricezione:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required /></div>
-                    <div style={{flex:2, minWidth:150}}><label style={{fontSize:11}}>Fornitore</label><input value={merciForm.fornitore} onChange={e=>setMerciForm({...merciForm, fornitore:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required /></div>
-                    <div style={{flex:2, minWidth:150}}><label style={{fontSize:11}}>Prodotto</label><input value={merciForm.prodotto} onChange={e=>setMerciForm({...merciForm, prodotto:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required /></div>
-                    <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Quantità (KG/Colli)</label><input value={merciForm.quantita} onChange={e=>setMerciForm({...merciForm, quantita:e.target.value})} placeholder="Es. 10kg" style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
-                    <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Lotto</label><input value={merciForm.lotto} onChange={e=>setMerciForm({...merciForm, lotto:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
-                    <div style={{flex:1, minWidth:120}}><label style={{fontSize:11}}>Scadenza</label><input type="date" value={merciForm.scadenza} onChange={e=>setMerciForm({...merciForm, scadenza:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
-                    <div style={{flex:1, minWidth:80}}><label style={{fontSize:11}}>Temp °C</label><input type="number" step="0.1" value={merciForm.temperatura} onChange={e=>setMerciForm({...merciForm, temperatura:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
-                    
-                    <div style={{flex:1, minWidth:150}}><label style={{fontSize:11}}>Destinazione</label>
-                      <select value={merciForm.destinazione} onChange={e=>setMerciForm({...merciForm, destinazione:e.target.value})} style={{width:'100%', padding:9, border:'1px solid #ddd'}}>
-                          <option value="">-- Seleziona --</option>
-                          {assets.map(a => <option key={a.id} value={a.nome}>{a.nome}</option>)}
-                      </select>
+                    <div style={{gridColumn:'1/-1', display:'flex', gap:10, marginTop:10}}>
+                        <button type="submit" style={{padding:'10px 20px', background:'#27ae60', color:'white', border:'none', borderRadius:5, fontWeight:'bold', cursor:'pointer'}}>{merciForm.id ? 'AGGIORNA' : 'REGISTRA CARICO'}</button>
+                        {merciForm.id && <button type="button" onClick={resetMerciForm} style={{padding:'10px 20px', background:'#95a5a6', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>ANNULLA</button>}
                     </div>
-
-                    <div style={{flex:2, minWidth:200}}><label style={{fontSize:11}}>Note (DDT / Fattura)</label><input value={merciForm.note} onChange={e=>setMerciForm({...merciForm, note:e.target.value})} placeholder="Es. Rif. Doc: 104 del 20/10" style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
-                    
-                    <div style={{display:'flex', alignItems:'center', gap:5}}>
-                      <label style={{cursor:'pointer', background: merciForm.allegato_url ? '#2ecc71' : '#ecf0f1', padding:'10px', borderRadius:5, border:'1px solid #ccc', fontSize:12, whiteSpace:'nowrap'}}>
-                          {uploadingMerci ? "Caricamento..." : (merciForm.allegato_url ? "📎 File Allegato" : "📎 Allega Manualmente")}
-                          <input type="file" accept="image/*,.pdf" onChange={handleMerciPhoto} style={{display:'none'}} />
-                      </label>
-                    </div>
-
-                    <div style={{display:'flex', flexDirection:'column', gap:5, minWidth:100}}>
-                        <label style={{fontSize:11}}><input type="checkbox" checked={merciForm.conforme} onChange={e=>setMerciForm({...merciForm, conforme:e.target.checked})} /> Conforme</label>
-                        <label style={{fontSize:11}}><input type="checkbox" checked={merciForm.integro} onChange={e=>setMerciForm({...merciForm, integro:e.target.checked})} /> Integro</label>
-                    </div>
-                    
-                    <button type="submit" style={{background: merciForm.id ? '#f39c12' : '#27ae60', color:'white', border:'none', padding:'10px 20px', borderRadius:5, cursor:'pointer', height:40, fontWeight:'bold'}}>
-                        {merciForm.id ? 'AGGIORNA' : 'REGISTRA'}
-                    </button>
                 </form>
             </div>
 
-            <div style={{background:'white', padding:20, borderRadius:10}}>
-                <div style={{display:'flex', justifyContent:'space-between', marginBottom:15}}>
-                   <h3>📦 Storico Arrivi</h3>
-                   <button onClick={()=>openDownloadModal('merci')} style={{background:'#f39c12', color:'white', border:'none', padding:'5px 15px', borderRadius:5, fontWeight:'bold', cursor:'pointer'}}>⬇ Scarica Report Merci</button>
+            {/* --- TABELLA RIEPILOGO --- */}
+            <div style={{background:'white', padding:20, borderRadius:10, boxShadow:'0 2px 5px rgba(0,0,0,0.1)'}}>
+                <div style={{display:'flex', justifyContent:'space-between', marginBottom:10}}>
+                    <h4>Ultimi Arrivi</h4>
+                    <button onClick={() => openDownloadModal('merci')} style={{background:'#34495e', color:'white', border:'none', padding:'5px 15px', borderRadius:5, fontSize:13, cursor:'pointer'}}>⬇ Report Excel</button>
                 </div>
+                <div style={{overflowX:'auto'}}>
                 <table style={{width:'100%', borderCollapse:'collapse', fontSize:13}}>
                     <thead>
                         <tr style={{background:'#f0f0f0', textAlign:'left'}}>
                             <th style={{padding:8}}>Data</th>
-                            <th style={{padding:8}}>Fornitore / Prodotto</th>
-                            <th style={{padding:8}}>Condizione</th> 
-                            <th style={{padding:8}}>Lotto / Scadenza</th>
+                            <th style={{padding:8}}>Fornitore</th>
+                            <th style={{padding:8}}>Prodotto</th>
+                            <th style={{padding:8}}>Qta/€</th>
                             <th style={{padding:8}}>Note / Doc</th>
                             <th style={{padding:8}}>Azioni</th>
                         </tr>
@@ -279,37 +182,36 @@ const MerciManager = ({
                         {merci.map(m => (
                             <tr key={m.id} style={{borderBottom:'1px solid #eee'}}>
                                 <td style={{padding:8}}>{new Date(m.data_ricezione).toLocaleDateString()}</td>
-                                <td style={{padding:8}}><strong>{m.fornitore}</strong><br/>{m.prodotto} ({m.quantita})</td>
+                                <td style={{padding:8}}>{m.fornitore}</td>
                                 <td style={{padding:8}}>
-                                    {!m.conforme ? <span style={{color:'red', fontWeight:'bold'}}>TEMP KO</span> : 
-                                     (!m.integro ? <span style={{color:'orange', fontWeight:'bold'}}>DANNEGGIATO</span> : 
-                                     <span style={{color:'green', fontWeight:'bold'}}>CONFORME</span>)}
+                                    <strong>{m.prodotto}</strong>
+                                    {m.lotto && <div style={{fontSize:11, color:'#666'}}>L: {m.lotto}</div>}
                                 </td>
                                 <td style={{padding:8}}>
-                                     L: {m.lotto}<br/>
-                                     S: {m.scadenza ? new Date(m.scadenza).toLocaleDateString() : '-'}
+                                    <div>{m.quantita}</div>
+                                    {m.prezzo > 0 && <div style={{color:'#27ae60', fontWeight:'bold'}}>€ {Number(m.prezzo).toFixed(2)}</div>}
                                 </td>
                                 <td style={{padding:8}}>
-                                     {m.note && <div style={{fontWeight:'bold', color:'#555'}}>{m.note}</div>}
-                                     {m.destinazione && <div style={{fontSize:11}}>📍 {m.destinazione}</div>}
-                                </td>
-                                <td style={{padding:8, display:'flex', gap:5}}>
-                                   {m.allegato_url && (
+                                    {/* Mostra NOTE (che contiene il DDT) e LINK ALLEGATO */}
+                                    <div style={{fontSize:12, fontStyle:'italic'}}>{m.note}</div>
+                                    {m.allegato_url && (
                                         <button 
-                                            onClick={() => handleFileAction(m.allegato_url)} 
-                                            style={{background:'#3498db', color:'white', border:'none', borderRadius:3, padding:'2px 5px', cursor:'pointer'}}
-                                            title="Vedi Allegato"
+                                            onClick={() => handleFileAction(m.allegato_url)}
+                                            style={{marginTop:5, background:'#d6eaf8', color:'#2980b9', border:'1px solid #a9cce3', padding:'2px 8px', borderRadius:10, fontSize:11, cursor:'pointer', display:'flex', alignItems:'center', gap:3}}
                                         >
-                                            📎
+                                            📎 Vedi Doc
                                         </button>
                                     )}
-                                    <button onClick={()=>iniziaModificaMerci(m)} style={{background:'#f39c12', color:'white', border:'none', borderRadius:3, cursor:'pointer', padding:'2px 5px'}}>✏️</button>
-                                    <button onClick={()=>eliminaMerce(m.id)} style={{background:'#e74c3c', color:'white', border:'none', borderRadius:3, cursor:'pointer', padding:'2px 5px'}}>🗑️</button>
+                                </td>
+                                <td style={{padding:8, display:'flex', gap:5}}>
+                                    <button onClick={()=>iniziaModificaMerci(m)} style={{background:'#f39c12', color:'white', border:'none', borderRadius:3, cursor:'pointer', padding:'4px 8px'}}>✏️</button>
+                                    <button onClick={()=>eliminaMerce(m.id)} style={{background:'#e74c3c', color:'white', border:'none', borderRadius:3, cursor:'pointer', padding:'4px 8px'}}>🗑️</button>
                                 </td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
+                </div>
             </div>
         </div>
     );

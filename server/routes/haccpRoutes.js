@@ -1,12 +1,13 @@
-// server/routes/haccpRoutes.js - FIXED PER PDF E DDT
+// server/routes/haccpRoutes.js - FIXED PDF & AI SCAN
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
 const { getItalyDateComponents } = require('../utils/time');
-const { uploadFile, upload, cloudinary } = require('../config/storage'); 
+const { uploadFile, cloudinary } = require('../config/storage'); // Assicurati che uploadFile usi memoryStorage
 const PDFDocument = require('pdfkit-table');
 const xlsx = require('xlsx');
 const OpenAI = require('openai');
+const stream = require('stream');
 
 // Assets
 router.get('/api/haccp/assets/:ristorante_id', async (req, res) => { try { const r = await pool.query("SELECT * FROM haccp_assets WHERE ristorante_id = $1 ORDER BY tipo, nome", [req.params.ristorante_id]); res.json(r.rows); } catch(e) { res.status(500).json({error:"Err"}); } });
@@ -24,8 +25,9 @@ router.delete('/api/haccp/logs/:id', async (req, res) => { try { await pool.quer
 router.post('/api/haccp/labels', async (req, res) => { try { const { ristorante_id, prodotto, data_scadenza, operatore, tipo_conservazione, ingredienti } = req.body; const t = getItalyDateComponents(); const lotto = `L-${t.year}${t.month}${t.day}-${t.hour}${t.minute}`; const r = await pool.query("INSERT INTO haccp_labels (ristorante_id, prodotto, lotto, data_produzione, data_scadenza, operatore, tipo_conservazione, ingredienti) VALUES ($1,$2,$3,NOW(),$4,$5,$6,$7) RETURNING *", [ristorante_id, prodotto, lotto, data_scadenza, operatore, tipo_conservazione, ingredienti || '']); res.json({success:true, label: r.rows[0]}); } catch(e) { res.status(500).json({error:"Err"}); } });
 router.get('/api/haccp/labels/storico/:ristorante_id', async (req, res) => { try { const { start, end } = req.query; let sql = "SELECT * FROM haccp_labels WHERE ristorante_id = $1"; const params = [req.params.ristorante_id]; if (start && end) { sql += " AND data_produzione >= $2 AND data_produzione <= $3 ORDER BY data_produzione ASC"; params.push(start, end); } else { sql += " AND data_produzione >= NOW() - INTERVAL '7 days' ORDER BY data_produzione DESC"; } const r = await pool.query(sql, params); res.json(r.rows); } catch(e) { res.status(500).json({error: "Errore recupero storico"}); } });
 
-// Ricevimento Merci
-router.get('/api/haccp/merci/:ristorante_id', async (req, res) => { try { const { start, end } = req.query; let sql = "SELECT * FROM haccp_merci WHERE ristorante_id = $1"; const params = [req.params.ristorante_id]; if (start && end) { sql += " AND data_ricezione >= $2 AND data_ricezione <= $3 ORDER BY data_ricezione ASC"; params.push(start, end); } else { sql += " AND data_ricezione >= NOW() - INTERVAL '7 days' ORDER BY data_ricezione DESC"; } const r = await pool.query(sql, params); res.json(r.rows); } catch(e) { res.status(500).json({error:"Err"}); } });
+// --- RICEVIMENTO MERCI (CRUD) ---
+router.get('/api/haccp/merci/:ristorante_id', async (req, res) => { try { const { start, end } = req.query; let sql = "SELECT * FROM haccp_merci WHERE ristorante_id = $1"; const params = [req.params.ristorante_id]; if (start && end) { sql += " AND data_ricezione >= $2 AND data_ricezione <= $3 ORDER BY data_ricezione ASC"; params.push(start, end); } else { sql += " AND data_ricezione >= NOW() - INTERVAL '30 days' ORDER BY data_ricezione DESC"; } const r = await pool.query(sql, params); res.json(r.rows); } catch(e) { res.status(500).json({error:"Err"}); } });
+
 router.post('/api/haccp/merci', async (req, res) => { 
     try { 
         const { ristorante_id, data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione, prezzo } = req.body; 
@@ -34,7 +36,9 @@ router.post('/api/haccp/merci', async (req, res) => {
         res.json({success:true}); 
     } catch(e) { console.error(e); res.status(500).json({error:"Err"}); } 
 });
-router.put('/api/haccp/merci/:id', async (req, res) => { try { const { data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione } = req.body; await pool.query(`UPDATE haccp_merci SET data_ricezione=$1, fornitore=$2, prodotto=$3, lotto=$4, scadenza=$5, temperatura=$6, conforme=$7, integro=$8, note=$9, operatore=$10, quantita=$11, allegato_url=$12, destinazione=$13 WHERE id=$14`, [data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione, req.params.id]); res.json({success:true}); } catch(e) { res.status(500).json({error:"Err"}); } });
+
+router.put('/api/haccp/merci/:id', async (req, res) => { try { const { data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione, prezzo } = req.body; await pool.query(`UPDATE haccp_merci SET data_ricezione=$1, fornitore=$2, prodotto=$3, lotto=$4, scadenza=$5, temperatura=$6, conforme=$7, integro=$8, note=$9, operatore=$10, quantita=$11, allegato_url=$12, destinazione=$13, prezzo=$14 WHERE id=$15`, [data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione, prezzo || 0, req.params.id]); res.json({success:true}); } catch(e) { res.status(500).json({error:"Err"}); } });
+
 router.delete('/api/haccp/merci/:id', async (req, res) => { try { await pool.query("DELETE FROM haccp_merci WHERE id=$1", [req.params.id]); res.json({success:true}); } catch(e){ res.status(500).json({error:"Err"}); } });
 
 // Pulizie
@@ -74,60 +78,61 @@ router.get('/api/haccp/stats/magazzino/:ristorante_id', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ROTTA INTELLIGENTE: Scansione Bolla con AI (Supporto PDF Safe)
+// --- SCAN INTELLIGENTE (FOTO & PDF) ---
 router.post('/api/haccp/scan-bolla', uploadFile.single('photo'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: "Nessun file inviato" });
-        
-        // 1. Carica SEMPRE il file su Cloudinary per avere l'URL (per l'allegato)
-        // Nota: uploadFile.single usa memoryStorage, quindi dobbiamo fare l'upload stream o buffer verso Cloudinary
-        // Per semplicità qui, assumiamo che tu voglia l'URL. 
-        // Se usi la tua funzione `uploadFile` che salva su disco/cloudinary, recuperiamo l'url.
-        // Se `req.file` è buffer, dobbiamo caricarlo. 
-        
-        let fileUrl = "";
-        const isPdf = req.file.mimetype === 'application/pdf';
 
-        // Caricamento su Cloudinary tramite stream (per ottenere URL pubblico subito)
+        const isPdf = req.file.mimetype === 'application/pdf';
+        
+        // 1. Upload su Cloudinary (Stream Upload per gestire buffer)
         const uploadToCloud = () => {
             return new Promise((resolve, reject) => {
-                const stream = cloudinary.uploader.upload_stream(
-                    { resource_type: isPdf ? 'raw' : 'image', folder: 'haccp_docs' },
+                const uploadStream = cloudinary.uploader.upload_stream(
+                    { 
+                        resource_type: isPdf ? 'raw' : 'image', // PDF deve essere 'raw' o 'auto'
+                        folder: 'haccp_docs',
+                        public_id: `bolla_${Date.now()}` // Nome unico
+                    },
                     (error, result) => {
                         if (error) reject(error);
                         else resolve(result.secure_url);
                     }
                 );
-                stream.end(req.file.buffer);
+                // Scrive il buffer nello stream
+                const bufferStream = new stream.PassThrough();
+                bufferStream.end(req.file.buffer);
+                bufferStream.pipe(uploadStream);
             });
         };
 
+        let fileUrl = "";
         try {
             fileUrl = await uploadToCloud();
         } catch (err) {
-            console.error("Errore upload Cloudinary:", err);
-            // Non blocchiamo tutto, procediamo ma senza URL allegato
+            console.error("Cloudinary Error:", err);
+            return res.status(500).json({ error: "Errore upload file: " + err.message });
         }
 
-        // 2. Se è un PDF, NON mandarlo a GPT-4o Vision (che accetta solo immagini).
-        // Restituisci i dati vuoti ma con l'URL del file, così l'utente compila a mano ma ha l'allegato.
+        // 2. Se è un PDF, ferma qui l'AI (GPT-4o Vision non legge i PDF direttamente)
+        // Restituisci l'URL così l'utente ha l'allegato, ma i campi vuoti.
         if (isPdf) {
             return res.json({ 
                 success: true, 
                 isPdf: true,
-                message: "PDF caricato! L'AI legge solo immagini per ora, ma il file è allegato.",
+                message: "PDF caricato e allegato! L'AI non può leggere il contenuto dei PDF, compila i dati manualmente.",
                 data: {
                     fornitore: "",
                     data_ricezione: new Date().toISOString().split('T')[0],
-                    numero_documento: "", // Campo vuoto per DDT
+                    numero_documento: "",
                     prodotti: [],
-                    allegato_url: fileUrl // ECCOLO
+                    allegato_url: fileUrl // URL CLICLABILE
                 }
             });
         }
 
-        // 3. Se è Immagine, procedi con AI
-        if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: "Manca API Key OpenAI" });
+        // 3. Se è Immagine, procedi con OpenAI
+        if (!process.env.OPENAI_API_KEY) return res.json({ success: true, message: "AI non configurata, file allegato.", data: { allegato_url: fileUrl, prodotti: [] } });
 
         const base64Image = req.file.buffer.toString('base64');
         const dataUrl = `data:${req.file.mimetype};base64,${base64Image}`;
@@ -139,44 +144,42 @@ router.post('/api/haccp/scan-bolla', uploadFile.single('photo'), async (req, res
             messages: [
                 {
                     role: "system",
-                    content: `Sei un esperto contabile HACCP. Analizza l'immagine della bolla/fattura.
+                    content: `Sei un assistente contabile. Analizza questa bolla/fattura.
                     Estrai:
                     1. Fornitore
-                    2. Data Documento (formato YYYY-MM-DD)
-                    3. Numero Documento (DDT o Fattura n.)
-                    4. Prodotti (Nome, Quantità, Prezzo unitario o totale riga, Scadenza se presente o null).
+                    2. Data Documento (YYYY-MM-DD)
+                    3. Numero Documento (es. Fattura 40/A o DDT 123)
+                    4. Prodotti (Lista: nome, quantità, prezzo unitario, scadenza se visibile).
                     
-                    Restituisci SOLO un JSON valido:
+                    Restituisci JSON puro:
                     {
-                        "fornitore": "Nome Fornitore",
+                        "fornitore": "Nome",
                         "data_ricezione": "YYYY-MM-DD", 
-                        "numero_documento": "123/A",
-                        "prodotti": [
-                            { "nome": "Farina 00", "quantita": "10 kg", "prezzo": 12.50, "scadenza": null }
-                        ]
+                        "numero_documento": "123",
+                        "prodotti": [{ "nome": "X", "quantita": "1", "prezzo": 0, "scadenza": null }]
                     }`
                 },
                 {
                     role: "user",
                     content: [
-                        { type: "text", text: "Analizza questa bolla." },
+                        { type: "text", text: "Analizza immagine." },
                         { type: "image_url", image_url: { url: dataUrl } }
                     ]
                 }
             ],
-            max_tokens: 1500
+            max_tokens: 1000
         });
 
         let text = response.choices[0].message.content.replace(/```json/g, '').replace(/```/g, '').trim();
         let data = JSON.parse(text);
         
-        // Aggiungiamo l'URL dell'immagine caricata ai dati restituiti
+        // Aggiungi l'URL dell'immagine ai dati restituiti
         data.allegato_url = fileUrl;
 
         res.json({ success: true, data });
 
     } catch (e) {
-        console.error("Errore AI/Server:", e);
+        console.error("Errore Scan:", e);
         res.status(500).json({ error: "Errore server: " + e.message });
     }
 });
