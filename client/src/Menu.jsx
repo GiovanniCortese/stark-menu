@@ -466,7 +466,7 @@ function Menu() {
             {style.url_allergeni && ( <button onClick={() => { setUrlFileAttivo(style.url_allergeni); setTitoloFile("Lista Allergeni ⚠️"); setShowFileModal(true); }} style={{ ...footerBtnStyle, opacity: 0.8 }}><span>⚠️</span> LISTA ALLERGENI</button> )}
         </div>
         {style.info_footer && ( <p style={{ whiteSpace: 'pre-line', marginBottom: '15px', color: style.colore_footer_text || style.text, fontSize: `${style.dimensione_footer || 12}px` }}>{style.info_footer}</p> )}
-<div style={{ marginTop: 15, fontSize: 10, color: style.colore_footer_text || style.text, opacity: 0.8 }}>
+        <div style={{ marginTop: 15, fontSize: 10, color: style.colore_footer_text || style.text, opacity: 0.8 }}>
     <a 
         href="https://www.cosaedovemangiare.it" 
         target="_blank" 
@@ -475,7 +475,8 @@ function Menu() {
     >
         Powered by COSAEDOVEMANGIARE.IT
     </a>
-</div>      </div>
+</div>
+      </div>
 
       {showFileModal && urlFileAttivo && (
         <div style={{ position:'fixed', top:0, left:0, right:0, bottom:0, background: 'rgba(0,0,0,0.95)', zIndex: 5000, display:'flex', alignItems:'center', justifyContent:'center', padding:'10px' }} onClick={() => setShowFileModal(false)}>
