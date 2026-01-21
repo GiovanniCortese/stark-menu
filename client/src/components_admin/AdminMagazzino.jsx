@@ -7,8 +7,8 @@ const getMonday = (d) => { const date = new Date(d); const day = date.getDay(), 
 const formatDateISO = (date) => date.toISOString().split('T')[0];
 
 function AdminMagazzino({ user, API_URL }) {
-    // Tabs disponibili: dashboard, calendario, carico, lista, report
-    const [tab, setTab] = useState('dashboard'); 
+    // Tabs: dashboard, lista, carico (Report ora è un modale)
+    const [tab, setTab] = useState('lista'); 
     const [stats, setStats] = useState({ fornitori: [], storico: [], top_prodotti: [] });
     const [assets, setAssets] = useState([]); 
     const [filtro, setFiltro] = useState("");
@@ -20,7 +20,7 @@ function AdminMagazzino({ user, API_URL }) {
     const allegatoInputRef = useRef(null); 
     const importExcelRef = useRef(null); 
 
-    // Stato Calendario
+    // Stati Calendario
     const [currentMonth, setCurrentMonth] = useState(new Date());
 
     // Form Manuale
@@ -30,14 +30,22 @@ function AdminMagazzino({ user, API_URL }) {
         fornitore: '', prodotto: '', lotto: '', scadenza: '',
         temperatura: '', conforme: true, integro: true, note: '',
         quantita: '', allegato_url: '', destinazione: '', 
-        prezzo_unitario: '', iva: '', prezzo: '' // prezzo = IMPONIBILE
+        prezzo_unitario: '', iva: '', prezzo: '' 
     });
 
     const [uploadingMerci, setUploadingMerci] = useState(false);
 
+    // --- NUOVI STATI: MODALE DOWNLOAD & ANTEPRIMA ---
+    const [showDownloadModal, setShowDownloadModal] = useState(false);
+    const [downloadFormat, setDownloadFormat] = useState('excel'); // 'excel' | 'pdf'
+    const [selectedMonth, setSelectedMonth] = useState(''); // YYYY-MM
+    
+    const [previewDoc, setPreviewDoc] = useState(null); 
+    const [isDownloading, setIsDownloading] = useState(false);
+
     useEffect(() => { ricaricaDati(); }, []);
 
-    // --- CALCOLO AUTOMATICO PREZZI NEL FORM ---
+    // --- CALCOLO AUTOMATICO PREZZI ---
     useEffect(() => {
         const qta = parseFloat(merciForm.quantita);
         const unit = parseFloat(merciForm.prezzo_unitario);
@@ -56,30 +64,70 @@ function AdminMagazzino({ user, API_URL }) {
         fetch(`${API_URL}/api/haccp/assets/${user.id}`).then(r => r.json()).then(setAssets).catch(console.error);
     };
 
-    // --- LOGICA REPORT & EXPORT AVANZATO ---
-    const downloadReport = (periodo, format) => {
+    // --- LOGICA EXPORT AVANZATO (MODALE) ---
+    const executeDownload = (rangeType) => {
+        let start, end, rangeName;
         const today = new Date();
-        let start, end;
-        let rangeName = periodo;
 
-        if (periodo === 'week') {
+        if (rangeType === 'week') {
             start = getMonday(today);
             end = new Date(start); end.setDate(end.getDate() + 6);
-            rangeName = "Settimana_Corrente";
-        } else if (periodo === 'month') {
+            rangeName = "Ultima_Settimana";
+        } else if (rangeType === 'month') {
             start = new Date(today.getFullYear(), today.getMonth(), 1);
             end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-            rangeName = `Mese_${today.getMonth()+1}`;
+            rangeName = "Mese_Corrente";
+        } else if (rangeType === 'custom-month') {
+            if (!selectedMonth) return alert("Seleziona un mese!");
+            const [y, m] = selectedMonth.split('-');
+            start = new Date(y, m - 1, 1);
+            end = new Date(y, m, 0, 23, 59, 59);
+            rangeName = `Mese_${selectedMonth}`;
         } else {
             // Tutto
             start = null; end = null;
-            rangeName = "Totale_Storico";
+            rangeName = "Storico_Completo";
         }
 
-        let url = `${API_URL}/api/haccp/export/merci/${user.id}?format=${format}&rangeName=${rangeName}`;
+        let url = `${API_URL}/api/haccp/export/merci/${user.id}?format=${downloadFormat}&rangeName=${rangeName}`;
         if(start && end) url += `&start=${formatDateISO(start)}&end=${formatDateISO(end)}`;
         
         window.open(url, '_blank');
+        setShowDownloadModal(false);
+    };
+
+    // --- GESTIONE ANTEPRIMA FILE & DOWNLOAD ---
+    const handleFileAction = (url, name) => {
+        if(!url) return;
+        const isPdf = url.toLowerCase().includes('.pdf');
+        // Usa il proxy per i PDF per evitare problemi CORS nel visualizzatore
+        let previewUrl = isPdf ? `${API_URL}/api/proxy-download?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}` : url;
+        
+        setPreviewDoc({
+            url: url, // URL originale per download
+            previewUrl: previewUrl, // URL per visualizzazione
+            name: name,
+            type: isPdf ? 'pdf' : 'image'
+        });
+    };
+
+    const handleForceDownload = async () => {
+        if (!previewDoc) return;
+        setIsDownloading(true);
+        try {
+            const proxyDownloadUrl = `${API_URL}/api/proxy-download?url=${encodeURIComponent(previewDoc.url)}&name=${encodeURIComponent(previewDoc.name)}`;
+            const response = await fetch(proxyDownloadUrl);
+            const blob = await response.blob();
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = previewDoc.name || "documento"; 
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(downloadUrl);
+        } catch (error) { alert("Errore durante il download."); } 
+        finally { setIsDownloading(false); }
     };
 
     // --- LOGICA CALENDARIO ---
@@ -91,14 +139,10 @@ function AdminMagazzino({ user, API_URL }) {
         const startBlank = firstDay === 0 ? 6 : firstDay - 1; // Start Monday
 
         const days = [];
-        // Caselle vuote inizio mese
         for (let i = 0; i < startBlank; i++) days.push(<div key={`blank-${i}`} style={{height:80, background:'#f9f9f9', border:'1px solid #eee'}}></div>);
         
-        // Giorni del mese
         for (let d = 1; d <= daysInMonth; d++) {
             const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-            
-            // Calcolo totale spese del giorno
             const speseGiorno = stats.storico.filter(r => r.data_ricezione.startsWith(dateStr));
             const totaleGiorno = speseGiorno.reduce((acc, curr) => {
                 const qta = parseFloat(curr.quantita) || 0;
@@ -191,7 +235,7 @@ function AdminMagazzino({ user, API_URL }) {
         setScannedData(prev => ({ ...prev, prodotti: prev.prodotti.filter(p => p !== prod) }));
     };
 
-    // --- UPLOAD ALLEGATO ---
+    // --- UPLOAD ALLEGATO CON FEEDBACK VISIVO ---
     const handleMerciPhoto = async (e) => {
         const f = e.target.files[0]; if(!f) return;
         setUploadingMerci(true);
@@ -273,6 +317,7 @@ function AdminMagazzino({ user, API_URL }) {
                     lotto:'', scadenza:'', note:'', allegato_url:'', destinazione:'', temperatura: '', conforme: true, integro: true
                 });
                 ricaricaDati();
+                setTab('lista'); // Torna alla lista
             } else { alert("Errore salvataggio: " + data.error); }
         } catch (err) { alert("Errore connessione salvataggio"); }
     };
@@ -325,10 +370,10 @@ function AdminMagazzino({ user, API_URL }) {
             <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20}}>
                 <div>
                     <h2 style={{color: '#2c3e50', margin:0}}>📦 Magazzino & Contabilità</h2>
-                    <p style={{margin:0, fontSize:12, color:'#7f8c8d'}}>Prima Nota Acquisti, Fatture e DDT</p>
+                    <p style={{margin:0, fontSize:12, color:'#7f8c8d'}}>Gestione acquisti, fatture e prima nota</p>
                 </div>
                 <div style={{display:'flex', gap:10}}>
-                    {['dashboard','calendario','lista','carico','report'].map(t => (
+                    {['dashboard','calendario','lista','carico'].map(t => (
                         <button key={t} onClick={() => setTab(t)} style={{
                             padding:'8px 15px', borderRadius:20, cursor:'pointer', border:'1px solid #ccc',
                             background: tab===t ? '#34495e' : 'white', color: tab===t ? 'white' : '#333', textTransform:'capitalize'
@@ -371,39 +416,7 @@ function AdminMagazzino({ user, API_URL }) {
                 </div>
             )}
 
-            {/* 3. REPORTING */}
-            {tab === 'report' && (
-                <div style={{background:'white', padding:30, borderRadius:15, textAlign:'center', boxShadow:'0 4px 10px rgba(0,0,0,0.05)'}}>
-                    <h2 style={{color:'#2c3e50'}}>🖨️ Centro Esportazione Dati</h2>
-                    <p>Scarica il registro acquisti completo con calcoli IVA e Imponibili.</p>
-                    
-                    <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap:20, marginTop:30}}>
-                        <div style={{border:'1px solid #ddd', padding:20, borderRadius:10}}>
-                            <h4>📅 Questa Settimana</h4>
-                            <div style={{display:'flex', gap:10, justifyContent:'center'}}>
-                                <button onClick={()=>downloadReport('week','xlsx')} style={{background:'#27ae60', color:'white', border:'none', padding:'10px', borderRadius:5, cursor:'pointer'}}>Excel</button>
-                                <button onClick={()=>downloadReport('week','pdf')} style={{background:'#c0392b', color:'white', border:'none', padding:'10px', borderRadius:5, cursor:'pointer'}}>PDF</button>
-                            </div>
-                        </div>
-                         <div style={{border:'1px solid #ddd', padding:20, borderRadius:10, background:'#f9f9f9'}}>
-                            <h4>🗓️ Questo Mese</h4>
-                            <div style={{display:'flex', gap:10, justifyContent:'center'}}>
-                                <button onClick={()=>downloadReport('month','xlsx')} style={{background:'#27ae60', color:'white', border:'none', padding:'10px', borderRadius:5, cursor:'pointer'}}>Excel</button>
-                                <button onClick={()=>downloadReport('month','pdf')} style={{background:'#c0392b', color:'white', border:'none', padding:'10px', borderRadius:5, cursor:'pointer'}}>PDF</button>
-                            </div>
-                        </div>
-                         <div style={{border:'1px solid #ddd', padding:20, borderRadius:10}}>
-                            <h4>🗄️ Tutto lo Storico</h4>
-                            <div style={{display:'flex', gap:10, justifyContent:'center'}}>
-                                <button onClick={()=>downloadReport('all','xlsx')} style={{background:'#27ae60', color:'white', border:'none', padding:'10px', borderRadius:5, cursor:'pointer'}}>Excel</button>
-                                <button onClick={()=>downloadReport('all','pdf')} style={{background:'#c0392b', color:'white', border:'none', padding:'10px', borderRadius:5, cursor:'pointer'}}>PDF</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* 4. CARICO (AI + FORM) */}
+            {/* 3. CARICO (AI + FORM) */}
             {tab === 'carico' && (
                 <div>
                      <div style={{display:'flex', gap:15, marginBottom:20, flexWrap:'wrap'}}>
@@ -459,13 +472,19 @@ function AdminMagazzino({ user, API_URL }) {
 
                             <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Lotto</label><input value={merciForm.lotto} onChange={e=>setMerciForm({...merciForm, lotto:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} /></div>
                             <div style={{flex:1, minWidth:130}}><label style={{fontSize:11}}>Scadenza</label><input type="date" value={merciForm.scadenza} onChange={e=>setMerciForm({...merciForm, scadenza:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} /></div>
-                            <div style={{flex:2, minWidth:200}}><label style={{fontSize:11}}>Note</label><input value={merciForm.note} onChange={e=>setMerciForm({...merciForm, note:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} placeholder="Es. Rif DDT" /></div>
+                            <div style={{flex:2, minWidth:200}}><label style={{fontSize:11}}>Note / DDT</label><input value={merciForm.note} onChange={e=>setMerciForm({...merciForm, note:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} placeholder="Es. Rif DDT" /></div>
 
-                            {/* ALLEGATO */}
+                            {/* ALLEGATO CON FEEDBACK VISIVO */}
                             <div style={{flex:1, minWidth:120}} onClick={()=>allegatoInputRef.current.click()}>
                                 <label style={{fontSize:11, display:'block'}}>Allegato</label>
-                                <div style={{padding:10, border:'1px solid #ddd', borderRadius:5, background: merciForm.allegato_url ? '#eafaf1' : 'white', cursor:'pointer', textAlign:'center', color: merciForm.allegato_url ? '#27ae60' : '#aaa'}}>
-                                    {uploadingMerci ? '...' : (merciForm.allegato_url ? '📎 Presente' : '➕ Carica')}
+                                <div style={{
+                                    padding:10, border:'1px solid #ddd', borderRadius:5, 
+                                    background: uploadingMerci ? '#f39c12' : (merciForm.allegato_url ? '#eafaf1' : 'white'), 
+                                    cursor:'pointer', textAlign:'center', 
+                                    color: uploadingMerci ? 'white' : (merciForm.allegato_url ? '#27ae60' : '#aaa'),
+                                    fontWeight: 'bold', fontSize: 12
+                                }}>
+                                    {uploadingMerci ? '⏳ Caricamento...' : (merciForm.allegato_url ? '✅ Fatto!' : '📎 Carica')}
                                 </div>
                                 <input type="file" ref={allegatoInputRef} accept="image/*,.pdf" onChange={handleMerciPhoto} style={{display:'none'}} />
                             </div>
@@ -482,12 +501,14 @@ function AdminMagazzino({ user, API_URL }) {
                 </div>
             )}
 
-            {/* 5. TABELLA LISTA / STORICO */}
+            {/* 4. TABELLA LISTA / STORICO */}
             {(tab === 'lista' || tab === 'carico') && (
                 <div style={{background:'white', padding:25, borderRadius:15, boxShadow:'0 4px 10px rgba(0,0,0,0.05)', marginTop:20}}>
                     <div style={{display:'flex', justifyContent:'space-between', marginBottom:20}}>
-                        <h3>📋 Prima Nota ({movimentiFiltrati.length})</h3>
+                        <h3>📦 Storico</h3>
                         <div style={{display:'flex', gap:10}}>
+                             {/* TASTO REPORT CHE APRE IL MODALE */}
+                             <button onClick={() => setShowDownloadModal(true)} style={{background:'#e67e22', color:'white', border:'none', padding:'8px 15px', borderRadius:5, cursor:'pointer', fontWeight:'bold'}}>⬇ Report</button>
                              <input type="text" placeholder="Cerca..." value={filtro} onChange={e => setFiltro(e.target.value)} style={{padding:8, borderRadius:5, border:'1px solid #ddd'}} />
                         </div>
                     </div>
@@ -527,7 +548,7 @@ function AdminMagazzino({ user, API_URL }) {
                                             <td style={{padding:10, fontSize:12}}>{r.lotto || '-'}</td>
                                             <td style={{padding:10, fontSize:12, color:'#555'}}>{r.note}</td>
                                             <td style={{padding:10}}>
-                                            {r.allegato_url && <button onClick={() => window.open(r.allegato_url, '_blank')} style={{background:'#3498db', color:'white', border:'none', borderRadius:3, padding:'2px 6px', cursor:'pointer'}}>📎</button>}
+                                            {r.allegato_url && <button onClick={() => handleFileAction(r.allegato_url, `Doc_${r.data_ricezione}`)} style={{background:'#3498db', color:'white', border:'none', borderRadius:3, padding:'2px 6px', cursor:'pointer'}}>📎</button>}
                                             </td>
                                             <td style={{padding:10, display:'flex', gap:5}}>
                                                 <button onClick={()=>iniziaModifica(r)} style={{border:'none', background:'none', cursor:'pointer', fontSize:18}} title="Modifica">✏️</button>
@@ -551,6 +572,61 @@ function AdminMagazzino({ user, API_URL }) {
                     </div>
                 </div>
             )}
+
+            {/* --- MODALE DOWNLOAD (SCARICA REPORT) --- */}
+            {showDownloadModal && (
+                <div style={{position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000}}>
+                    <div style={{background: 'white', padding: '20px', borderRadius: '10px', width: '350px', textAlign: 'center'}}>
+                        <h3 style={{marginBottom: '15px'}}>Scarica Report</h3>
+                        
+                        {/* Selettore Formato */}
+                        <div style={{display:'flex', justifyContent:'center', gap:10, marginBottom:15}}>
+                             <button onClick={()=>setDownloadFormat('excel')} style={{padding:'5px 15px', borderRadius:20, border:'none', cursor:'pointer', background: downloadFormat==='excel'?'#27ae60':'#eee', color: downloadFormat==='excel'?'white':'#333', fontWeight:'bold'}}>Excel</button>
+                             <button onClick={()=>setDownloadFormat('pdf')} style={{padding:'5px 15px', borderRadius:20, border:'none', cursor:'pointer', background: downloadFormat==='pdf'?'#e74c3c':'#eee', color: downloadFormat==='pdf'?'white':'#333', fontWeight:'bold'}}>PDF</button>
+                        </div>
+
+                        {/* Selettore Mese Custom */}
+                        <div style={{display:'flex', gap:5, marginBottom:15, justifyContent:'center'}}>
+                            <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} style={{padding:8, borderRadius:5, border:'1px solid #ddd'}} />
+                            <button onClick={()=>executeDownload('custom-month')} style={{background:'#8e44ad', color:'white', border:'none', padding:'8px', borderRadius:5, cursor:'pointer', fontWeight:'bold'}}>SCARICA</button>
+                        </div>
+
+                        {/* Bottoni Rapidi */}
+                        <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+                            <button onClick={()=>executeDownload('week')} style={{background: '#3498db', color: 'white', border: 'none', padding: '12px', borderRadius: '5px', cursor: 'pointer', fontWeight:'bold'}}>Ultima Settimana</button>
+                            <button onClick={()=>executeDownload('month')} style={{background: '#2980b9', color: 'white', border: 'none', padding: '12px', borderRadius: '5px', cursor: 'pointer', fontWeight:'bold'}}>Mese Corrente</button>
+                            <button onClick={()=>executeDownload('all')} style={{background: '#2c3e50', color: 'white', border: 'none', padding: '12px', borderRadius: '5px', cursor: 'pointer', fontWeight:'bold'}}>Tutto lo storico</button>
+                        </div>
+                        
+                        <button onClick={()=>setShowDownloadModal(false)} style={{marginTop: '20px', background: 'transparent', border: 'none', color: '#999', cursor: 'pointer', textDecoration: 'underline'}}>Annulla</button>
+                    </div>
+                </div>
+            )}
+
+            {/* --- MODALE ANTEPRIMA FILE --- */}
+            {previewDoc && (
+                <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.85)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center'}}>
+                    <div style={{background:'white', width:'90%', height:'90%', maxWidth:'1000px', borderRadius:8, display:'flex', flexDirection:'column', overflow:'hidden'}}>
+                        <div style={{padding:'10px 15px', background:'#ecf0f1', borderBottom:'1px solid #ccc', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                            <span style={{fontWeight:'bold', color:'#2c3e50'}}>📄 {previewDoc.name}</span>
+                            <div style={{display:'flex', gap:10}}>
+                                <button onClick={handleForceDownload} disabled={isDownloading} style={{background:'#27ae60', color:'white', border:'none', padding:'6px 12px', borderRadius:4, cursor:'pointer', fontWeight:'bold'}}>
+                                    {isDownloading ? '⏳...' : '⬇️ Scarica'}
+                                </button>
+                                <button onClick={()=>setPreviewDoc(null)} style={{background:'#e74c3c', color:'white', border:'none', padding:'6px 12px', borderRadius:4, cursor:'pointer', fontWeight:'bold'}}>Chiudi X</button>
+                            </div>
+                        </div>
+                        <div style={{flex:1, background:'#555', overflow:'hidden', display:'flex', justifyContent:'center', alignItems:'center'}}>
+                            {previewDoc.type === 'pdf' ? (
+                                <iframe src={previewDoc.previewUrl} style={{width:'100%', height:'100%', border:'none'}} title="Anteprima PDF" />
+                            ) : (
+                                <img src={previewDoc.previewUrl} alt="Anteprima" style={{maxWidth:'100%', maxHeight:'100%', objectFit:'contain'}} />
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
         </div>
     );
 }
