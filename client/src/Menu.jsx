@@ -559,10 +559,13 @@ function Menu() {
                 {/* TASTO CHIUDI */}
                 <button onClick={() => setSelectedPiatto(null)} style={{
                     position:'absolute', top:'15px', right:'15px', 
-                    background:'rgba(255,255,255,0.2)', backdropFilter: 'blur(5px)',
-                    color:'white', border:'1px solid rgba(255,255,255,0.5)', 
+                    background:'white',                   // Sfondo bianco
+                    color:'black',                        // X nera
+                    border:'2px solid black',             // Cerchio nero (Bordo)
                     borderRadius:'50%', width:'35px', height:'35px', 
-                    cursor:'pointer', zIndex: 10, fontSize:'18px', display:'flex', alignItems:'center', justifyContent:'center'
+                    cursor:'pointer', zIndex: 10, fontSize:'18px', fontWeight:'bold',
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    boxShadow: '0 2px 5px rgba(0,0,0,0.3)' // Un po' di ombra per staccarlo dallo sfondo
                 }}>✕</button>
 
                 {/* 2. HEADER INFO (FISSO - NON SCORRE) */}
