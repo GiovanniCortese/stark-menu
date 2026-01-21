@@ -29,7 +29,8 @@ function AdminMagazzino({ user, API_URL }) {
         data_ricezione: new Date().toISOString().split('T')[0],
         fornitore: '', prodotto: '', lotto: '', scadenza: '',
         temperatura: '', conforme: true, integro: true, note: '',
-        quantita: '', allegato_url: '', destinazione: '', 
+        quantita: '', unita_misura: 'Pz', // Default Unità di Misura
+        allegato_url: '', destinazione: '', 
         prezzo_unitario: '', iva: '', prezzo: '' 
     });
 
@@ -226,6 +227,7 @@ function AdminMagazzino({ user, API_URL }) {
             data_ricezione: scannedData.data_ricezione || prev.data_ricezione,
             prodotto: prod.nome, 
             quantita: prod.quantita || '', 
+            unita_misura: 'Pz', // Default su Scan
             lotto: prod.lotto || '', 
             scadenza: prod.scadenza || '',
             prezzo_unitario: prod.prezzo || '', 
@@ -264,6 +266,7 @@ function AdminMagazzino({ user, API_URL }) {
                     fornitore: row['Fornitore'] || 'Excel',
                     prodotto: row['Prodotto'] || 'Sconosciuto',
                     quantita: row['Quantita'] || row['Qta'] || 1,
+                    unita_misura: row['UdM'] || row['Unita'] || 'Pz', // Supporto colonna UdM
                     prezzo_unitario: row['Prezzo Unitario'] || row['Unitario'] || 0,
                     iva: row['IVA'] || 0,
                     prezzo: row['Totale'] || ((row['Prezzo Unitario'] || 0) * (row['Qta'] || 1)) || 0,
@@ -313,7 +316,7 @@ function AdminMagazzino({ user, API_URL }) {
                 alert(merciForm.id ? "✅ Aggiornato!" : "✅ Salvato correttamente!");
                 setMerciForm({ 
                     id: null, data_ricezione: new Date().toISOString().split('T')[0],
-                    fornitore:'', prodotto:'', quantita:'', prezzo_unitario:'', iva:'', prezzo:'', 
+                    fornitore:'', prodotto:'', quantita:'', unita_misura: 'Pz', prezzo_unitario:'', iva:'', prezzo:'', 
                     lotto:'', scadenza:'', note:'', allegato_url:'', destinazione:'', temperatura: '', conforme: true, integro: true
                 });
                 ricaricaDati();
@@ -462,8 +465,26 @@ function AdminMagazzino({ user, API_URL }) {
                             <div style={{flex:2, minWidth:180}}><label style={{fontSize:11}}>Fornitore</label><input value={merciForm.fornitore} onChange={e=>setMerciForm({...merciForm, fornitore:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} placeholder="Es. Metro" /></div>
                             <div style={{flex:2, minWidth:180}}><label style={{fontSize:11}}>Prodotto / Descr.</label><input value={merciForm.prodotto} onChange={e=>setMerciForm({...merciForm, prodotto:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} placeholder="Es. Fattura n.102" /></div>
                             
-                            {/* --- PREZZI & QTA --- */}
+                            {/* --- QTA + UdM --- */}
                             <div style={{flex:1, minWidth:80}}><label style={{fontSize:11}}>Qta</label><input type="number" step="0.01" value={merciForm.quantita} onChange={e=>setMerciForm({...merciForm, quantita:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} /></div>
+                            
+                            {/* SELETTORE UNITA DI MISURA */}
+                            <div style={{flex:1, minWidth:80}}>
+                                <label style={{fontSize:11}}>UdM</label>
+                                <select value={merciForm.unita_misura} onChange={e=>setMerciForm({...merciForm, unita_misura:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5, background:'white'}}>
+                                    <option value="Pz">Pz</option>
+                                    <option value="Kg">Kg</option>
+                                    <option value="g">g</option>
+                                    <option value="L">L</option>
+                                    <option value="ml">ml</option>
+                                    <option value="Cartoni">Cartoni</option>
+                                    <option value="Pedane">Pedane</option>
+                                    <option value="Pacchi">Pacchi</option>
+                                    <option value="Barattoli">Barattoli</option>
+                                    <option value="Altro">Altro</option>
+                                </select>
+                            </div>
+
                             <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Unitario (€)</label><input type="number" step="0.01" value={merciForm.prezzo_unitario} onChange={e=>setMerciForm({...merciForm, prezzo_unitario:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} placeholder="€ Unit" /></div>
                             <div style={{flex:1, minWidth:60}}><label style={{fontSize:11}}>IVA %</label><input type="number" value={merciForm.iva} onChange={e=>setMerciForm({...merciForm, iva:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} placeholder="22" /></div>
                             
@@ -495,7 +516,7 @@ function AdminMagazzino({ user, API_URL }) {
                             </div>
 
                             <button type="submit" style={{padding:'10px 25px', background: merciForm.id ? '#f39c12' : '#27ae60', color:'white', border:'none', borderRadius:5, fontWeight:'bold', cursor:'pointer', height:42}}>{merciForm.id ? 'AGGIORNA' : 'SALVA'}</button>
-                            {merciForm.id && <button type="button" onClick={()=>{setMerciForm({id:null, data_ricezione: new Date().toISOString().split('T')[0], fornitore:'', prodotto:'', quantita:'', prezzo:'', prezzo_unitario:'', iva:'', lotto:'', scadenza:'', note:'', allegato_url:''});}} style={{padding:'10px', background:'#95a5a6', color:'white', border:'none', borderRadius:5, cursor:'pointer', height:42}}>ANNULLA</button>}
+                            {merciForm.id && <button type="button" onClick={()=>{setMerciForm({id:null, data_ricezione: new Date().toISOString().split('T')[0], fornitore:'', prodotto:'', quantita:'', unita_misura:'Pz', prezzo:'', prezzo_unitario:'', iva:'', lotto:'', scadenza:'', note:'', allegato_url:''});}} style={{padding:'10px', background:'#95a5a6', color:'white', border:'none', borderRadius:5, cursor:'pointer', height:42}}>ANNULLA</button>}
                         </form>
                     </div>
                 </div>
@@ -520,6 +541,7 @@ function AdminMagazzino({ user, API_URL }) {
                                     <th style={{padding:10}}>Fornitore</th>
                                     <th style={{padding:10}}>Prodotto</th>
                                     <th style={{padding:10}}>Qta</th>
+                                    <th style={{padding:10}}>UdM</th> {/* NUOVA COLONNA */}
                                     <th style={{padding:10}}>Unit.</th>
                                     <th style={{padding:10}}>Tot. Imp.</th>
                                     <th style={{padding:10}}>IVA %</th>
@@ -540,6 +562,7 @@ function AdminMagazzino({ user, API_URL }) {
                                             <td style={{padding:10}}>{r.fornitore}</td>
                                             <td style={{padding:10, fontWeight:'bold'}}>{r.prodotto}</td>
                                             <td style={{padding:10}}>{r.quantita}</td>
+                                            <td style={{padding:10, fontWeight:'bold', color:'#34495e'}}>{r.unita_misura || 'Pz'}</td> {/* UdM */}
                                             <td style={{padding:10}}>€ {r.prezzo_unitario || '-'}</td>
                                             <td style={{padding:10}}>€ {calcs.imp}</td>
                                             <td style={{padding:10}}>{r.iva ? r.iva + '%' : '-'}</td>
@@ -560,7 +583,7 @@ function AdminMagazzino({ user, API_URL }) {
                             </tbody>
                             <tfoot style={{background:'#2c3e50', color:'white', fontWeight:'bold'}}>
                                 <tr>
-                                    <td colSpan={5} style={{padding:15, textAlign:'right'}}>TOTALE VISUALIZZATO:</td>
+                                    <td colSpan={6} style={{padding:15, textAlign:'right'}}>TOTALE VISUALIZZATO:</td> {/* Colspan aumentato a 6 per la nuova colonna */}
                                     <td style={{padding:15}}>€ {totaleVista.imp.toFixed(2)}</td>
                                     <td></td>
                                     <td style={{padding:15}}>€ {totaleVista.iva.toFixed(2)}</td>
