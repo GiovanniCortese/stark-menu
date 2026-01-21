@@ -1,10 +1,9 @@
-// client/src/components_admin/ProductRow.jsx - FIX CRASH ALLERGENI
+// client/src/components_admin/ProductRow.jsx - LAYOUT VERTICALE AGGIORNATO
 import { memo } from 'react';
 
 const ProductRow = memo(({ prodotto, avviaModifica, eliminaProdotto, isDragging }) => {
     
-    // --- FIX DI SICUREZZA PER GLI ALLERGENI ---
-    // Se arriva come stringa "['Latte']", lo convertiamo in array vero.
+    // --- PARSING SICURO ALLERGENI ---
     let allergeniReali = [];
     try {
         const raw = prodotto.allergeni;
@@ -16,12 +15,11 @@ const ProductRow = memo(({ prodotto, avviaModifica, eliminaProdotto, isDragging 
     } catch (e) {
         allergeniReali = [];
     }
-    // ------------------------------------------
 
-    const isSurgelato = allergeniReali.some(a => a.includes("Surgelato") || a.includes("❄️"));
-    const listaAllergeniPulita = allergeniReali.filter(a => !a.includes("Surgelato") && !a.includes("❄️"));
+    const isSurgelato = allergeniReali.some(a => a.includes("Surgelato") || a.includes("❄️") || a.includes("Congelato"));
+    const listaAllergeniPulita = allergeniReali.filter(a => !a.includes("Surgelato") && !a.includes("❄️") && !a.includes("Congelato"));
 
-    // PARSING VARIANTI E INGREDIENTI (Già sicuro)
+    // --- PARSING SICURO VARIANTI ---
     let variantiObj = { base: [], aggiunte: [] };
     try {
         variantiObj = typeof prodotto.varianti === 'string' 
@@ -32,7 +30,7 @@ const ProductRow = memo(({ prodotto, avviaModifica, eliminaProdotto, isDragging 
     const ingredientiStr = (variantiObj.base || []).join(', ');
     const aggiunteList = variantiObj.aggiunte || [];
 
-    // STILE GRAFICO CARD
+    // --- STILI ---
     const cardStyle = {
         background: isDragging ? '#f0f9ff' : 'white', 
         border: isDragging ? '1px solid #2980b9' : '1px solid #ddd',
@@ -40,7 +38,7 @@ const ProductRow = memo(({ prodotto, avviaModifica, eliminaProdotto, isDragging 
         padding: '12px',
         display: 'flex',
         justifyContent: 'space-between',
-        alignItems: 'center',
+        alignItems: 'center', // Allinea verticalmente al centro per maniglia e bottoni
         boxShadow: isDragging ? '0 5px 15px rgba(0,0,0,0.1)' : '0 1px 3px rgba(0,0,0,0.05)',
         transition: 'background 0.2s, border 0.2s',
         marginBottom: '0'
@@ -48,77 +46,104 @@ const ProductRow = memo(({ prodotto, avviaModifica, eliminaProdotto, isDragging 
 
     return (
         <div style={cardStyle}>
-            {/* LATO SINISTRO: INFO PIATTO */}
-            <div style={{display:'flex', alignItems:'center', gap:'15px', flex:1, overflow:'hidden'}}>
+            {/* LATO SINISTRO: DRAG HANDLE + FOTO */}
+            <div style={{display:'flex', alignItems:'flex-start', gap:'15px', flex:1, overflow:'hidden'}}>
                 
                 {/* MANIGLIA DRAG & DROP */}
-                <div style={{cursor:'grab', color:'#bdc3c7', fontSize:'20px', paddingRight:'5px'}}>⋮⋮</div>
+                <div style={{cursor:'grab', color:'#bdc3c7', fontSize:'20px', paddingRight:'5px', alignSelf:'center'}}>⋮⋮</div>
 
-                {/* FOTO */}
+                {/* FOTO (Opzionale) */}
                 {prodotto.immagine_url && (
                     <img 
                         src={prodotto.immagine_url} 
                         alt={prodotto.nome} 
-                        style={{width:'50px', height:'50px', borderRadius:'6px', objectFit:'cover', border:'1px solid #eee'}} 
+                        style={{width:'60px', height:'60px', borderRadius:'6px', objectFit:'cover', border:'1px solid #eee', marginTop:'2px'}} 
                     />
                 )}
 
-                <div style={{minWidth:0}}>
-                    <div style={{display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap'}}>
-                        <strong style={{fontSize:'15px', color:'#2c3e50'}}>{prodotto.nome}</strong>
-                        <span style={{fontSize:'14px', color:'#27ae60', fontWeight:'bold'}}>{Number(prodotto.prezzo).toFixed(2)}€</span>
-                        {isSurgelato && <span style={{fontSize:'12px'}}>❄️</span>}
+                {/* CONTENUTO CENTRALE (Impilato Verticalmente) */}
+                <div style={{display:'flex', flexDirection:'column', gap:'3px', minWidth:0, flex:1}}>
+                    
+                    {/* 1. TITOLO + PREZZO */}
+                    <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+                        <strong style={{fontSize:'16px', color:'#2c3e50', lineHeight:'1.2'}}>{prodotto.nome}</strong>
+                        <span style={{fontSize:'14px', color:'#27ae60', fontWeight:'bold', background:'#e8f8f5', padding:'2px 6px', borderRadius:'4px'}}>
+                            {Number(prodotto.prezzo).toFixed(2)}€
+                        </span>
                     </div>
 
-                    {/* Descrizione / Ingredienti */}
-                    <div style={{fontSize:'12px', color:'#7f8c8d', marginTop:'2px', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>
-                        {ingredientiStr || prodotto.descrizione || <em style={{opacity:0.5}}>Nessuna descrizione</em>}
-                    </div>
+                    {/* 2. DESCRIZIONE */}
+                    {prodotto.descrizione && (
+                        <div style={{fontSize:'13px', color:'#7f8c8d', fontStyle:'italic'}}>
+                            {prodotto.descrizione}
+                        </div>
+                    )}
 
-                    {/* Badge Varianti & Allergeni */}
-                    <div style={{display:'flex', gap:'5px', marginTop:'4px', flexWrap:'wrap'}}>
-                        {aggiunteList.length > 0 && (
+                    {/* 3. INGREDIENTI (Varianti Base) */}
+                    {ingredientiStr && (
+                        <div style={{fontSize:'12px', color:'#555'}}>
+                            <span style={{fontWeight:'bold', color:'#d35400'}}>🧂 Ing:</span> {ingredientiStr}
+                        </div>
+                    )}
+
+                    {/* 4. VARIAZIONI (Conteggio) */}
+                    {aggiunteList.length > 0 && (
+                        <div style={{fontSize:'11px'}}>
                              <span style={{
-                                 fontSize:'10px', 
-                                 background:'#e8f8f5', 
-                                 color:'#1abc9c', 
-                                 border:'1px solid #d1f2eb',
-                                 padding:'2px 6px', 
-                                 borderRadius:'4px', 
+                                 background:'#f4f6f7', 
+                                 color:'#2980b9', 
+                                 border:'1px solid #d6eaf8',
+                                 padding:'1px 5px', 
+                                 borderRadius:'3px', 
                                  fontWeight:'bold'
                              }}>
-                                +{aggiunteList.length} VAR
+                                ✏️ {aggiunteList.length} Variazioni disponibili
                              </span>
-                        )}
-                        {listaAllergeniPulita.length > 0 && (
+                        </div>
+                    )}
+
+                    {/* 5. ALLERGENI */}
+                    {listaAllergeniPulita.length > 0 && (
+                        <div style={{fontSize:'11px', marginTop:'2px'}}>
                              <span style={{
-                                 fontSize:'10px', 
-                                 background:'#fff3e0', 
-                                 color:'#e67e22', 
-                                 border:'1px solid #ffe0b2',
-                                 padding:'2px 6px', 
-                                 borderRadius:'4px', 
+                                 color:'#c0392b', 
                                  fontWeight:'bold'
                              }}>
-                                ⚠️ ALLERGENI: {listaAllergeniPulita.join(', ')}
+                                ⚠️ Allergeni: {listaAllergeniPulita.join(', ')}
                              </span>
-                        )}
-                    </div>
+                        </div>
+                    )}
+
+                    {/* 6. SURGELATO */}
+                    {isSurgelato && (
+                        <div style={{fontSize:'11px', marginTop:'1px'}}>
+                             <span style={{
+                                 color:'#3498db', 
+                                 fontWeight:'bold',
+                                 display:'flex',
+                                 alignItems:'center',
+                                 gap:'4px'
+                             }}>
+                                ❄️ Prodotto Surgelato
+                             </span>
+                        </div>
+                    )}
+
                 </div>
             </div>
 
             {/* LATO DESTRO: PULSANTI AZIONE */}
-            <div style={{display:'flex', flexDirection:'column', gap:'5px', marginLeft:'10px'}}>
+            <div style={{display:'flex', flexDirection:'column', gap:'8px', marginLeft:'15px'}}>
                 <button 
                     onClick={(e) => { e.stopPropagation(); avviaModifica(prodotto); }} 
-                    style={{background:'#f1c40f', border:'none', borderRadius:'5px', padding:'8px 12px', cursor:'pointer'}}
+                    style={{background:'#f1c40f', border:'none', borderRadius:'5px', padding:'8px 12px', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.1)'}}
                     title="Modifica"
                 >
                     ✏️
                 </button>
                 <button 
                     onClick={(e) => { e.stopPropagation(); eliminaProdotto(prodotto.id); }} 
-                    style={{background:'#e74c3c', border:'none', borderRadius:'5px', padding:'8px 12px', color:'white', cursor:'pointer'}}
+                    style={{background:'#e74c3c', border:'none', borderRadius:'5px', padding:'8px 12px', color:'white', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.1)'}}
                     title="Elimina"
                 >
                     🗑️
