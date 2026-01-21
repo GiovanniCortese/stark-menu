@@ -1,4 +1,4 @@
-// client/src/components_admin/AdminMenu.jsx - FULL WIDTH RESPONSIVE
+// client/src/components_admin/AdminMenu.jsx - FULL WIDTH RESPONSIVE & CRASH FIX
 import { useState, useRef } from 'react'; 
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import ProductRow from './ProductRow';
@@ -9,6 +9,15 @@ const LISTA_ALLERGENI = [
   "Senape 🌭", "Sesamo 🍔", "Solfiti 🍷", "Lupini 🌼", "Molluschi 🐙",
   "Prodotto Surgelato/Abbattuto ❄️" 
 ];
+
+// Helper per parsare allergeni in modo sicuro
+const parseAllergeniSicuro = (valore) => {
+    try {
+        if (Array.isArray(valore)) return valore;
+        if (typeof valore === 'string') return JSON.parse(valore);
+        return [];
+    } catch (e) { return []; }
+};
 
 const ImageUploader = ({ type, currentUrl, icon, config, setConfig, API_URL }) => (
     <div style={{marginTop:'5px', flex:1, minWidth:'200px'}}>
@@ -64,7 +73,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       ingredienti_base: '', varianti_str: '', allergeni: [], unita_misura: '', qta_minima: 1 
   });
 
-  // --- AGGIUNTA AI SCAN ---
   const [isScanningMenu, setIsScanningMenu] = useState(false);
   const menuScanRef = useRef(null);
   
@@ -127,7 +135,16 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       const variantiFinali = { base: ingredientiBaseArr, aggiunte: variantiJson };
       const cat = nuovoPiatto.categoria || (categorie.length > 0 ? categorie[0].nome : "");
       
-      const payload = { ...nuovoPiatto, categoria: cat, ristorante_id: user.id, varianti: JSON.stringify(variantiFinali) };
+      // Assicuriamoci che allergeni sia un array prima di inviarlo
+      const allergeniFinali = Array.isArray(nuovoPiatto.allergeni) ? nuovoPiatto.allergeni : [];
+
+      const payload = { 
+          ...nuovoPiatto, 
+          categoria: cat, 
+          ristorante_id: user.id, 
+          varianti: JSON.stringify(variantiFinali),
+          allergeni: JSON.stringify(allergeniFinali) // Lo mandiamo come stringa JSON al DB
+      };
       delete payload.varianti_str; delete payload.ingredienti_base;
 
       payload.traduzioni = traduzioniInput; 
@@ -177,7 +194,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
         const data = await res.json();
         
         if(data.success && data.data) {
-            // FIX SALVATAGGIO REALE NEL DB
             const items = data.data;
             let count = 0;
 
@@ -241,11 +257,14 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       let variantiObj = { base: [], aggiunte: [] }; 
       try { variantiObj = typeof piatto.varianti === 'string' ? JSON.parse(piatto.varianti) : piatto.varianti || { base: [], aggiunte: [] }; } catch(e) {} 
       
+      // FIX CRASH ALLERGENI ANCHE QUI
+      const allergeniClean = parseAllergeniSicuro(piatto.allergeni);
+
       setNuovoPiatto({ 
           ...piatto, 
           unita_misura: piatto.unita_misura || '', 
           qta_minima: piatto.qta_minima || 1, 
-          allergeni: piatto.allergeni || [], 
+          allergeni: allergeniClean, 
           ingredienti_base: (variantiObj.base || []).join(', '), 
           varianti_str: (variantiObj.aggiunte || []).map(v => `${v.nome}:${v.prezzo}`).join(', ') 
       }); 
@@ -331,7 +350,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                     <input type="file" accept=".xlsx, .xls" onChange={handleImportExcel} style={{position:'absolute', inset:0, opacity:0, cursor:'pointer'}} />
                 </div>
                 
-                {/* --- NUOVO BOTTONE AI SCAN --- */}
+                {/* --- BOTTONE AI SCAN --- */}
                 <button 
                     onClick={() => menuScanRef.current.click()} 
                     style={{background:'#8e44ad', color:'white', padding:'8px 15px', borderRadius:'6px', border:'none', cursor:'pointer', fontWeight:'600', whiteSpace:'nowrap'}}
@@ -442,13 +461,14 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                               <label style={labelStyle}>⚠️ Allergeni</label>
                               <div style={{display:'flex', flexWrap:'wrap', gap:'8px'}}>
                                   {LISTA_ALLERGENI.map(all => {
-                                      const isSelected = (nuovoPiatto.allergeni || []).includes(all);
+                                      // FIX: uso l'helper per assicurarmi che allergeni sia un array
+                                      const currentAllergeni = parseAllergeniSicuro(nuovoPiatto.allergeni);
+                                      const isSelected = currentAllergeni.includes(all);
                                       return (
                                           <div key={all} 
                                               onClick={() => {
-                                                  const current = nuovoPiatto.allergeni || [];
-                                                  if (isSelected) setNuovoPiatto({...nuovoPiatto, allergeni: current.filter(x => x !== all)});
-                                                  else setNuovoPiatto({...nuovoPiatto, allergeni: [...current, all]});
+                                                  if (isSelected) setNuovoPiatto({...nuovoPiatto, allergeni: currentAllergeni.filter(x => x !== all)});
+                                                  else setNuovoPiatto({...nuovoPiatto, allergeni: [...currentAllergeni, all]});
                                               }}
                                               style={{
                                                   padding:'6px 12px', borderRadius:'20px', fontSize:'11px', cursor:'pointer', fontWeight:'bold',
