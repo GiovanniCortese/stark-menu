@@ -239,4 +239,65 @@ router.post('/api/import-excel', uploadFile.single('file'), async (req, res) => 
 // Export Excel Menu
 router.get('/api/export-excel/:ristorante_id', async (req, res) => { try { const result = await pool.query(`SELECT p.*, c.varianti_default as cat_varianti FROM prodotti p LEFT JOIN categorie c ON p.categoria = c.nome AND p.ristorante_id = c.ristorante_id WHERE p.ristorante_id = $1 ORDER BY c.posizione, p.posizione`, [req.params.ristorante_id]); const dataForExcel = result.rows.map(row => { let baseStr = "", aggiunteStr = "", catVarStr = "", allergeniStr = ""; try { const v = typeof row.varianti === 'string' ? JSON.parse(row.varianti) : (row.varianti || {}); if(v.base && Array.isArray(v.base)) baseStr = v.base.join(', '); if(v.aggiunte && Array.isArray(v.aggiunte)) { aggiunteStr = v.aggiunte.map(a => `${a.nome}:${Number(a.prezzo).toFixed(2)}`).join(', '); } } catch(e) {} try { const cv = typeof row.cat_varianti === 'string' ? JSON.parse(row.cat_varianti) : (row.cat_varianti || []); if(Array.isArray(cv)) { catVarStr = cv.map(a => `${a.nome}:${Number(a.prezzo).toFixed(2)}`).join(', '); } } catch(e) {} try { const all = typeof row.allergeni === 'string' ? JSON.parse(row.allergeni) : (row.allergeni || []); if(Array.isArray(all)) { allergeniStr = all.join(', '); } } catch(e) {} return { "Categoria": row.categoria, "Varianti Categoria (Default)": catVarStr, "Sottocategoria": row.sottocategoria || "", "Nome": row.nome, "Prezzo": row.prezzo, "Unita": row.unita_misura || "", "Minimo": row.qta_minima || 1, "Descrizione": row.descrizione || "", "Ingredienti Base (Rimovibili)": baseStr, "Aggiunte Prodotto (Formato Nome:Prezzo)": aggiunteStr, "Allergeni": allergeniStr }; }); const workbook = xlsx.utils.book_new(); const worksheet = xlsx.utils.json_to_sheet(dataForExcel); const wscols = [{wch:15}, {wch:30}, {wch:15}, {wch:25}, {wch:10}, {wch:10}, {wch:10}, {wch:30}, {wch:30}, {wch:30}, {wch:30}]; worksheet['!cols'] = wscols; xlsx.utils.book_append_sheet(workbook, worksheet, "Menu"); const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' }); res.setHeader('Content-Disposition', 'attachment; filename="menu_export_completo.xlsx"'); res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); res.send(buffer); } catch (err) { res.status(500).json({ error: "Errore durante l'esportazione Excel" }); } });
 
+// --- NUOVA ROTTA: IMPORTAZIONE MASSIVA CON UPSERT (AI INTELLIGENTE) ---
+router.post('/api/prodotti/import-massivo', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const { prodotti, ristorante_id } = req.body;
+
+        if (!prodotti || !Array.isArray(prodotti)) throw new Error("Formato dati non valido");
+
+        // Calcoliamo le posizioni iniziali
+        let maxCat = await client.query('SELECT MAX(posizione) as max FROM categorie WHERE ristorante_id = $1', [ristorante_id]);
+        let nextCatPos = (maxCat.rows[0].max || 0) + 1;
+        let maxProd = await client.query('SELECT MAX(posizione) as max FROM prodotti WHERE ristorante_id = $1', [ristorante_id]);
+        let nextProdPos = (maxProd.rows[0].max || 0) + 1;
+
+        for (const p of prodotti) {
+            // 1. Preparazione Dati
+            const nome = p.nome ? String(p.nome).trim() : "Senza Nome";
+            const prezzo = p.prezzo ? parseFloat(p.prezzo) : 0;
+            const categoria = p.categoria ? String(p.categoria).trim() : "Generale";
+            const descrizione = p.descrizione || "";
+            // Gestione Ingredienti che dall'AI arrivano spesso come array, li uniamo o li mettiamo nelle varianti base
+            const ingredientiArr = Array.isArray(p.ingredienti) ? p.ingredienti : [];
+            const variantiProdotto = { base: ingredientiArr, aggiunte: [] }; // Mettiamo gli ingredienti nella "base"
+            
+            // 2. Controllo/Creazione Categoria
+            let catCheck = await client.query('SELECT * FROM categorie WHERE nome = $1 AND ristorante_id = $2', [categoria, ristorante_id]);
+            if (catCheck.rows.length === 0) {
+                await client.query('INSERT INTO categorie (nome, posizione, ristorante_id, descrizione, varianti_default) VALUES ($1, $2, $3, $4, $5)', 
+                [categoria, nextCatPos++, ristorante_id, "", '[]']);
+            }
+
+            // 3. CHECK ESISTENZA PRODOTTO (Il cuore della logica)
+            const prodCheck = await client.query('SELECT id FROM prodotti WHERE nome = $1 AND ristorante_id = $2', [nome, ristorante_id]);
+
+            if (prodCheck.rows.length > 0) {
+                // >>> UPDATE (Se esiste già, aggiorna prezzo, descrizione, ecc)
+                await client.query(
+                    `UPDATE prodotti SET prezzo=$1, categoria=$2, descrizione=$3, varianti=$4 WHERE id=$5`,
+                    [prezzo, categoria, descrizione, JSON.stringify(variantiProdotto), prodCheck.rows[0].id]
+                );
+            } else {
+                // >>> INSERT (Se è nuovo)
+                await client.query(
+                    `INSERT INTO prodotti (nome, prezzo, categoria, descrizione, ristorante_id, posizione, varianti, allergeni, qta_minima) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+                    [nome, prezzo, categoria, descrizione, ristorante_id, nextProdPos++, JSON.stringify(variantiProdotto), '[]', 1]
+                );
+            }
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true, message: `Importazione completata: ${prodotti.length} piatti elaborati.` });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error("Errore Import Massivo:", err);
+        res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
+    }
+});
+
 module.exports = router;

@@ -179,67 +179,49 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
     } catch(err) { alert("Errore Connessione"); } finally { setImporting(false); }
   };
 
-  // --- FUNZIONE SCANSIONE MENU (AI) AGGIORNATA ---
- const handleMenuScan = async (e) => {
-        const file = e.target.files[0];
-        if(!file) return;
+  // --- FUNZIONE SCANSIONE MENU (AI) AGGIORNATA v2 ---
+const handleMenuScan = async (e) => {
+    const file = e.target.files[0];
+    if(!file) return;
 
-        setIsScanningMenu(true);
-        const formData = new FormData();
-        formData.append('photo', file);
+    setIsScanningMenu(true);
+    const formData = new FormData();
+    formData.append('photo', file);
 
-        try {
-            // 1. Chiamata AI
-            const res = await fetch(`${API_URL}/api/menu/scan-photo`, { method: 'POST', body: formData });
-            const json = await res.json();
-            
-            if(!json.success) throw new Error(json.error || "Errore scansione");
-            
-            const items = json.data; // Array di piatti
-            if(!Array.isArray(items) || items.length === 0) throw new Error("Nessun piatto trovato nell'immagine.");
+    try {
+        // 1. Chiamata AI per leggere la foto
+        const res = await fetch(`${API_URL}/api/menu/scan-photo`, { method: 'POST', body: formData });
+        const json = await res.json();
+        
+        if(!json.success) throw new Error(json.error || "Errore scansione");
+        
+        const items = json.data; // Array di piatti letti dall'AI
+        if(!Array.isArray(items) || items.length === 0) throw new Error("Nessun piatto trovato nell'immagine.");
 
-            // 2. Creazione Prodotti (CON FIX CRASH E DESCRIZIONE -> INGREDIENTI)
-            let importedCount = 0;
-            for(const p of items) {
-                // Spostiamo la descrizione negli ingredienti se presenti, come richiesto
-                const ingredientiAI = Array.isArray(p.ingredienti) ? p.ingredienti : [];
-                
-                // Creiamo il JSON varianti safe
-                const variantiPayload = {
-                    base: ingredientiAI, // Qui finiscono gli ingredienti (ex descrizione)
-                    aggiunte: []
-                };
+        // 2. Invio Massivo al Server (che gestisce l'Update se esiste o Insert se nuovo)
+        const importRes = await fetch(`${API_URL}/api/prodotti/import-massivo`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                prodotti: items,
+                ristorante_id: user.id 
+            })
+        });
 
-                const payload = {
-                    nome: p.nome,
-                    prezzo: p.prezzo || 0,
-                    categoria: p.categoria || "Generale",
-                    descrizione: p.descrizione || "", // Se è vuota perché spostata, va bene così
-                    ristorante_id: user.id,
-                    immagine_url: "",
-                    varianti: JSON.stringify(variantiPayload), // JSON stringified!
-                    allergeni: JSON.stringify([]), // Array vuoto stringified
-                    traduzioni: JSON.stringify({}),
-                    qta_minima: 1
-                };
-                
-                await fetch(`${API_URL}/api/prodotti`, {
-                    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
-                });
-                importedCount++;
-            }
-            
-            alert(`✅ Importati ${importedCount} piatti con successo!`);
-            if(ricaricaDati) ricaricaDati(); 
+        const importData = await importRes.json();
+        if (!importRes.ok) throw new Error(importData.error || "Errore durante il salvataggio");
 
-        } catch(err) {
-            console.error(err);
-            alert("❌ Errore Importazione: " + err.message);
-        } finally {
-            setIsScanningMenu(false);
-            e.target.value = null; // Reset input per permettere nuovo caricamento
-        }
-    };
+        alert(`✅ Scansione completata!\n${importData.message}`);
+        if(ricaricaDati) ricaricaDati(); 
+
+    } catch(err) {
+        console.error(err);
+        alert("❌ Errore Importazione: " + err.message);
+    } finally {
+        setIsScanningMenu(false);
+        e.target.value = null; // Reset input
+    }
+};
 
   const cancellaPiatto = async (id) => { if(confirm("Sei sicuro di voler eliminare questo piatto?")) { await fetch(`${API_URL}/api/prodotti/${id}`, {method:'DELETE'}); ricaricaDati(); }};
   
