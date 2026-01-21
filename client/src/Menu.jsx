@@ -466,7 +466,7 @@ function Menu() {
             {style.url_allergeni && ( <button onClick={() => { setUrlFileAttivo(style.url_allergeni); setTitoloFile("Lista Allergeni ⚠️"); setShowFileModal(true); }} style={{ ...footerBtnStyle, opacity: 0.8 }}><span>⚠️</span> LISTA ALLERGENI</button> )}
         </div>
         {style.info_footer && ( <p style={{ whiteSpace: 'pre-line', marginBottom: '15px', color: style.colore_footer_text || style.text, fontSize: `${style.dimensione_footer || 12}px` }}>{style.info_footer}</p> )}
-        <div style={{ marginTop: 15, fontSize: 10, color: style.colore_footer_text || style.text, opacity: 0.5 }}>Powered by StarkMenu</div>
+        <div style={{ marginTop: 15, fontSize: 10, color: style.colore_footer_text || style.text, opacity: 0.5 }}>Powered by COSAEDOVEMANGIARE.IT</div>
       </div>
 
       {showFileModal && urlFileAttivo && (
