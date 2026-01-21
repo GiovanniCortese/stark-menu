@@ -6,6 +6,13 @@ import * as XLSX from 'xlsx';
 const getMonday = (d) => { const date = new Date(d); const day = date.getDay(), diff = date.getDate() - day + (day === 0 ? -6 : 1); return new Date(date.setDate(diff)); };
 const formatDateISO = (date) => date.toISOString().split('T')[0];
 
+const getNowLocalISO = () => {
+    const now = new Date();
+    // Corregge il fuso orario per l'input datetime-local
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    return now.toISOString().slice(0, 16); // Formato: YYYY-MM-DDTHH:mm
+};
+
 // --- NUOVO HELPER PER FORMATTAZIONE DATA/ORA ITALIANA ---
 const formatTimeDate = (dateStr) => {
     if (!dateStr) return "-";
@@ -50,14 +57,14 @@ function AdminMagazzino({ user, API_URL }) {
 
     // Form Manuale
     const [merciForm, setMerciForm] = useState({
-        id: null,
-        data_ricezione: new Date().toISOString().split('T')[0],
-        fornitore: '', prodotto: '', lotto: '', scadenza: '',
-        temperatura: '', conforme: true, integro: true, note: '',
-        quantita: '', unita_misura: 'Pz', // Default Unità di Misura
-        allegato_url: '', destinazione: '', 
-        prezzo_unitario: '', iva: '', prezzo: '' 
-    });
+    id: null,
+    data_ricezione: getNowLocalISO(), // <--- MODIFICATO QUI: Ora usa data e ora locali
+    fornitore: '', prodotto: '', lotto: '', scadenza: '',
+    temperatura: '', conforme: true, integro: true, note: '',
+    quantita: '', unita_misura: 'Pz', 
+    allegato_url: '', destinazione: '', 
+    prezzo_unitario: '', iva: '', prezzo: '' 
+});
 
     const [uploadingMerci, setUploadingMerci] = useState(false);
 
@@ -415,14 +422,20 @@ function AdminMagazzino({ user, API_URL }) {
                 <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(400px, 1fr))', gap:20}}>
                     <div style={{background:'white', padding:20, borderRadius:15, boxShadow:'0 4px 10px rgba(0,0,0,0.05)'}}>
                         <h3>💰 Spesa per Fornitore</h3>
-                        <div style={{height: 250}}>
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie data={stats.fornitori} dataKey="totale" nameKey="fornitore" cx="50%" cy="50%" outerRadius={80} label>{stats.fornitori.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}</Pie>
-                                    <Tooltip formatter={(value) => `€ ${Number(value).toFixed(2)}`} />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        </div>
+                       <div style={{height: 250, display:'flex', alignItems:'center', justifyContent:'center'}}>
+    {stats.fornitori && stats.fornitori.length > 0 && stats.fornitori.some(f => f.totale > 0) ? (
+        <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+                <Pie data={stats.fornitori} dataKey="totale" nameKey="fornitore" cx="50%" cy="50%" outerRadius={80} label>
+                    {stats.fornitori.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                </Pie>
+                <Tooltip formatter={(value) => `€ ${Number(value).toFixed(2)}`} />
+            </PieChart>
+        </ResponsiveContainer>
+    ) : (
+        <p style={{color:'#999'}}>Nessun dato di spesa disponibile per il grafico.</p>
+    )}
+</div>
                     </div>
                 </div>
             )}
@@ -486,7 +499,16 @@ function AdminMagazzino({ user, API_URL }) {
                         <h3 style={{marginTop:0, color:'#2c3e50'}}>{merciForm.id ? '✏️ Modifica Arrivo' : '📥 Registrazione Manuale'}</h3>
                         <form onSubmit={salvaMerciManuale} style={{display:'flex', flexWrap:'wrap', gap:15, alignItems:'flex-end'}}>
                             
-                            <div style={{flex:1, minWidth:130}}><label style={{fontSize:11}}>Data Doc.</label><input type="date" required value={merciForm.data_ricezione} onChange={e=>setMerciForm({...merciForm, data_ricezione:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} /></div>
+<div style={{flex:1, minWidth:130}}>
+    <label style={{fontSize:11}}>Data e Ora</label>
+    <input 
+        type="datetime-local"  // <--- CAMBIATO QUI
+        required 
+        value={merciForm.data_ricezione} 
+        onChange={e=>setMerciForm({...merciForm, data_ricezione:e.target.value})} 
+        style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} 
+    />
+</div>
                             <div style={{flex:2, minWidth:180}}><label style={{fontSize:11}}>Fornitore</label><input value={merciForm.fornitore} onChange={e=>setMerciForm({...merciForm, fornitore:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} placeholder="Es. Metro" /></div>
                             <div style={{flex:2, minWidth:180}}><label style={{fontSize:11}}>Prodotto / Descr.</label><input value={merciForm.prodotto} onChange={e=>setMerciForm({...merciForm, prodotto:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} placeholder="Es. Fattura n.102" /></div>
                             
