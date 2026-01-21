@@ -11,9 +11,9 @@ function AdminMagazzino({ user, API_URL }) {
     // Stati per Carico AI e File
     const [isScanning, setIsScanning] = useState(false);
     const [scannedData, setScannedData] = useState(null);
-    const fileInputRef = useRef(null); // Per AI Scan
-    const allegatoInputRef = useRef(null); // Per Allegato Manuale
-    const importExcelRef = useRef(null); // Per Import Massivo
+    const fileInputRef = useRef(null); 
+    const allegatoInputRef = useRef(null); 
+    const importExcelRef = useRef(null); 
 
     // Form Manuale
     const [merciForm, setMerciForm] = useState({
@@ -22,22 +22,21 @@ function AdminMagazzino({ user, API_URL }) {
         fornitore: '', prodotto: '', lotto: '', scadenza: '',
         temperatura: '', conforme: true, integro: true, note: '',
         quantita: '', allegato_url: '', destinazione: '', 
-        prezzo_unitario: '', iva: '', prezzo: '' // prezzo = Totale Imponibile
+        prezzo_unitario: '', iva: '', prezzo: '' // prezzo = IMPONIBILE
     });
 
     const [uploadingMerci, setUploadingMerci] = useState(false);
 
     useEffect(() => { ricaricaDati(); }, []);
 
-    // --- 1. CALCOLO AUTOMATICO PREZZI (Qta x Unitario x IVA) ---
+    // --- CALCOLO AUTOMATICO PREZZI ---
     useEffect(() => {
         const qta = parseFloat(merciForm.quantita);
         const unit = parseFloat(merciForm.prezzo_unitario);
         
-        // Se ho Qta e Unitario, calcolo l'Imponibile (prezzo)
+        // Se ho Qta e Unitario, calcolo l'Imponibile
         if (!isNaN(qta) && !isNaN(unit)) {
             const totImponibile = (qta * unit).toFixed(2);
-            // Aggiorno solo se è cambiato per evitare loop infiniti
             if (merciForm.prezzo !== totImponibile) {
                 setMerciForm(prev => ({ ...prev, prezzo: totImponibile }));
             }
@@ -49,8 +48,7 @@ function AdminMagazzino({ user, API_URL }) {
         fetch(`${API_URL}/api/haccp/assets/${user.id}`).then(r => r.json()).then(setAssets).catch(console.error);
     };
 
-    // --- 2. MAGIC SCAN AI ---
-    // Ridimensiona immagine per invio veloce
+    // --- MAGIC SCAN AI ---
     const resizeImage = (file, maxWidth = 1000, quality = 0.7) => {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -111,15 +109,14 @@ function AdminMagazzino({ user, API_URL }) {
             quantita: prod.quantita || '', 
             lotto: prod.lotto || '', 
             scadenza: prod.scadenza || '',
-            prezzo_unitario: prod.prezzo || '', // L'AI spesso restituisce il prezzo unitario
+            prezzo_unitario: prod.prezzo || '', 
             note: `Rif. Doc: ${scannedData.numero_documento || 'ND'}`, 
             allegato_url: scannedData.allegato_url || prev.allegato_url
         }));
-        // Rimuovo prodotto dalla lista scansionata
         setScannedData(prev => ({ ...prev, prodotti: prev.prodotti.filter(p => p !== prod) }));
     };
 
-    // --- 3. GESTIONE ALLEGATO MANUALE ---
+    // --- UPLOAD ALLEGATO ---
     const handleMerciPhoto = async (e) => {
         const f = e.target.files[0]; if(!f) return;
         setUploadingMerci(true);
@@ -131,7 +128,7 @@ function AdminMagazzino({ user, API_URL }) {
         } catch(err){ alert("Errore upload"); } finally { setUploadingMerci(false); }
     };
 
-    // --- 4. IMPORT EXCEL MASSIVO ---
+    // --- IMPORT EXCEL ---
     const handleImportExcel = async (e) => {
         const file = e.target.files[0]; if (!file) return;
         const reader = new FileReader();
@@ -167,18 +164,24 @@ function AdminMagazzino({ user, API_URL }) {
         reader.readAsBinaryString(file); e.target.value = null; 
     };
 
-    // --- SALVATAGGIO ---
+    // --- SALVATAGGIO MANUALE ---
     const salvaMerciManuale = async (e) => {
         e.preventDefault();
         try {
             const url = merciForm.id ? `${API_URL}/api/haccp/merci/${merciForm.id}` : `${API_URL}/api/haccp/merci`;
             const method = merciForm.id ? 'PUT' : 'POST';
+            
+            // Calcoli di sicurezza prima dell'invio
+            const qta = parseFloat(merciForm.quantita) || 0;
+            const unit = parseFloat(merciForm.prezzo_unitario) || 0;
+            const imp = parseFloat(merciForm.prezzo) || (qta * unit); // Se l'utente non ha toccato il totale, lo ricalcolo
+
             const payload = { 
                 ...merciForm, 
                 ristorante_id: user.id, 
                 operatore: 'ADMIN',
-                prezzo: parseFloat(merciForm.prezzo) || 0,
-                prezzo_unitario: parseFloat(merciForm.prezzo_unitario) || 0,
+                prezzo: imp, // IMPONIBILE
+                prezzo_unitario: unit,
                 iva: parseFloat(merciForm.iva) || 0,
                 scadenza: merciForm.scadenza || null,
                 temperatura: merciForm.temperatura ? parseFloat(merciForm.temperatura) : null
@@ -188,15 +191,15 @@ function AdminMagazzino({ user, API_URL }) {
             const data = await res.json();
 
             if(data.success) {
-                alert(merciForm.id ? "✅ Aggiornato!" : "✅ Salvato!");
+                alert(merciForm.id ? "✅ Aggiornato!" : "✅ Salvato correttamente!");
                 setMerciForm({ 
                     id: null, data_ricezione: new Date().toISOString().split('T')[0],
                     fornitore:'', prodotto:'', quantita:'', prezzo_unitario:'', iva:'', prezzo:'', 
                     lotto:'', scadenza:'', note:'', allegato_url:'', destinazione:'', temperatura: '', conforme: true, integro: true
                 });
                 ricaricaDati();
-            } else { alert("Errore: " + data.error); }
-        } catch (err) { alert("Errore Salvataggio"); }
+            } else { alert("Errore salvataggio: " + data.error); }
+        } catch (err) { alert("Errore connessione salvataggio"); }
     };
 
     const iniziaModifica = (r) => {
@@ -215,15 +218,15 @@ function AdminMagazzino({ user, API_URL }) {
         ricaricaDati();
     };
 
-    // Helper Calcoli Riga Tabella
+    // --- HELPER CALCOLI TABELLA ---
     const renderRowData = (r) => {
         const qta = parseFloat(r.quantita) || 0;
         const unit = parseFloat(r.prezzo_unitario) || 0;
-        const imp = parseFloat(r.prezzo) || (qta * unit); // Imponibile
-        const iva = parseFloat(r.iva) || 0;
-        const ivaTot = imp * (iva / 100);
-        const totIvato = imp + ivaTot;
-        return { imp: imp.toFixed(2), ivaTot: ivaTot.toFixed(2), totIvato: totIvato.toFixed(2) };
+        const imp = parseFloat(r.prezzo) || (qta * unit); // Totale Imponibile
+        const ivaPerc = parseFloat(r.iva) || 0;
+        const ivaVal = imp * (ivaPerc / 100);
+        const totIvato = imp + ivaVal;
+        return { imp: imp.toFixed(2), ivaVal: ivaVal.toFixed(2), totIvato: totIvato.toFixed(2) };
     };
 
     const movimentiFiltrati = stats.storico.filter(r => (r.prodotto + r.fornitore + (r.note||"")).toLowerCase().includes(filtro.toLowerCase()));
@@ -303,13 +306,13 @@ function AdminMagazzino({ user, API_URL }) {
                             <div style={{flex:2, minWidth:180}}><label style={{fontSize:11}}>Fornitore</label><input value={merciForm.fornitore} onChange={e=>setMerciForm({...merciForm, fornitore:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} placeholder="Es. Russo" /></div>
                             <div style={{flex:2, minWidth:180}}><label style={{fontSize:11}}>Prodotto</label><input value={merciForm.prodotto} onChange={e=>setMerciForm({...merciForm, prodotto:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} placeholder="Es. Vodka" /></div>
                             
-                            {/* --- PREZZI & QTA --- */}
+                            {/* --- PREZZI & QTA (VISIBILI E MODIFICABILI) --- */}
                             <div style={{flex:1, minWidth:80}}><label style={{fontSize:11}}>Quantità</label><input type="number" step="0.01" value={merciForm.quantita} onChange={e=>setMerciForm({...merciForm, quantita:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} /></div>
                             <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>P. Unitario (€)</label><input type="number" step="0.01" value={merciForm.prezzo_unitario} onChange={e=>setMerciForm({...merciForm, prezzo_unitario:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} placeholder="€ Unit" /></div>
                             <div style={{flex:1, minWidth:60}}><label style={{fontSize:11}}>IVA %</label><input type="number" value={merciForm.iva} onChange={e=>setMerciForm({...merciForm, iva:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} placeholder="22" /></div>
                             
-                            {/* CALCOLO AUTOMATICO IMPONIBILE */}
-                            <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>IMPONIBILE</label><input type="number" step="0.01" value={merciForm.prezzo} readOnly style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5, background:'#f0f0f0', fontWeight:'bold'}} placeholder="Totale" /></div>
+                            {/* CALCOLI AUTOMATICI (SOLA LETTURA) */}
+                            <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Tot. Imponibile</label><input type="number" step="0.01" value={merciForm.prezzo} readOnly style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5, background:'#f0f0f0', fontWeight:'bold'}} placeholder="Imponibile" /></div>
 
                             <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Lotto</label><input value={merciForm.lotto} onChange={e=>setMerciForm({...merciForm, lotto:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} /></div>
                             <div style={{flex:1, minWidth:130}}><label style={{fontSize:11}}>Scadenza</label><input type="date" value={merciForm.scadenza} onChange={e=>setMerciForm({...merciForm, scadenza:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} /></div>
@@ -353,10 +356,12 @@ function AdminMagazzino({ user, API_URL }) {
                                 <th style={{padding:10}}>Prodotto</th>
                                 <th style={{padding:10}}>Qta</th>
                                 <th style={{padding:10}}>Unit.</th>
-                                <th style={{padding:10}}>IVA</th>
-                                <th style={{padding:10}}>Totale</th>
+                                <th style={{padding:10}}>Tot. Imp.</th>
+                                <th style={{padding:10}}>IVA %</th>
+                                <th style={{padding:10}}>Tot. IVA</th>
+                                <th style={{padding:10}}>Tot. Ivato</th>
                                 <th style={{padding:10}}>Lotto</th>
-                                <th style={{padding:10}}>Note</th>
+                                <th style={{padding:10}}>Doc</th>
                                 <th style={{padding:10}}>Allegato</th>
                                 <th style={{padding:10}}>Azioni</th>
                             </tr>
@@ -371,8 +376,10 @@ function AdminMagazzino({ user, API_URL }) {
                                         <td style={{padding:10, fontWeight:'bold'}}>{r.prodotto}</td>
                                         <td style={{padding:10}}>{r.quantita}</td>
                                         <td style={{padding:10}}>€ {r.prezzo_unitario || '-'}</td>
+                                        <td style={{padding:10}}>€ {calcs.imp}</td>
                                         <td style={{padding:10}}>{r.iva ? r.iva + '%' : '-'}</td>
-                                        <td style={{padding:10, color:'#27ae60', fontWeight:'bold'}}>€ {calcs.totIvato}</td>
+                                        <td style={{padding:10, color:'#e67e22'}}>€ {calcs.ivaVal}</td>
+                                        <td style={{padding:10, fontWeight:'bold', color:'#27ae60'}}>€ {calcs.totIvato}</td>
                                         <td style={{padding:10, fontSize:12}}>{r.lotto || '-'}</td>
                                         <td style={{padding:10, fontSize:12, color:'#555'}}>{r.note}</td>
                                         <td style={{padding:10}}>
