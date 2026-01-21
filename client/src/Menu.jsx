@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - FIX UX: FOTO MODALE, TASTO MODIFICA ESPLICITO, LOGICA +
+// client/src/Menu.jsx - FINAL UX UPDATE: LAYOUT BUTTONS, CARD CLICK, EXTRAS VISIBLE
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'; 
 import { dictionary, getContent } from './translations';
@@ -332,11 +332,12 @@ function Menu() {
                           const allergeniSafe = getSafeAllergeni(prodotto);
                           
                           const baseList = vSafe.base;
-                          const aggiunteList = vSafe.aggiunte;
+                          // Aggiunte: unione di quelle del prodotto e della categoria
+                          const addList = vSafe.aggiunte.length > 0 ? vSafe.aggiunte : (prodotto.categoria_varianti || []);
                           const ingStr = baseList.join(', '); 
                           
                           const hasBase = baseList.length > 0;
-                          const hasExtras = (aggiunteList.length > 0) || (prodotto.categoria_varianti && prodotto.categoria_varianti.length > 0);
+                          const hasExtras = addList.length > 0;
                           const hasVarianti = hasBase || hasExtras;
                           const hasUnit = !!prodotto.unita_misura; 
 
@@ -347,14 +348,18 @@ function Menu() {
                           const unitaMisura = prodotto.unita_misura ? ` ${prodotto.unita_misura}` : '';
 
                           return (
-                            <div key={prodotto.id} className="card" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', cursor: 'default', backgroundColor: cardBg, borderBottom: `1px solid ${cardBorder}` }}>
+                            <div 
+                                key={prodotto.id} 
+                                className="card" 
+                                onClick={() => apriModale(prodotto)} // INTERA CARD CLICCABILE -> APRE DETTAGLI
+                                style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', cursor: 'pointer', backgroundColor: cardBg, borderBottom: `1px solid ${cardBorder}` }}
+                            >
                               
-                              {/* FOTO - Cliccando APRE IL MODALE (Nessuna aggiunta diretta) */}
                               {prodotto.immagine_url && (
                                  <img 
                                     src={prodotto.immagine_url} 
-                                    onClick={() => apriModale(prodotto)}
-                                    style={{ width: '70px', height: '70px', objectFit: 'cover', borderRadius: '5px', flexShrink: 0, cursor: 'pointer', border:'1px solid #ddd' }} 
+                                    // Non serve onClick qui perché l'intero div padre apre il modale
+                                    style={{ width: '70px', height: '70px', objectFit: 'cover', borderRadius: '5px', flexShrink: 0, border:'1px solid #ddd' }} 
                                  />
                               )}
                               
@@ -363,6 +368,13 @@ function Menu() {
                                 {descProdotto && (<p style={{ fontSize: '12px', color: '#666', margin: '0 0 2px 0', lineHeight: '1.1' }}>{descProdotto}</p>)}
                                 {ingStr && (<p style={{ fontSize: '11px', color: '#555', fontStyle: 'italic', margin: '0 0 2px 0', lineHeight: '1.1' }}><span className="notranslate" style={{ fontWeight: 'bold' }}>{t?.ingredients || "Ingredienti"}:</span> {ingStr}</p>)}
                                 
+                                {/* MOSTRA AGGIUNTE DISPONIBILI */}
+                                {addList.length > 0 && (
+                                    <p style={{fontSize:'10px', color:'#2980b9', marginTop:'2px', lineHeight:'1.1'}}>
+                                        <span style={{fontWeight:'bold'}}>✨ Extra:</span> {addList.map(a => a.nome).join(', ')}
+                                    </p>
+                                )}
+                                
                                 {allergeniSafe.length > 0 && (
                                   <div style={{ marginTop: '2px', display: 'flex', flexDirection: 'column', gap: '1px' }}>
                                     {allergeniSafe.filter(a => !a.includes("❄️") && !a.includes("Surgelato")).length > 0 && ( <div className="notranslate" style={{ fontSize: '10px', color: '#e74c3c', fontWeight: 'bold', textTransform: 'uppercase' }}>⚠️ {t?.allergens || "Allergeni"}: {allergeniSafe.filter(a => !a.includes("❄️") && !a.includes("Surgelato")).join(', ')}</div> )}
@@ -370,48 +382,38 @@ function Menu() {
                                   </div>
                                 )}
 
-                                <div className="notranslate" style={{ fontSize: '14px', fontWeight: 'bold', color: priceColor, marginTop: '2px' }}>
+                                <div className="notranslate" style={{ fontSize: '14px', fontWeight: 'bold', color: priceColor, marginTop: '4px' }}>
                                     {Number(prodotto.prezzo).toFixed(2)} {simboloEuro}{unitaMisura}
                                 </div>
                               </div>
                               
-                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '5px' }}>
+                              <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '10px' }}>
                                 {/* TASTO MODIFICA (Solo se modificabile) */}
                                 {hasVarianti && (
                                     <div 
                                         onClick={(e) => { 
-                                            e.stopPropagation(); 
+                                            e.stopPropagation(); // Evita doppio trigger
                                             apriModale(prodotto); 
                                         }}
                                         className="notranslate"
                                         style={{ 
-                                            fontSize: '11px', 
+                                            fontSize: '18px', 
                                             color: '#e67e22', 
-                                            fontWeight: 'bold', 
                                             cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '2px',
-                                            padding: '2px 5px',
-                                            border: '1px solid #e67e22',
-                                            borderRadius: '4px',
-                                            background: 'rgba(255,255,255,0.8)'
+                                            padding: '5px',
                                         }}>
-                                        ✏️ Modifica
+                                        ✏️
                                     </div>
                                 )}
 
                                 {/* TASTO AGGIUNGI (+) */}
                                 <button className="notranslate" 
                                     onClick={(e) => { 
-                                        e.stopPropagation(); 
-                                        // LOGICA RICHIESTA:
-                                        // Se ha unità di misura (/hg) -> APRI MODALE per quantità
-                                        // Altrimenti (anche se ha varianti) -> AGGIUNGI AL CARRELLO (default)
+                                        e.stopPropagation(); // Evita apertura modale dettagli
                                         if(hasUnit) {
-                                            apriModale(prodotto);
+                                            apriModale(prodotto); // Se c'è unità (/hg), serve modale qta
                                         } else {
-                                            aggiungiAlCarrello(prodotto);
+                                            aggiungiAlCarrello(prodotto); // Altrimenti aggiunta rapida
                                         }
                                     }} 
                                     style={{ background: btnBg, color: btnText, borderRadius: '50%', width: '35px', height: '35px', border: 'none', fontSize: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 5px rgba(0,0,0,0.2)' }}>
