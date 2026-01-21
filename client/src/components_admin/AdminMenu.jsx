@@ -1,4 +1,4 @@
-// client/src/components_admin/AdminMenu.jsx - FULL WIDTH RESPONSIVE & CRASH FIX
+// client/src/components_admin/AdminMenu.jsx - FIXED SCAN & PDF INPUT
 import { useState, useRef } from 'react'; 
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import ProductRow from './ProductRow';
@@ -135,7 +135,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       const variantiFinali = { base: ingredientiBaseArr, aggiunte: variantiJson };
       const cat = nuovoPiatto.categoria || (categorie.length > 0 ? categorie[0].nome : "");
       
-      // Assicuriamoci che allergeni sia un array prima di inviarlo
       const allergeniFinali = Array.isArray(nuovoPiatto.allergeni) ? nuovoPiatto.allergeni : [];
 
       const payload = { 
@@ -143,7 +142,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
           categoria: cat, 
           ristorante_id: user.id, 
           varianti: JSON.stringify(variantiFinali),
-          allergeni: JSON.stringify(allergeniFinali) // Lo mandiamo come stringa JSON al DB
+          allergeni: JSON.stringify(allergeniFinali)
       };
       delete payload.varianti_str; delete payload.ingredienti_base;
 
@@ -185,7 +184,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
         const file = e.target.files[0];
         if(!file) return;
 
-        setIsScanning(true);
+        setIsScanningMenu(true);
         const formData = new FormData();
         formData.append('photo', file);
 
@@ -197,23 +196,29 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             if(!json.success) throw new Error(json.error || "Errore scansione");
             
             const items = json.data; // Array di piatti
-            if(!Array.isArray(items) || items.length === 0) throw new Error("Nessun piatto trovato");
+            if(!Array.isArray(items) || items.length === 0) throw new Error("Nessun piatto trovato nell'immagine.");
 
-            alert(`Trovati ${items.length} piatti! Inizio importazione...`);
-
-            // 2. Creazione Prodotti (CON FIX CRASH)
+            // 2. Creazione Prodotti (CON FIX CRASH E DESCRIZIONE -> INGREDIENTI)
+            let importedCount = 0;
             for(const p of items) {
+                // Spostiamo la descrizione negli ingredienti se presenti, come richiesto
+                const ingredientiAI = Array.isArray(p.ingredienti) ? p.ingredienti : [];
+                
+                // Creiamo il JSON varianti safe
+                const variantiPayload = {
+                    base: ingredientiAI, // Qui finiscono gli ingredienti (ex descrizione)
+                    aggiunte: []
+                };
+
                 const payload = {
                     nome: p.nome,
                     prezzo: p.prezzo || 0,
                     categoria: p.categoria || "Generale",
-                    // Mettiamo gli ingredienti nella descrizione come richiesto
-                    descrizione: p.descrizione || "", 
+                    descrizione: p.descrizione || "", // Se è vuota perché spostata, va bene così
                     ristorante_id: user.id,
                     immagine_url: "",
-                    // --- FIX CRASH: Salviamo un JSON vuoto ma VALIDO ---
-                    varianti: JSON.stringify({ base: [], aggiunte: [] }), 
-                    allergeni: JSON.stringify([]),
+                    varianti: JSON.stringify(variantiPayload), // JSON stringified!
+                    allergeni: JSON.stringify([]), // Array vuoto stringified
                     traduzioni: JSON.stringify({}),
                     qta_minima: 1
                 };
@@ -221,17 +226,18 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                 await fetch(`${API_URL}/api/prodotti`, {
                     method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
                 });
+                importedCount++;
             }
             
-            alert("✅ Importazione Completata!");
-            if(ricaricaDati) ricaricaDati(); // Aggiorna la lista a video
+            alert(`✅ Importati ${importedCount} piatti con successo!`);
+            if(ricaricaDati) ricaricaDati(); 
 
         } catch(err) {
             console.error(err);
-            alert("Errore: " + err.message);
+            alert("❌ Errore Importazione: " + err.message);
         } finally {
-            setIsScanning(false);
-            e.target.value = null; // Reset input
+            setIsScanningMenu(false);
+            e.target.value = null; // Reset input per permettere nuovo caricamento
         }
     };
 
@@ -242,7 +248,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       let variantiObj = { base: [], aggiunte: [] }; 
       try { variantiObj = typeof piatto.varianti === 'string' ? JSON.parse(piatto.varianti) : piatto.varianti || { base: [], aggiunte: [] }; } catch(e) {} 
       
-      // FIX CRASH ALLERGENI ANCHE QUI
       const allergeniClean = parseAllergeniSicuro(piatto.allergeni);
 
       setNuovoPiatto({ 
@@ -295,15 +300,17 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   return (
     <div style={containerStyle}>
         
-        {/* OVERLAY LOADING EXCEL */}
-        {importing && (
+        {/* OVERLAY LOADING EXCEL/SCAN */}
+        {(importing || isScanningMenu) && (
             <div style={{
-                position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(255,255,255,0.8)', 
+                position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(255,255,255,0.9)', 
                 zIndex:9999, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'
             }}>
-                <div style={{fontSize:'50px'}}>📥</div>
-                <h2 style={{color:'#3498db'}}>Sto elaborando il Menu Excel...</h2>
-                <p>Potrebbe richiedere qualche secondo.</p>
+                <div style={{fontSize:'50px'}}>🤖</div>
+                <h2 style={{color:'#3498db'}}>
+                    {isScanningMenu ? "Analisi Menu con AI..." : "Sto elaborando il file..."}
+                </h2>
+                <p>Potrebbe richiedere fino a 30 secondi.</p>
             </div>
         )}
 
@@ -324,7 +331,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             <div style={{display:'flex', alignItems:'center', gap:'15px'}}>
                 <span style={{fontSize:'24px'}}>📊</span>
                 <div>
-                    <h4 style={{margin:0, color:'#2c3e50'}}>Import/Export Excel</h4>
+                    <h4 style={{margin:0, color:'#2c3e50'}}>Import/Export Menu</h4>
                     <p style={{margin:0, fontSize:'12px', color:'#7f8c8d'}}>Gestisci il tuo menu massivamente.</p>
                 </div>
             </div>
@@ -336,22 +343,29 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                 </div>
                 
                 {/* --- BOTTONE AI SCAN --- */}
-                <button 
-                    onClick={() => menuScanRef.current.click()} 
-                    style={{background:'#8e44ad', color:'white', padding:'8px 15px', borderRadius:'6px', border:'none', cursor:'pointer', fontWeight:'600', whiteSpace:'nowrap'}}
-                >
-                    {isScanningMenu ? '🤖 Analisi...' : '📸 SCAN MENU CARTACEO'}
-                </button>
-                <input 
-                    type="file" 
-                    ref={menuScanRef}
-                    accept="image/*,application/pdf"
-                    onChange={handleMenuScan} 
-                    style={{ display: 'none' }} 
-                />               
+                <div style={{position:'relative'}}>
+                    <button 
+                        onClick={() => menuScanRef.current.click()} 
+                        style={{background:'#8e44ad', color:'white', padding:'8px 15px', borderRadius:'6px', border:'none', cursor:'pointer', fontWeight:'600', whiteSpace:'nowrap'}}
+                    >
+                        📸 SCAN MENU CARTACEO
+                    </button>
+                    <input 
+                        type="file" 
+                        ref={menuScanRef}
+                        accept="image/*,application/pdf" // Accetta anche PDF
+                        onChange={handleMenuScan} 
+                        style={{ display: 'none' }} 
+                    />      
+                </div>         
             </div>
         </div>
 
+        {/* ... (IL RESTO DEL CODICE RIMANE INVARIATO: FORM DI MODIFICA, LISTA PRODOTTI, ECC) ... */}
+        {/* Assicurati di copiare il resto del codice originale qui sotto, 
+            ho incluso solo la parte superiore modificata per brevità ma il file deve essere completo. 
+            Se copi tutto, incolla il resto della logica form/drag&drop qui sotto. */}
+            
         <div style={{opacity: isAbbonamentoAttivo ? 1 : 0.5, pointerEvents: isAbbonamentoAttivo ? 'auto' : 'none'}}>
             <div style={{...cardStyle, borderLeft: editId ? '5px solid #3498db' : '5px solid #2ecc71'}}>
                   <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px', flexWrap:'wrap', gap:'10px'}}>
