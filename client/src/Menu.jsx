@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - FINAL UX UPDATE: LAYOUT BUTTONS, CARD CLICK, EXTRAS VISIBLE
+// client/src/Menu.jsx - FIX SCHERMATA GRIGIA & LAYOUT STICKY
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'; 
 import { dictionary, getContent } from './translations';
@@ -226,7 +226,8 @@ function Menu() {
   const cardBg = style.card_bg || 'white'; const cardBorder = style.card_border || '#eee';
   const btnBg = style.btn_bg || '#27ae60'; const btnText = style.btn_text || 'white';
   const tavoloBg = style.tavolo_bg || priceColor; const tavoloText = style.tavolo_text || 'white';
-  const modalBg = style.colore_modal_bg || cardBg; const modalText = style.colore_modal_text || '#000';
+  const modalBg = style.colore_modal_bg || cardBg || '#fff'; // Fallback per evitare trasparenza
+  const modalText = style.colore_modal_text || '#000';
   const footerBtnStyle = { background: 'transparent', border: `1px solid ${style.colore_footer_text || '#888'}`, color: style.colore_footer_text || '#888', boxSizing: 'border-box', width: '100%', maxWidth: '280px', padding: '12px 15px', borderRadius:'30px', cursor:'pointer', fontSize:'13px', fontWeight:'bold', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', margin: '0 auto' };
   
   const categorieUniche = [...new Set(menu.map(p => p.categoria_nome || p.categoria))];
@@ -246,6 +247,32 @@ function Menu() {
       }
   };
   const toggleSubAccordion = (subName) => setActiveSubCategory(activeSubCategory === subName ? null : subName);
+
+  // --- PREPARAZIONE DATI MODALE (SAFE) ---
+  // Calcoliamo qui i dati del modale SE esiste un piatto selezionato
+  // Questo evita errori di rendering "schermo grigio"
+  let modalData = null;
+  if (selectedPiatto) {
+      const vSafe = getSafeVariants(selectedPiatto);
+      const allergeniSafe = getSafeAllergeni(selectedPiatto);
+      const baseList = vSafe.base;
+      const addList = vSafe.aggiunte.length > 0 ? vSafe.aggiunte : (selectedPiatto.categoria_varianti || []);
+      
+      const extraPrezzo = (tempVarianti?.aggiunte || []).reduce((acc, item) => acc + item.prezzo, 0);
+      const prezzoBaseUnitario = Number(selectedPiatto.prezzo);
+      const prezzoTotalePiatto = (prezzoBaseUnitario * qtyModal) + extraPrezzo;
+      
+      modalData = {
+          nome: getContent(selectedPiatto, 'nome', lang),
+          desc: getContent(selectedPiatto, 'descrizione', lang),
+          minimo: selectedPiatto.qta_minima ? parseFloat(selectedPiatto.qta_minima) : 1,
+          allergeni: allergeniSafe,
+          baseList,
+          addList,
+          prezzoTotale: prezzoTotalePiatto,
+          prezzoBase: prezzoBaseUnitario
+      };
+  }
 
   if(isSuspended) return <div style={{padding:50, textAlign:'center', color:'red', background: bg, minHeight:'100vh'}}><h1>⛔ SERVIZIO SOSPESO</h1></div>;
   if(error) return <div style={{padding:50, textAlign:'center', color: text, background: bg, minHeight:'100vh'}}><h1>⚠️ Errore Caricamento</h1></div>;
@@ -327,12 +354,10 @@ function Menu() {
                      <div className="menu-list" style={{ padding: '0', width: '100%' }}>
                         {sottoCats[scKey].map((prodotto) => {
                           
-                          // --- ANTI CRASH UTILS ---
                           const vSafe = getSafeVariants(prodotto);
                           const allergeniSafe = getSafeAllergeni(prodotto);
                           
                           const baseList = vSafe.base;
-                          // Aggiunte: unione di quelle del prodotto e della categoria
                           const addList = vSafe.aggiunte.length > 0 ? vSafe.aggiunte : (prodotto.categoria_varianti || []);
                           const ingStr = baseList.join(', '); 
                           
@@ -351,14 +376,13 @@ function Menu() {
                             <div 
                                 key={prodotto.id} 
                                 className="card" 
-                                onClick={() => apriModale(prodotto)} // INTERA CARD CLICCABILE -> APRE DETTAGLI
+                                onClick={() => apriModale(prodotto)} 
                                 style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', cursor: 'pointer', backgroundColor: cardBg, borderBottom: `1px solid ${cardBorder}` }}
                             >
                               
                               {prodotto.immagine_url && (
                                  <img 
                                     src={prodotto.immagine_url} 
-                                    // Non serve onClick qui perché l'intero div padre apre il modale
                                     style={{ width: '70px', height: '70px', objectFit: 'cover', borderRadius: '5px', flexShrink: 0, border:'1px solid #ddd' }} 
                                  />
                               )}
@@ -368,7 +392,6 @@ function Menu() {
                                 {descProdotto && (<p style={{ fontSize: '12px', color: '#666', margin: '0 0 2px 0', lineHeight: '1.1' }}>{descProdotto}</p>)}
                                 {ingStr && (<p style={{ fontSize: '11px', color: '#555', fontStyle: 'italic', margin: '0 0 2px 0', lineHeight: '1.1' }}><span className="notranslate" style={{ fontWeight: 'bold' }}>{t?.ingredients || "Ingredienti"}:</span> {ingStr}</p>)}
                                 
-                                {/* MOSTRA AGGIUNTE DISPONIBILI */}
                                 {addList.length > 0 && (
                                     <p style={{fontSize:'10px', color:'#2980b9', marginTop:'2px', lineHeight:'1.1'}}>
                                         <span style={{fontWeight:'bold'}}>✨ Extra:</span> {addList.map(a => a.nome).join(', ')}
@@ -388,11 +411,10 @@ function Menu() {
                               </div>
                               
                               <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '10px' }}>
-                                {/* TASTO MODIFICA (Solo se modificabile) */}
                                 {hasVarianti && (
                                     <div 
                                         onClick={(e) => { 
-                                            e.stopPropagation(); // Evita doppio trigger
+                                            e.stopPropagation(); 
                                             apriModale(prodotto); 
                                         }}
                                         className="notranslate"
@@ -406,14 +428,13 @@ function Menu() {
                                     </div>
                                 )}
 
-                                {/* TASTO AGGIUNGI (+) */}
                                 <button className="notranslate" 
                                     onClick={(e) => { 
-                                        e.stopPropagation(); // Evita apertura modale dettagli
+                                        e.stopPropagation(); 
                                         if(hasUnit) {
-                                            apriModale(prodotto); // Se c'è unità (/hg), serve modale qta
+                                            apriModale(prodotto); 
                                         } else {
-                                            aggiungiAlCarrello(prodotto); // Altrimenti aggiunta rapida
+                                            aggiungiAlCarrello(prodotto); 
                                         }
                                     }} 
                                     style={{ background: btnBg, color: btnText, borderRadius: '50%', width: '35px', height: '35px', border: 'none', fontSize: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 5px rgba(0,0,0,0.2)' }}>
@@ -475,139 +496,125 @@ function Menu() {
           </div>
       )}
 
-     {selectedPiatto && (
+      {/* --- MODALE PIATTO (VERSIONE STICKY FIXED) --- */}
+      {selectedPiatto && modalData && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.9)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding:'10px' }} onClick={() => setSelectedPiatto(null)}>
-            {(() => {
-                const vSafe = getSafeVariants(selectedPiatto);
-                const baseList = vSafe.base;
-                const addList = vSafe.aggiunte.length > 0 ? vSafe.aggiunte : (selectedPiatto.categoria_varianti || []);
-
-                const extraPrezzo = (tempVarianti?.aggiunte || []).reduce((acc, item) => acc + item.prezzo, 0);
-                const prezzoBaseUnitario = Number(selectedPiatto.prezzo);
-                const prezzoTotalePiatto = (prezzoBaseUnitario * qtyModal) + extraPrezzo;
-
-                const nomePiattoModal = getContent(selectedPiatto, 'nome', lang);
-                const descPiattoModal = getContent(selectedPiatto, 'descrizione', lang);
-                const minimo = selectedPiatto.qta_minima ? parseFloat(selectedPiatto.qta_minima) : 1;
+            <div style={{ 
+                background: modalBg, 
+                color: modalText, 
+                borderRadius: '15px', 
+                overflow: 'hidden', 
+                maxWidth: '600px', 
+                width: '100%', 
+                height: '90vh', 
+                maxHeight: '800px',
+                boxShadow: '0 10px 30px rgba(0,0,0,0.5)', 
+                position:'relative', 
+                display:'flex', 
+                flexDirection:'column'
+            }} onClick={e => e.stopPropagation()}>
                 
-                return (
-                <div style={{ 
-                    background: modalBg, 
-                    color: modalText, 
-                    borderRadius: '15px', 
-                    overflow: 'hidden', // Importante: nasconde lo scroll esterno
-                    maxWidth: '600px', 
-                    width: '100%', 
-                    height: '90vh', // Altezza fissa (90% dello schermo)
-                    maxHeight: '800px',
-                    boxShadow: '0 10px 30px rgba(0,0,0,0.5)', 
-                    position:'relative', 
-                    display:'flex', 
-                    flexDirection:'column' // Layout verticale flessibile
-                }} onClick={e => e.stopPropagation()}>
+                {/* 1. FOTO FISSA (NON SCORRE) */}
+                {selectedPiatto.immagine_url && ( 
+                    <div style={{
+                        width:'100%', 
+                        height:'220px', 
+                        flexShrink: 0, 
+                        overflow:'hidden',
+                        position: 'relative'
+                    }}>
+                        <img src={selectedPiatto.immagine_url} style={{width:'100%', height:'100%', objectFit:'cover'}} />
+                        <div style={{position:'absolute', top:0, left:0, right:0, height:'60px', background:'linear-gradient(to bottom, rgba(0,0,0,0.6), transparent)'}}></div>
+                    </div> 
+                )}
+
+                {/* TASTO CHIUDI (Sopra la foto) */}
+                <button onClick={() => setSelectedPiatto(null)} style={{
+                    position:'absolute', top:'15px', right:'15px', 
+                    background:'rgba(255,255,255,0.2)', backdropFilter: 'blur(5px)',
+                    color:'white', border:'1px solid rgba(255,255,255,0.5)', 
+                    borderRadius:'50%', width:'35px', height:'35px', 
+                    cursor:'pointer', zIndex: 10, fontSize:'18px', display:'flex', alignItems:'center', justifyContent:'center'
+                }}>✕</button>
+
+                {/* 2. CORPO SCROLLABILE (Descrizione, Ingredienti, Extra) */}
+                <div style={{
+                    padding:'20px', 
+                    flex: 1, 
+                    overflowY: 'auto', 
+                    overflowX: 'hidden'
+                }}>
+                    <h2 style={{margin:'0 0 5px 0', fontSize:'1.6rem', color: '#000', fontWeight:'800', lineHeight:'1.2'}}>{modalData.nome}</h2>
+                    <p style={{color:'#666', fontSize:'0.95rem', lineHeight:'1.4'}}>{modalData.desc}</p>
                     
-                    {/* 1. ZONA FOTO (Fissa in alto, non scorre) */}
-                    {selectedPiatto.immagine_url && ( 
-                        <div style={{
-                            width:'100%', 
-                            height:'220px', // Altezza fissa per la foto
-                            flexShrink: 0, // Impedisce alla foto di schiacciarsi
-                            overflow:'hidden',
-                            position: 'relative'
-                        }}>
-                            <img src={selectedPiatto.immagine_url} style={{width:'100%', height:'100%', objectFit:'cover'}} />
-                            {/* Sfumatura per rendere visibile la X anche su foto chiare */}
-                            <div style={{position:'absolute', top:0, left:0, right:0, height:'60px', background:'linear-gradient(to bottom, rgba(0,0,0,0.6), transparent)'}}></div>
-                        </div> 
+                    {selectedPiatto.unita_misura && (
+                        <div style={{marginTop:'15px', padding:'10px', background:'#e1f5fe', borderRadius:'8px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                            <div>
+                                <div style={{fontSize:'12px', fontWeight:'bold', color:'#0277bd', textTransform:'uppercase'}}>Quantità ({selectedPiatto.unita_misura})</div>
+                                <div style={{fontSize:'10px', color:'#555'}}>Minimo: {modalData.minimo}</div>
+                            </div>
+                            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+                                <button onClick={() => setQtyModal(q => Math.max(modalData.minimo, q - 1))} style={{width:30, height:30, borderRadius:'50%', border:'none', background:'white', color:'#0277bd', fontSize:'18px', fontWeight:'bold', cursor:'pointer'}} disabled={qtyModal <= modalData.minimo}>-</button>
+                                <span style={{fontSize:'20px', fontWeight:'bold', color:'#0277bd'}}>{qtyModal}</span>
+                                <button onClick={() => setQtyModal(q => q + 1)} style={{width:30, height:30, borderRadius:'50%', border:'none', background:'white', color:'#0277bd', fontSize:'18px', fontWeight:'bold', cursor:'pointer'}}>+</button>
+                            </div>
+                        </div>
                     )}
 
-                    {/* TASTO CHIUDI (Sopra la foto) */}
-                    <button onClick={() => setSelectedPiatto(null)} style={{
-                        position:'absolute', top:'15px', right:'15px', 
-                        background:'rgba(255,255,255,0.2)', backdropFilter: 'blur(5px)',
-                        color:'white', border:'1px solid rgba(255,255,255,0.5)', 
-                        borderRadius:'50%', width:'35px', height:'35px', 
-                        cursor:'pointer', zIndex: 10, fontSize:'18px', display:'flex', alignItems:'center', justifyContent:'center'
-                    }}>✕</button>
-
-                    {/* 2. ZONA CONTENUTO (Questa parte SCORRE) */}
-                    <div style={{
-                        padding:'20px', 
-                        flex: 1, // Occupa tutto lo spazio rimanente
-                        overflowY: 'auto', // Abilita lo scroll SOLO qui dentro
-                        overflowX: 'hidden'
-                    }}>
-                        <h2 style={{margin:'0 0 5px 0', fontSize:'1.6rem', color: '#000', fontWeight:'800', lineHeight:'1.2'}}>{nomePiattoModal}</h2>
-                        <p style={{color:'#666', fontSize:'0.95rem', lineHeight:'1.4'}}>{descPiattoModal}</p>
-                        
-                        {/* Selettore Quantità */}
-                        {selectedPiatto.unita_misura && (
-                            <div style={{marginTop:'15px', padding:'10px', background:'#e1f5fe', borderRadius:'8px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                                <div>
-                                    <div style={{fontSize:'12px', fontWeight:'bold', color:'#0277bd', textTransform:'uppercase'}}>Quantità ({selectedPiatto.unita_misura})</div>
-                                    <div style={{fontSize:'10px', color:'#555'}}>Minimo: {minimo}</div>
-                                </div>
-                                <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-                                    <button 
-                                        onClick={() => setQtyModal(q => Math.max(minimo, q - 1))} 
-                                        style={{width:30, height:30, borderRadius:'50%', border:'none', background:'white', color:'#0277bd', fontSize:'18px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.1)'}}
-                                        disabled={qtyModal <= minimo}
-                                    >-</button>
-                                    <span style={{fontSize:'20px', fontWeight:'bold', color:'#0277bd'}}>{qtyModal}</span>
-                                    <button 
-                                        onClick={() => setQtyModal(q => q + 1)}
-                                        style={{width:30, height:30, borderRadius:'50%', border:'none', background:'white', color:'#0277bd', fontSize:'18px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.1)'}}
-                                    >+</button>
-                                </div>
-                            </div>
-                        )}
-
-                        {selectedPiatto.allergeni && selectedPiatto.allergeni.length > 0 && ( <div className="notranslate" style={{ marginTop: '15px', padding: '10px', background: 'rgba(0,0,0,0.03)', borderRadius: '8px' }}> {selectedPiatto.allergeni.filter(a => !a.includes("❄️")).length > 0 && ( <div style={{ fontSize: '11px', color: '#e74c3c', fontWeight: '900', textTransform: 'uppercase', marginBottom: '4px' }}>⚠️ {t?.allergens || "Allergeni"}: {selectedPiatto.allergeni.filter(a => !a.includes("❄️")).join(', ')}</div> )} {selectedPiatto.allergeni.some(a => a.includes("❄️")) && ( <div style={{ fontSize: '11px', color: '#3498db', fontWeight: '900', textTransform: 'uppercase' }}>❄️ {t?.frozen || "Surgelato"}</div> )} </div> )}
-                        
-                        <div style={{marginTop:'20px', borderTop:'1px solid #eee', paddingTop:'15px'}}>
-                            {baseList.length > 0 && ( <div style={{marginBottom:'20px'}}><h4 className="notranslate" style={{margin:'0 0 10px 0', color:'#333'}}>{t?.ingredients || "Ingredienti"} (Togli)</h4><div style={{display:'flex', flexWrap:'wrap', gap:'10px'}}>{baseList.map(ing => { const isRemoved = tempVarianti.rimozioni.includes(ing); return ( <div key={ing} onClick={() => { const newRimozioni = isRemoved ? tempVarianti.rimozioni.filter(i => i !== ing) : [...tempVarianti.rimozioni, ing]; setTempVarianti({...tempVarianti, rimozioni: newRimozioni}); }} style={{ padding:'8px 12px', borderRadius:'20px', fontSize:'0.9rem', cursor:'pointer', background: isRemoved ? '#ffebee' : '#e8f5e9', color: isRemoved ? '#c62828' : '#2e7d32', border: isRemoved ? '1px solid #ef9a9a' : '1px solid #a5d6a7', textDecoration: isRemoved ? 'line-through' : 'none' }}>{isRemoved ? `No ${ing}` : ing}</div> ) })}</div></div> )}
-                            
-                            {/* LISTA EXTRA - Ora scorre qui dentro */}
-                            {addList.length > 0 && ( 
-                                <div style={{paddingBottom:'20px'}}>
-                                    <h4 className="notranslate" style={{margin:'0 0 10px 0', color:'#333'}}>Extra 😋</h4>
-                                    {addList.map((extra, idx) => { 
-                                        const isAdded = tempVarianti.aggiunte.some(a => a.nome === extra.nome); 
-                                        return ( 
-                                            <div key={idx} onClick={() => { const newAggiunte = isAdded ? tempVarianti.aggiunte.filter(a => a.nome !== extra.nome) : [...tempVarianti.aggiunte, extra]; setTempVarianti({...tempVarianti, aggiunte: newAggiunte}); }} 
-                                                style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'15px', marginBottom:'8px', borderRadius:'10px', cursor:'pointer', background: isAdded ? '#e3f2fd' : 'white', border: isAdded ? '2px solid #2196f3' : '1px solid #eee', boxShadow:'0 2px 5px rgba(0,0,0,0.02)' }}>
-                                                <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-                                                    <div style={{width:'20px', height:'20px', borderRadius:'50%', border: isAdded ? '5px solid #2196f3' : '2px solid #ccc', background:'white'}}></div>
-                                                    <span style={{fontWeight: isAdded ? 'bold' : '500', fontSize:'15px'}}>{extra.nome}</span>
-                                                </div>
-                                                <span className="notranslate" style={{fontWeight:'bold', color: priceColor}}>+{extra.prezzo.toFixed(2)}€</span>
-                                            </div> 
-                                        ) 
+                    {modalData.allergeni.length > 0 && ( <div className="notranslate" style={{ marginTop: '15px', padding: '10px', background: 'rgba(0,0,0,0.03)', borderRadius: '8px' }}> {modalData.allergeni.filter(a => !a.includes("❄️")).length > 0 && ( <div style={{ fontSize: '11px', color: '#e74c3c', fontWeight: '900', textTransform: 'uppercase', marginBottom: '4px' }}>⚠️ {t?.allergens || "Allergeni"}: {modalData.allergeni.filter(a => !a.includes("❄️")).join(', ')}</div> )} {modalData.allergeni.some(a => a.includes("❄️")) && ( <div style={{ fontSize: '11px', color: '#3498db', fontWeight: '900', textTransform: 'uppercase' }}>❄️ {t?.frozen || "Surgelato"}</div> )} </div> )}
+                    
+                    <div style={{marginTop:'20px', borderTop:'1px solid #eee', paddingTop:'15px'}}>
+                        {modalData.baseList.length > 0 && ( 
+                            <div style={{marginBottom:'20px'}}>
+                                <h4 className="notranslate" style={{margin:'0 0 10px 0', color:'#333'}}>{t?.ingredients || "Ingredienti"} (Togli)</h4>
+                                <div style={{display:'flex', flexWrap:'wrap', gap:'10px'}}>
+                                    {modalData.baseList.map(ing => { 
+                                        const isRemoved = tempVarianti.rimozioni.includes(ing); 
+                                        return ( <div key={ing} onClick={() => { const newRimozioni = isRemoved ? tempVarianti.rimozioni.filter(i => i !== ing) : [...tempVarianti.rimozioni, ing]; setTempVarianti({...tempVarianti, rimozioni: newRimozioni}); }} style={{ padding:'8px 12px', borderRadius:'20px', fontSize:'0.9rem', cursor:'pointer', background: isRemoved ? '#ffebee' : '#e8f5e9', color: isRemoved ? '#c62828' : '#2e7d32', border: isRemoved ? '1px solid #ef9a9a' : '1px solid #a5d6a7', textDecoration: isRemoved ? 'line-through' : 'none' }}>{isRemoved ? `No ${ing}` : ing}</div> ) 
                                     })}
-                                </div> 
-                            )}
-                        </div>
-                    </div>
-
-                    {/* 3. FOOTER FISSO (Prezzo + Bottone Aggiungi) */}
-                    <div style={{
-                        padding:'15px 20px', 
-                        background:'white', 
-                        borderTop:'1px solid #eee', 
-                        display:'flex', 
-                        justifyContent:'space-between', 
-                        alignItems:'center',
-                        flexShrink: 0, // Non si riduce mai
-                        boxShadow: '0 -5px 15px rgba(0,0,0,0.05)',
-                        zIndex: 20
-                    }}>
-                        <div className="notranslate" style={{fontSize:'1.5rem', fontWeight:'800', color: '#2c3e50'}}>{prezzoTotalePiatto.toFixed(2)}€</div>
-                        <button className="notranslate" onClick={() => { aggiungiAlCarrello({ ...selectedPiatto, nome: nomePiattoModal, prezzo: prezzoBaseUnitario, varianti_scelte: tempVarianti }, qtyModal); }} style={{ background: priceColor, color: 'white', padding: '12px 30px', borderRadius: '30px', fontWeight: 'bold', border: 'none', cursor: 'pointer', fontSize: '1.1rem', boxShadow:'0 4px 10px rgba(0,0,0,0.2)' }}>
-                            {canOrder ? (t?.add || "AGGIUNGI") : "LISTA"}
-                        </button>
+                                </div>
+                            </div> 
+                        )}
+                        
+                        {modalData.addList.length > 0 && ( 
+                            <div style={{paddingBottom:'20px'}}>
+                                <h4 className="notranslate" style={{margin:'0 0 10px 0', color:'#333'}}>Extra 😋</h4>
+                                {modalData.addList.map((extra, idx) => { 
+                                    const isAdded = tempVarianti.aggiunte.some(a => a.nome === extra.nome); 
+                                    return ( 
+                                        <div key={idx} onClick={() => { const newAggiunte = isAdded ? tempVarianti.aggiunte.filter(a => a.nome !== extra.nome) : [...tempVarianti.aggiunte, extra]; setTempVarianti({...tempVarianti, aggiunte: newAggiunte}); }} 
+                                            style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'15px', marginBottom:'8px', borderRadius:'10px', cursor:'pointer', background: isAdded ? '#e3f2fd' : 'white', border: isAdded ? '2px solid #2196f3' : '1px solid #eee', boxShadow:'0 2px 5px rgba(0,0,0,0.02)' }}>
+                                            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+                                                <div style={{width:'20px', height:'20px', borderRadius:'50%', border: isAdded ? '5px solid #2196f3' : '2px solid #ccc', background:'white'}}></div>
+                                                <span style={{fontWeight: isAdded ? 'bold' : '500', fontSize:'15px'}}>{extra.nome}</span>
+                                            </div>
+                                            <span className="notranslate" style={{fontWeight:'bold', color: priceColor}}>+{extra.prezzo.toFixed(2)}€</span>
+                                        </div> 
+                                    ) 
+                                })}
+                            </div> 
+                        )}
                     </div>
                 </div>
-            ); })()}
+
+                {/* 3. FOOTER FISSO (Prezzo + Bottone) */}
+                <div style={{
+                    padding:'15px 20px', 
+                    background:'white', 
+                    borderTop:'1px solid #eee', 
+                    display:'flex', 
+                    justifyContent:'space-between', 
+                    alignItems:'center',
+                    flexShrink: 0,
+                    boxShadow: '0 -5px 15px rgba(0,0,0,0.05)',
+                    zIndex: 20
+                }}>
+                    <div className="notranslate" style={{fontSize:'1.5rem', fontWeight:'800', color: '#2c3e50'}}>{modalData.prezzoTotale.toFixed(2)}€</div>
+                    <button className="notranslate" onClick={() => { aggiungiAlCarrello({ ...selectedPiatto, nome: modalData.nome, prezzo: modalData.prezzoBase, varianti_scelte: tempVarianti }, qtyModal); }} style={{ background: priceColor, color: 'white', padding: '12px 30px', borderRadius: '30px', fontWeight: 'bold', border: 'none', cursor: 'pointer', fontSize: '1.1rem', boxShadow:'0 4px 10px rgba(0,0,0,0.2)' }}>
+                        {canOrder ? (t?.add || "AGGIUNGI") : "LISTA"}
+                    </button>
+                </div>
+            </div>
         </div>
       )}
 
@@ -663,8 +670,6 @@ function Menu() {
                               <h3 className="notranslate" style={{ margin:'0 0 10px 0', color: coloriPortata[index] || '#ccc', borderBottom:`2px solid ${coloriPortata[index] || '#ccc'}`, display:'inline-block', paddingRight:20 }}>{nomePortata[courseNum] || `PORTATA ${courseNum}`}</h3>
                               {itemsCucina.filter(i => i.course === courseNum).map(item => {
                                   const v = typeof item.varianti === 'string' ? JSON.parse(item.varianti || '{}') : (item.varianti || {});
-                                  const allergeniItem = getSafeAllergeni(item);
-
                                   const qtaLabel = item.qty > 1 ? `x ${item.qty} ${item.unita_misura || ''}` : '';
                                   const totaleRiga = Number(item.prezzo) * (item.qty || 1);
 
@@ -676,14 +681,7 @@ function Menu() {
                                             </div>
                                             {item.descrizione && ( <div style={{fontSize:'12px', color:'#ccc', fontStyle:'italic', marginTop:'4px', lineHeight:'1.2'}}>{item.descrizione}</div> )}
                                             {v.base && v.base.length > 0 && ( <div style={{fontSize:'11px', color:'#999', marginTop:'4px'}}><span className="notranslate">🧂 {t?.ingredients || "Ingredienti"}:</span> {v.base.join(', ')}</div> )}
-                                            
-                                            {allergeniItem.length > 0 && ( 
-                                                <div className="notranslate" style={{ marginTop: '6px' }}>
-                                                    {allergeniItem.filter(a => !a.includes("❄️")).length > 0 && (<div style={{ fontSize: '10px', color: '#ff7675', fontWeight: 'bold', textTransform: 'uppercase' }}>⚠️ {t?.allergens || "Allergeni"}: {allergeniItem.filter(a => !a.includes("❄️")).join(', ')}</div>)}
-                                                    {allergeniItem.some(a => a.includes("❄️")) && (<div style={{ fontSize: '10px', color: '#74b9ff', fontWeight: 'bold', marginTop: '2px', textTransform: 'uppercase' }}>❄️ {t?.frozen || "Surgelato"}</div>)}
-                                                </div>
-                                            )}
-
+                                            {item.allergeni && item.allergeni.length > 0 && ( <div className="notranslate" style={{ marginTop: '6px' }}>{item.allergeni.filter(a => !a.includes("❄️")).length > 0 && (<div style={{ fontSize: '10px', color: '#ff7675', fontWeight: 'bold', textTransform: 'uppercase' }}>⚠️ {t?.allergens || "Allergeni"}: {item.allergeni.filter(a => !a.includes("❄️")).join(', ')}</div>)}{item.allergeni.some(a => a.includes("❄️")) && (<div style={{ fontSize: '10px', color: '#74b9ff', fontWeight: 'bold', marginTop: '2px', textTransform: 'uppercase' }}>❄️ {t?.frozen || "Surgelato"}</div>)}</div>)}
                                             {item.varianti_scelte && ( <div style={{marginTop:'8px', display:'flex', flexWrap:'wrap', gap:'5px'}}>{item.varianti_scelte.rimozioni?.map((ing, i) => ( <span key={i} style={{background:'#c0392b', color:'white', fontSize:'10px', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold'}}>NO {ing}</span> ))}{item.varianti_scelte.aggiunte?.map((ing, i) => ( <span key={i} style={{background:'#27ae60', color:'white', fontSize:'10px', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold'}}>+ {ing.nome}</span> ))}</div> )}
                                             <div className="notranslate" style={{color: priceColor, fontSize:'0.9rem', marginTop: '8px', fontWeight: 'bold'}}>{totaleRiga.toFixed(2)}€</div>
                                         </div>
