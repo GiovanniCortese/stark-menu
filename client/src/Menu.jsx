@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - FIX PREZZO RIEPILOGO & CALCOLO EXTRA
+// client/src/Menu.jsx - FIX CLICK CARD FOTO & LOGICA QUANTITÀ
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'; 
 import { dictionary, getContent } from './translations';
@@ -376,12 +376,26 @@ function Menu() {
                           const simboloEuro = style.nascondi_euro ? '' : '€';
                           const unitaMisura = prodotto.unita_misura ? ` ${prodotto.unita_misura}` : '';
 
+                          // FIX: CLICK SOLO SU FOTO & CURSOR POINTER
+                          const hasImage = !!prodotto.immagine_url;
+
                           return (
                             <div 
                                 key={prodotto.id} 
                                 className="card" 
-                                onClick={() => apriModale(prodotto)} 
-                                style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', cursor: 'pointer', backgroundColor: cardBg, borderBottom: `1px solid ${cardBorder}` }}
+                                onClick={() => hasImage ? apriModale(prodotto) : null} 
+                                style={{ 
+                                    display: 'flex', 
+                                    flexDirection: 'row', 
+                                    alignItems: 'center', 
+                                    gap: '15px', 
+                                    padding: '10px', 
+                                    width: '100%', 
+                                    boxSizing: 'border-box', 
+                                    cursor: hasImage ? 'pointer' : 'default', // Cursore solo se c'è immagine
+                                    backgroundColor: cardBg, 
+                                    borderBottom: `1px solid ${cardBorder}` 
+                                }}
                             >
                               
                               {prodotto.immagine_url && (
@@ -435,6 +449,7 @@ function Menu() {
                                 <button className="notranslate" 
                                     onClick={(e) => { 
                                         e.stopPropagation(); 
+                                        // LOGICA + e /hg: Se hasUnit (quindi anche /hg), apri modale per quantità. Altrimenti aggiungi.
                                         if(hasUnit) {
                                             apriModale(prodotto); 
                                         } else {
