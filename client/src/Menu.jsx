@@ -383,7 +383,7 @@ function Menu() {
                                 )}
 
                                 <div className="notranslate" style={{ fontSize: '14px', fontWeight: 'bold', color: priceColor, marginTop: '4px' }}>
-                                    {Number(prodotto.prezzo).toFixed(2)} {simboloEuro}{unitaMisura}
+                                    {Number(prodotto.prezzo).toFixed(2)}{simboloEuro}{unitaMisura}
                                 </div>
                               </div>
                               
