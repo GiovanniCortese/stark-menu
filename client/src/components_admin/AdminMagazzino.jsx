@@ -1,6 +1,5 @@
-// client/src/components_admin/AdminMagazzino.jsx - VERSIONE COMPLETA (CALCOLI & EXCEL AVANZATO)
 import { useState, useEffect, useRef } from 'react';
-import { PieChart, Pie, Cell, Tooltip, BarChart, Bar, XAxis, YAxis, ResponsiveContainer } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import * as XLSX from 'xlsx'; 
 
 function AdminMagazzino({ user, API_URL }) {
@@ -9,7 +8,7 @@ function AdminMagazzino({ user, API_URL }) {
     const [assets, setAssets] = useState([]); 
     const [filtro, setFiltro] = useState("");
     
-    // Stati per Carico AI
+    // Stati per Carico AI/Excel
     const [isScanning, setIsScanning] = useState(false);
     const fileInputRef = useRef(null);
     const importExcelRef = useRef(null);
@@ -21,10 +20,9 @@ function AdminMagazzino({ user, API_URL }) {
         fornitore: '', prodotto: '', lotto: '', scadenza: '',
         temperatura: '', conforme: true, integro: true, note: '',
         quantita: '', allegato_url: '', destinazione: '', 
-        prezzo_unitario: '', iva: '', prezzo: '' 
+        prezzo_unitario: '', iva: '', prezzo: '' // prezzo qui è il Totale Imponibile
     });
 
-    // Anteprima Documenti
     const [previewDoc, setPreviewDoc] = useState(null); 
     const [isDownloading, setIsDownloading] = useState(false);
 
@@ -35,9 +33,9 @@ function AdminMagazzino({ user, API_URL }) {
         const qta = parseFloat(merciForm.quantita);
         const unit = parseFloat(merciForm.prezzo_unitario);
         
+        // Se inserisco Qta e Unitario, calcolo il Totale Imponibile
         if (!isNaN(qta) && !isNaN(unit)) {
             const totImponibile = (qta * unit).toFixed(2);
-            // Aggiorna solo se diverso (e l'utente non sta scrivendo manualmente)
             if (merciForm.prezzo !== totImponibile) {
                 setMerciForm(prev => ({ ...prev, prezzo: totImponibile }));
             }
@@ -49,7 +47,7 @@ function AdminMagazzino({ user, API_URL }) {
         fetch(`${API_URL}/api/haccp/assets/${user.id}`).then(r => r.json()).then(setAssets).catch(console.error);
     };
 
-    // --- IMPORT EXCEL (UPGRADE: GESTIONE DUPLICATI) ---
+    // --- IMPORT EXCEL (SMART UPDATE) ---
     const handleImportExcel = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -63,7 +61,7 @@ function AdminMagazzino({ user, API_URL }) {
                 const ws = wb.Sheets[wsname];
                 const data = XLSX.utils.sheet_to_json(ws);
 
-                // Mappatura intelligente dei campi Excel
+                // Mappatura per il backend (che gestisce l'UPSERT)
                 const formattedData = data.map(row => ({
                     ristorante_id: user.id,
                     data_ricezione: row['Data'] || new Date(),
@@ -76,11 +74,12 @@ function AdminMagazzino({ user, API_URL }) {
                     prezzo: row['Totale'] || ((row['Prezzo Unitario'] || 0) * (row['Qta'] || 1)) || 0,
                     lotto: row['Lotto'] || '',
                     scadenza: row['Scadenza'] || null,
-                    note: row['Documento'] || row['Note'] || '', // Usato per il check duplicati lato server
+                    // IMPORTANTE: Le note o il numero documento servono per identificare se è la stessa riga da aggiornare
+                    note: row['Documento'] || row['Note'] || '', 
                     operatore: 'ADMIN_IMPORT'
                 }));
 
-                // Invia al backend (che gestisce l'UPSERT/Aggiornamento)
+                // Chiamata alla rotta specifica per l'import massivo con check duplicati
                 const res = await fetch(`${API_URL}/api/haccp/merci/import`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -100,10 +99,10 @@ function AdminMagazzino({ user, API_URL }) {
             }
         };
         reader.readAsBinaryString(file);
-        e.target.value = null; // Reset input
+        e.target.value = null; 
     };
 
-    // --- DOWNLOAD EXCEL (CON FORMULE) ---
+    // --- DOWNLOAD EXCEL COMPLETO ---
     const handleDownloadExcel = () => {
         const dataToExport = movimentiFiltrati.map(r => {
             const imp = parseFloat(r.prezzo) || 0;
@@ -133,25 +132,39 @@ function AdminMagazzino({ user, API_URL }) {
         XLSX.writeFile(wb, "Magazzino_Export.xlsx");
     };
 
-    // --- LOGICA GESTIONE DATI (SALVA/MODIFICA/ELIMINA) ---
+    // --- SALVATAGGIO MANUALE (FIXED) ---
     const salvaMerciManuale = async (e) => {
         e.preventDefault();
         try {
             const url = merciForm.id ? `${API_URL}/api/haccp/merci/${merciForm.id}` : `${API_URL}/api/haccp/merci`;
             const method = merciForm.id ? 'PUT' : 'POST';
-            const payload = { ...merciForm, ristorante_id: user.id, operatore: 'ADMIN' };
-            if (!payload.scadenza) payload.scadenza = null;
             
-            await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-            alert(merciForm.id ? "✅ Riga aggiornata!" : "✅ Merce registrata!");
+            // Assicuriamoci di mandare numeri e null dove serve
+            const payload = { 
+                ...merciForm, 
+                ristorante_id: user.id, 
+                operatore: 'ADMIN', // Importante per il backend
+                prezzo: parseFloat(merciForm.prezzo) || 0,
+                prezzo_unitario: parseFloat(merciForm.prezzo_unitario) || 0,
+                iva: parseFloat(merciForm.iva) || 0,
+                scadenza: merciForm.scadenza ? merciForm.scadenza : null,
+                temperatura: merciForm.temperatura ? parseFloat(merciForm.temperatura) : null
+            };
             
-            // Reset form
-            setMerciForm({ 
-                id: null, data_ricezione: new Date().toISOString().split('T')[0],
-                fornitore:'', prodotto:'', quantita:'', prezzo_unitario:'', iva:'', prezzo:'', 
-                lotto:'', scadenza:'', note:'', allegato_url:'', destinazione:'' 
-            });
-            ricaricaDati();
+            const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const data = await res.json();
+
+            if(data.success) {
+                alert(merciForm.id ? "✅ Riga aggiornata!" : "✅ Merce registrata!");
+                setMerciForm({ 
+                    id: null, data_ricezione: new Date().toISOString().split('T')[0],
+                    fornitore:'', prodotto:'', quantita:'', prezzo_unitario:'', iva:'', prezzo:'', 
+                    lotto:'', scadenza:'', note:'', allegato_url:'', destinazione:'', temperatura: '', conforme: true, integro: true
+                });
+                ricaricaDati();
+            } else {
+                alert("Errore API: " + (data.error || "Sconosciuto"));
+            }
         } catch (err) { alert("Errore Salvataggio: " + err.message); }
     };
 
@@ -173,35 +186,9 @@ function AdminMagazzino({ user, API_URL }) {
         } catch(e) { alert("Errore eliminazione"); }
     };
 
-    // --- GESTIONE ANTEPRIMA ALLEGATI ---
-    const handleFileAction = (url, name) => {
-        if(!url) return;
-        const isPdf = url.toLowerCase().includes('.pdf');
-        let previewUrl = isPdf ? `${API_URL}/api/proxy-download?url=${encodeURIComponent(url)}` : url;
-        setPreviewDoc({ url, previewUrl, name, type: isPdf ? 'pdf' : 'image' });
-    };
-
-    const handleForceDownload = async () => {
-        if (!previewDoc) return;
-        setIsDownloading(true);
-        try {
-            const response = await fetch(previewDoc.previewUrl);
-            const blob = await response.blob();
-            const downloadUrl = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = downloadUrl;
-            link.download = previewDoc.name || "download"; 
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-        } catch (error) { alert("Errore download."); } 
-        finally { setIsDownloading(false); }
-    };
-
-    // --- HELPERS GRAFICI E TABELLA ---
+    // --- HELPER TABELLA ---
     const movimentiFiltrati = stats.storico.filter(r => (r.prodotto + r.fornitore + (r.note||"")).toLowerCase().includes(filtro.toLowerCase()));
     
-    // Calcola i valori da mostrare nella riga
     const renderRowData = (r) => {
         const qta = parseFloat(r.quantita) || 0;
         const unit = parseFloat(r.prezzo_unitario) || 0;
@@ -209,7 +196,6 @@ function AdminMagazzino({ user, API_URL }) {
         const iva = parseFloat(r.iva) || 0;
         const ivaTot = imp * (iva / 100);
         const totIvato = imp + ivaTot;
-
         return { imp: imp.toFixed(2), ivaTot: ivaTot.toFixed(2), totIvato: totIvato.toFixed(2) };
     };
 
@@ -217,12 +203,13 @@ function AdminMagazzino({ user, API_URL }) {
 
     return (
         <div style={{padding: '20px', background: '#f4f6f8', minHeight: '90vh', fontFamily:"'Inter', sans-serif"}}>
+            
             {/* HEADER */}
             <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20}}>
-                <h2 style={{color: '#2c3e50', margin:0}}>📦 Gestionale Magazzino</h2>
+                <h2 style={{color: '#2c3e50', margin:0}}>📦 Magazzino & Acquisti</h2>
                 <div style={{display:'flex', gap:10}}>
                     <button onClick={() => setTab('dashboard')} style={{padding:'10px 20px', borderRadius:20, cursor:'pointer', background: tab==='dashboard'?'#34495e':'white', color:tab==='dashboard'?'white':'#333', border:'1px solid #ccc'}}>📊 Dashboard</button>
-                    <button onClick={() => setTab('carico')} style={{padding:'10px 20px', borderRadius:20, cursor:'pointer', background: tab==='carico'?'#27ae60':'white', color:tab==='carico'?'white':'#27ae60', border:'1px solid #27ae60'}}>📥 Carico / Modifica</button>
+                    <button onClick={() => setTab('carico')} style={{padding:'10px 20px', borderRadius:20, cursor:'pointer', background: tab==='carico'?'#27ae60':'white', color:tab==='carico'?'white':'#27ae60', border:'1px solid #27ae60'}}>📥 Nuovo Arrivo</button>
                 </div>
             </div>
 
@@ -243,70 +230,74 @@ function AdminMagazzino({ user, API_URL }) {
                 </div>
             )}
 
-            {/* SEZIONE CARICO */}
+            {/* SEZIONE CARICO / MODIFICA */}
             {tab === 'carico' && (
                 <div>
                      <div style={{display:'flex', gap:15, marginBottom:20}}>
-                        {/* BOTTONE IMPORT EXCEL */}
                         <div style={{flex:1, background:'white', padding:20, borderRadius:15, boxShadow:'0 4px 10px rgba(0,0,0,0.05)', display:'flex', alignItems:'center', justifyContent:'space-between'}}>
                             <div><h3 style={{margin:0, color:'#27ae60'}}>📊 Importa Excel</h3><p style={{margin:0, fontSize:12}}>Carica lista prodotti (No Duplicati)</p></div>
                             <button onClick={() => importExcelRef.current.click()} style={{background:'#27ae60', color:'white', border:'none', padding:'10px 20px', borderRadius:25, cursor:'pointer'}}>📂 CARICA XLS</button>
                             <input type="file" ref={importExcelRef} accept=".xlsx, .xls" onChange={handleImportExcel} style={{display:'none'}} />
                         </div>
-                         {/* BOTTONE SCAN (Omissis logica dettaglio scan per brevità, usare modale separata o componente scan) */}
-                        <div style={{flex:1, background:'white', padding:20, borderRadius:15, boxShadow:'0 4px 10px rgba(0,0,0,0.05)', display:'flex', alignItems:'center', justifyContent:'space-between'}}>
-                            <div><h3 style={{margin:0, color:'#8e44ad'}}>✨ Magic Scan (AI)</h3><p style={{margin:0, fontSize:12}}>Carica PDF/Foto</p></div>
-                            <button onClick={() => fileInputRef.current.click()} style={{background:'#8e44ad', color:'white', border:'none', padding:'10px 20px', borderRadius:25, cursor:'pointer'}}>{isScanning ? '⏳...' : '📸 SCAN'}</button>
-                            <input type="file" ref={fileInputRef} accept="image/*,application/pdf" onChange={() => alert("Usa MerciManager per lo scan completo o integra qui la logica scan.")} style={{display:'none'}} />
-                        </div>
                     </div>
 
                     <div style={{background:'white', padding:25, borderRadius:15, marginBottom:30, borderLeft:'5px solid #27ae60', boxShadow:'0 4px 10px rgba(0,0,0,0.05)'}}>
-                        <h3 style={{marginTop:0, color:'#2c3e50'}}>{merciForm.id ? '✏️ Modifica Riga' : '📥 Carico Manuale'}</h3>
+                        <h3 style={{marginTop:0, color:'#2c3e50'}}>{merciForm.id ? '✏️ Modifica Arrivo' : '📥 Nuovo Arrivo'}</h3>
                         <form onSubmit={salvaMerciManuale} style={{display:'flex', flexWrap:'wrap', gap:15, alignItems:'flex-end'}}>
-                            {/* Campi Form... */}
-                            <div style={{flex:1, minWidth:130}}><label style={{fontSize:11}}>Data</label><input type="date" required value={merciForm.data_ricezione} onChange={e=>setMerciForm({...merciForm, data_ricezione:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd', borderRadius:5}} /></div>
-                            <div style={{flex:2, minWidth:180}}><label style={{fontSize:11}}>Fornitore</label><input value={merciForm.fornitore} onChange={e=>setMerciForm({...merciForm, fornitore:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd', borderRadius:5}} /></div>
-                            <div style={{flex:2, minWidth:180}}><label style={{fontSize:11}}>Prodotto</label><input value={merciForm.prodotto} onChange={e=>setMerciForm({...merciForm, prodotto:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd', borderRadius:5}} /></div>
                             
-                            {/* PREZZI */}
-                            <div style={{flex:1, minWidth:80}}><label style={{fontSize:11}}>Qta</label><input type="number" step="0.01" value={merciForm.quantita} onChange={e=>setMerciForm({...merciForm, quantita:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd', borderRadius:5}} /></div>
-                            <div style={{flex:1, minWidth:80}}><label style={{fontSize:11}}>Unitario €</label><input type="number" step="0.01" value={merciForm.prezzo_unitario} onChange={e=>setMerciForm({...merciForm, prezzo_unitario:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd', borderRadius:5}} /></div>
-                            <div style={{flex:1, minWidth:60}}><label style={{fontSize:11}}>IVA %</label><input type="text" value={merciForm.iva} onChange={e=>setMerciForm({...merciForm, iva:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd', borderRadius:5}} /></div>
-                            <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Totale (Imp)</label><input type="number" step="0.01" value={merciForm.prezzo} readOnly style={{width:'100%', padding:8, border:'1px solid #ddd', borderRadius:5, background:'#eee'}} /></div>
+                            <div style={{flex:1, minWidth:130}}><label style={{fontSize:11}}>Data</label><input type="date" required value={merciForm.data_ricezione} onChange={e=>setMerciForm({...merciForm, data_ricezione:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} /></div>
+                            <div style={{flex:2, minWidth:180}}><label style={{fontSize:11}}>Fornitore</label><input value={merciForm.fornitore} onChange={e=>setMerciForm({...merciForm, fornitore:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} placeholder="Es. Russo" /></div>
+                            <div style={{flex:2, minWidth:180}}><label style={{fontSize:11}}>Prodotto</label><input value={merciForm.prodotto} onChange={e=>setMerciForm({...merciForm, prodotto:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} placeholder="Es. Vodka" /></div>
+                            
+                            {/* PREZZI & QTA */}
+                            <div style={{flex:1, minWidth:80}}><label style={{fontSize:11}}>Quantità</label><input type="number" step="0.01" value={merciForm.quantita} onChange={e=>setMerciForm({...merciForm, quantita:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} /></div>
+                            <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>P. Unitario (€)</label><input type="number" step="0.01" value={merciForm.prezzo_unitario} onChange={e=>setMerciForm({...merciForm, prezzo_unitario:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} placeholder="€ Unit" /></div>
+                            <div style={{flex:1, minWidth:60}}><label style={{fontSize:11}}>IVA %</label><input type="number" value={merciForm.iva} onChange={e=>setMerciForm({...merciForm, iva:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} placeholder="22" /></div>
+                            <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>TOTALE (Imp)</label><input type="number" step="0.01" value={merciForm.prezzo} readOnly style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5, background:'#eee', fontWeight:'bold'}} placeholder="Totale" /></div>
 
-                            <div style={{flex:2, minWidth:200}}><label style={{fontSize:11}}>Doc / Note</label><input value={merciForm.note} onChange={e=>setMerciForm({...merciForm, note:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd', borderRadius:5}} /></div>
+                            <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Lotto</label><input value={merciForm.lotto} onChange={e=>setMerciForm({...merciForm, lotto:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} /></div>
+                            <div style={{flex:1, minWidth:130}}><label style={{fontSize:11}}>Scadenza</label><input type="date" value={merciForm.scadenza} onChange={e=>setMerciForm({...merciForm, scadenza:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} /></div>
+                            <div style={{flex:1, minWidth:80}}><label style={{fontSize:11}}>Temp °C</label><input type="number" step="0.1" value={merciForm.temperatura} onChange={e=>setMerciForm({...merciForm, temperatura:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} /></div>
 
-                            <button type="submit" style={{padding:'10px 25px', background: merciForm.id ? '#f39c12' : '#27ae60', color:'white', border:'none', borderRadius:5, fontWeight:'bold', cursor:'pointer', height:38}}>{merciForm.id ? 'AGGIORNA' : 'REGISTRA'}</button>
-                            {merciForm.id && <button type="button" onClick={()=>{setMerciForm({id:null, data_ricezione:'', fornitore:'', prodotto:'', quantita:'', prezzo:'', prezzo_unitario:'', iva:''});}} style={{padding:'10px', background:'#95a5a6', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>X</button>}
+                            <div style={{flex:2, minWidth:200}}><label style={{fontSize:11}}>Note (DDT/Fattura)</label><input value={merciForm.note} onChange={e=>setMerciForm({...merciForm, note:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} placeholder="Es. Fattura 1004" /></div>
+
+                            <div style={{display:'flex', flexDirection:'column', justifyContent:'center'}}>
+                                <label style={{fontSize:11, display:'flex', alignItems:'center'}}><input type="checkbox" checked={merciForm.conforme} onChange={e=>setMerciForm({...merciForm, conforme:e.target.checked})} /> Conforme</label>
+                                <label style={{fontSize:11, display:'flex', alignItems:'center'}}><input type="checkbox" checked={merciForm.integro} onChange={e=>setMerciForm({...merciForm, integro:e.target.checked})} /> Integro</label>
+                            </div>
+
+                            <button type="submit" style={{padding:'10px 25px', background: merciForm.id ? '#f39c12' : '#27ae60', color:'white', border:'none', borderRadius:5, fontWeight:'bold', cursor:'pointer', height:42}}>{merciForm.id ? 'AGGIORNA' : 'SALVA'}</button>
+                            {merciForm.id && <button type="button" onClick={()=>{setMerciForm({id:null, data_ricezione:'', fornitore:'', prodotto:'', quantita:'', prezzo:'', prezzo_unitario:'', iva:'', lotto:'', scadenza:'', note:''});}} style={{padding:'10px', background:'#95a5a6', color:'white', border:'none', borderRadius:5, cursor:'pointer', height:42}}>ANNULLA</button>}
                         </form>
                     </div>
                 </div>
             )}
 
-            {/* TABELLA CON COLONNE RICHIESTE */}
+            {/* TABELLA STORICO */}
             <div style={{background:'white', padding:25, borderRadius:15, boxShadow:'0 4px 10px rgba(0,0,0,0.05)'}}>
                 <div style={{display:'flex', justifyContent:'space-between', marginBottom:20}}>
-                    <h3>🔍 Registro Completo</h3>
+                    <h3>📦 Storico</h3>
                     <div style={{display:'flex', gap:10}}>
-                         <button onClick={handleDownloadExcel} style={{background:'#27ae60', color:'white', border:'none', padding:'8px 15px', borderRadius:5, cursor:'pointer'}}>⬇ Export Excel</button>
+                         <button onClick={handleDownloadExcel} style={{background:'#f39c12', color:'white', border:'none', padding:'8px 15px', borderRadius:5, cursor:'pointer', fontWeight:'bold'}}>⬇ Report</button>
                          <input type="text" placeholder="Cerca..." value={filtro} onChange={e => setFiltro(e.target.value)} style={{padding:8, borderRadius:5, border:'1px solid #ddd'}} />
                     </div>
                 </div>
                 <div style={{overflowX:'auto'}}>
-                    <table style={{width:'100%', borderCollapse:'collapse', fontSize:12}}>
+                    <table style={{width:'100%', borderCollapse:'collapse', fontSize:13}}>
                         <thead>
-                            <tr style={{background:'#f8f9fa', textAlign:'left', color:'#7f8c8d'}}>
+                            <tr style={{background:'#f0f0f0', textAlign:'left', color:'#333', borderBottom:'2px solid #ddd'}}>
                                 <th style={{padding:10}}>Data</th>
-                                <th style={{padding:10}}>Prodotto</th>
                                 <th style={{padding:10}}>Fornitore</th>
+                                <th style={{padding:10}}>Prodotto</th>
                                 <th style={{padding:10}}>Qta</th>
-                                <th style={{padding:10}}>Unitario</th>
-                                <th style={{padding:10}}>Tot (Imp)</th>
-                                <th style={{padding:10}}>IVA %</th>
-                                <th style={{padding:10}}>IVA Tot</th>
-                                <th style={{padding:10}}>Tot Ivato</th>
-                                <th style={{padding:10}}>Doc</th>
+                                <th style={{padding:10}}>Unit.</th>
+                                <th style={{padding:10}}>IVA</th>
+                                <th style={{padding:10}}>Totale</th>
+                                <th style={{padding:10}}>Lotto</th>
+                                <th style={{padding:10}}>Scadenza</th>
+                                <th style={{padding:10}}>Temp</th>
+                                <th style={{padding:10}}>Note / Doc</th>
+                                <th style={{padding:10}}>Allegato</th>
                                 <th style={{padding:10}}>Azioni</th>
                             </tr>
                         </thead>
@@ -314,20 +305,24 @@ function AdminMagazzino({ user, API_URL }) {
                             {movimentiFiltrati.slice(0, 100).map((r, i) => {
                                 const calcs = renderRowData(r);
                                 return (
-                                    <tr key={i} onClick={() => iniziaModifica(r)} style={{borderBottom:'1px solid #f1f1f1', cursor:'pointer'}}>
+                                    <tr key={i} style={{borderBottom:'1px solid #f1f1f1'}}>
                                         <td style={{padding:10}}>{new Date(r.data_ricezione).toLocaleDateString()}</td>
-                                        <td style={{padding:10, fontWeight:'bold'}}>{r.prodotto}</td>
                                         <td style={{padding:10}}>{r.fornitore}</td>
+                                        <td style={{padding:10, fontWeight:'bold'}}>{r.prodotto}</td>
                                         <td style={{padding:10}}>{r.quantita}</td>
-                                        <td style={{padding:10}}>€ {r.prezzo_unitario}</td>
-                                        <td style={{padding:10}}>€ {calcs.imp}</td>
-                                        <td style={{padding:10}}>{r.iva}%</td>
-                                        <td style={{padding:10, color:'#e67e22'}}>€ {calcs.ivaTot}</td>
-                                        <td style={{padding:10, fontWeight:'bold', color:'#27ae60'}}>€ {calcs.totIvato}</td>
-                                        <td style={{padding:10, fontStyle:'italic'}}>{r.note}</td>
-                                        <td style={{padding:10, display:'flex', gap:5}} onClick={e=>e.stopPropagation()}>
-                                            <button onClick={()=>iniziaModifica(r)} style={{border:'none', background:'none', cursor:'pointer'}}>✏️</button>
-                                            <button onClick={()=>eliminaMerce(r.id)} style={{border:'none', background:'none', cursor:'pointer'}}>🗑️</button>
+                                        <td style={{padding:10}}>€ {r.prezzo_unitario || '-'}</td>
+                                        <td style={{padding:10}}>{r.iva ? r.iva + '%' : '-'}</td>
+                                        <td style={{padding:10, color:'#27ae60', fontWeight:'bold'}}>€ {calcs.totIvato}</td>
+                                        <td style={{padding:10, fontSize:12}}>{r.lotto || '-'}</td>
+                                        <td style={{padding:10}}>{r.scadenza ? new Date(r.scadenza).toLocaleDateString() : '-'}</td>
+                                        <td style={{padding:10}}>{r.temperatura ? r.temperatura + '°' : '-'}</td>
+                                        <td style={{padding:10, fontSize:12, color:'#555'}}>{r.note}</td>
+                                        <td style={{padding:10}}>
+                                           {r.allegato_url && <button onClick={() => window.open(r.allegato_url, '_blank')} style={{background:'#3498db', color:'white', border:'none', borderRadius:3, padding:'2px 6px', cursor:'pointer'}}>📎</button>}
+                                        </td>
+                                        <td style={{padding:10, display:'flex', gap:5}}>
+                                            <button onClick={()=>iniziaModifica(r)} style={{border:'none', background:'none', cursor:'pointer', fontSize:18}} title="Modifica">✏️</button>
+                                            <button onClick={()=>eliminaMerce(r.id)} style={{border:'none', background:'none', cursor:'pointer', fontSize:18}} title="Elimina">🗑️</button>
                                         </td>
                                     </tr>
                                 );
@@ -336,30 +331,6 @@ function AdminMagazzino({ user, API_URL }) {
                     </table>
                 </div>
             </div>
-
-            {/* MODALE ANTEPRIMA */}
-            {previewDoc && (
-                <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.8)', zIndex:999, display:'flex', justifyContent:'center', alignItems:'center'}}>
-                    <div style={{background:'white', width:'90%', height:'90%', borderRadius:10, display:'flex', flexDirection:'column'}}>
-                         <div style={{padding:10, display:'flex', justifyContent:'space-between', background:'#eee'}}>
-                             <div style={{display:'flex', gap:10}}>
-                                <span>📄 {previewDoc.name}</span>
-                                <button onClick={handleForceDownload} disabled={isDownloading} style={{background:'#27ae60', color:'white', border:'none', borderRadius:3, padding:'2px 8px', cursor:'pointer'}}>
-                                    {isDownloading ? '...' : '⬇ Scarica'}
-                                </button>
-                             </div>
-                             <button onClick={()=>setPreviewDoc(null)} style={{background:'red', color:'white', border:'none', borderRadius:3, padding:'2px 8px', cursor:'pointer'}}>X</button>
-                         </div>
-                         <div style={{flex:1, background:'#555', display:'flex', justifyContent:'center', alignItems:'center', overflow:'hidden'}}>
-                            {previewDoc.type === 'pdf' ? (
-                                <iframe src={previewDoc.previewUrl} style={{width:'100%', height:'100%', border:'none'}} title="Anteprima" />
-                            ) : (
-                                <img src={previewDoc.previewUrl} style={{maxWidth:'100%', maxHeight:'100%', objectFit:'contain'}} alt="Anteprima" />
-                            )}
-                         </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

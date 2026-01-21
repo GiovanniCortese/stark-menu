@@ -176,49 +176,45 @@ const MerciManager = ({
                 <div style={{display:'flex', justifyContent:'space-between', marginBottom:15}}><h3>📦 Storico</h3><button onClick={()=>openDownloadModal('merci')} style={{background:'#f39c12', color:'white', border:'none', padding:'5px 15px', borderRadius:5}}>⬇ Report</button></div>
                 <div style={{overflowX:'auto'}}>
                     <table style={{width:'100%', borderCollapse:'collapse', fontSize:12}}>
-                        <thead>
-                            <tr style={{background:'#f0f0f0', textAlign:'left'}}>
-                                <th style={{padding:8}}>Data</th>
-                                <th style={{padding:8}}>Fornitore</th>
-                                <th style={{padding:8}}>Prodotto</th>
-                                <th style={{padding:8}}>Qta</th>
-                                <th style={{padding:8}}>Unit.</th>
-                                <th style={{padding:8}}>Tot (Imp)</th>
-                                <th style={{padding:8}}>IVA %</th>
-                                <th style={{padding:8}}>IVA Tot</th>
-                                <th style={{padding:8}}>Tot Ivato</th>
-                                <th style={{padding:8}}>Note / Doc</th>
-                                <th style={{padding:8}}>Allegato</th>
-                                <th style={{padding:8}}>Azioni</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {merci.map(m => {
-                                const c = renderRowData(m);
-                                return (
-                                    <tr key={m.id} style={{borderBottom:'1px solid #eee'}}>
-                                        <td style={{padding:8}}>{new Date(m.data_ricezione).toLocaleDateString()}</td>
-                                        <td style={{padding:8}}>{m.fornitore}</td>
-                                        <td style={{padding:8}}><strong>{m.prodotto}</strong></td>
-                                        <td style={{padding:8}}>{m.quantita}</td>
-                                        <td style={{padding:8}}>€ {m.prezzo_unitario || '-'}</td>
-                                        <td style={{padding:8}}>€ {c.imp}</td>
-                                        <td style={{padding:8}}>{m.iva ? m.iva + '%' : '-'}</td>
-                                        <td style={{padding:8, color:'#e67e22'}}>€ {c.ivaTot}</td>
-                                        <td style={{padding:8, fontWeight:'bold', color:'#27ae60'}}>€ {c.totIvato}</td>
-                                        <td style={{padding:8, fontSize:11, color:'#555'}}>{m.note}</td>
-                                        <td style={{padding:8}}>
-                                           {m.allegato_url && <button onClick={() => handleFileAction(m.allegato_url)} style={{background:'#3498db', color:'white', border:'none', borderRadius:3, padding:'2px 5px', cursor:'pointer'}}>📎</button>}
-                                        </td>
-                                        <td style={{padding:8, display:'flex', gap:5}}>
-                                            <button onClick={()=>iniziaModificaMerci(m)} style={{background:'#f39c12', color:'white', border:'none', borderRadius:3, padding:'2px 5px'}}>✏️</button>
-                                            <button onClick={()=>eliminaMerce(m.id)} style={{background:'#e74c3c', color:'white', border:'none', borderRadius:3, padding:'2px 5px'}}>🗑️</button>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
+    <thead>
+        <tr style={{background:'#f0f0f0', textAlign:'left'}}>
+            <th style={{padding:8}}>Data</th>
+            <th style={{padding:8}}>Fornitore</th>
+            <th style={{padding:8}}>Prodotto</th>
+            <th style={{padding:8}}>Qta</th>
+            <th style={{padding:8}}>Unit.</th>
+            <th style={{padding:8}}>IVA</th>
+            <th style={{padding:8}}>Totale (Ivato)</th>
+            <th style={{padding:8}}>Lotto</th>
+            <th style={{padding:8}}>Scadenza</th>
+            <th style={{padding:8}}>Note</th>
+            <th style={{padding:8}}>Azioni</th>
+        </tr>
+    </thead>
+    <tbody>
+        {merci.map(m => {
+            const c = renderRowData(m); // Assicurati di avere renderRowData definita come in AdminMagazzino
+            return (
+                <tr key={m.id} style={{borderBottom:'1px solid #eee'}}>
+                    <td style={{padding:8}}>{new Date(m.data_ricezione).toLocaleDateString()}</td>
+                    <td style={{padding:8}}>{m.fornitore}</td>
+                    <td style={{padding:8}}><strong>{m.prodotto}</strong></td>
+                    <td style={{padding:8}}>{m.quantita}</td>
+                    <td style={{padding:8}}>€ {m.prezzo_unitario || '-'}</td>
+                    <td style={{padding:8}}>{m.iva ? m.iva + '%' : '-'}</td>
+                    <td style={{padding:8, fontWeight:'bold', color:'#27ae60'}}>€ {c.totIvato}</td>
+                    <td style={{padding:8}}>{m.lotto}</td>
+                    <td style={{padding:8}}>{m.scadenza ? new Date(m.scadenza).toLocaleDateString() : '-'}</td>
+                    <td style={{padding:8}}>{m.note}</td>
+                    <td style={{padding:8}}>
+                        <button onClick={()=>iniziaModificaMerci(m)} style={{border:'none', background:'none', cursor:'pointer', fontSize:16}}>✏️</button>
+                        <button onClick={()=>eliminaMerce(m.id)} style={{border:'none', background:'none', cursor:'pointer', fontSize:16}}>🗑️</button>
+                    </td>
+                </tr>
+            );
+        })}
+    </tbody>
+</table>
                 </div>
             </div>
         </div>
