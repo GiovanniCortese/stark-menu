@@ -189,37 +189,35 @@ const handleMenuScan = async (e) => {
     formData.append('photo', file);
 
     try {
-        // 1. Chiamata AI per leggere la foto
-        const res = await fetch(`${API_URL}/api/menu/scan-photo`, { method: 'POST', body: formData });
-        const json = await res.json();
+        // 1. Chiamata AI
+        const resAI = await fetch(`${API_URL}/api/menu/scan-photo`, { method: 'POST', body: formData });
+        const jsonAI = await resAI.json();
         
-        if(!json.success) throw new Error(json.error || "Errore scansione");
-        
-        const items = json.data; // Array di piatti letti dall'AI
-        if(!Array.isArray(items) || items.length === 0) throw new Error("Nessun piatto trovato nell'immagine.");
+        if(!jsonAI.success) throw new Error(jsonAI.error || "Errore scansione");
+        const items = jsonAI.data;
+        if(!Array.isArray(items) || items.length === 0) throw new Error("Nessun piatto trovato.");
 
-        // 2. Invio Massivo al Server (che gestisce l'Update se esiste o Insert se nuovo)
-        const importRes = await fetch(`${API_URL}/api/prodotti/import-massivo`, {
+        // 2. Invio al Server per l'Upsert
+        const resImport = await fetch(`${API_URL}/api/prodotti/import-massivo`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                prodotti: items,
-                ristorante_id: user.id 
-            })
+            body: JSON.stringify({ prodotti: items, ristorante_id: user.id })
         });
 
-        const importData = await importRes.json();
-        if (!importRes.ok) throw new Error(importData.error || "Errore durante il salvataggio");
+        const dataImport = await resImport.json();
+        if (!resImport.ok) throw new Error(dataImport.error || "Errore salvataggio");
 
-        alert(`✅ Scansione completata!\n${importData.message}`);
+        // 3. MESSAGGIO PERSONALIZZATO (Qui sta la modifica)
+        alert(`✅ Scansione completata!\n\n🆕 ${dataImport.added} piatti aggiunti\n🔄 ${dataImport.updated} piatti aggiornati`);
+        
         if(ricaricaDati) ricaricaDati(); 
 
     } catch(err) {
         console.error(err);
-        alert("❌ Errore Importazione: " + err.message);
+        alert("❌ Errore: " + err.message);
     } finally {
         setIsScanningMenu(false);
-        e.target.value = null; // Reset input
+        e.target.value = null; 
     }
 };
 

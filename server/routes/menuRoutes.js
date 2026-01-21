@@ -248,49 +248,58 @@ router.post('/api/prodotti/import-massivo', async (req, res) => {
 
         if (!prodotti || !Array.isArray(prodotti)) throw new Error("Formato dati non valido");
 
-        // Calcoliamo le posizioni iniziali
-        let maxCat = await client.query('SELECT MAX(posizione) as max FROM categorie WHERE ristorante_id = $1', [ristorante_id]);
-        let nextCatPos = (maxCat.rows[0].max || 0) + 1;
-        let maxProd = await client.query('SELECT MAX(posizione) as max FROM prodotti WHERE ristorante_id = $1', [ristorante_id]);
-        let nextProdPos = (maxProd.rows[0].max || 0) + 1;
+        let nextCatPos = (await client.query('SELECT MAX(posizione) as max FROM categorie WHERE ristorante_id = $1', [ristorante_id])).rows[0].max || 0;
+        let nextProdPos = (await client.query('SELECT MAX(posizione) as max FROM prodotti WHERE ristorante_id = $1', [ristorante_id])).rows[0].max || 0;
+        nextCatPos++; nextProdPos++;
+
+        // --- CONTATORI ---
+        let addedCount = 0;
+        let updatedCount = 0;
 
         for (const p of prodotti) {
-            // 1. Preparazione Dati
             const nome = p.nome ? String(p.nome).trim() : "Senza Nome";
             const prezzo = p.prezzo ? parseFloat(p.prezzo) : 0;
             const categoria = p.categoria ? String(p.categoria).trim() : "Generale";
             const descrizione = p.descrizione || "";
-            // Gestione Ingredienti che dall'AI arrivano spesso come array, li uniamo o li mettiamo nelle varianti base
             const ingredientiArr = Array.isArray(p.ingredienti) ? p.ingredienti : [];
-            const variantiProdotto = { base: ingredientiArr, aggiunte: [] }; // Mettiamo gli ingredienti nella "base"
-            
-            // 2. Controllo/Creazione Categoria
-            let catCheck = await client.query('SELECT * FROM categorie WHERE nome = $1 AND ristorante_id = $2', [categoria, ristorante_id]);
+            const variantiProdotto = { base: ingredientiArr, aggiunte: [] };
+
+            // Gestione Categoria
+            const catCheck = await client.query('SELECT id FROM categorie WHERE nome = $1 AND ristorante_id = $2', [categoria, ristorante_id]);
             if (catCheck.rows.length === 0) {
-                await client.query('INSERT INTO categorie (nome, posizione, ristorante_id, descrizione, varianti_default) VALUES ($1, $2, $3, $4, $5)', 
-                [categoria, nextCatPos++, ristorante_id, "", '[]']);
+                await client.query('INSERT INTO categorie (nome, posizione, ristorante_id, descrizione, varianti_default) VALUES ($1, $2, $3, $4, $5)', [categoria, nextCatPos++, ristorante_id, "", '[]']);
             }
 
-            // 3. CHECK ESISTENZA PRODOTTO (Il cuore della logica)
+            // Check Esistenza Piatto
             const prodCheck = await client.query('SELECT id FROM prodotti WHERE nome = $1 AND ristorante_id = $2', [nome, ristorante_id]);
 
             if (prodCheck.rows.length > 0) {
-                // >>> UPDATE (Se esiste già, aggiorna prezzo, descrizione, ecc)
+                // >>> UPDATE
                 await client.query(
                     `UPDATE prodotti SET prezzo=$1, categoria=$2, descrizione=$3, varianti=$4 WHERE id=$5`,
                     [prezzo, categoria, descrizione, JSON.stringify(variantiProdotto), prodCheck.rows[0].id]
                 );
+                updatedCount++; // Incrementa aggiornati
             } else {
-                // >>> INSERT (Se è nuovo)
+                // >>> INSERT
                 await client.query(
                     `INSERT INTO prodotti (nome, prezzo, categoria, descrizione, ristorante_id, posizione, varianti, allergeni, qta_minima) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
                     [nome, prezzo, categoria, descrizione, ristorante_id, nextProdPos++, JSON.stringify(variantiProdotto), '[]', 1]
                 );
+                addedCount++; // Incrementa aggiunti
             }
         }
 
         await client.query('COMMIT');
-        res.json({ success: true, message: `Importazione completata: ${prodotti.length} piatti elaborati.` });
+        
+        // Restituiamo i contatori al frontend
+        res.json({ 
+            success: true, 
+            added: addedCount, 
+            updated: updatedCount,
+            message: `Operazione completata.` 
+        });
+
     } catch (err) {
         await client.query('ROLLBACK');
         console.error("Errore Import Massivo:", err);
