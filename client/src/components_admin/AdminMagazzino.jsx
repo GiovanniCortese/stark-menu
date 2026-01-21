@@ -6,8 +6,33 @@ import * as XLSX from 'xlsx';
 const getMonday = (d) => { const date = new Date(d); const day = date.getDay(), diff = date.getDate() - day + (day === 0 ? -6 : 1); return new Date(date.setDate(diff)); };
 const formatDateISO = (date) => date.toISOString().split('T')[0];
 
+// --- NUOVO HELPER PER FORMATTAZIONE DATA/ORA ITALIANA ---
+const formatTimeDate = (dateStr) => {
+    if (!dateStr) return "-";
+    const date = new Date(dateStr);
+    
+    // Controlla se la data è valida
+    if (isNaN(date.getTime())) return dateStr;
+
+    const time = date.toLocaleTimeString('it-IT', { 
+        timeZone: 'Europe/Rome', 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit' 
+    });
+    
+    const day = date.toLocaleDateString('it-IT', { 
+        timeZone: 'Europe/Rome', 
+        day: '2-digit', 
+        month: '2-digit', 
+        year: 'numeric' 
+    });
+    
+    return `${time} - ${day}`;
+};
+
 function AdminMagazzino({ user, API_URL }) {
-    // Tabs: dashboard, lista, carico (Report ora è un modale)
+    // Tabs disponibili: dashboard, calendario, carico, lista, report
     const [tab, setTab] = useState('lista'); 
     const [stats, setStats] = useState({ fornitori: [], storico: [], top_prodotti: [] });
     const [assets, setAssets] = useState([]); 
@@ -227,12 +252,12 @@ function AdminMagazzino({ user, API_URL }) {
             data_ricezione: scannedData.data_ricezione || prev.data_ricezione,
             prodotto: prod.nome, 
             quantita: prod.quantita || '', 
-            unita_misura: 'Pz', // Default su Scan
             lotto: prod.lotto || '', 
             scadenza: prod.scadenza || '',
             prezzo_unitario: prod.prezzo || '', 
             note: `Rif. Doc: ${scannedData.numero_documento || 'ND'}`, 
-            allegato_url: scannedData.allegato_url || prev.allegato_url
+            allegato_url: scannedData.allegato_url || prev.allegato_url,
+            unita_misura: 'Pz' // Default su AI
         }));
         setScannedData(prev => ({ ...prev, prodotti: prev.prodotti.filter(p => p !== prod) }));
     };
@@ -266,7 +291,7 @@ function AdminMagazzino({ user, API_URL }) {
                     fornitore: row['Fornitore'] || 'Excel',
                     prodotto: row['Prodotto'] || 'Sconosciuto',
                     quantita: row['Quantita'] || row['Qta'] || 1,
-                    unita_misura: row['UdM'] || row['Unita'] || 'Pz', // Supporto colonna UdM
+                    unita_misura: row['UdM'] || row['Unita'] || 'Pz', // Supporto UdM
                     prezzo_unitario: row['Prezzo Unitario'] || row['Unitario'] || 0,
                     iva: row['IVA'] || 0,
                     prezzo: row['Totale'] || ((row['Prezzo Unitario'] || 0) * (row['Qta'] || 1)) || 0,
@@ -558,7 +583,8 @@ function AdminMagazzino({ user, API_URL }) {
                                     const calcs = renderRowData(r);
                                     return (
                                         <tr key={i} style={{borderBottom:'1px solid #f1f1f1'}}>
-                                            <td style={{padding:10}}>{new Date(r.data_ricezione).toLocaleDateString()}</td>
+                                            {/* DATA FORMATTATA CON ORARIO ITALIANO E POI DATA */}
+                                            <td style={{padding:10, whiteSpace:'nowrap'}}>{formatTimeDate(r.data_ricezione)}</td>
                                             <td style={{padding:10}}>{r.fornitore}</td>
                                             <td style={{padding:10, fontWeight:'bold'}}>{r.prodotto}</td>
                                             <td style={{padding:10}}>{r.quantita}</td>
@@ -583,7 +609,7 @@ function AdminMagazzino({ user, API_URL }) {
                             </tbody>
                             <tfoot style={{background:'#2c3e50', color:'white', fontWeight:'bold'}}>
                                 <tr>
-                                    <td colSpan={6} style={{padding:15, textAlign:'right'}}>TOTALE VISUALIZZATO:</td> {/* Colspan aumentato a 6 per la nuova colonna */}
+                                    <td colSpan={6} style={{padding:15, textAlign:'right'}}>TOTALE VISUALIZZATO:</td>
                                     <td style={{padding:15}}>€ {totaleVista.imp.toFixed(2)}</td>
                                     <td></td>
                                     <td style={{padding:15}}>€ {totaleVista.iva.toFixed(2)}</td>
