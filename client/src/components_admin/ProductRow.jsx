@@ -1,4 +1,4 @@
-// client/src/components_admin/ProductRow.jsx - LAYOUT VERTICALE AGGIORNATO
+// client/src/components_admin/ProductRow.jsx - VERSIONE FINALE (Variazioni Visibili)
 import { memo } from 'react';
 
 const ProductRow = memo(({ prodotto, avviaModifica, eliminaProdotto, isDragging }) => {
@@ -38,7 +38,7 @@ const ProductRow = memo(({ prodotto, avviaModifica, eliminaProdotto, isDragging 
         padding: '12px',
         display: 'flex',
         justifyContent: 'space-between',
-        alignItems: 'center', // Allinea verticalmente al centro per maniglia e bottoni
+        alignItems: 'center', 
         boxShadow: isDragging ? '0 5px 15px rgba(0,0,0,0.1)' : '0 1px 3px rgba(0,0,0,0.05)',
         transition: 'background 0.2s, border 0.2s',
         marginBottom: '0'
@@ -86,19 +86,23 @@ const ProductRow = memo(({ prodotto, avviaModifica, eliminaProdotto, isDragging 
                         </div>
                     )}
 
-                    {/* 4. VARIAZIONI (Conteggio) */}
+                    {/* 4. VARIAZIONI (LISTA COMPLETA) */}
                     {aggiunteList.length > 0 && (
-                        <div style={{fontSize:'11px'}}>
-                             <span style={{
-                                 background:'#f4f6f7', 
-                                 color:'#2980b9', 
-                                 border:'1px solid #d6eaf8',
-                                 padding:'1px 5px', 
-                                 borderRadius:'3px', 
-                                 fontWeight:'bold'
-                             }}>
-                                ✏️ {aggiunteList.length} Variazioni disponibili
-                             </span>
+                        <div style={{fontSize:'11px', marginTop:'2px', lineHeight:'1.5'}}>
+                             <span style={{fontWeight:'bold', color:'#2980b9', marginRight:'5px'}}>✨ Extra:</span>
+                             {aggiunteList.map((v, idx) => (
+                                <span key={idx} style={{
+                                    background:'#f0f8ff', 
+                                    color:'#2980b9', 
+                                    border:'1px solid #d6eaf8',
+                                    padding:'1px 5px', 
+                                    borderRadius:'4px', 
+                                    marginRight:'5px',
+                                    display:'inline-block'
+                                }}>
+                                    {v.nome} (+{Number(v.prezzo).toFixed(2)}€)
+                                </span>
+                             ))}
                         </div>
                     )}
 
