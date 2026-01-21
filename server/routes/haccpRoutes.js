@@ -589,15 +589,46 @@ router.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
             const r = await pool.query(sql, params);
             rows = r.rows.map(row => { const d = new Date(row.data_ora); return [d.toLocaleDateString('it-IT'), d.toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'}), String(row.asset || ''), String(row.valore === 'OFF' ? 'SPENTO' : `${row.valore}°C`), row.conformita ? "OK" : "NO", String(row.azione_correttiva || ""), String(row.operatore || "")]; });
         } else if (tipo === 'merci') { 
-            sheetName = "Ricevimento Merci";
-            titoloReport = "REGISTRO RICEVIMENTO MERCI";
-            headers = ["Data", "Fornitore", "Prodotto", "Condizione Prodotti", "Lotto", "Kg", "Scadenza", "Note"];
-            let sql = `SELECT * FROM haccp_merci WHERE ristorante_id = $1`;
-            const params = [ristorante_id];
-            if(start && end) { sql += ` AND data_ricezione >= $2 AND data_ricezione <= $3`; params.push(start, end); }
-            sql += ` ORDER BY data_ricezione ASC`; 
-            const r = await pool.query(sql, params);
-            rows = r.rows.map(row => { let condizione = "CONFORME"; if (!row.conforme) condizione = "TEMP KO"; if (!row.integro) condizione = "PACCO ROTTO"; if (!row.conforme && !row.integro) condizione = "DANNEGGIATO"; return [new Date(row.data_ricezione).toLocaleDateString('it-IT'), String(row.fornitore || ''), String(row.prodotto || ''), condizione, String(row.lotto || ''), String(row.quantita || ''), row.scadenza ? new Date(row.scadenza).toLocaleDateString('it-IT') : "-", String(row.note || '')]; });
+    sheetName = "Registro Acquisti";
+    titoloReport = "CONTABILITÀ MAGAZZINO & ACQUISTI";
+    // INTESTAZIONI "COME DIO COMANDA"
+    headers = ["Data", "Fornitore", "Prodotto", "Qta", "Unitario €", "Imponibile €", "IVA %", "Totale IVA €", "Totale Lordo €", "Num. Doc", "Note"];
+    
+    let sql = `SELECT * FROM haccp_merci WHERE ristorante_id = $1`;
+    const params = [ristorante_id];
+    
+    if(start && end) { 
+        sql += ` AND data_ricezione >= $2 AND data_ricezione <= $3`; 
+        params.push(start, end); 
+    }
+    sql += ` ORDER BY data_ricezione ASC`; 
+    
+    const r = await pool.query(sql, params);
+    
+    rows = r.rows.map(row => {
+        // Calcoli fiscali precisi
+        const qta = parseFloat(row.quantita) || 0;
+        const unit = parseFloat(row.prezzo_unitario) || 0;
+        const imponibile = parseFloat(row.prezzo) || (qta * unit);
+        const ivaPerc = parseFloat(row.iva) || 0;
+        const ivaValore = imponibile * (ivaPerc / 100);
+        const totaleLordo = imponibile + ivaValore;
+
+        return [
+            new Date(row.data_ricezione).toLocaleDateString('it-IT'),
+            String(row.fornitore || ''),
+            String(row.prodotto || ''),
+            String(qta),
+            `€ ${unit.toFixed(2)}`,       // Unitario
+            `€ ${imponibile.toFixed(2)}`, // Imponibile
+            `${ivaPerc}%`,                // Iva %
+            `€ ${ivaValore.toFixed(2)}`,  // Totale Iva
+            `€ ${totaleLordo.toFixed(2)}`,// TOTALE LORDO
+            String(row.lotto || '-'),     // Usiamo lotto o note come rif documento
+            String(row.note || '')
+        ];
+    });
+        
         } else if (tipo === 'assets') { 
             sheetName = "Lista Macchine";
             titoloReport = "LISTA MACCHINE E ATTREZZATURE";

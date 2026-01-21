@@ -2,7 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import * as XLSX from 'xlsx'; 
 
+// Helper per calcolo date report
+const getMonday = (d) => { const date = new Date(d); const day = date.getDay(), diff = date.getDate() - day + (day === 0 ? -6 : 1); return new Date(date.setDate(diff)); };
+const formatDateISO = (date) => date.toISOString().split('T')[0];
+
 function AdminMagazzino({ user, API_URL }) {
+    // Tabs disponibili: dashboard, calendario, carico, lista, report
     const [tab, setTab] = useState('dashboard'); 
     const [stats, setStats] = useState({ fornitori: [], storico: [], top_prodotti: [] });
     const [assets, setAssets] = useState([]); 
@@ -14,6 +19,9 @@ function AdminMagazzino({ user, API_URL }) {
     const fileInputRef = useRef(null); 
     const allegatoInputRef = useRef(null); 
     const importExcelRef = useRef(null); 
+
+    // Stato Calendario
+    const [currentMonth, setCurrentMonth] = useState(new Date());
 
     // Form Manuale
     const [merciForm, setMerciForm] = useState({
@@ -29,7 +37,7 @@ function AdminMagazzino({ user, API_URL }) {
 
     useEffect(() => { ricaricaDati(); }, []);
 
-    // --- CALCOLO AUTOMATICO PREZZI ---
+    // --- CALCOLO AUTOMATICO PREZZI NEL FORM ---
     useEffect(() => {
         const qta = parseFloat(merciForm.quantita);
         const unit = parseFloat(merciForm.prezzo_unitario);
@@ -46,6 +54,73 @@ function AdminMagazzino({ user, API_URL }) {
     const ricaricaDati = () => {
         fetch(`${API_URL}/api/haccp/stats/magazzino/${user.id}`).then(r => r.json()).then(setStats).catch(console.error);
         fetch(`${API_URL}/api/haccp/assets/${user.id}`).then(r => r.json()).then(setAssets).catch(console.error);
+    };
+
+    // --- LOGICA REPORT & EXPORT AVANZATO ---
+    const downloadReport = (periodo, format) => {
+        const today = new Date();
+        let start, end;
+        let rangeName = periodo;
+
+        if (periodo === 'week') {
+            start = getMonday(today);
+            end = new Date(start); end.setDate(end.getDate() + 6);
+            rangeName = "Settimana_Corrente";
+        } else if (periodo === 'month') {
+            start = new Date(today.getFullYear(), today.getMonth(), 1);
+            end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            rangeName = `Mese_${today.getMonth()+1}`;
+        } else {
+            // Tutto
+            start = null; end = null;
+            rangeName = "Totale_Storico";
+        }
+
+        let url = `${API_URL}/api/haccp/export/merci/${user.id}?format=${format}&rangeName=${rangeName}`;
+        if(start && end) url += `&start=${formatDateISO(start)}&end=${formatDateISO(end)}`;
+        
+        window.open(url, '_blank');
+    };
+
+    // --- LOGICA CALENDARIO ---
+    const renderCalendar = () => {
+        const year = currentMonth.getFullYear();
+        const month = currentMonth.getMonth();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+        const startBlank = firstDay === 0 ? 6 : firstDay - 1; // Start Monday
+
+        const days = [];
+        // Caselle vuote inizio mese
+        for (let i = 0; i < startBlank; i++) days.push(<div key={`blank-${i}`} style={{height:80, background:'#f9f9f9', border:'1px solid #eee'}}></div>);
+        
+        // Giorni del mese
+        for (let d = 1; d <= daysInMonth; d++) {
+            const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+            
+            // Calcolo totale spese del giorno
+            const speseGiorno = stats.storico.filter(r => r.data_ricezione.startsWith(dateStr));
+            const totaleGiorno = speseGiorno.reduce((acc, curr) => {
+                const qta = parseFloat(curr.quantita) || 0;
+                const unit = parseFloat(curr.prezzo_unitario) || 0;
+                const imp = parseFloat(curr.prezzo) || (qta * unit);
+                const iva = parseFloat(curr.iva) || 0;
+                return acc + imp + (imp * iva / 100);
+            }, 0);
+
+            days.push(
+                <div key={d} style={{height:80, background:'white', border:'1px solid #eee', padding:5, position:'relative', cursor:'pointer'}} 
+                     onClick={() => { setFiltro(dateStr); setTab('lista'); }}>
+                    <div style={{fontWeight:'bold', color:'#7f8c8d'}}>{d}</div>
+                    {totaleGiorno > 0 && (
+                        <div style={{position:'absolute', bottom:5, right:5, background:'#e74c3c', color:'white', fontSize:11, padding:'2px 6px', borderRadius:4, fontWeight:'bold'}}>
+                            € {totaleGiorno.toFixed(2)}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+        return days;
     };
 
     // --- MAGIC SCAN AI ---
@@ -174,7 +249,7 @@ function AdminMagazzino({ user, API_URL }) {
             // Calcoli di sicurezza prima dell'invio
             const qta = parseFloat(merciForm.quantita) || 0;
             const unit = parseFloat(merciForm.prezzo_unitario) || 0;
-            const imp = parseFloat(merciForm.prezzo) || (qta * unit); // Se l'utente non ha toccato il totale, lo ricalcolo
+            const imp = parseFloat(merciForm.prezzo) || (qta * unit); 
 
             const payload = { 
                 ...merciForm, 
@@ -229,21 +304,40 @@ function AdminMagazzino({ user, API_URL }) {
         return { imp: imp.toFixed(2), ivaVal: ivaVal.toFixed(2), totIvato: totIvato.toFixed(2) };
     };
 
-    const movimentiFiltrati = stats.storico.filter(r => (r.prodotto + r.fornitore + (r.note||"")).toLowerCase().includes(filtro.toLowerCase()));
+    const movimentiFiltrati = stats.storico.filter(r => (r.prodotto + r.fornitore + (r.note||"") + r.data_ricezione).toLowerCase().includes(filtro.toLowerCase()));
+    
+    // Calcolo Totali Vista (per il Footer della tabella)
+    const totaleVista = movimentiFiltrati.reduce((acc, r) => {
+        const d = renderRowData(r);
+        return { 
+            imp: acc.imp + parseFloat(d.imp), 
+            iva: acc.iva + parseFloat(d.ivaVal), 
+            tot: acc.tot + parseFloat(d.totIvato) 
+        };
+    }, { imp: 0, iva: 0, tot: 0 });
+
     const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
     return (
         <div style={{padding: '20px', background: '#f4f6f8', minHeight: '90vh', fontFamily:"'Inter', sans-serif"}}>
             
+            {/* HEADER NAVIGAZIONE */}
             <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20}}>
-                <h2 style={{color: '#2c3e50', margin:0}}>📦 Magazzino & Acquisti</h2>
+                <div>
+                    <h2 style={{color: '#2c3e50', margin:0}}>📦 Magazzino & Contabilità</h2>
+                    <p style={{margin:0, fontSize:12, color:'#7f8c8d'}}>Prima Nota Acquisti, Fatture e DDT</p>
+                </div>
                 <div style={{display:'flex', gap:10}}>
-                    <button onClick={() => setTab('dashboard')} style={{padding:'10px 20px', borderRadius:20, cursor:'pointer', background: tab==='dashboard'?'#34495e':'white', color:tab==='dashboard'?'white':'#333', border:'1px solid #ccc'}}>📊 Dashboard</button>
-                    <button onClick={() => setTab('carico')} style={{padding:'10px 20px', borderRadius:20, cursor:'pointer', background: tab==='carico'?'#27ae60':'white', color:tab==='carico'?'white':'#27ae60', border:'1px solid #27ae60'}}>📥 Nuovo Arrivo</button>
+                    {['dashboard','calendario','lista','carico','report'].map(t => (
+                        <button key={t} onClick={() => setTab(t)} style={{
+                            padding:'8px 15px', borderRadius:20, cursor:'pointer', border:'1px solid #ccc',
+                            background: tab===t ? '#34495e' : 'white', color: tab===t ? 'white' : '#333', textTransform:'capitalize'
+                        }}>{t}</button>
+                    ))}
                 </div>
             </div>
 
-            {/* DASHBOARD */}
+            {/* 1. DASHBOARD */}
             {tab === 'dashboard' && (
                 <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(400px, 1fr))', gap:20}}>
                     <div style={{background:'white', padding:20, borderRadius:15, boxShadow:'0 4px 10px rgba(0,0,0,0.05)'}}>
@@ -260,7 +354,56 @@ function AdminMagazzino({ user, API_URL }) {
                 </div>
             )}
 
-            {/* CARICO / MODIFICA */}
+            {/* 2. CALENDARIO */}
+            {tab === 'calendario' && (
+                <div style={{background:'white', padding:20, borderRadius:15, boxShadow:'0 4px 10px rgba(0,0,0,0.05)'}}>
+                    <div style={{display:'flex', justifyContent:'space-between', marginBottom:15}}>
+                        <button onClick={()=>setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth()-1)))} style={{border:'none', background:'#eee', padding:'5px 15px', borderRadius:5, cursor:'pointer'}}>◀ Prec.</button>
+                        <h3 style={{margin:0}}>{currentMonth.toLocaleString('it-IT', { month: 'long', year: 'numeric' }).toUpperCase()}</h3>
+                        <button onClick={()=>setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth()+1)))} style={{border:'none', background:'#eee', padding:'5px 15px', borderRadius:5, cursor:'pointer'}}>Succ. ▶</button>
+                    </div>
+                    <div style={{display:'grid', gridTemplateColumns:'repeat(7, 1fr)', textAlign:'center', fontWeight:'bold', marginBottom:5, fontSize:12, color:'#7f8c8d'}}>
+                        <div>LUN</div><div>MAR</div><div>MER</div><div>GIO</div><div>VEN</div><div>SAB</div><div>DOM</div>
+                    </div>
+                    <div style={{display:'grid', gridTemplateColumns:'repeat(7, 1fr)'}}>
+                        {renderCalendar()}
+                    </div>
+                </div>
+            )}
+
+            {/* 3. REPORTING */}
+            {tab === 'report' && (
+                <div style={{background:'white', padding:30, borderRadius:15, textAlign:'center', boxShadow:'0 4px 10px rgba(0,0,0,0.05)'}}>
+                    <h2 style={{color:'#2c3e50'}}>🖨️ Centro Esportazione Dati</h2>
+                    <p>Scarica il registro acquisti completo con calcoli IVA e Imponibili.</p>
+                    
+                    <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap:20, marginTop:30}}>
+                        <div style={{border:'1px solid #ddd', padding:20, borderRadius:10}}>
+                            <h4>📅 Questa Settimana</h4>
+                            <div style={{display:'flex', gap:10, justifyContent:'center'}}>
+                                <button onClick={()=>downloadReport('week','xlsx')} style={{background:'#27ae60', color:'white', border:'none', padding:'10px', borderRadius:5, cursor:'pointer'}}>Excel</button>
+                                <button onClick={()=>downloadReport('week','pdf')} style={{background:'#c0392b', color:'white', border:'none', padding:'10px', borderRadius:5, cursor:'pointer'}}>PDF</button>
+                            </div>
+                        </div>
+                         <div style={{border:'1px solid #ddd', padding:20, borderRadius:10, background:'#f9f9f9'}}>
+                            <h4>🗓️ Questo Mese</h4>
+                            <div style={{display:'flex', gap:10, justifyContent:'center'}}>
+                                <button onClick={()=>downloadReport('month','xlsx')} style={{background:'#27ae60', color:'white', border:'none', padding:'10px', borderRadius:5, cursor:'pointer'}}>Excel</button>
+                                <button onClick={()=>downloadReport('month','pdf')} style={{background:'#c0392b', color:'white', border:'none', padding:'10px', borderRadius:5, cursor:'pointer'}}>PDF</button>
+                            </div>
+                        </div>
+                         <div style={{border:'1px solid #ddd', padding:20, borderRadius:10}}>
+                            <h4>🗄️ Tutto lo Storico</h4>
+                            <div style={{display:'flex', gap:10, justifyContent:'center'}}>
+                                <button onClick={()=>downloadReport('all','xlsx')} style={{background:'#27ae60', color:'white', border:'none', padding:'10px', borderRadius:5, cursor:'pointer'}}>Excel</button>
+                                <button onClick={()=>downloadReport('all','pdf')} style={{background:'#c0392b', color:'white', border:'none', padding:'10px', borderRadius:5, cursor:'pointer'}}>PDF</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* 4. CARICO (AI + FORM) */}
             {tab === 'carico' && (
                 <div>
                      <div style={{display:'flex', gap:15, marginBottom:20, flexWrap:'wrap'}}>
@@ -299,24 +442,24 @@ function AdminMagazzino({ user, API_URL }) {
                     )}
 
                     <div style={{background:'white', padding:25, borderRadius:15, marginBottom:30, borderLeft:'5px solid #27ae60', boxShadow:'0 4px 10px rgba(0,0,0,0.05)'}}>
-                        <h3 style={{marginTop:0, color:'#2c3e50'}}>{merciForm.id ? '✏️ Modifica Arrivo' : '📥 Nuovo Arrivo'}</h3>
+                        <h3 style={{marginTop:0, color:'#2c3e50'}}>{merciForm.id ? '✏️ Modifica Arrivo' : '📥 Registrazione Manuale'}</h3>
                         <form onSubmit={salvaMerciManuale} style={{display:'flex', flexWrap:'wrap', gap:15, alignItems:'flex-end'}}>
                             
-                            <div style={{flex:1, minWidth:130}}><label style={{fontSize:11}}>Data</label><input type="date" required value={merciForm.data_ricezione} onChange={e=>setMerciForm({...merciForm, data_ricezione:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} /></div>
-                            <div style={{flex:2, minWidth:180}}><label style={{fontSize:11}}>Fornitore</label><input value={merciForm.fornitore} onChange={e=>setMerciForm({...merciForm, fornitore:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} placeholder="Es. Russo" /></div>
-                            <div style={{flex:2, minWidth:180}}><label style={{fontSize:11}}>Prodotto</label><input value={merciForm.prodotto} onChange={e=>setMerciForm({...merciForm, prodotto:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} placeholder="Es. Vodka" /></div>
+                            <div style={{flex:1, minWidth:130}}><label style={{fontSize:11}}>Data Doc.</label><input type="date" required value={merciForm.data_ricezione} onChange={e=>setMerciForm({...merciForm, data_ricezione:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} /></div>
+                            <div style={{flex:2, minWidth:180}}><label style={{fontSize:11}}>Fornitore</label><input value={merciForm.fornitore} onChange={e=>setMerciForm({...merciForm, fornitore:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} placeholder="Es. Metro" /></div>
+                            <div style={{flex:2, minWidth:180}}><label style={{fontSize:11}}>Prodotto / Descr.</label><input value={merciForm.prodotto} onChange={e=>setMerciForm({...merciForm, prodotto:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} placeholder="Es. Fattura n.102" /></div>
                             
-                            {/* --- PREZZI & QTA (VISIBILI E MODIFICABILI) --- */}
-                            <div style={{flex:1, minWidth:80}}><label style={{fontSize:11}}>Quantità</label><input type="number" step="0.01" value={merciForm.quantita} onChange={e=>setMerciForm({...merciForm, quantita:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} /></div>
-                            <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>P. Unitario (€)</label><input type="number" step="0.01" value={merciForm.prezzo_unitario} onChange={e=>setMerciForm({...merciForm, prezzo_unitario:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} placeholder="€ Unit" /></div>
+                            {/* --- PREZZI & QTA --- */}
+                            <div style={{flex:1, minWidth:80}}><label style={{fontSize:11}}>Qta</label><input type="number" step="0.01" value={merciForm.quantita} onChange={e=>setMerciForm({...merciForm, quantita:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} /></div>
+                            <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Unitario (€)</label><input type="number" step="0.01" value={merciForm.prezzo_unitario} onChange={e=>setMerciForm({...merciForm, prezzo_unitario:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} placeholder="€ Unit" /></div>
                             <div style={{flex:1, minWidth:60}}><label style={{fontSize:11}}>IVA %</label><input type="number" value={merciForm.iva} onChange={e=>setMerciForm({...merciForm, iva:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} placeholder="22" /></div>
                             
-                            {/* CALCOLI AUTOMATICI (SOLA LETTURA) */}
-                            <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Tot. Imponibile</label><input type="number" step="0.01" value={merciForm.prezzo} readOnly style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5, background:'#f0f0f0', fontWeight:'bold'}} placeholder="Imponibile" /></div>
+                            {/* IMPONIBILE */}
+                            <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>IMPONIBILE €</label><input type="number" step="0.01" value={merciForm.prezzo} readOnly style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5, background:'#f0f0f0', fontWeight:'bold'}} placeholder="Totale" /></div>
 
                             <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Lotto</label><input value={merciForm.lotto} onChange={e=>setMerciForm({...merciForm, lotto:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} /></div>
                             <div style={{flex:1, minWidth:130}}><label style={{fontSize:11}}>Scadenza</label><input type="date" value={merciForm.scadenza} onChange={e=>setMerciForm({...merciForm, scadenza:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} /></div>
-                            <div style={{flex:2, minWidth:200}}><label style={{fontSize:11}}>Note (DDT/Fattura)</label><input value={merciForm.note} onChange={e=>setMerciForm({...merciForm, note:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} placeholder="Es. Fattura 1004" /></div>
+                            <div style={{flex:2, minWidth:200}}><label style={{fontSize:11}}>Note</label><input value={merciForm.note} onChange={e=>setMerciForm({...merciForm, note:e.target.value})} style={{width:'100%', padding:10, border:'1px solid #ddd', borderRadius:5}} placeholder="Es. Rif DDT" /></div>
 
                             {/* ALLEGATO */}
                             <div style={{flex:1, minWidth:120}} onClick={()=>allegatoInputRef.current.click()}>
@@ -339,63 +482,75 @@ function AdminMagazzino({ user, API_URL }) {
                 </div>
             )}
 
-            {/* TABELLA STORICO */}
-            <div style={{background:'white', padding:25, borderRadius:15, boxShadow:'0 4px 10px rgba(0,0,0,0.05)'}}>
-                <div style={{display:'flex', justifyContent:'space-between', marginBottom:20}}>
-                    <h3>📦 Storico</h3>
-                    <div style={{display:'flex', gap:10}}>
-                         <input type="text" placeholder="Cerca..." value={filtro} onChange={e => setFiltro(e.target.value)} style={{padding:8, borderRadius:5, border:'1px solid #ddd'}} />
+            {/* 5. TABELLA LISTA / STORICO */}
+            {(tab === 'lista' || tab === 'carico') && (
+                <div style={{background:'white', padding:25, borderRadius:15, boxShadow:'0 4px 10px rgba(0,0,0,0.05)', marginTop:20}}>
+                    <div style={{display:'flex', justifyContent:'space-between', marginBottom:20}}>
+                        <h3>📋 Prima Nota ({movimentiFiltrati.length})</h3>
+                        <div style={{display:'flex', gap:10}}>
+                             <input type="text" placeholder="Cerca..." value={filtro} onChange={e => setFiltro(e.target.value)} style={{padding:8, borderRadius:5, border:'1px solid #ddd'}} />
+                        </div>
+                    </div>
+                    <div style={{overflowX:'auto'}}>
+                        <table style={{width:'100%', borderCollapse:'collapse', fontSize:13}}>
+                            <thead>
+                                <tr style={{background:'#f0f0f0', textAlign:'left', color:'#333', borderBottom:'2px solid #ddd'}}>
+                                    <th style={{padding:10}}>Data</th>
+                                    <th style={{padding:10}}>Fornitore</th>
+                                    <th style={{padding:10}}>Prodotto</th>
+                                    <th style={{padding:10}}>Qta</th>
+                                    <th style={{padding:10}}>Unit.</th>
+                                    <th style={{padding:10}}>Tot. Imp.</th>
+                                    <th style={{padding:10}}>IVA %</th>
+                                    <th style={{padding:10}}>Tot. IVA</th>
+                                    <th style={{padding:10}}>Tot. Ivato</th>
+                                    <th style={{padding:10}}>Lotto</th>
+                                    <th style={{padding:10}}>Doc</th>
+                                    <th style={{padding:10}}>All.</th>
+                                    <th style={{padding:10}}>Azioni</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {movimentiFiltrati.slice(0, 100).map((r, i) => {
+                                    const calcs = renderRowData(r);
+                                    return (
+                                        <tr key={i} style={{borderBottom:'1px solid #f1f1f1'}}>
+                                            <td style={{padding:10}}>{new Date(r.data_ricezione).toLocaleDateString()}</td>
+                                            <td style={{padding:10}}>{r.fornitore}</td>
+                                            <td style={{padding:10, fontWeight:'bold'}}>{r.prodotto}</td>
+                                            <td style={{padding:10}}>{r.quantita}</td>
+                                            <td style={{padding:10}}>€ {r.prezzo_unitario || '-'}</td>
+                                            <td style={{padding:10}}>€ {calcs.imp}</td>
+                                            <td style={{padding:10}}>{r.iva ? r.iva + '%' : '-'}</td>
+                                            <td style={{padding:10, color:'#e67e22'}}>€ {calcs.ivaVal}</td>
+                                            <td style={{padding:10, fontWeight:'bold', color:'#27ae60'}}>€ {calcs.totIvato}</td>
+                                            <td style={{padding:10, fontSize:12}}>{r.lotto || '-'}</td>
+                                            <td style={{padding:10, fontSize:12, color:'#555'}}>{r.note}</td>
+                                            <td style={{padding:10}}>
+                                            {r.allegato_url && <button onClick={() => window.open(r.allegato_url, '_blank')} style={{background:'#3498db', color:'white', border:'none', borderRadius:3, padding:'2px 6px', cursor:'pointer'}}>📎</button>}
+                                            </td>
+                                            <td style={{padding:10, display:'flex', gap:5}}>
+                                                <button onClick={()=>iniziaModifica(r)} style={{border:'none', background:'none', cursor:'pointer', fontSize:18}} title="Modifica">✏️</button>
+                                                <button onClick={()=>eliminaMerce(r.id)} style={{border:'none', background:'none', cursor:'pointer', fontSize:18}} title="Elimina">🗑️</button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                            <tfoot style={{background:'#2c3e50', color:'white', fontWeight:'bold'}}>
+                                <tr>
+                                    <td colSpan={5} style={{padding:15, textAlign:'right'}}>TOTALE VISUALIZZATO:</td>
+                                    <td style={{padding:15}}>€ {totaleVista.imp.toFixed(2)}</td>
+                                    <td></td>
+                                    <td style={{padding:15}}>€ {totaleVista.iva.toFixed(2)}</td>
+                                    <td style={{padding:15, color:'#2ecc71'}}>€ {totaleVista.tot.toFixed(2)}</td>
+                                    <td colSpan={4}></td>
+                                </tr>
+                            </tfoot>
+                        </table>
                     </div>
                 </div>
-                <div style={{overflowX:'auto'}}>
-                    <table style={{width:'100%', borderCollapse:'collapse', fontSize:13}}>
-                        <thead>
-                            <tr style={{background:'#f0f0f0', textAlign:'left', color:'#333', borderBottom:'2px solid #ddd'}}>
-                                <th style={{padding:10}}>Data</th>
-                                <th style={{padding:10}}>Fornitore</th>
-                                <th style={{padding:10}}>Prodotto</th>
-                                <th style={{padding:10}}>Qta</th>
-                                <th style={{padding:10}}>Unit.</th>
-                                <th style={{padding:10}}>Tot. Imp.</th>
-                                <th style={{padding:10}}>IVA %</th>
-                                <th style={{padding:10}}>Tot. IVA</th>
-                                <th style={{padding:10}}>Tot. Ivato</th>
-                                <th style={{padding:10}}>Lotto</th>
-                                <th style={{padding:10}}>Doc</th>
-                                <th style={{padding:10}}>Allegato</th>
-                                <th style={{padding:10}}>Azioni</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {movimentiFiltrati.slice(0, 100).map((r, i) => {
-                                const calcs = renderRowData(r);
-                                return (
-                                    <tr key={i} style={{borderBottom:'1px solid #f1f1f1'}}>
-                                        <td style={{padding:10}}>{new Date(r.data_ricezione).toLocaleDateString()}</td>
-                                        <td style={{padding:10}}>{r.fornitore}</td>
-                                        <td style={{padding:10, fontWeight:'bold'}}>{r.prodotto}</td>
-                                        <td style={{padding:10}}>{r.quantita}</td>
-                                        <td style={{padding:10}}>€ {r.prezzo_unitario || '-'}</td>
-                                        <td style={{padding:10}}>€ {calcs.imp}</td>
-                                        <td style={{padding:10}}>{r.iva ? r.iva + '%' : '-'}</td>
-                                        <td style={{padding:10, color:'#e67e22'}}>€ {calcs.ivaVal}</td>
-                                        <td style={{padding:10, fontWeight:'bold', color:'#27ae60'}}>€ {calcs.totIvato}</td>
-                                        <td style={{padding:10, fontSize:12}}>{r.lotto || '-'}</td>
-                                        <td style={{padding:10, fontSize:12, color:'#555'}}>{r.note}</td>
-                                        <td style={{padding:10}}>
-                                           {r.allegato_url && <button onClick={() => window.open(r.allegato_url, '_blank')} style={{background:'#3498db', color:'white', border:'none', borderRadius:3, padding:'2px 6px', cursor:'pointer'}}>📎</button>}
-                                        </td>
-                                        <td style={{padding:10, display:'flex', gap:5}}>
-                                            <button onClick={()=>iniziaModifica(r)} style={{border:'none', background:'none', cursor:'pointer', fontSize:18}} title="Modifica">✏️</button>
-                                            <button onClick={()=>eliminaMerce(r.id)} style={{border:'none', background:'none', cursor:'pointer', fontSize:18}} title="Elimina">🗑️</button>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+            )}
         </div>
     );
 }
