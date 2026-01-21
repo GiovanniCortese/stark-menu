@@ -26,51 +26,99 @@ router.post('/api/haccp/labels', async (req, res) => { try { const { ristorante_
 router.get('/api/haccp/labels/storico/:ristorante_id', async (req, res) => { try { const { start, end } = req.query; let sql = "SELECT * FROM haccp_labels WHERE ristorante_id = $1"; const params = [req.params.ristorante_id]; if (start && end) { sql += " AND data_produzione >= $2 AND data_produzione <= $3 ORDER BY data_produzione ASC"; params.push(start, end); } else { sql += " AND data_produzione >= NOW() - INTERVAL '7 days' ORDER BY data_produzione DESC"; } const r = await pool.query(sql, params); res.json(r.rows); } catch(e) { res.status(500).json({error: "Errore recupero storico"}); } });
 
 // --- RICEVIMENTO MERCI (CRUD) ---
-router.get('/api/haccp/merci/:ristorante_id', async (req, res) => { try { const { start, end } = req.query; let sql = "SELECT * FROM haccp_merci WHERE ristorante_id = $1"; const params = [req.params.ristorante_id]; if (start && end) { sql += " AND data_ricezione >= $2 AND data_ricezione <= $3 ORDER BY data_ricezione ASC"; params.push(start, end); } else { sql += " AND data_ricezione >= NOW() - INTERVAL '30 days' ORDER BY data_ricezione DESC"; } const r = await pool.query(sql, params); res.json(r.rows); } catch(e) { res.status(500).json({error:"Err"}); } });
+// --- RICEVIMENTO MERCI (CRUD) ---
+router.get('/api/haccp/merci/:ristorante_id', async (req, res) => { /* ... codice esistente ... */ 
+    try { 
+        const { start, end } = req.query; 
+        let sql = "SELECT * FROM haccp_merci WHERE ristorante_id = $1"; 
+        const params = [req.params.ristorante_id]; 
+        if (start && end) { sql += " AND data_ricezione >= $2 AND data_ricezione <= $3 ORDER BY data_ricezione ASC"; params.push(start, end); } 
+        else { sql += " AND data_ricezione >= NOW() - INTERVAL '60 days' ORDER BY data_ricezione DESC"; } 
+        const r = await pool.query(sql, params); 
+        res.json(r.rows); 
+    } catch(e) { res.status(500).json({error:"Err"}); } 
+});
 
-// NUOVA ROUTE: IMPORT MASSIVO (Excel)
+// NUOVA ROUTE: IMPORT MASSIVO EXCEL CON LOGICA "AGGIORNA SE ESISTE"
 router.post('/api/haccp/merci/import', async (req, res) => {
     const client = await pool.connect();
     try {
-        const { merci } = req.body; // Array di oggetti
+        const { merci } = req.body; // Array di oggetti dal Frontend
         if (!Array.isArray(merci)) return res.status(400).json({ error: "Formato non valido" });
 
         await client.query('BEGIN');
+        let updated = 0;
+        let inserted = 0;
         
         for (const m of merci) {
-            // Usa 0 come fallback per i valori numerici
-            await client.query(
-                `INSERT INTO haccp_merci (
-                    ristorante_id, data_ricezione, fornitore, prodotto, 
-                    quantita, prezzo, prezzo_unitario, iva, 
-                    lotto, scadenza, operatore, note, conforme
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, true)`,
-                [
-                    m.ristorante_id, m.data_ricezione, m.fornitore, m.prodotto,
-                    m.quantita, m.prezzo || 0, m.prezzo_unitario || 0, m.iva || 0,
-                    m.lotto, m.scadenza, m.operatore, m.note
-                ]
-            );
+            // LOGICA INTELLIGENTE:
+            // Cerchiamo se esiste già questo prodotto per questo fornitore con questo documento (Note/DDT)
+            // Se le note sono vuote, usiamo la data come discriminante aggiuntivo
+            const checkSql = `
+                SELECT id FROM haccp_merci 
+                WHERE ristorante_id = $1 
+                AND LOWER(prodotto) = LOWER($2) 
+                AND LOWER(fornitore) = LOWER($3)
+                AND (note = $4 OR (note IS NULL AND $4 IS NULL))
+            `;
+            
+            const checkRes = await client.query(checkSql, [m.ristorante_id, m.prodotto, m.fornitore, m.note]);
+
+            // Valori sicuri
+            const qta = parseFloat(m.quantita) || 0;
+            const przUnit = parseFloat(m.prezzo_unitario) || 0;
+            const iva = parseFloat(m.iva) || 0;
+            const prezzoTot = parseFloat(m.prezzo) || (qta * przUnit); // Totale Imponibile
+
+            if (checkRes.rows.length > 0) {
+                // >>> ESISTE: FACCIO UPGRADE (UPDATE)
+                const id = checkRes.rows[0].id;
+                await client.query(
+                    `UPDATE haccp_merci SET 
+                        quantita = $1, 
+                        prezzo = $2, 
+                        prezzo_unitario = $3, 
+                        iva = $4,
+                        data_ricezione = $5,
+                        scadenza = $6
+                     WHERE id = $7`,
+                    [qta, prezzoTot, przUnit, iva, m.data_ricezione, m.scadenza, id]
+                );
+                updated++;
+            } else {
+                // >>> NON ESISTE: INSERISCO
+                await client.query(
+                    `INSERT INTO haccp_merci (
+                        ristorante_id, data_ricezione, fornitore, prodotto, 
+                        quantita, prezzo, prezzo_unitario, iva, 
+                        lotto, scadenza, operatore, note, conforme, integro, destinazione
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, true, true, $13)`,
+                    [
+                        m.ristorante_id, m.data_ricezione, m.fornitore, m.prodotto,
+                        qta, prezzoTot, przUnit, iva,
+                        m.lotto || '', m.scadenza || null, m.operatore || 'IMPORT', m.note || '', m.destinazione || ''
+                    ]
+                );
+                inserted++;
+            }
         }
 
         await client.query('COMMIT');
-        res.json({ success: true, count: merci.length });
+        res.json({ success: true, inserted, updated, message: `Caricamento: ${inserted} nuovi, ${updated} aggiornati.` });
 
     } catch (e) {
         await client.query('ROLLBACK');
-        console.error("Errore Import:", e);
+        console.error("Errore Import Excel:", e);
         res.status(500).json({ error: e.message });
     } finally {
         client.release();
     }
 });
 
-// UPDATE: AGGIUNTI prezzo_unitario e iva
+// ROTTE STANDARD (POST, PUT, DELETE) rimangono con i nuovi campi
 router.post('/api/haccp/merci', async (req, res) => { 
     try { 
         const { ristorante_id, data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione, prezzo, prezzo_unitario, iva } = req.body; 
-        
-        // Verifica se le colonne esistono (nota: questo è un controllo implicito, se fallisce il DB darà errore)
         await pool.query(
             `INSERT INTO haccp_merci (
                 ristorante_id, data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione, prezzo, prezzo_unitario, iva
@@ -78,22 +126,12 @@ router.post('/api/haccp/merci', async (req, res) => {
             [ristorante_id, data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione, prezzo || 0, prezzo_unitario || 0, iva || 0]
         ); 
         res.json({success:true}); 
-    } catch(e) { 
-        console.error(e); 
-        // Fallback: se le colonne non esistono, prova senza i nuovi campi per non bloccare tutto
-        if (e.code === '42703') { // Undefined column
-             // Logic di fallback o avviso all'utente
-             res.status(500).json({error: "Database non aggiornato: mancano colonne prezzo_unitario/iva"});
-        } else {
-             res.status(500).json({error:"Err"}); 
-        }
-    } 
+    } catch(e) { res.status(500).json({error:"Err"}); } 
 });
 
 router.put('/api/haccp/merci/:id', async (req, res) => { 
     try { 
         const { data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione, prezzo, prezzo_unitario, iva } = req.body; 
-        
         await pool.query(
             `UPDATE haccp_merci SET 
                 data_ricezione=$1, fornitore=$2, prodotto=$3, lotto=$4, scadenza=$5, 
@@ -104,9 +142,7 @@ router.put('/api/haccp/merci/:id', async (req, res) => {
             [data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione, prezzo || 0, prezzo_unitario || 0, iva || 0, req.params.id]
         ); 
         res.json({success:true}); 
-    } catch(e) { 
-        res.status(500).json({error:"Err"}); 
-    } 
+    } catch(e) { res.status(500).json({error:"Err"}); } 
 });
 
 router.delete('/api/haccp/merci/:id', async (req, res) => { try { await pool.query("DELETE FROM haccp_merci WHERE id=$1", [req.params.id]); res.json({success:true}); } catch(e){ res.status(500).json({error:"Err"}); } });

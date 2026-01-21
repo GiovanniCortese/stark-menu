@@ -1,4 +1,4 @@
-// client/src/components/haccp/MerciManager.jsx - UPDATE CON PREZZI E IVA
+// client/src/components/haccp/MerciManager.jsx - TABELLA COMPLETA CON CALCOLI IVA
 import React, { useState, useEffect, useRef } from 'react';
 
 const MerciManager = ({ 
@@ -13,8 +13,7 @@ const MerciManager = ({
     const [scannedData, setScannedData] = useState(null); 
     const scanInputRef = useRef(null);
 
-    // --- CALCOLO AUTOMATICO PREZZI ---
-    // Ascolta i cambiamenti di Quantità o Prezzo Unitario e calcola il Totale
+    // --- CALCOLO AUTOMATICO PREZZI NEL FORM ---
     useEffect(() => {
         const qta = parseFloat(merciForm.quantita);
         const unit = parseFloat(merciForm.prezzo_unitario);
@@ -22,12 +21,28 @@ const MerciManager = ({
         // Se entrambi sono numeri validi, calcola il totale
         if (!isNaN(qta) && !isNaN(unit)) {
             const tot = (qta * unit).toFixed(2);
-            // Aggiorna solo se diverso per evitare loop infiniti
+            // Aggiorna solo se diverso per evitare loop
             if (merciForm.prezzo !== tot) {
                 setMerciForm(prev => ({ ...prev, prezzo: tot }));
             }
         }
     }, [merciForm.quantita, merciForm.prezzo_unitario]);
+
+    // --- HELPER PER CALCOLI TABELLA ---
+    const renderRowData = (r) => {
+        const qta = parseFloat(r.quantita) || 0;
+        const unit = parseFloat(r.prezzo_unitario) || 0;
+        const imp = parseFloat(r.prezzo) || (qta * unit); // Totale Imponibile
+        const iva = parseFloat(r.iva) || 0;
+        const ivaTot = imp * (iva / 100);
+        const totIvato = imp + ivaTot;
+
+        return { 
+            imp: imp.toFixed(2), 
+            ivaTot: ivaTot.toFixed(2), 
+            totIvato: totIvato.toFixed(2) 
+        };
+    };
 
     // Funzione di compressione Immagini
     const resizeImage = (file, maxWidth = 1000, quality = 0.7) => {
@@ -76,7 +91,6 @@ const MerciManager = ({
             data_ricezione: scannedData.data_ricezione || prev.data_ricezione,
             prodotto: prod.nome, quantita: prod.quantita || '', lotto: prod.lotto || '', scadenza: prod.scadenza || '',
             note: notaCostruita, allegato_url: scannedData.allegato_url || prev.allegato_url,
-            // Importa il prezzo totale se presente, o lascia vuoto unitario
             prezzo: prod.prezzo || ''
         }));
         setScannedData(prev => ({ ...prev, prodotti: prev.prodotti.filter(p => p !== prod) }));
@@ -128,18 +142,16 @@ const MerciManager = ({
                 <div style={{display:'flex', justifyContent:'space-between'}}><h3>{merciForm.id ? '✏️ Modifica' : '📥 Nuovo Arrivo'}</h3>{merciForm.id && <button onClick={resetMerciForm}>Annulla</button>}</div>
                 <form onSubmit={salvaMerci} style={{display:'flex', flexWrap:'wrap', gap:10, alignItems:'flex-end'}}>
                     
-                    {/* Prima Riga: Info Base */}
                     <div style={{flex:1, minWidth:120}}><label style={{fontSize:11}}>Data</label><input type="date" value={merciForm.data_ricezione} onChange={e=>setMerciForm({...merciForm, data_ricezione:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required /></div>
                     <div style={{flex:2, minWidth:150}}><label style={{fontSize:11}}>Fornitore</label><input value={merciForm.fornitore} onChange={e=>setMerciForm({...merciForm, fornitore:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required /></div>
                     <div style={{flex:2, minWidth:150}}><label style={{fontSize:11}}>Prodotto</label><input value={merciForm.prodotto} onChange={e=>setMerciForm({...merciForm, prodotto:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required /></div>
                     
-                    {/* Seconda Riga: Prezzi e Quantità */}
+                    {/* PREZZI */}
                     <div style={{flex:1, minWidth:80}}><label style={{fontSize:11}}>Quantità</label><input type="number" step="0.01" value={merciForm.quantita} onChange={e=>setMerciForm({...merciForm, quantita:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
                     <div style={{flex:1, minWidth:80}}><label style={{fontSize:11}}>P. Unitario</label><input type="number" step="0.01" placeholder="€ Unit" value={merciForm.prezzo_unitario || ''} onChange={e=>setMerciForm({...merciForm, prezzo_unitario:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
                     <div style={{flex:1, minWidth:50}}><label style={{fontSize:11}}>IVA %</label><input type="text" placeholder="22" value={merciForm.iva || ''} onChange={e=>setMerciForm({...merciForm, iva:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
-                    <div style={{flex:1, minWidth:80}}><label style={{fontSize:11}}>TOTALE €</label><input type="number" step="0.01" placeholder="Totale" value={merciForm.prezzo} onChange={e=>setMerciForm({...merciForm, prezzo:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd', background:'#f0f0f0', fontWeight:'bold'}} /></div>
+                    <div style={{flex:1, minWidth:80}}><label style={{fontSize:11}}>TOTALE (Imp)</label><input type="number" step="0.01" placeholder="Totale" value={merciForm.prezzo} onChange={e=>setMerciForm({...merciForm, prezzo:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd', background:'#f0f0f0', fontWeight:'bold'}} /></div>
 
-                    {/* Terza Riga: Dettagli Tecnici */}
                     <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Lotto</label><input value={merciForm.lotto} onChange={e=>setMerciForm({...merciForm, lotto:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
                     <div style={{flex:1, minWidth:120}}><label style={{fontSize:11}}>Scadenza</label><input type="date" value={merciForm.scadenza} onChange={e=>setMerciForm({...merciForm, scadenza:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
                     <div style={{flex:1, minWidth:80}}><label style={{fontSize:11}}>Temp °C</label><input type="number" step="0.1" value={merciForm.temperatura} onChange={e=>setMerciForm({...merciForm, temperatura:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
@@ -159,11 +171,11 @@ const MerciManager = ({
                 </form>
             </div>
 
-            {/* TABELLA STORICO (ESPANSA) */}
+            {/* TABELLA STORICO (AGGIORNATA CON CALCOLI) */}
             <div style={{background:'white', padding:20, borderRadius:10}}>
                 <div style={{display:'flex', justifyContent:'space-between', marginBottom:15}}><h3>📦 Storico</h3><button onClick={()=>openDownloadModal('merci')} style={{background:'#f39c12', color:'white', border:'none', padding:'5px 15px', borderRadius:5}}>⬇ Report</button></div>
                 <div style={{overflowX:'auto'}}>
-                    <table style={{width:'100%', borderCollapse:'collapse', fontSize:13}}>
+                    <table style={{width:'100%', borderCollapse:'collapse', fontSize:12}}>
                         <thead>
                             <tr style={{background:'#f0f0f0', textAlign:'left'}}>
                                 <th style={{padding:8}}>Data</th>
@@ -171,39 +183,40 @@ const MerciManager = ({
                                 <th style={{padding:8}}>Prodotto</th>
                                 <th style={{padding:8}}>Qta</th>
                                 <th style={{padding:8}}>Unit.</th>
-                                <th style={{padding:8}}>IVA</th>
-                                <th style={{padding:8}}>Totale</th>
-                                <th style={{padding:8}}>Lotto</th>
-                                <th style={{padding:8}}>Scadenza</th>
-                                <th style={{padding:8}}>Temp</th>
+                                <th style={{padding:8}}>Tot (Imp)</th>
+                                <th style={{padding:8}}>IVA %</th>
+                                <th style={{padding:8}}>IVA Tot</th>
+                                <th style={{padding:8}}>Tot Ivato</th>
                                 <th style={{padding:8}}>Note / Doc</th>
                                 <th style={{padding:8}}>Allegato</th>
                                 <th style={{padding:8}}>Azioni</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {merci.map(m => (
-                                <tr key={m.id} style={{borderBottom:'1px solid #eee'}}>
-                                    <td style={{padding:8}}>{new Date(m.data_ricezione).toLocaleDateString()}</td>
-                                    <td style={{padding:8}}>{m.fornitore}</td>
-                                    <td style={{padding:8}}><strong>{m.prodotto}</strong></td>
-                                    <td style={{padding:8}}>{m.quantita}</td>
-                                    <td style={{padding:8}}>€ {m.prezzo_unitario || '-'}</td>
-                                    <td style={{padding:8}}>{m.iva ? m.iva + '%' : '-'}</td>
-                                    <td style={{padding:8, fontWeight:'bold', color:'#27ae60'}}>€ {Number(m.prezzo).toFixed(2)}</td>
-                                    <td style={{padding:8}}>{m.lotto || '-'}</td>
-                                    <td style={{padding:8}}>{m.scadenza ? new Date(m.scadenza).toLocaleDateString() : '-'}</td>
-                                    <td style={{padding:8}}>{m.temperatura ? m.temperatura+'°' : '-'}</td>
-                                    <td style={{padding:8, fontSize:11, color:'#555'}}>{m.note}</td>
-                                    <td style={{padding:8}}>
-                                       {m.allegato_url && <button onClick={() => handleFileAction(m.allegato_url)} style={{background:'#3498db', color:'white', border:'none', borderRadius:3, padding:'2px 5px', cursor:'pointer'}}>📎</button>}
-                                    </td>
-                                    <td style={{padding:8, display:'flex', gap:5}}>
-                                        <button onClick={()=>iniziaModificaMerci(m)} style={{background:'#f39c12', color:'white', border:'none', borderRadius:3, padding:'2px 5px'}}>✏️</button>
-                                        <button onClick={()=>eliminaMerce(m.id)} style={{background:'#e74c3c', color:'white', border:'none', borderRadius:3, padding:'2px 5px'}}>🗑️</button>
-                                    </td>
-                                </tr>
-                            ))}
+                            {merci.map(m => {
+                                const c = renderRowData(m);
+                                return (
+                                    <tr key={m.id} style={{borderBottom:'1px solid #eee'}}>
+                                        <td style={{padding:8}}>{new Date(m.data_ricezione).toLocaleDateString()}</td>
+                                        <td style={{padding:8}}>{m.fornitore}</td>
+                                        <td style={{padding:8}}><strong>{m.prodotto}</strong></td>
+                                        <td style={{padding:8}}>{m.quantita}</td>
+                                        <td style={{padding:8}}>€ {m.prezzo_unitario || '-'}</td>
+                                        <td style={{padding:8}}>€ {c.imp}</td>
+                                        <td style={{padding:8}}>{m.iva ? m.iva + '%' : '-'}</td>
+                                        <td style={{padding:8, color:'#e67e22'}}>€ {c.ivaTot}</td>
+                                        <td style={{padding:8, fontWeight:'bold', color:'#27ae60'}}>€ {c.totIvato}</td>
+                                        <td style={{padding:8, fontSize:11, color:'#555'}}>{m.note}</td>
+                                        <td style={{padding:8}}>
+                                           {m.allegato_url && <button onClick={() => handleFileAction(m.allegato_url)} style={{background:'#3498db', color:'white', border:'none', borderRadius:3, padding:'2px 5px', cursor:'pointer'}}>📎</button>}
+                                        </td>
+                                        <td style={{padding:8, display:'flex', gap:5}}>
+                                            <button onClick={()=>iniziaModificaMerci(m)} style={{background:'#f39c12', color:'white', border:'none', borderRadius:3, padding:'2px 5px'}}>✏️</button>
+                                            <button onClick={()=>eliminaMerce(m.id)} style={{background:'#e74c3c', color:'white', border:'none', borderRadius:3, padding:'2px 5px'}}>🗑️</button>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
