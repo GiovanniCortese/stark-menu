@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - FIXED: Click Foto, Logica Unità/Peso, Scroll Categorie
+// client/src/Menu.jsx - FINAL ROBUST VERSION (Anti-Crash & Safe Logic)
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'; 
 import { dictionary, getContent } from './translations';
@@ -75,6 +75,23 @@ function Menu() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [authData, setAuthData] = useState({ nome:'', email:'', password:'', telefono:'', indirizzo:'' });
+
+  // --- FUNZIONE DI SICUREZZA PER LEGGERE LE VARIANTI (ANTI-CRASH) ---
+  const getSafeVariants = (prodotto) => {
+      if (!prodotto) return { base: [], aggiunte: [] };
+      try {
+          // Gestisce sia stringhe JSON che oggetti già parsati
+          const v = typeof prodotto.varianti === 'string' ? JSON.parse(prodotto.varianti || '{}') : (prodotto.varianti || {});
+          
+          return {
+              base: Array.isArray(v.base) ? v.base : [],
+              aggiunte: Array.isArray(v.aggiunte) ? v.aggiunte : []
+          };
+      } catch (e) {
+          // Se il JSON è rotto, ritorna array vuoti invece di crashare
+          return { base: [], aggiunte: [] };
+      }
+  };
 
   useEffect(() => {
     const savedUser = localStorage.getItem('stark_user');
@@ -250,7 +267,7 @@ function Menu() {
             )}
           </div>
 
-          {/* LOGO & TITLE - Aggiunto marginTop per evitare sovrapposizione mobile */}
+          {/* LOGO & TITLE */}
           <div style={{position:'relative', zIndex: 2, display:'flex', flexDirection:'column', alignItems:'center', gap:'15px', width:'100%', marginTop: '50px'}}>
               {style.logo ? ( <div style={{ width: '110px', height: '110px', background: 'white', padding: '5px', borderRadius: '50%', boxShadow: '0 5px 20px rgba(0,0,0,0.5)', display: 'flex', alignItems:'center', justifyContent:'center', overflow: 'hidden' }}><img src={style.logo} style={{ width:'100%', height:'100%', objectFit:'contain' }} /></div> ) : ( <div style={{fontSize:'40px', background:'white', padding:10, borderRadius:'50%'}}>🍽️</div> )}
               {!style.logo && ( <h1 style={{ margin: 0, color: '#fff', fontSize:'26px', fontWeight:'800', textShadow: '0 2px 4px rgba(0,0,0,0.8)', textAlign: 'center', lineHeight: '1.2' }}>{ristorante}</h1> )}
@@ -265,139 +282,131 @@ function Menu() {
       )}
 
       {/* --- MENU --- */}
-<div style={{ paddingBottom: '10px', marginTop: '10px', width: '100%', maxWidth: '600px', margin: '0 auto' }}>
-  {categorieUniche.map(catNome => (
-    // AGGIUNTO ID PER SCROLLING
-    <div key={catNome} id={`cat-${catNome}`} className="accordion-item" style={{ marginBottom: '2px', borderRadius: '5px', overflow: 'hidden', width: '100%' }}>
-      <div onClick={() => toggleAccordion(catNome)} style={{ background: activeCategory === catNome ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.1)', color: titleColor, padding: '15px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: activeCategory === catNome ? `1px solid ${priceColor}` : 'none' }}>
-        <h2 style={{ margin: 0, fontSize: '18px', color: titleColor, width: '100%' }}>{catNome}</h2>
-        <span style={{ color: titleColor }}>{activeCategory === catNome ? '▼' : '▶'}</span>
-      </div>
+      <div style={{ paddingBottom: '10px', marginTop: '10px', width: '100%', maxWidth: '600px', margin: '0 auto' }}>
+      {categorieUniche.map(catNome => (
+        <div key={catNome} id={`cat-${catNome}`} className="accordion-item" style={{ marginBottom: '2px', borderRadius: '5px', overflow: 'hidden', width: '100%' }}>
+          <div onClick={() => toggleAccordion(catNome)} style={{ background: activeCategory === catNome ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.1)', color: titleColor, padding: '15px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: activeCategory === catNome ? `1px solid ${priceColor}` : 'none' }}>
+            <h2 style={{ margin: 0, fontSize: '18px', color: titleColor, width: '100%' }}>{catNome}</h2>
+            <span style={{ color: titleColor }}>{activeCategory === catNome ? '▼' : '▶'}</span>
+          </div>
 
-      {activeCategory === catNome && (
-        <div className="accordion-content" style={{ padding: '0', background: 'rgba(0,0,0,0.2)', width: '100%' }}>
-            
-          {(() => {
-              const sampleProd = menu.find(p => (p.categoria_nome || p.categoria) === catNome);
-              const catDesc = sampleProd ? sampleProd.categoria_descrizione : "";
-              if (catDesc) {
-                  return <div style={{padding:'15px', fontStyle:'italic', color: style.text, opacity:0.8, fontSize:'14px', borderBottom:`1px solid ${style.card_border || '#eee'}`, background:'rgba(255,255,255,0.05)'}}>{catDesc}</div>;
-              }
-          })()}
+          {activeCategory === catNome && (
+            <div className="accordion-content" style={{ padding: '0', background: 'rgba(0,0,0,0.2)', width: '100%' }}>
+                
+              {(() => {
+                  const sampleProd = menu.find(p => (p.categoria_nome || p.categoria) === catNome);
+                  const catDesc = sampleProd ? sampleProd.categoria_descrizione : "";
+                  if (catDesc) {
+                      return <div style={{padding:'15px', fontStyle:'italic', color: style.text, opacity:0.8, fontSize:'14px', borderBottom:`1px solid ${style.card_border || '#eee'}`, background:'rgba(255,255,255,0.05)'}}>{catDesc}</div>;
+                  }
+              })()}
 
-          {(() => {
-            const piattiCat = menu.filter(p => (p.categoria_nome || p.categoria) === catNome);
-            const sottoCats = piattiCat.reduce((acc, p) => {
-              const sc = (p.sottocategoria && p.sottocategoria.trim().length > 0) ? p.sottocategoria : "Generale";
-              if (!acc[sc]) acc[sc] = [];
-              acc[sc].push(p); return acc;
-            }, {});
-            const subKeys = Object.keys(sottoCats).sort();
-            const isSingleGroup = subKeys.length === 1 && subKeys[0] === "Generale";
+              {(() => {
+                const piattiCat = menu.filter(p => (p.categoria_nome || p.categoria) === catNome);
+                const sottoCats = piattiCat.reduce((acc, p) => {
+                  const sc = (p.sottocategoria && p.sottocategoria.trim().length > 0) ? p.sottocategoria : "Generale";
+                  if (!acc[sc]) acc[sc] = [];
+                  acc[sc].push(p); return acc;
+                }, {});
+                const subKeys = Object.keys(sottoCats).sort();
+                const isSingleGroup = subKeys.length === 1 && subKeys[0] === "Generale";
 
-            return subKeys.map(scKey => (
-              <div key={scKey} style={{ width: '100%' }}>
-                {!isSingleGroup && (
-                  <div onClick={() => toggleSubAccordion(scKey)} style={{ background: 'rgba(255,255,255,0.05)', borderLeft: `4px solid ${priceColor}`, padding: '10px', margin: '1px 0', width: '100%', boxSizing: 'border-box', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h3 className="notranslate" style={{ margin: 0, fontSize: '16px', color: titleColor, textTransform: 'uppercase' }}>{scKey === "Generale" ? (t?.others || "Altri Piatti") : scKey}</h3>
-                    <span style={{ color: titleColor, fontWeight: 'bold' }}>{activeSubCategory === scKey ? '▼' : '▶'}</span>
-                  </div>
-                )}
-                {(isSingleGroup || activeSubCategory === scKey) && (
-                 <div className="menu-list" style={{ padding: '0', width: '100%' }}>
-                    {sottoCats[scKey].map((prodotto) => {
-                      // --- FIX CRASH QUI ---
-                      let v = {};
-                      try {
-                          v = typeof prodotto.varianti === 'string' ? JSON.parse(prodotto.varianti || '{}') : (prodotto.varianti || {});
-                      } catch(e) { v = {}; }
-
-                      // Fallback array vuoto se undefined
-                      const baseList = Array.isArray(v.base) ? v.base : [];
-                      const aggiunteList = Array.isArray(v.aggiunte) ? v.aggiunte : [];
-
-                      const ingStr = baseList.join(', '); // Ora è sicuro
-                      
-                      const hasBase = baseList.length > 0;
-                      const hasExtras = (aggiunteList.length > 0) || (prodotto.categoria_varianti && prodotto.categoria_varianti.length > 0);
-                      const hasVarianti = hasBase || hasExtras;
-                      const hasUnit = !!prodotto.unita_misura; // e.g. "/hg"
-
-                      const nomeProdotto = getContent(prodotto, 'nome', lang);
-                      const descProdotto = getContent(prodotto, 'descrizione', lang);
-                      
-                      const simboloEuro = style.nascondi_euro ? '' : '€';
-                      const unitaMisura = prodotto.unita_misura ? ` ${prodotto.unita_misura}` : '';
-
-                      return (
-                        <div key={prodotto.id} className="card" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', cursor: 'default', backgroundColor: cardBg, borderBottom: `1px solid ${cardBorder}` }}>
-                          {/* FOTO - CLICCABILE SOLO QUI */}
-                          {prodotto.immagine_url && (
-                             <img 
-                                src={prodotto.immagine_url} 
-                                onClick={() => apriModale(prodotto)} // UNICO PUNTO DI APERTURA SE IMMAGINE ESISTE
-                                style={{ width: '70px', height: '70px', objectFit: 'cover', borderRadius: '5px', flexShrink: 0, cursor: 'pointer' }} 
-                             />
-                          )}
+                return subKeys.map(scKey => (
+                  <div key={scKey} style={{ width: '100%' }}>
+                    {!isSingleGroup && (
+                      <div onClick={() => toggleSubAccordion(scKey)} style={{ background: 'rgba(255,255,255,0.05)', borderLeft: `4px solid ${priceColor}`, padding: '10px', margin: '1px 0', width: '100%', boxSizing: 'border-box', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <h3 className="notranslate" style={{ margin: 0, fontSize: '16px', color: titleColor, textTransform: 'uppercase' }}>{scKey === "Generale" ? (t?.others || "Altri Piatti") : scKey}</h3>
+                        <span style={{ color: titleColor, fontWeight: 'bold' }}>{activeSubCategory === scKey ? '▼' : '▶'}</span>
+                      </div>
+                    )}
+                    {(isSingleGroup || activeSubCategory === scKey) && (
+                     <div className="menu-list" style={{ padding: '0', width: '100%' }}>
+                        {sottoCats[scKey].map((prodotto) => {
                           
-                          <div className="info" style={{ flex: 1 }}>
-                            <h3 style={{ margin: '0 0 2px 0', fontSize: '16px', color: style.text || '#222', lineHeight: '1.2' }}>{nomeProdotto}</h3>
-                            {descProdotto && (<p style={{ fontSize: '12px', color: '#666', margin: '0 0 2px 0', lineHeight: '1.1' }}>{descProdotto}</p>)}
-                            {ingStr && (<p style={{ fontSize: '11px', color: '#555', fontStyle: 'italic', margin: '0 0 2px 0', lineHeight: '1.1' }}><span className="notranslate" style={{ fontWeight: 'bold' }}>{t?.ingredients || "Ingredienti"}:</span> {ingStr}</p>)}
-                            {prodotto.allergeni && prodotto.allergeni.length > 0 && (
-                              <div style={{ marginTop: '2px', display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                                {prodotto.allergeni.filter(a => !a.includes("❄️")).length > 0 && ( <div className="notranslate" style={{ fontSize: '10px', color: '#e74c3c', fontWeight: 'bold', textTransform: 'uppercase' }}>⚠️ {t?.allergens || "Allergeni"}: {prodotto.allergeni.filter(a => !a.includes("❄️")).join(', ')}</div> )}
-                                {prodotto.allergeni.some(a => a.includes("❄️")) && ( <div className="notranslate" style={{ fontSize: '10px', color: '#3498db', fontWeight: 'bold', textTransform: 'uppercase' }}>❄️ {t?.frozen || "Surgelato"}</div> )}
+                          // --- USE SAFE VARIANTS (ANTI CRASH) ---
+                          const vSafe = getSafeVariants(prodotto);
+                          const baseList = vSafe.base;
+                          const aggiunteList = vSafe.aggiunte;
+                          
+                          const ingStr = baseList.join(', '); 
+                          
+                          const hasBase = baseList.length > 0;
+                          const hasExtras = (aggiunteList.length > 0) || (prodotto.categoria_varianti && prodotto.categoria_varianti.length > 0);
+                          const hasVarianti = hasBase || hasExtras;
+                          const hasUnit = !!prodotto.unita_misura; 
+
+                          const nomeProdotto = getContent(prodotto, 'nome', lang);
+                          const descProdotto = getContent(prodotto, 'descrizione', lang);
+                          
+                          const simboloEuro = style.nascondi_euro ? '' : '€';
+                          const unitaMisura = prodotto.unita_misura ? ` ${prodotto.unita_misura}` : '';
+
+                          return (
+                            <div key={prodotto.id} className="card" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '15px', padding: '10px', width: '100%', boxSizing: 'border-box', cursor: 'default', backgroundColor: cardBg, borderBottom: `1px solid ${cardBorder}` }}>
+                              {/* FOTO - CLICCABILE SOLO QUI */}
+                              {prodotto.immagine_url && (
+                                 <img 
+                                    src={prodotto.immagine_url} 
+                                    onClick={() => apriModale(prodotto)}
+                                    style={{ width: '70px', height: '70px', objectFit: 'cover', borderRadius: '5px', flexShrink: 0, cursor: 'pointer' }} 
+                                 />
+                              )}
+                              
+                              <div className="info" style={{ flex: 1 }}>
+                                <h3 style={{ margin: '0 0 2px 0', fontSize: '16px', color: style.text || '#222', lineHeight: '1.2' }}>{nomeProdotto}</h3>
+                                {descProdotto && (<p style={{ fontSize: '12px', color: '#666', margin: '0 0 2px 0', lineHeight: '1.1' }}>{descProdotto}</p>)}
+                                {ingStr && (<p style={{ fontSize: '11px', color: '#555', fontStyle: 'italic', margin: '0 0 2px 0', lineHeight: '1.1' }}><span className="notranslate" style={{ fontWeight: 'bold' }}>{t?.ingredients || "Ingredienti"}:</span> {ingStr}</p>)}
+                                {prodotto.allergeni && prodotto.allergeni.length > 0 && (
+                                  <div style={{ marginTop: '2px', display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                                    {prodotto.allergeni.filter(a => !a.includes("❄️")).length > 0 && ( <div className="notranslate" style={{ fontSize: '10px', color: '#e74c3c', fontWeight: 'bold', textTransform: 'uppercase' }}>⚠️ {t?.allergens || "Allergeni"}: {prodotto.allergeni.filter(a => !a.includes("❄️")).join(', ')}</div> )}
+                                    {prodotto.allergeni.some(a => a.includes("❄️")) && ( <div className="notranslate" style={{ fontSize: '10px', color: '#3498db', fontWeight: 'bold', textTransform: 'uppercase' }}>❄️ {t?.frozen || "Surgelato"}</div> )}
+                                  </div>
+                                )}
+                                <div className="notranslate" style={{ fontSize: '14px', fontWeight: 'bold', color: priceColor, marginTop: '2px' }}>
+                                    {Number(prodotto.prezzo).toFixed(2)} {simboloEuro}{unitaMisura}
+                                </div>
                               </div>
-                            )}
-                            <div className="notranslate" style={{ fontSize: '14px', fontWeight: 'bold', color: priceColor, marginTop: '2px' }}>
-                                {Number(prodotto.prezzo).toFixed(2)} {simboloEuro}{unitaMisura}
-                            </div>
-                          </div>
-                          
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            {/* TASTO MODIFICA (Matita) - Solo se modificabile */}
-                            {hasVarianti && (
-                                <button className="notranslate" 
-                            onClick={(e) => { 
-                                e.stopPropagation(); 
-                                // Passa l'oggetto pulito o gestiscilo nel modale
-                                apriModale(prodotto); 
-                            }}
-                                    style={{ background: '#f39c12', color: 'white', borderRadius: '50%', width: '30px', height: '30px', border: 'none', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                                    ✏️
-                                </button>
-                            )}
+                              
+                              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                {/* TASTO MODIFICA (Matita) - Solo se modificabile */}
+                                {hasVarianti && (
+                                    <button className="notranslate" 
+                                        onClick={(e) => { 
+                                            e.stopPropagation(); 
+                                            apriModale(prodotto); 
+                                        }}
+                                        style={{ background: '#f39c12', color: 'white', borderRadius: '50%', width: '30px', height: '30px', border: 'none', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                                        ✏️
+                                    </button>
+                                )}
 
-                            {/* TASTO AGGIUNGI (+) */}
-                            <button className="notranslate" 
-                                onClick={(e) => { 
-                                    e.stopPropagation(); 
-                                    if(hasUnit) {
-                                        // Se c'è unità di misura (peso) -> Apre modale
-                                        apriModale(prodotto);
-                                    } else {
-                                        // Altrimenti -> Aggiunge diretto
-                                        aggiungiAlCarrello(prodotto);
-                                    }
-                                }} 
-                                style={{ background: btnBg, color: btnText, borderRadius: '50%', width: '35px', height: '35px', border: 'none', fontSize: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                                +
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    })}
+                                {/* TASTO AGGIUNGI (+) */}
+                                <button className="notranslate" 
+                                    onClick={(e) => { 
+                                        e.stopPropagation(); 
+                                        if(hasUnit) {
+                                            apriModale(prodotto);
+                                        } else {
+                                            aggiungiAlCarrello(prodotto);
+                                        }
+                                    }} 
+                                    style={{ background: btnBg, color: btnText, borderRadius: '50%', width: '35px', height: '35px', border: 'none', fontSize: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                                    +
+                                </button>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            ));
-          })()}
+                ));
+              })()}
+            </div>
+          )}
         </div>
-      )}
-    </div>
-  ))}
-</div>
+      ))}
+      </div>
 
       <div className="notranslate" style={{ textAlign: style.allineamento_footer || 'center', padding: '20px 20px 60px 20px', opacity: 0.9 }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px', marginBottom: '25px' }}>
@@ -443,9 +452,11 @@ function Menu() {
       {selectedPiatto && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.9)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding:'10px' }} onClick={() => setSelectedPiatto(null)}>
             {(() => {
-                const v = typeof selectedPiatto.varianti === 'string' ? JSON.parse(selectedPiatto.varianti || '{}') : (selectedPiatto.varianti || {});
-                const baseList = v.base || [];
-                const addList = v.aggiunte?.length > 0 ? v.aggiunte : (selectedPiatto.categoria_varianti || []);
+                // --- USE SAFE VARIANTS (ANTI CRASH IN MODAL) ---
+                const vSafe = getSafeVariants(selectedPiatto);
+                const baseList = vSafe.base;
+                const addList = vSafe.aggiunte.length > 0 ? vSafe.aggiunte : (selectedPiatto.categoria_varianti || []);
+
                 const extraPrezzo = (tempVarianti?.aggiunte || []).reduce((acc, item) => acc + item.prezzo, 0);
                 
                 // CALCOLO PREZZO CON QUANTITÀ

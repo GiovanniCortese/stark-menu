@@ -70,15 +70,15 @@ router.put('/api/prodotti/:id', async (req, res) => {
 
 router.delete('/api/prodotti/:id', async (req, res) => { try { await pool.query('DELETE FROM prodotti WHERE id=$1', [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
 
-// SCANSIONE MENU CARTACEO CON AI
+// SCANSIONE MENU CARTACEO CON AI (Versione Stabile Descrizione)
 router.post('/api/menu/scan-photo', uploadFile.single('photo'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: "Nessuna foto inviata" });
         if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: "Manca API Key OpenAI" });
 
-        // Check PDF (Stessa logica: se PDF, non scansionare visivamente per evitare crash)
+        // Check PDF
         if (req.file.mimetype === 'application/pdf') {
-             return res.status(400).json({ error: "Per il menù, carica una FOTO (JPG/PNG). I PDF non sono scansionabili dall'AI al momento." });
+             return res.status(400).json({ error: "Per il menù, carica una FOTO (JPG/PNG). I PDF non sono supportati qui." });
         }
 
         const base64Image = req.file.buffer.toString('base64');
@@ -90,16 +90,15 @@ router.post('/api/menu/scan-photo', uploadFile.single('photo'), async (req, res)
             messages: [
                 {
                     role: "system",
-                    content: `Analizza la foto del menù cartaceo.
-                    Estrai i piatti raggruppandoli. 
-                    IMPORTANTE: Estrai gli ingredienti o la descrizione sotto il piatto e mettili nel campo "ingredienti".
+                    content: `Analizza la foto del menù. Estrai i piatti.
+                    IMPORTANTE: Metti gli ingredienti o la descrizione del piatto nel campo "descrizione".
                     
-                    Restituisci SOLO un JSON valido (array):
+                    Restituisci SOLO un JSON valido (array di oggetti):
                     [
                         { 
                             "nome": "Carbonara", 
                             "categoria": "Primi", 
-                            "ingredienti": "Uova, Guanciale, Pecorino, Pepe", 
+                            "descrizione": "Uova, Guanciale, Pecorino, Pepe", 
                             "prezzo": 12.00 
                         }
                     ]

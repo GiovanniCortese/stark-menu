@@ -181,82 +181,59 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   };
 
   // --- FUNZIONE SCANSIONE MENU (AI) AGGIORNATA ---
-  const handleMenuScan = async (e) => {
-    const file = e.target.files[0];
-    if(!file) return;
-    setIsScanningMenu(true);
-    
-    const fd = new FormData(); 
-    fd.append('photo', file);
-    
-    try {
-        const res = await fetch(`${API_URL}/api/menu/scan-photo`, { method:'POST', body:fd });
-        const data = await res.json();
-        
-        if(data.success && data.data) {
-            const items = data.data;
-            let count = 0;
+ const handleMenuScan = async (e) => {
+        const file = e.target.files[0];
+        if(!file) return;
 
-            if(!confirm(`Trovati ${items.length} piatti. Confermi l'importazione?`)) {
-                setIsScanningMenu(false);
-                return;
-            }
+        setIsScanning(true);
+        const formData = new FormData();
+        formData.append('photo', file);
 
-            // 1. Gestione Categorie (Uguale a prima)
-            const categorieTrovate = [...new Set(items.map(i => i.categoria))];
-            for(const nomeCat of categorieTrovate) {
-                const esiste = categorie.some(c => c.nome.toLowerCase() === nomeCat.toLowerCase());
-                if(!esiste) {
-                    await fetch(`${API_URL}/api/categorie`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ nome: nomeCat, ristorante_id: user.id })
-                    });
-                }
-            }
+        try {
+            // 1. Chiamata AI
+            const res = await fetch(`${API_URL}/api/menu/scan-photo`, { method: 'POST', body: formData });
+            const json = await res.json();
+            
+            if(!json.success) throw new Error(json.error || "Errore scansione");
+            
+            const items = json.data; // Array di piatti
+            if(!Array.isArray(items) || items.length === 0) throw new Error("Nessun piatto trovato");
 
-            // 2. Creazione Prodotti (MODIFICATA)
+            alert(`Trovati ${items.length} piatti! Inizio importazione...`);
+
+            // 2. Creazione Prodotti (CON FIX CRASH)
             for(const p of items) {
-                // L'AI ora ci restituisce "ingredienti" (stringa o array)
-                // Backend menuRoutes modificato per restituire campo "ingredienti"
-                
-                let ingredientiArray = [];
-                if (p.ingredienti) {
-                     // Divide per virgola se è una stringa
-                     ingredientiArray = p.ingredienti.split(/,|e /).map(s => s.trim()).filter(Boolean);
-                }
-
                 const payload = {
                     nome: p.nome,
                     prezzo: p.prezzo || 0,
-                    categoria: p.categoria || (categorie[0]?.nome || "Generale"),
-                    descrizione: "", // Usiamo gli ingredienti per la descrizione tecnica
+                    categoria: p.categoria || "Generale",
+                    // Mettiamo gli ingredienti nella descrizione come richiesto
+                    descrizione: p.descrizione || "", 
                     ristorante_id: user.id,
-                    // QUI LA MAGIA: Salviamo gli ingredienti nella struttura "base"
-                    varianti: JSON.stringify({ base: ingredientiArray, aggiunte: [] }),
+                    immagine_url: "",
+                    // --- FIX CRASH: Salviamo un JSON vuoto ma VALIDO ---
+                    varianti: JSON.stringify({ base: [], aggiunte: [] }), 
                     allergeni: JSON.stringify([]),
                     traduzioni: JSON.stringify({}),
                     qta_minima: 1
                 };
                 
-                await fetch(`${API_URL}/api/prodotti`, { 
-                    method:'POST', 
-                    headers:{'Content-Type':'application/json'}, 
-                    body:JSON.stringify(payload) 
+                await fetch(`${API_URL}/api/prodotti`, {
+                    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
                 });
-                count++;
             }
-            alert(`✅ Fatto! Ho aggiunto ${count} piatti.`);
-            ricaricaDati();
-        } else {
-            alert("Errore AI: " + (data.error || "Nessun dato trovato"));
+            
+            alert("✅ Importazione Completata!");
+            if(ricaricaDati) ricaricaDati(); // Aggiorna la lista a video
+
+        } catch(err) {
+            console.error(err);
+            alert("Errore: " + err.message);
+        } finally {
+            setIsScanning(false);
+            e.target.value = null; // Reset input
         }
-    } catch(err) { 
-        alert("Errore durante l'analisi: " + err.message); 
-    } finally { 
-        setIsScanningMenu(false); 
-    }
-  };
+    };
 
   const cancellaPiatto = async (id) => { if(confirm("Sei sicuro di voler eliminare questo piatto?")) { await fetch(`${API_URL}/api/prodotti/${id}`, {method:'DELETE'}); ricaricaDati(); }};
   
