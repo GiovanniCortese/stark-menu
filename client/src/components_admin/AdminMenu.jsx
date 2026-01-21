@@ -179,7 +179,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
     } catch(err) { alert("Errore Connessione"); } finally { setImporting(false); }
   };
 
-  // --- FUNZIONE SCANSIONE MENU (AI) AGGIORNATA ---
+ // --- FUNZIONE SCANSIONE MENU AGGIORNATA (SMART UPSERT) ---
  const handleMenuScan = async (e) => {
         const file = e.target.files[0];
         if(!file) return;
@@ -189,47 +189,41 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
         formData.append('photo', file);
 
         try {
-            // 1. Chiamata AI
+            // 1. Chiamata AI (Ora configurata per mettere tutto in descrizione)
             const res = await fetch(`${API_URL}/api/menu/scan-photo`, { method: 'POST', body: formData });
             const json = await res.json();
             
             if(!json.success) throw new Error(json.error || "Errore scansione");
             
-            const items = json.data; // Array di piatti
-            if(!Array.isArray(items) || items.length === 0) throw new Error("Nessun piatto trovato nell'immagine.");
+            const items = json.data; 
+            if(!Array.isArray(items) || items.length === 0) throw new Error("Nessun piatto trovato.");
 
-            // 2. Creazione Prodotti (CON FIX CRASH E DESCRIZIONE -> INGREDIENTI)
-            let importedCount = 0;
+            // 2. Ciclo SMART UPSERT
+            let createdCount = 0;
+            let updatedCount = 0;
+
             for(const p of items) {
-                // Spostiamo la descrizione negli ingredienti se presenti, come richiesto
-                const ingredientiAI = Array.isArray(p.ingredienti) ? p.ingredienti : [];
-                
-                // Creiamo il JSON varianti safe
-                const variantiPayload = {
-                    base: ingredientiAI, // Qui finiscono gli ingredienti (ex descrizione)
-                    aggiunte: []
-                };
-
                 const payload = {
                     nome: p.nome,
                     prezzo: p.prezzo || 0,
                     categoria: p.categoria || "Generale",
-                    descrizione: p.descrizione || "", // Se è vuota perché spostata, va bene così
+                    // Qui usiamo la descrizione "sporca" che include gli allergeni testuali, come richiesto
+                    descrizione: p.descrizione || "", 
                     ristorante_id: user.id,
-                    immagine_url: "",
-                    varianti: JSON.stringify(variantiPayload), // JSON stringified!
-                    allergeni: JSON.stringify([]), // Array vuoto stringified
-                    traduzioni: JSON.stringify({}),
                     qta_minima: 1
                 };
                 
-                await fetch(`${API_URL}/api/prodotti`, {
+                // Chiamiamo la nuova rotta UPSERT invece di quella standard
+                const upsertRes = await fetch(`${API_URL}/api/prodotti/upsert`, {
                     method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
                 });
-                importedCount++;
+                
+                const upsertData = await upsertRes.json();
+                if(upsertData.action === 'updated') updatedCount++;
+                else createdCount++;
             }
             
-            alert(`✅ Importati ${importedCount} piatti con successo!`);
+            alert(`✅ Operazione completata!\n🆕 Creati: ${createdCount}\n🔄 Aggiornati: ${updatedCount}`);
             if(ricaricaDati) ricaricaDati(); 
 
         } catch(err) {
@@ -237,7 +231,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             alert("❌ Errore Importazione: " + err.message);
         } finally {
             setIsScanningMenu(false);
-            e.target.value = null; // Reset input per permettere nuovo caricamento
+            e.target.value = null; 
         }
     };
 

@@ -109,27 +109,30 @@ router.post('/api/menu/scan-photo', uploadFile.single('photo'), async (req, res)
         const dataUrl = `data:${req.file.mimetype};base64,${base64Image}`;
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-        const response = await openai.chat.completions.create({
+const response = await openai.chat.completions.create({
             model: "gpt-4o",
             messages: [
                 {
                     role: "system",
-                    content: `Sei un esperto ristoratore. Analizza l'immagine del menù.
-                    Estrai i piatti raggruppandoli.
+                    content: `Sei un assistente per l'inserimento dati menu.
+                    Analizza l'immagine. Estrai i piatti.
                     
                     REGOLE FONDAMENTALI:
-                    1. Se ci sono ingredienti o descrizioni sotto il piatto, mettili nell'array "ingredienti" (non nella descrizione).
-                    2. Usa il campo "descrizione" solo per note extra o lascialo vuoto se hai spostato tutto negli ingredienti.
-                    3. Cerca di dedurre la categoria (es. Antipasti, Primi, Secondi) dal contesto visivo.
+                    1. Nome: Il nome del piatto.
+                    2. Prezzo: Il numero associato (es. 20.00).
+                    3. Categoria: Deducila dal contesto (es. Antipasti, Primi, Secondi).
+                    4. DESCRIZIONE: Qui devi copiare TUTTO il testo che trovi sotto il nome del piatto.
+                       - Includi ingredienti, note e ANCHE il testo degli allergeni (es. "Allergeni: 2,4,9" o "Allergeni: 9").
+                       - NON separare gli allergeni in un array. Copiali letteralmente come testo dentro la descrizione.
+                       - Esempio Descrizione: "Insalata di mare, spada affumicato. Allergeni: 2,3,4,9"
                     
                     Restituisci SOLO un JSON valido (array di oggetti):
                     [
                         { 
-                            "nome": "Carbonara", 
-                            "categoria": "Primi Piatti", 
-                            "ingredienti": ["Uova", "Guanciale", "Pecorino", "Pepe"],
-                            "descrizione": "", 
-                            "prezzo": 12.00 
+                            "nome": "Antipasto Saverio", 
+                            "categoria": "Antipasti", 
+                            "descrizione": "Insalata di mare, spada affumicato. Allergeni: 2,3,4,9", 
+                            "prezzo": 20.00 
                         }
                     ]`
                 },
@@ -238,5 +241,44 @@ router.post('/api/import-excel', uploadFile.single('file'), async (req, res) => 
 
 // Export Excel Menu
 router.get('/api/export-excel/:ristorante_id', async (req, res) => { try { const result = await pool.query(`SELECT p.*, c.varianti_default as cat_varianti FROM prodotti p LEFT JOIN categorie c ON p.categoria = c.nome AND p.ristorante_id = c.ristorante_id WHERE p.ristorante_id = $1 ORDER BY c.posizione, p.posizione`, [req.params.ristorante_id]); const dataForExcel = result.rows.map(row => { let baseStr = "", aggiunteStr = "", catVarStr = "", allergeniStr = ""; try { const v = typeof row.varianti === 'string' ? JSON.parse(row.varianti) : (row.varianti || {}); if(v.base && Array.isArray(v.base)) baseStr = v.base.join(', '); if(v.aggiunte && Array.isArray(v.aggiunte)) { aggiunteStr = v.aggiunte.map(a => `${a.nome}:${Number(a.prezzo).toFixed(2)}`).join(', '); } } catch(e) {} try { const cv = typeof row.cat_varianti === 'string' ? JSON.parse(row.cat_varianti) : (row.cat_varianti || []); if(Array.isArray(cv)) { catVarStr = cv.map(a => `${a.nome}:${Number(a.prezzo).toFixed(2)}`).join(', '); } } catch(e) {} try { const all = typeof row.allergeni === 'string' ? JSON.parse(row.allergeni) : (row.allergeni || []); if(Array.isArray(all)) { allergeniStr = all.join(', '); } } catch(e) {} return { "Categoria": row.categoria, "Varianti Categoria (Default)": catVarStr, "Sottocategoria": row.sottocategoria || "", "Nome": row.nome, "Prezzo": row.prezzo, "Unita": row.unita_misura || "", "Minimo": row.qta_minima || 1, "Descrizione": row.descrizione || "", "Ingredienti Base (Rimovibili)": baseStr, "Aggiunte Prodotto (Formato Nome:Prezzo)": aggiunteStr, "Allergeni": allergeniStr }; }); const workbook = xlsx.utils.book_new(); const worksheet = xlsx.utils.json_to_sheet(dataForExcel); const wscols = [{wch:15}, {wch:30}, {wch:15}, {wch:25}, {wch:10}, {wch:10}, {wch:10}, {wch:30}, {wch:30}, {wch:30}, {wch:30}]; worksheet['!cols'] = wscols; xlsx.utils.book_append_sheet(workbook, worksheet, "Menu"); const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' }); res.setHeader('Content-Disposition', 'attachment; filename="menu_export_completo.xlsx"'); res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); res.send(buffer); } catch (err) { res.status(500).json({ error: "Errore durante l'esportazione Excel" }); } });
+
+// --- NUOVA ROTTA: UPSERT PRODOTTO (SMART UPDATE) ---
+router.post('/api/prodotti/upsert', async (req, res) => {
+    try {
+        const { nome, prezzo, categoria, descrizione, ristorante_id, qta_minima } = req.body;
+        
+        // 1. Controlla/Crea Categoria (come fa Excel)
+        const checkCat = await pool.query("SELECT id FROM categorie WHERE nome = $1 AND ristorante_id = $2", [categoria, ristorante_id]);
+        if (checkCat.rows.length === 0) {
+             const maxCat = await pool.query('SELECT MAX(posizione) as max FROM categorie WHERE ristorante_id = $1', [ristorante_id]);
+             await pool.query('INSERT INTO categorie (nome, posizione, ristorante_id, varianti_default, is_bar, is_pizzeria) VALUES ($1, $2, $3, $4, $5, $6)', [categoria, (maxCat.rows[0].max || 0) + 1, ristorante_id, '[]', false, false]);
+        }
+
+        // 2. Cerca se il prodotto esiste già
+        const checkProd = await pool.query("SELECT id FROM prodotti WHERE nome = $1 AND ristorante_id = $2", [nome, ristorante_id]);
+
+        if (checkProd.rows.length > 0) {
+            // ESISTE -> FACCIO UPGRADE (Aggiorno prezzo e descrizione, mantengo il resto)
+            await pool.query(
+                `UPDATE prodotti SET prezzo=$1, descrizione=$2, categoria=$3 WHERE id=$4`,
+                [prezzo, descrizione, categoria, checkProd.rows[0].id]
+            );
+            res.json({ success: true, action: "updated" });
+        } else {
+            // NON ESISTE -> CREO NUOVO
+            const maxProd = await pool.query('SELECT MAX(posizione) as max FROM prodotti WHERE ristorante_id = $1', [ristorante_id]);
+            const nextPos = (maxProd.rows[0].max || 0) + 1;
+            
+            await pool.query(
+                `INSERT INTO prodotti (nome, prezzo, categoria, descrizione, ristorante_id, posizione, varianti, allergeni, qta_minima) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+                [nome, prezzo, categoria, descrizione, ristorante_id, nextPos, '{}', '[]', qta_minima || 1]
+            );
+            res.json({ success: true, action: "created" });
+        }
+    } catch (e) {
+        console.error("Errore Upsert:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
 
 module.exports = router;
