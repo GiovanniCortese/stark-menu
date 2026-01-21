@@ -528,7 +528,7 @@ function Menu() {
                         </div>
                     </div>
                     <div style={{padding:'20px', background:'#f9f9f9', borderTop:'1px solid #ddd', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                        <div className="notranslate" style={{fontSize:'1.5rem', fontWeight:'bold', color: '#000'}}>{prezzoTotalePiatto.toFixed(2)} €</div>
+                        <div className="notranslate" style={{fontSize:'1.5rem', fontWeight:'bold', color: '#000'}}>{prezzoTotalePiatto.toFixed(2)}€</div>
                         <button className="notranslate" onClick={() => { aggiungiAlCarrello({ ...selectedPiatto, nome: nomePiattoModal, prezzo: prezzoBaseUnitario, varianti_scelte: tempVarianti }, qtyModal); }} style={{ background: priceColor, color: 'white', padding: '12px 25px', borderRadius: '30px', fontWeight: 'bold', border: 'none', cursor: 'pointer', fontSize: '1rem' }}>{canOrder ? (t?.add || "AGGIUNGI") : "LISTA"}</button>
                     </div>
                     <button onClick={() => setSelectedPiatto(null)} style={{position:'absolute', top:'15px', right:'15px', background:'white', color:'black', border:'none', borderRadius:'50%', width:'35px', height:'35px', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.2)'}}>✕</button>
@@ -611,7 +611,7 @@ function Menu() {
                                             )}
 
                                             {item.varianti_scelte && ( <div style={{marginTop:'8px', display:'flex', flexWrap:'wrap', gap:'5px'}}>{item.varianti_scelte.rimozioni?.map((ing, i) => ( <span key={i} style={{background:'#c0392b', color:'white', fontSize:'10px', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold'}}>NO {ing}</span> ))}{item.varianti_scelte.aggiunte?.map((ing, i) => ( <span key={i} style={{background:'#27ae60', color:'white', fontSize:'10px', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold'}}>+ {ing.nome}</span> ))}</div> )}
-                                            <div className="notranslate" style={{color: priceColor, fontSize:'0.9rem', marginTop: '8px', fontWeight: 'bold'}}>{totaleRiga.toFixed(2)} €</div>
+                                            <div className="notranslate" style={{color: priceColor, fontSize:'0.9rem', marginTop: '8px', fontWeight: 'bold'}}>{totaleRiga.toFixed(2)}€</div>
                                         </div>
                                         <div className="notranslate" style={{display:'flex', flexDirection:'column', gap:5, marginLeft: '10px'}}>
                                             <div style={{display:'flex', gap:5, marginBottom: 5}}><button onClick={() => cambiaUscita(item.tempId, -1)} style={{background:'#ecf0f1', color:'#333', border: 'none', fontSize:'0.8rem', padding:'5px 8px', borderRadius:'4px', cursor: 'pointer'}}>⬆️</button><button onClick={() => cambiaUscita(item.tempId, 1)} style={{background:'#ecf0f1', color:'#333', border: 'none', fontSize:'0.8rem', padding:'5px 8px', borderRadius:'4px', cursor: 'pointer'}}>⬇️</button></div>
@@ -632,7 +632,7 @@ function Menu() {
                                         <div style={{color: titleColor, fontWeight:'bold', fontSize:'16px'}}>
                                             {item.nome} {item.qty > 1 && <span style={{fontSize:'0.8em'}}>x{item.qty}</span>}
                                         </div>
-                                        <div className="notranslate" style={{color: '#888', fontSize:'12px'}}>{(Number(item.prezzo) * (item.qty||1)).toFixed(2)} €</div>
+                                        <div className="notranslate" style={{color: '#888', fontSize:'12px'}}>{(Number(item.prezzo) * (item.qty||1)).toFixed(2)}€</div>
                                    </div>
                                    <button className="notranslate" onClick={() => rimuoviDalCarrello(item.tempId)} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:'5px', cursor:'pointer'}}>✕</button>
                                </div>
