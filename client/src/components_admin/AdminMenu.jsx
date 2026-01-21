@@ -180,7 +180,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
     } catch(err) { alert("Errore Connessione"); } finally { setImporting(false); }
   };
 
-  // --- FUNZIONE SCANSIONE MENU (AI) ---
+  // --- FUNZIONE SCANSIONE MENU (AI) AGGIORNATA ---
   const handleMenuScan = async (e) => {
     const file = e.target.files[0];
     if(!file) return;
@@ -202,10 +202,8 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                 return;
             }
 
-            // 1. Gestione Categorie
+            // 1. Gestione Categorie (Uguale a prima)
             const categorieTrovate = [...new Set(items.map(i => i.categoria))];
-            
-            // Creiamo le categorie mancanti
             for(const nomeCat of categorieTrovate) {
                 const esiste = categorie.some(c => c.nome.toLowerCase() === nomeCat.toLowerCase());
                 if(!esiste) {
@@ -217,15 +215,23 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                 }
             }
 
-            // 2. Creazione Prodotti
+            // 2. Creazione Prodotti (MODIFICATA PER GLI INGREDIENTI)
             for(const p of items) {
+                // L'AI ora ci restituisce "ingredienti" (stringa).
+                // Lo mettiamo in "varianti.base" come array, così appare nella riga "Ingredienti Base"
+                
+                const ingredientiArray = p.ingredienti 
+                    ? p.ingredienti.split(/,|e /).map(s => s.trim()).filter(Boolean) // Divide per virgola o " e "
+                    : [];
+
                 const payload = {
                     nome: p.nome,
                     prezzo: p.prezzo || 0,
                     categoria: p.categoria || (categorie[0]?.nome || "Generale"),
-                    descrizione: p.descrizione || "",
+                    descrizione: "", // Lasciamo vuota la descrizione, usiamo gli ingredienti
                     ristorante_id: user.id,
-                    varianti: JSON.stringify({ base: [], aggiunte: [] }),
+                    // QUI LA MAGIA: Salviamo gli ingredienti nella struttura "base"
+                    varianti: JSON.stringify({ base: ingredientiArray, aggiunte: [] }),
                     allergeni: JSON.stringify([]),
                     traduzioni: JSON.stringify({}),
                     qta_minima: 1
@@ -238,7 +244,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                 });
                 count++;
             }
-            alert(`✅ Fatto! Ho aggiunto ${count} piatti dal menu.`);
+            alert(`✅ Fatto! Ho aggiunto ${count} piatti.`);
             ricaricaDati();
         } else {
             alert("Errore AI: " + (data.error || "Nessun dato trovato"));

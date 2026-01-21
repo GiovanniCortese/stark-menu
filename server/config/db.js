@@ -1,30 +1,29 @@
 const { Pool } = require('pg');
 require('dotenv').config();
 
-// Verifica che l'URL del database sia presente
+// Verifica presenza URL
 if (!process.env.DATABASE_URL) {
-    console.error("❌ ERRORE CRITICO: Manca la variabile DATABASE_URL nel file .env o nelle impostazioni di Render.");
+    console.error("❌ ERRORE CRITICO: Manca DATABASE_URL nel file .env");
     process.exit(1);
 }
 
-// 🔍 Rileva se stiamo usando la connessione interna di Render
-// Le connessioni interne contengono solitamente "render.internal"
-const isRenderInternal = process.env.DATABASE_URL.includes('render.internal');
-
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    // ⚙️ LOGICA SSL:
-    // 1. Se sei SU Render e usi la connessione interna -> SSL spento (false)
-    // 2. Se ti connetti da fuori (es. dal tuo PC) o usi l'URL esterno -> SSL acceso ({ rejectUnauthorized: false })
-    ssl: isRenderInternal ? false : { rejectUnauthorized: false }
+    // LOGICA ROBUSTA:
+    // Se siamo su localhost (sviluppo), l'SSL spesso non serve.
+    // Se siamo in produzione (Render/Neon), l'SSL è OBBLIGATORIO e richiede rejectUnauthorized: false
+    ssl: process.env.NODE_ENV === 'production' || process.env.DATABASE_URL.includes('render.com') 
+        ? { rejectUnauthorized: false } 
+        : false 
 });
 
-// Test connessione al riavvio (opzionale ma utile per debug)
+// Test connessione immediato all'avvio
 pool.connect((err, client, release) => {
     if (err) {
-        console.error('❌ Errore connessione DB:', err.message);
+        console.error('❌ ERRORE CONNESSIONE DB:', err.message);
+        console.error('Suggerimento: Controlla di usare la EXTERNAL URL su Render.');
     } else {
-        console.log(`✅ Connesso al Database (${isRenderInternal ? 'INTERNO ⚡' : 'ESTERNO 🌐'})`);
+        console.log('✅ DATABASE CONNESSO CORRETTAMENTE 🚀');
         release();
     }
 });
