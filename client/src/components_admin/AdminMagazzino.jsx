@@ -13,33 +13,24 @@ const getNowLocalISO = () => {
     return now.toISOString().slice(0, 16); 
 };
 
-// --- NUOVO HELPER FONDAMENTALE PER L'EDITING ---
-// Converte la data ISO del DB (es. 2023-10-25T14:30:00.000Z) 
-// nel formato accettato dall'input datetime-local (2023-10-25T16:30)
-const toInputDateTime = (isoString) => {
-    if (!isoString) return '';
-    const date = new Date(isoString);
-    // Compensa fuso orario per visualizzazione corretta nell'input
-    date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-    return date.toISOString().slice(0, 16);
-};
-
-// Formattazione visiva per la tabella
-const formatTimeDate = (dateStr) => {
+// --- HELPER VISIVO TABELLA (UNIFICATO) ---
+const formatTimeDate = (dateStr, timeStr) => {
     if (!dateStr) return "-";
     const date = new Date(dateStr);
-    
     if (isNaN(date.getTime())) return dateStr;
 
-    const time = date.toLocaleTimeString('it-IT', { 
-        timeZone: 'Europe/Rome', hour: '2-digit', minute: '2-digit' 
-    });
-    
     const day = date.toLocaleDateString('it-IT', { 
         timeZone: 'Europe/Rome', day: '2-digit', month: '2-digit', year: 'numeric' 
     });
     
-    // Ritorna un elemento JSX per andare a capo
+    // Se c'è l'orario separato (timeStr) usalo, altrimenti prova a prenderlo dalla data
+    let time = timeStr;
+    if (!time) {
+        time = date.toLocaleTimeString('it-IT', { 
+            timeZone: 'Europe/Rome', hour: '2-digit', minute: '2-digit' 
+        });
+    }
+    
     return (
         <div>
             <div style={{fontWeight:'bold', color:'#2c3e50'}}>{day}</div>
@@ -67,7 +58,7 @@ function AdminMagazzino({ user, API_URL }) {
     // Form Manuale
     const [merciForm, setMerciForm] = useState({
         id: null,
-        data_ricezione: getNowLocalISO(), 
+        data_ricezione: getNowLocalISO(), // Input unico per UI
         fornitore: '', prodotto: '', lotto: '', scadenza: '',
         temperatura: '', conforme: true, integro: true, note: '',
         quantita: '', unita_misura: 'Pz', 
@@ -308,6 +299,7 @@ function AdminMagazzino({ user, API_URL }) {
         reader.readAsBinaryString(file); e.target.value = null; 
     };
 
+    // --- SALVATAGGIO MANUALE CORRETTO ---
     const salvaMerciManuale = async (e) => {
         e.preventDefault();
         try {
@@ -318,11 +310,20 @@ function AdminMagazzino({ user, API_URL }) {
             const unit = parseFloat(merciForm.prezzo_unitario) || 0;
             const imp = parseFloat(merciForm.prezzo) || (qta * unit); 
 
+            // 1. ESTRAGGO DATA E ORA SEPARATI DAL CAMPO DATETIME-LOCAL
+            const dataISO = new Date(merciForm.data_ricezione);
+            // La data pura per il DB (YYYY-MM-DD)
+            const dataDb = dataISO.toISOString().split('T')[0];
+            // L'orario per il DB (HH:MM)
+            const oraDb = dataISO.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+
             const payload = { 
                 ...merciForm, 
                 ristorante_id: user.id, 
                 operatore: 'ADMIN',
-                prezzo: imp, // IMPONIBILE
+                data_ricezione: dataDb, // Sovrascrivo con solo la data
+                ora: oraDb,             // Invio l'ora separata COME IN MERCIMANAGER!
+                prezzo: imp, 
                 prezzo_unitario: unit,
                 iva: parseFloat(merciForm.iva) || 0,
                 scadenza: merciForm.scadenza || null,
@@ -346,13 +347,27 @@ function AdminMagazzino({ user, API_URL }) {
         } catch (err) { alert("Errore connessione"); }
     };
 
-    // --- FIX EDITING: MANTIENI L'ORA! ---
+    // --- FIX EDITING: RECUPERA ORA DAL DB ---
     const iniziaModifica = (r) => {
         setTab('carico');
+        
+        // Se c'è l'ora salvata, combinala con la data per l'input datetime-local
+        let dataCompleta = r.data_ricezione;
+        if (r.ora && r.data_ricezione) {
+            // Prendo solo la parte YYYY-MM-DD
+            const soloData = r.data_ricezione.split('T')[0];
+            // Creo la stringa ISO compatibile (YYYY-MM-DDTHH:mm)
+            dataCompleta = `${soloData}T${r.ora}`;
+        } else if (r.data_ricezione) {
+             // Fallback se manca l'ora: converti ISO DB in ISO locale
+             const d = new Date(r.data_ricezione);
+             d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+             dataCompleta = d.toISOString().slice(0, 16);
+        }
+
         setMerciForm({
             ...r,
-            // Converti data DB (ISO) nel formato input datetime-local senza perdere l'ora
-            data_ricezione: toInputDateTime(r.data_ricezione),
+            data_ricezione: dataCompleta,
             scadenza: r.scadenza ? r.scadenza.split('T')[0] : ''
         });
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -559,7 +574,8 @@ function AdminMagazzino({ user, API_URL }) {
                                     const calcs = renderRowData(r);
                                     return (
                                         <tr key={i} style={{borderBottom:'1px solid #f1f1f1'}}>
-                                            <td style={{padding:10}}>{formatTimeDate(r.data_ricezione)}</td>
+                                            {/* QUI PASSO SIA DATA CHE ORA AL FORMATTER */}
+                                            <td style={{padding:10}}>{formatTimeDate(r.data_ricezione, r.ora)}</td>
                                             <td style={{padding:10}}>{r.fornitore}</td>
                                             <td style={{padding:10, fontWeight:'bold'}}>{r.prodotto}</td>
                                             <td style={{padding:10}}>{r.quantita}</td>
