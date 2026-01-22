@@ -118,15 +118,32 @@ router.post('/api/haccp/merci/import', async (req, res) => {
 // ROTTE STANDARD (POST, PUT, DELETE) rimangono con i nuovi campi
 router.post('/api/haccp/merci', async (req, res) => { 
     try { 
-        const { ristorante_id, data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione, prezzo, prezzo_unitario, iva } = req.body; 
+        // Aggiungiamo 'ora' e 'unita_misura' al destructuring
+        const { 
+            ristorante_id, data_ricezione, ora, fornitore, prodotto, 
+            lotto, scadenza, temperatura, conforme, integro, note, 
+            operatore, quantita, unita_misura, allegato_url, destinazione, 
+            prezzo, prezzo_unitario, iva 
+        } = req.body; 
+
         await pool.query(
             `INSERT INTO haccp_merci (
-                ristorante_id, data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione, prezzo, prezzo_unitario, iva
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`, 
-            [ristorante_id, data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione, prezzo || 0, prezzo_unitario || 0, iva || 0]
+                ristorante_id, data_ricezione, ora, fornitore, prodotto, lotto, 
+                scadenza, temperatura, conforme, integro, note, operatore, 
+                quantita, unita_misura, allegato_url, destinazione, prezzo, prezzo_unitario, iva
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`, 
+            [
+                ristorante_id, data_ricezione, ora || '', fornitore, prodotto, lotto, 
+                scadenza, temperatura, conforme, integro, note, operatore, 
+                quantita, unita_misura || '', allegato_url, destinazione, 
+                prezzo || 0, prezzo_unitario || 0, iva || 0
+            ]
         ); 
         res.json({success:true}); 
-    } catch(e) { res.status(500).json({error:"Err"}); } 
+    } catch(e) { 
+        console.error(e);
+        res.status(500).json({error:"Err"}); 
+    } 
 });
 
 router.put('/api/haccp/merci/:id', async (req, res) => { 

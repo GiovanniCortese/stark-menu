@@ -105,4 +105,16 @@ router.get('/api/proxy-download', async (req, res) => {
     } catch (e) { console.error("Proxy Error:", e.message); res.status(500).send("Errore interno."); }
 });
 
+// --- NUOVO FIX PER AGGIUNGERE ORA E UDM AL MAGAZZINO ---
+router.get('/api/db-fix-haccp-merci', async (req, res) => {
+    try {
+        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS ora TEXT DEFAULT ''");
+        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS unita_misura TEXT DEFAULT ''");
+        res.send("✅ DATABASE AGGIORNATO: Aggiunte colonne 'ora' e 'unita_misura' a haccp_merci!");
+    } catch (e) {
+        console.error("Errore DB Fix Merci:", e);
+        res.status(500).send("Errore DB: " + e.message);
+    }
+});
+
 module.exports = router;
