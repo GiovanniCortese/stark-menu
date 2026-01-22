@@ -98,8 +98,8 @@ router.post('/api/menu/scan-photo', uploadFile.single('photo'), async (req, res)
 
         // Prompt specifico per i Menu
         const prompt = `
-        Sei un esperto ristoratore. Analizza questo file (immagine o PDF del menù).
-        Estrai i piatti raggruppandoli.
+        Sei un data entry preciso. Analizza questo menu (PDF/Immagine).
+        Estrai TUTTI i piatti presenti, non saltarne nessuno.
         
         REGOLE:
         1. Se ci sono ingredienti o descrizioni sotto il piatto, mettili nell'array "ingredienti".
