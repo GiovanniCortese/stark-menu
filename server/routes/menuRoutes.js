@@ -93,24 +93,23 @@ router.put('/api/prodotti/:id', async (req, res) => {
 
 router.delete('/api/prodotti/:id', async (req, res) => { try { await pool.query('DELETE FROM prodotti WHERE id=$1', [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
 
-// --- SCANSIONE MENU CON GEMINI AI (PDF e IMG) ---
+// --- SCANSIONE MENU CON GEMINI AI (CORRETTO) ---
 router.post('/api/menu/scan-photo', uploadFile.single('photo'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: "Nessun file inviato" });
         if (!process.env.GEMINI_API_KEY) return res.status(500).json({ error: "Manca API Key Gemini" });
 
-        // Gestione PDF: Gemini supporta PDF ma per semplicità ora richiediamo immagini
         if (req.file.mimetype === 'application/pdf') {
              return res.status(400).json({ 
-                 error: "PDF rilevato. Per la scansione automatica AI, per favore carica un'immagine (screenshot o foto jpg/png)." 
+                 error: "PDF rilevato. Per la scansione automatica AI, usa un'immagine (screenshot o foto jpg/png)." 
              });
         }
 
-        // Inizializza Gemini
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        // Usa il modello Flash ottimizzato per JSON
+        
+        // MODIFICA QUI: Uso il nome del modello "latest" che è più stabile
         const model = genAI.getGenerativeModel({ 
-            model: "gemini-1.5-flash",
+            model: "gemini-1.5-flash-latest", 
             generationConfig: { responseMimeType: "application/json" }
         });
 
@@ -118,17 +117,17 @@ router.post('/api/menu/scan-photo', uploadFile.single('photo'), async (req, res)
         Sei un esperto ristoratore. Analizza l'immagine del menù.
         Estrai i piatti raggruppandoli.
         
-        REGOLE FONDAMENTALI:
-        1. Se ci sono ingredienti o descrizioni sotto il piatto, mettili nell'array "ingredienti" (non nella descrizione).
-        2. Usa il campo "descrizione" solo per note extra o lascialo vuoto se hai spostato tutto negli ingredienti.
-        3. Cerca di dedurre la categoria (es. Antipasti, Primi, Secondi) dal contesto visivo.
+        REGOLE:
+        1. Se ci sono ingredienti o descrizioni sotto il piatto, mettili nell'array "ingredienti".
+        2. "descrizione" usala solo per note extra.
+        3. Deduci la categoria (Antipasti, Primi, ecc).
         
-        Restituisci SOLO un JSON valido (array di oggetti) con questo schema:
+        Restituisci SOLO un JSON valido (array di oggetti):
         [
             { 
                 "nome": "Carbonara", 
                 "categoria": "Primi Piatti", 
-                "ingredienti": ["Uova", "Guanciale", "Pecorino", "Pepe"],
+                "ingredienti": ["Uova", "Guanciale", "Pecorino"],
                 "descrizione": "", 
                 "prezzo": 12.00 
             }
