@@ -7,10 +7,8 @@ const { uploadFile, cloudinary } = require('../config/storage'); // Assicurati c
 const PDFDocument = require('pdfkit-table');
 const xlsx = require('xlsx');
 const stream = require('stream');
+const { analyzeImageWithGemini } = require('../utils/ai');
 
-// --- SOSTITUZIONE: DA OPENAI A GEMINI ---
-// const OpenAI = require('openai'); // RIMOSSO
-const { GoogleGenerativeAI } = require("@google/generative-ai"); // AGGIUNTO
 
 // =================================================================================
 // 1. ASSETS (MACCHINE)

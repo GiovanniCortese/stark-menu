@@ -3,10 +3,8 @@ const router = express.Router();
 const pool = require('../config/db');
 const { uploadFile } = require('../config/storage');
 const xlsx = require('xlsx');
+const { analyzeImageWithGemini } = require('../utils/ai');
 
-// --- SOSTITUZIONE: DA OPENAI A GEMINI ---
-// const OpenAI = require('openai'); // RIMOSSO
-const { GoogleGenerativeAI } = require("@google/generative-ai"); // AGGIUNTO
 
 // Get Menu (Public)
 router.get('/api/menu/:slug', async (req, res) => { 
