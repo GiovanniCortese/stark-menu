@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
-const { getItalyDateComponents } = require('../utils/time');
+const { getItalyDateComponents, getTimeItaly } = require('../utils/time'); // Assicurati di avere getTimeItaly in utils
 const { uploadFile, cloudinary } = require('../config/storage'); // Assicurati che uploadFile usi memoryStorage
 const PDFDocument = require('pdfkit-table');
 const xlsx = require('xlsx');
@@ -201,65 +201,58 @@ router.get('/api/haccp/stats/magazzino/:ristorante_id', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// --- SCAN INTELLIGENTE (FOTO & PDF) ---
+// --- 0. DB FIX (LANCIAMI UNA VOLTA DAL BROWSER: /api/db-fix-magazzino-v2) ---
+router.get('/api/db-fix-magazzino-v2', async (req, res) => {
+    try {
+        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS is_haccp BOOLEAN DEFAULT FALSE");
+        // Opzionale: Se vuoi che tutto il vecchio storico sia HACCP di default, scommenta la riga sotto:
+        // await pool.query("UPDATE haccp_merci SET is_haccp = TRUE WHERE is_haccp IS NULL");
+        
+        // Assicuriamoci che ora esista
+        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS ora TEXT DEFAULT ''");
+        
+        res.send("✅ DATABASE AGGIORNATO: Aggiunto flag 'is_haccp' e 'ora'!");
+    } catch (e) {
+        console.error("Errore DB Fix:", e);
+        res.status(500).send("Errore DB: " + e.message);
+    }
+});
+
+// --- 1. MAGIC SCAN (FIXED & POTENZIATO) ---
 router.post('/api/haccp/scan-bolla', uploadFile.single('photo'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: "Nessun file inviato" });
 
-        const isPdf = req.file.mimetype === 'application/pdf';
-        
-        // 1. Upload su Cloudinary (Stream Upload per gestire buffer)
+        // Upload su Cloudinary
         const uploadToCloud = () => {
             return new Promise((resolve, reject) => {
                 const uploadStream = cloudinary.uploader.upload_stream(
-                    { 
-                        resource_type: isPdf ? 'raw' : 'image', // PDF deve essere 'raw' o 'auto'
-                        folder: 'haccp_docs',
-                        public_id: `bolla_${Date.now()}` // Nome unico
-                    },
-                    (error, result) => {
-                        if (error) reject(error);
-                        else resolve(result.secure_url);
-                    }
+                    { resource_type: 'auto', folder: 'haccp_docs' },
+                    (error, result) => { if (error) reject(error); else resolve(result.secure_url); }
                 );
-                // Scrive il buffer nello stream
                 const bufferStream = new stream.PassThrough();
                 bufferStream.end(req.file.buffer);
                 bufferStream.pipe(uploadStream);
             });
         };
 
-        let fileUrl = "";
-        try {
-            fileUrl = await uploadToCloud();
-        } catch (err) {
-            console.error("Cloudinary Error:", err);
-            return res.status(500).json({ error: "Errore upload file: " + err.message });
-        }
+        const fileUrl = await uploadToCloud();
+        const isPdf = req.file.mimetype === 'application/pdf';
 
-        // 2. Se è un PDF, ferma qui l'AI (GPT-4o Vision non legge i PDF direttamente)
-        // Restituisci l'URL così l'utente ha l'allegato, ma i campi vuoti.
+        // Se è PDF, restituiamo l'URL ma non usiamo l'AI (GPT Vision non legge PDF binari direttamente via API image)
         if (isPdf) {
             return res.json({ 
                 success: true, 
-                isPdf: true,
-                message: "PDF caricato e allegato! L'AI non può leggere il contenuto dei PDF, compila i dati manualmente.",
-                data: {
-                    fornitore: "",
-                    data_ricezione: new Date().toISOString().split('T')[0],
-                    numero_documento: "",
-                    prodotti: [],
-                    allegato_url: fileUrl // URL CLICLABILE
-                }
+                message: "PDF caricato. L'AI richiede un'immagine per la lettura automatica.",
+                data: { allegato_url: fileUrl, prodotti: [] }
             });
         }
 
-        // 3. Se è Immagine, procedi con OpenAI
-        if (!process.env.OPENAI_API_KEY) return res.json({ success: true, message: "AI non configurata, file allegato.", data: { allegato_url: fileUrl, prodotti: [] } });
+        // AI ANALYSIS (Solo Immagini)
+        if (!process.env.OPENAI_API_KEY) return res.json({ success: true, message: "AI non configurata.", data: { allegato_url: fileUrl } });
 
         const base64Image = req.file.buffer.toString('base64');
         const dataUrl = `data:${req.file.mimetype};base64,${base64Image}`;
-
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
         const response = await openai.chat.completions.create({
@@ -267,44 +260,127 @@ router.post('/api/haccp/scan-bolla', uploadFile.single('photo'), async (req, res
             messages: [
                 {
                     role: "system",
-                    content: `Sei un assistente contabile. Analizza questa bolla/fattura.
-                    Estrai:
-                    1. Fornitore
-                    2. Data Documento (YYYY-MM-DD)
-                    3. Numero Documento (es. Fattura 40/A o DDT 123)
-                    4. Prodotti (Lista: nome, quantità, prezzo unitario, scadenza se visibile).
+                    content: `Sei un assistente magazzino esperto. Analizza questa bolla di consegna.
+                    Estrai i dati in JSON rigoroso.
                     
-                    Restituisci JSON puro:
+                    REGOLE:
+                    1. "ora_consegna": Cerca un orario nel documento. Se non c'è, lascia stringa vuota "".
+                    2. "prodotti": Lista array. Per ogni prodotto cerca di capire se è alimentare/HACCP ("is_haccp": true) o materiale generico/pulizia ("is_haccp": false).
+                    
+                    FORMATO JSON ATTESO:
                     {
-                        "fornitore": "Nome",
+                        "fornitore": "Nome Fornitore",
                         "data_ricezione": "YYYY-MM-DD", 
+                        "ora_consegna": "HH:MM",
                         "numero_documento": "123",
-                        "prodotti": [{ "nome": "X", "quantita": "1", "prezzo": 0, "scadenza": null }]
+                        "prodotti": [
+                            { "nome": "Farina 00", "quantita": "10", "prezzo": 15.50, "scadenza": null, "is_haccp": true },
+                            { "nome": "Tovaglioli", "quantita": "5", "prezzo": 20.00, "scadenza": null, "is_haccp": false }
+                        ]
                     }`
                 },
                 {
                     role: "user",
-                    content: [
-                        { type: "text", text: "Analizza immagine." },
-                        { type: "image_url", image_url: { url: dataUrl } }
-                    ]
+                    content: [{ type: "image_url", image_url: { url: dataUrl } }]
                 }
             ],
-            max_tokens: 1000
+            max_tokens: 1500
         });
 
         let text = response.choices[0].message.content.replace(/```json/g, '').replace(/```/g, '').trim();
         let data = JSON.parse(text);
         
-        // Aggiungi l'URL dell'immagine ai dati restituiti
-        data.allegato_url = fileUrl;
+        // Se l'AI non ha trovato l'ora, metti l'ora attuale server
+        if (!data.ora_consegna) {
+             const now = new Date();
+             data.ora_consegna = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+        }
 
+        data.allegato_url = fileUrl;
         res.json({ success: true, data });
 
     } catch (e) {
         console.error("Errore Scan:", e);
         res.status(500).json({ error: "Errore server: " + e.message });
     }
+});
+
+// --- 2. GET MERCI (FILTRATO PER MAGAZZINO O HACCP) ---
+router.get('/api/haccp/merci/:ristorante_id', async (req, res) => {
+    try {
+        const { start, end, mode } = req.query; // mode = 'haccp' (solo alimenti) o 'all' (tutto)
+        
+        let sql = "SELECT * FROM haccp_merci WHERE ristorante_id = $1";
+        const params = [req.params.ristorante_id];
+        let paramIndex = 2;
+
+        // Filtro Mode
+        if (mode === 'haccp') {
+            sql += " AND is_haccp = TRUE";
+        }
+        // Se mode === 'all' non aggiungiamo filtri, prendiamo tutto
+
+        // Filtro Date
+        if (start && end) {
+            sql += ` AND data_ricezione >= $${paramIndex} AND data_ricezione <= $${paramIndex + 1}`;
+            params.push(start, end);
+        } else {
+            sql += " AND data_ricezione >= NOW() - INTERVAL '60 days'";
+        }
+
+        sql += " ORDER BY data_ricezione DESC, ora DESC"; // Ordine per data e poi ora
+        
+        const r = await pool.query(sql, params);
+        res.json(r.rows);
+    } catch(e) { res.status(500).json({error:"Err"}); }
+});
+
+// --- 3. IMPORT MASSIVO (UPDATE PER ORARIO E FLAG HACCP) ---
+router.post('/api/haccp/merci/import', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { merci } = req.body;
+        if (!Array.isArray(merci)) return res.status(400).json({ error: "Formato non valido" });
+
+        await client.query('BEGIN');
+        let updated = 0, inserted = 0;
+        
+        for (const m of merci) {
+            // Controllo duplicati
+            const checkSql = `SELECT id FROM haccp_merci WHERE ristorante_id = $1 AND LOWER(prodotto) = LOWER($2) AND LOWER(fornitore) = LOWER($3) AND (note = $4 OR (note IS NULL AND $4 IS NULL))`;
+            const checkRes = await client.query(checkSql, [m.ristorante_id, m.prodotto, m.fornitore, m.note]);
+
+            // Dati sicuri
+            const qta = parseFloat(m.quantita) || 0;
+            const przUnit = parseFloat(m.prezzo_unitario) || 0;
+            const prezzoTot = parseFloat(m.prezzo) || (qta * przUnit);
+            const oraCarico = m.ora || getTimeItaly(); // Usa ora passata o corrente
+            const isHaccp = m.is_haccp === true || m.is_haccp === 'true' || m.is_haccp === 1;
+
+            if (checkRes.rows.length > 0) {
+                // UPDATE
+                await client.query(
+                    `UPDATE haccp_merci SET quantita=$1, prezzo=$2, prezzo_unitario=$3, data_ricezione=$4, ora=$5, is_haccp=$6, scadenza=$7 WHERE id=$8`,
+                    [qta, prezzoTot, przUnit, m.data_ricezione, oraCarico, isHaccp, m.scadenza, checkRes.rows[0].id]
+                );
+                updated++;
+            } else {
+                // INSERT
+                await client.query(
+                    `INSERT INTO haccp_merci (ristorante_id, data_ricezione, ora, fornitore, prodotto, quantita, prezzo, prezzo_unitario, lotto, scadenza, operatore, note, conforme, integro, destinazione, is_haccp, allegato_url) 
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, true, true, $13, $14, $15)`,
+                    [m.ristorante_id, m.data_ricezione, oraCarico, m.fornitore, m.prodotto, qta, prezzoTot, przUnit, m.lotto||'', m.scadenza||null, m.operatore||'IMPORT', m.note||'', m.destinazione||'', isHaccp, m.allegato_url||'']
+                );
+                inserted++;
+            }
+        }
+        await client.query('COMMIT');
+        res.json({ success: true, inserted, updated });
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error("Errore Import:", e);
+        res.status(500).json({ error: e.message });
+    } finally { client.release(); }
 });
 
 // --- GESTIONE RICETTE & AUTO-MATCHING ---

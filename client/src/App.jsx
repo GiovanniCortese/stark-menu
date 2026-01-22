@@ -12,6 +12,7 @@ import Menu from './Menu';
 import './App.css';
 import Dashboard from './Dashboard';
 import Haccp from './Haccp';
+import Magazzino from './Magazzino'
 
 function App() {
   // --- CONTROLLO NUCLEARE ---
@@ -41,6 +42,7 @@ function App() {
         <Route path="/cassa/:slug" element={<Cassa />} />
         <Route path="/haccp/:slug" element={<Haccp />} />
         <Route path="/haccp/:slug/scan/:scanId" element={<Haccp />} />
+        <Route path="/magazzino/:slug" element={<Magazzino />} />
 
         {/* MENU */}
         <Route path="/:slug" element={<Menu />} />

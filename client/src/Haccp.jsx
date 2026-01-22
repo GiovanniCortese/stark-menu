@@ -247,11 +247,12 @@ function Haccp() {
               />
           )}
 
-         {tab === 'merci' && !scanId && (
+{tab === 'merci' && !scanId && (
     <MerciManager 
-       API_URL={API_URL}  // <--- AGGIUNGI QUESTA RIGA QUI!
-       merci={merci} merciForm={merciForm} setMerciForm={setMerciForm} salvaMerci={salvaMerci} handleMerciPhoto={handleMerciPhoto} uploadingMerci={uploadingMerci} iniziaModificaMerci={iniziaModificaMerci} eliminaMerce={eliminaMerce} assets={assets} resetMerciForm={resetMerciForm}
-       handleFileAction={(url) => openGlobalPreview(url, "Bolla_Merce")} 
+       ristoranteId={info?.id} 
+       mode="haccp"             // <--- IMPORTANTE: Qui dici "Solo Alimenti"
+       title="Ricevimento Merci (HACCP)"
+       API_URL={API_URL} 
        openDownloadModal={openDownloadModal}
     />
 )}
