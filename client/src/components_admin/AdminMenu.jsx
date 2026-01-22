@@ -290,7 +290,7 @@ const handleMenuScan = async (e) => {
                 <h2 style={{color:'#3498db'}}>
                     {isScanningMenu ? "Analisi Menu con AI..." : "Sto elaborando il file..."}
                 </h2>
-                <p>Potrebbe richiedere fino a 30 secondi.</p>
+                <p>Potrebbe richiedere fino a 5 Minuti.</p>
             </div>
         )}
 
