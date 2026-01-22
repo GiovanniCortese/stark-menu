@@ -97,22 +97,26 @@ router.post('/api/menu/scan-photo', uploadFile.single('photo'), async (req, res)
         if (!req.file) return res.status(400).json({ error: "Nessun file inviato" });
 
         // Prompt specifico per i Menu
-        const prompt = `
-        Sei un data entry preciso. Analizza questo menu (PDF/Immagine).
-        Estrai TUTTI i piatti presenti, non saltarne nessuno.
+const prompt = `
+        Sei un data entry meticoloso. Analizza questo menu (PDF o Immagine).
+        Estrai TUTTI i piatti presenti.
         
-        REGOLE:
-        1. Se ci sono ingredienti o descrizioni sotto il piatto, mettili nell'array "ingredienti".
-        2. "descrizione" usala solo per note extra o lasciala vuota.
-        3. Deduci la categoria (Antipasti, Primi, Pizze, ecc) dal contesto visivo.
-        
-        Restituisci SOLO un JSON valido (array di oggetti):
+        REGOLE FONDAMENTALI:
+        1. "nome": Copia il nome del piatto esattamente come scritto.
+        2. "descrizione": In questo campo devi inserire TUTTO il testo che trovi sotto o accanto al nome del piatto. 
+           Includi ingredienti, descrizioni marketing (es. "freschissimo"), e anche le diciture degli allergeni (es. "Allergeni: 1, 7" oppure "Contiene glutine").
+           Non filtrare nulla: meglio un testo lungo che un dato mancante.
+        3. "ingredienti": Se riesci a distinguere la lista pulita degli ingredienti, mettila qui. Altrimenti lascia array vuoto [].
+        4. "categoria": Deduci la categoria (Antipasti, Primi, ecc).
+        5. "prezzo": Metti il numero (es. 12.00). Se manca metti 0.
+
+        Restituisci SOLO un array JSON valido:
         [
             { 
                 "nome": "Carbonara", 
                 "categoria": "Primi Piatti", 
+                "descrizione": "Spaghetti alla chitarra, uova bio, guanciale croccante, pecorino. Allergeni: 1,3,7", 
                 "ingredienti": ["Uova", "Guanciale", "Pecorino"],
-                "descrizione": "", 
                 "prezzo": 12.00 
             }
         ]`;
