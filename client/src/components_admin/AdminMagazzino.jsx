@@ -344,15 +344,19 @@ function AdminMagazzino({ user, API_URL }) {
             const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             const data = await res.json();
 
-            if(data.success) {
-                alert(merciForm.id ? "✅ Aggiornato!" : "✅ Salvato correttamente!");
-                setMerciForm({ 
-                    id: null, data_ricezione: new Date().toISOString().split('T')[0],
-                    fornitore:'', prodotto:'', quantita:'', unita_misura: 'Pz', prezzo_unitario:'', iva:'', prezzo:'', 
-                    lotto:'', scadenza:'', note:'', allegato_url:'', destinazione:'', temperatura: '', conforme: true, integro: true
-                });
-                ricaricaDati();
-                setTab('lista'); // Torna alla lista
+if(data.success) {
+    alert(merciForm.id ? "✅ Aggiornato!" : "✅ Salvato correttamente!");
+    
+    setMerciForm({ 
+        id: null, 
+        // ERRORE ERA QUI: data_ricezione: new Date().toISOString().split('T')[0],
+        data_ricezione: getNowLocalISO(), // <--- CORREZIONE: Richiama la funzione che include l'ora attuale
+        fornitore:'', prodotto:'', quantita:'', unita_misura: 'Pz', prezzo_unitario:'', iva:'', prezzo:'', 
+        lotto:'', scadenza:'', note:'', allegato_url:'', destinazione:'', temperatura: '', conforme: true, integro: true
+    });
+    
+    ricaricaDati();
+    setTab('lista'); // Torna alla lista
             } else { alert("Errore salvataggio: " + data.error); }
         } catch (err) { alert("Errore connessione salvataggio"); }
     };
@@ -563,7 +567,22 @@ function AdminMagazzino({ user, API_URL }) {
                             </div>
 
                             <button type="submit" style={{padding:'10px 25px', background: merciForm.id ? '#f39c12' : '#27ae60', color:'white', border:'none', borderRadius:5, fontWeight:'bold', cursor:'pointer', height:42}}>{merciForm.id ? 'AGGIORNA' : 'SALVA'}</button>
-                            {merciForm.id && <button type="button" onClick={()=>{setMerciForm({id:null, data_ricezione: new Date().toISOString().split('T')[0], fornitore:'', prodotto:'', quantita:'', unita_misura:'Pz', prezzo:'', prezzo_unitario:'', iva:'', lotto:'', scadenza:'', note:'', allegato_url:''});}} style={{padding:'10px', background:'#95a5a6', color:'white', border:'none', borderRadius:5, cursor:'pointer', height:42}}>ANNULLA</button>}
+{merciForm.id && 
+    <button type="button" 
+        onClick={()=>{
+            setMerciForm({
+                id:null, 
+                // ERRORE ERA QUI: data_ricezione: new Date().toISOString().split('T')[0],
+                data_ricezione: getNowLocalISO(), // <--- CORREZIONE
+                fornitore:'', prodotto:'', quantita:'', unita_misura:'Pz', 
+                prezzo:'', prezzo_unitario:'', iva:'', lotto:'', scadenza:'', 
+                note:'', allegato_url:''
+            });
+        }} 
+        style={{padding:'10px', background:'#95a5a6', color:'white', border:'none', borderRadius:5, cursor:'pointer', height:42}}>
+        ANNULLA
+    </button>
+}
                         </form>
                     </div>
                 </div>
