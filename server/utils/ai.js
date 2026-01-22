@@ -1,14 +1,16 @@
 // PERCORSO: server/utils/ai.js
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-/* CONFIGURAZIONE MODELLI: SOLO PRO
-   Dato che hai attivato la fatturazione, usiamo SOLO i modelli PRO
-   per garantire la massima precisione sui PDF complessi.
+/* CONFIGURAZIONE MODELLI 2026
+   Basata sui log aggiornati:
+   - gemini-1.5-pro è deprecato/rinominato.
+   - Il nuovo standard è "gemini-3-pro-preview" o "gemini-2.0-pro-exp".
 */
 const MODELS_TO_TRY = [
-    "gemini-1.5-pro",         // Versione stabile Pro
-    "gemini-1.5-pro-latest",  // Versione più recente
-    "gemini-1.5-pro-002"      // Versione specifica (molto stabile)
+    "gemini-3-pro-preview",    // <--- IL NUOVO STANDARD (dal tuo log)
+    "gemini-2.0-pro-exp",      // <--- FALLBACK STABILE
+    "gemini-1.5-pro-latest",   // Tentativo legacy
+    "gemini-pro"               // Ultima spiaggia (modello base sempre attivo)
 ];
 
 async function analyzeImageWithGemini(buffer, mimeType, promptText) {
@@ -19,10 +21,10 @@ async function analyzeImageWithGemini(buffer, mimeType, promptText) {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     let lastError = null;
 
-    // TENTA I MODELLI PRO UNO PER UNO
+    // TENTA I MODELLI UNO PER UNO
     for (const modelName of MODELS_TO_TRY) {
         try {
-            // console.log(`🤖 Analisi in corso con: ${modelName}...`);
+            // console.log(`Tentativo con modello: ${modelName}`); // Debug
             
             const model = genAI.getGenerativeModel({ 
                 model: modelName,
@@ -42,14 +44,15 @@ async function analyzeImageWithGemini(buffer, mimeType, promptText) {
             return JSON.parse(responseText);
 
         } catch (e) {
-            // Se fallisce, logga e prova la prossima versione PRO
-            console.warn(`⚠️ Errore con ${modelName}: ${e.message}. Riprovo con variante...`);
+            // Se il modello non esiste (404) o è sovraccarico, passa al prossimo
+            console.warn(`⚠️ Modello ${modelName} fallito (${e.message}). Provo il prossimo...`);
             lastError = e;
             continue; 
         }
     }
 
-    throw new Error(`Analisi fallita. Assicurati che la chiave API sia attiva e con fatturazione abilitata. Errore: ${lastError?.message}`);
+    // Se arrivi qui, tutti i modelli hanno fallito.
+    throw new Error(`Tutti i modelli AI hanno restituito errore. Ultimo tentativo: ${lastError?.message}`);
 }
 
 module.exports = { analyzeImageWithGemini };
