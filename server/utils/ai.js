@@ -1,13 +1,24 @@
-// PERCORSO FILE: server/utils/ai.js
+// PERCORSO: server/utils/ai.js
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-// LISTA INTELLIGENTE: Se il primo fallisce, prova il secondo, ecc.
+/* CONFIGURAZIONE PRIORITÀ MODELLI
+   Il sistema proverà questi modelli in ordine sequenziale.
+   
+   STRATEGIA ATTUALE (TEST): 
+   1. Prova PRO (Massima qualità).
+   2. Se fallisce (es. limiti superati), usa FLASH (Alta velocità/Limiti alti).
+   
+   NOTA PER IL FUTURO: Quando vorrai "Solo Pro", basterà rimuovere i modelli Flash da questa lista.
+*/
 const MODELS_TO_TRY = [
-    "gemini-3-flash-preview", // Modello 2026 (quello nuovo)
-    "gemini-1.5-flash-latest",
-    "gemini-1.5-flash",       
-    "gemini-1.5-flash-002",
-    "gemini-pro"
+    // --- LIVELLO 1: QUALITÀ MASSIMA (PRO) ---
+    "gemini-1.5-pro",         // Versione stabile Pro
+    "gemini-1.5-pro-latest",  // Versione Pro più recente
+    
+    // --- LIVELLO 2: SALVAGENTE (FLASH - Usato se Pro fallisce/supera limiti) ---
+    "gemini-3-flash-preview", // Modello 2026 (dal tuo log)
+    "gemini-1.5-flash",       // Flash standard stabile
+    "gemini-1.5-flash-002"    // Flash versione specifica
 ];
 
 async function analyzeImageWithGemini(buffer, mimeType, promptText) {
@@ -18,9 +29,12 @@ async function analyzeImageWithGemini(buffer, mimeType, promptText) {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     let lastError = null;
 
-    // TENTA I MODELLI UNO PER UNO
+    // CICLO DI TENTATIVI (FALLBACK)
     for (const modelName of MODELS_TO_TRY) {
         try {
+            // Decommenta per vedere nei log quale modello sta usando
+            // console.log(`🤖 Tentativo AI con modello: ${modelName}...`);
+            
             const model = genAI.getGenerativeModel({ 
                 model: modelName,
                 generationConfig: { responseMimeType: "application/json" }
@@ -36,17 +50,23 @@ async function analyzeImageWithGemini(buffer, mimeType, promptText) {
             const result = await model.generateContent([promptText, imagePart]);
             const responseText = result.response.text();
             
-            // Se arriviamo qui, ha funzionato!
+            // Se arriviamo qui, il modello ha funzionato! Restituiamo i dati.
             return JSON.parse(responseText);
 
         } catch (e) {
-            // Se è un errore 404 (modello non trovato) proviamo il prossimo
-            if (e.message.includes("404") || e.message.includes("not found")) {
-                console.warn(`⚠️ Modello ${modelName} non disponibile. Provo il prossimo...`);
+            // Analisi errore per capire se riprovare
+            const isRateLimit = e.message.includes("429") || e.message.includes("Too Many Requests") || e.message.includes("quota");
+            const isNotFound = e.message.includes("404") || e.message.includes("not found");
+            const isOverloaded = e.message.includes("503") || e.message.includes("overloaded");
+
+            if (isRateLimit || isNotFound || isOverloaded) {
+                console.warn(`⚠️ Modello ${modelName} non disponibile (Err: ${isRateLimit ? 'Rate Limit' : 'Errore'}). Passo al prossimo...`);
                 lastError = e;
-                continue; 
+                continue; // Passa al prossimo modello nella lista
             }
-            throw e; // Altri errori (es. chiave scaduta) fermano tutto
+            
+            // Se è un errore grave (es. chiave API non valida), fermati subito.
+            throw e; 
         }
     }
 
