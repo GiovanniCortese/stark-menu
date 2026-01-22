@@ -292,9 +292,9 @@ router.post('/api/haccp/scan-bolla', uploadFile.single('photo'), async (req, res
 
         // Inizializza Gemini
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        // Usa il modello Flash per velocità ed economia
+// MODIFICA QUI: Usiamo il modello 2026 indicato nel tuo log
 const model = genAI.getGenerativeModel({ 
-    model: "gemini-1.5-flash-002", 
+    model: "gemini-3-flash-preview", 
     generationConfig: { responseMimeType: "application/json" }
 });
 

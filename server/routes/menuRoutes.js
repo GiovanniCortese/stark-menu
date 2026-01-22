@@ -107,9 +107,9 @@ router.post('/api/menu/scan-photo', uploadFile.single('photo'), async (req, res)
 
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
         
-        // MODIFICA QUI: Uso il nome del modello "latest" che è più stabile
-        const model = genAI.getGenerativeModel({ 
-    model: "gemini-1.5-flash-002", 
+   // MODIFICA QUI: Usiamo il modello 2026 indicato nel tuo log
+const model = genAI.getGenerativeModel({ 
+    model: "gemini-3-flash-preview", 
     generationConfig: { responseMimeType: "application/json" }
 });
 
