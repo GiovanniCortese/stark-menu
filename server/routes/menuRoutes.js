@@ -93,34 +93,20 @@ router.put('/api/prodotti/:id', async (req, res) => {
 
 router.delete('/api/prodotti/:id', async (req, res) => { try { await pool.query('DELETE FROM prodotti WHERE id=$1', [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
 
-// --- SCANSIONE MENU CON GEMINI AI (CORRETTO) ---
+// --- SCANSIONE MENU INTELLIGENTE (IMG + PDF + AUTO-FIX) ---
 router.post('/api/menu/scan-photo', uploadFile.single('photo'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: "Nessun file inviato" });
-        if (!process.env.GEMINI_API_KEY) return res.status(500).json({ error: "Manca API Key Gemini" });
 
-        if (req.file.mimetype === 'application/pdf') {
-             return res.status(400).json({ 
-                 error: "PDF rilevato. Per la scansione automatica AI, usa un'immagine (screenshot o foto jpg/png)." 
-             });
-        }
-
-        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        
-   // MODIFICA QUI: Usiamo il modello 2026 indicato nel tuo log
-const model = genAI.getGenerativeModel({ 
-    model: "gemini-3-flash-preview", 
-    generationConfig: { responseMimeType: "application/json" }
-});
-
+        // Prompt specifico per i Menu
         const prompt = `
-        Sei un esperto ristoratore. Analizza l'immagine del menù.
+        Sei un esperto ristoratore. Analizza questo file (immagine o PDF del menù).
         Estrai i piatti raggruppandoli.
         
         REGOLE:
         1. Se ci sono ingredienti o descrizioni sotto il piatto, mettili nell'array "ingredienti".
-        2. "descrizione" usala solo per note extra.
-        3. Deduci la categoria (Antipasti, Primi, ecc).
+        2. "descrizione" usala solo per note extra o lasciala vuota.
+        3. Deduci la categoria (Antipasti, Primi, Pizze, ecc) dal contesto visivo.
         
         Restituisci SOLO un JSON valido (array di oggetti):
         [
@@ -133,22 +119,14 @@ const model = genAI.getGenerativeModel({
             }
         ]`;
 
-        const imagePart = {
-            inlineData: {
-                data: req.file.buffer.toString("base64"),
-                mimeType: req.file.mimetype
-            }
-        };
-
-        const result = await model.generateContent([prompt, imagePart]);
-        const text = result.response.text();
-        const data = JSON.parse(text);
+        // Chiamata al cervello centrale (gestisce PDF, Immagini e errori di versione)
+        const data = await analyzeImageWithGemini(req.file.buffer, req.file.mimetype, prompt);
         
         res.json({ success: true, data });
 
     } catch (e) {
-        console.error("Errore AI Menu (Gemini):", e);
-        res.status(500).json({ error: "Errore durante l'analisi AI: " + e.message });
+        console.error("Errore Scan Menu:", e);
+        res.status(500).json({ error: "Errore AI: " + e.message });
     }
 });
 

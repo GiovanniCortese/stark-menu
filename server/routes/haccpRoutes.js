@@ -278,14 +278,8 @@ router.post('/api/haccp/scan-bolla', uploadFile.single('photo'), async (req, res
         const fileUrl = await uploadToCloud();
         const isPdf = req.file.mimetype === 'application/pdf';
 
-        // Se è PDF, restituiamo l'URL ma non usiamo l'AI (Gemini supporta PDF ma per semplicità ora gestiamo immagini)
-        if (isPdf) {
-            return res.json({ 
-                success: true, 
-                message: "PDF caricato. L'AI richiede un'immagine per la lettura automatica.",
-                data: { allegato_url: fileUrl, prodotti: [] }
-            });
-        }
+// MODIFICA: Ora passiamo il PDF direttamente all'AI!
+// Gemini legge i PDF nativamente, quindi non serve bloccarli.
 
         // AI ANALYSIS (Solo Immagini) - MODIFICA PER GEMINI
         if (!process.env.GEMINI_API_KEY) return res.json({ success: true, message: "AI non configurata (Key mancante).", data: { allegato_url: fileUrl } });
