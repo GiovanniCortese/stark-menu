@@ -293,10 +293,10 @@ router.post('/api/haccp/scan-bolla', uploadFile.single('photo'), async (req, res
         // Inizializza Gemini
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
         // Usa il modello Flash per velocità ed economia
-        const model = genAI.getGenerativeModel({ 
-            model: "gemini-1.5-flash-latest",
-            generationConfig: { responseMimeType: "application/json" } // Forza output JSON
-        });
+const model = genAI.getGenerativeModel({ 
+    model: "gemini-1.5-flash-002", 
+    generationConfig: { responseMimeType: "application/json" }
+});
 
         // Prompt
         const prompt = `Sei un assistente magazzino esperto. Analizza questa bolla di consegna.

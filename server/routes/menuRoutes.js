@@ -109,9 +109,9 @@ router.post('/api/menu/scan-photo', uploadFile.single('photo'), async (req, res)
         
         // MODIFICA QUI: Uso il nome del modello "latest" che è più stabile
         const model = genAI.getGenerativeModel({ 
-            model: "gemini-1.5-flash-latest", 
-            generationConfig: { responseMimeType: "application/json" }
-        });
+    model: "gemini-1.5-flash-002", 
+    generationConfig: { responseMimeType: "application/json" }
+});
 
         const prompt = `
         Sei un esperto ristoratore. Analizza l'immagine del menù.
