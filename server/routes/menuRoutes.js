@@ -3,7 +3,10 @@ const router = express.Router();
 const pool = require('../config/db');
 const { uploadFile } = require('../config/storage');
 const xlsx = require('xlsx');
-const OpenAI = require('openai');
+
+// --- SOSTITUZIONE: DA OPENAI A GEMINI ---
+// const OpenAI = require('openai'); // RIMOSSO
+const { GoogleGenerativeAI } = require("@google/generative-ai"); // AGGIUNTO
 
 // Get Menu (Public)
 router.get('/api/menu/:slug', async (req, res) => { 
@@ -90,67 +93,62 @@ router.put('/api/prodotti/:id', async (req, res) => {
 
 router.delete('/api/prodotti/:id', async (req, res) => { try { await pool.query('DELETE FROM prodotti WHERE id=$1', [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
 
-// --- SCANSIONE MENU CON AI (PDF e IMG) ---
+// --- SCANSIONE MENU CON GEMINI AI (PDF e IMG) ---
 router.post('/api/menu/scan-photo', uploadFile.single('photo'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: "Nessun file inviato" });
-        if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: "Manca API Key OpenAI" });
+        if (!process.env.GEMINI_API_KEY) return res.status(500).json({ error: "Manca API Key Gemini" });
 
-        // Gestione PDF: Per ora avvisiamo l'utente, poiché GPT-4o Vision richiede immagini.
-        // Se volessi supportare PDF dovresti convertirli lato server, ma richiede librerie pesanti.
-        // La soluzione migliore è accettare il file ma se è PDF tornare un errore gentile o un fallback.
+        // Gestione PDF: Gemini supporta PDF ma per semplicità ora richiediamo immagini
         if (req.file.mimetype === 'application/pdf') {
              return res.status(400).json({ 
-                 error: "PDF rilevato. Per la scansione automatica AI, per favore carica un'immagine (screenshot o foto jpg/png). Il PDF non è ancora supportato per l'OCR diretto." 
+                 error: "PDF rilevato. Per la scansione automatica AI, per favore carica un'immagine (screenshot o foto jpg/png)." 
              });
         }
 
-        const base64Image = req.file.buffer.toString('base64');
-        const dataUrl = `data:${req.file.mimetype};base64,${base64Image}`;
-        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-        const response = await openai.chat.completions.create({
-            model: "gpt-4o",
-            messages: [
-                {
-                    role: "system",
-                    content: `Sei un esperto ristoratore. Analizza l'immagine del menù.
-                    Estrai i piatti raggruppandoli.
-                    
-                    REGOLE FONDAMENTALI:
-                    1. Se ci sono ingredienti o descrizioni sotto il piatto, mettili nell'array "ingredienti" (non nella descrizione).
-                    2. Usa il campo "descrizione" solo per note extra o lascialo vuoto se hai spostato tutto negli ingredienti.
-                    3. Cerca di dedurre la categoria (es. Antipasti, Primi, Secondi) dal contesto visivo.
-                    
-                    Restituisci SOLO un JSON valido (array di oggetti):
-                    [
-                        { 
-                            "nome": "Carbonara", 
-                            "categoria": "Primi Piatti", 
-                            "ingredienti": ["Uova", "Guanciale", "Pecorino", "Pepe"],
-                            "descrizione": "", 
-                            "prezzo": 12.00 
-                        }
-                    ]`
-                },
-                {
-                    role: "user",
-                    content: [
-                        { type: "text", text: "Estrai il menu da questa foto." },
-                        { type: "image_url", image_url: { url: dataUrl } }
-                    ]
-                }
-            ],
-            max_tokens: 3000
+        // Inizializza Gemini
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        // Usa il modello Flash ottimizzato per JSON
+        const model = genAI.getGenerativeModel({ 
+            model: "gemini-1.5-flash",
+            generationConfig: { responseMimeType: "application/json" }
         });
 
-        let text = response.choices[0].message.content.replace(/```json/g, '').replace(/```/g, '').trim();
+        const prompt = `
+        Sei un esperto ristoratore. Analizza l'immagine del menù.
+        Estrai i piatti raggruppandoli.
+        
+        REGOLE FONDAMENTALI:
+        1. Se ci sono ingredienti o descrizioni sotto il piatto, mettili nell'array "ingredienti" (non nella descrizione).
+        2. Usa il campo "descrizione" solo per note extra o lascialo vuoto se hai spostato tutto negli ingredienti.
+        3. Cerca di dedurre la categoria (es. Antipasti, Primi, Secondi) dal contesto visivo.
+        
+        Restituisci SOLO un JSON valido (array di oggetti) con questo schema:
+        [
+            { 
+                "nome": "Carbonara", 
+                "categoria": "Primi Piatti", 
+                "ingredienti": ["Uova", "Guanciale", "Pecorino", "Pepe"],
+                "descrizione": "", 
+                "prezzo": 12.00 
+            }
+        ]`;
+
+        const imagePart = {
+            inlineData: {
+                data: req.file.buffer.toString("base64"),
+                mimeType: req.file.mimetype
+            }
+        };
+
+        const result = await model.generateContent([prompt, imagePart]);
+        const text = result.response.text();
         const data = JSON.parse(text);
         
         res.json({ success: true, data });
 
     } catch (e) {
-        console.error("Errore AI Menu:", e);
+        console.error("Errore AI Menu (Gemini):", e);
         res.status(500).json({ error: "Errore durante l'analisi AI: " + e.message });
     }
 });
@@ -158,8 +156,6 @@ router.post('/api/menu/scan-photo', uploadFile.single('photo'), async (req, res)
 // Import Excel Menu (Upsert + Unità + Minimo)
 router.post('/api/import-excel', uploadFile.single('file'), async (req, res) => { 
     // ... (rest of excel import code same as before, no changes needed) ...
-    // Per brevità, se non hai modifiche qui, mantieni il codice precedente.
-    // Se serve, te lo rimetto completo, ma le modifiche richieste erano su scan e crash.
     const { ristorante_id } = req.body; 
     if (!req.file || !ristorante_id) return res.status(400).json({ error: "Dati mancanti." }); 
     const client = await pool.connect(); 
