@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-// Assicurati che il percorso punti a DOVE si trova MerciManager
-import MerciManager from './components/haccp/MerciManager'; 
+// MODIFICA: Importa il NUOVO manager
+import MagazzinoManager from './components/magazzino/MagazzinoManager'; 
 
 function Magazzino() {
     const { slug } = useParams();
     const [authorized, setAuthorized] = useState(false);
     const [password, setPassword] = useState("");
     const [ristoranteId, setRistoranteId] = useState(null);
-    // IMPORTANTE: URL del backend (Render)
     const API_URL = "https://stark-backend-gg17.onrender.com"; 
 
     useEffect(() => {
@@ -49,20 +48,11 @@ function Magazzino() {
     }
 
     return (
-        <div style={{minHeight:'100vh', background:'#ecf0f1'}}>
-            <div style={{background:'#2c3e50', padding:'15px', color:'white', display:'flex', justifyContent:'space-between'}}>
-                <h1 style={{fontSize:'1.2rem', margin:0}}>📦 Magazzino Generale</h1>
-                <button onClick={() => { localStorage.removeItem(`magazzino_auth_${slug}`); setAuthorized(false); }}>ESCI</button>
-            </div>
-            {/* COMPONENTE INTELLIGENTE */}
-            <MerciManager 
-                ristoranteId={ristoranteId} 
-                mode="all" 
-                title="Gestione Completa Stock (Tutti i reparti)" 
-                showHaccpToggle={true} 
-                API_URL={API_URL}
-            />
-        </div>
+        // Renderizziamo direttamente il nuovo Manager
+        <MagazzinoManager 
+            ristoranteId={ristoranteId} 
+            API_URL={API_URL}
+        />
     );
 }
 
