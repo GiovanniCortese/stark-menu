@@ -10,7 +10,7 @@ const formatDateISO = (date) => date.toISOString().split('T')[0];
 
 const MagazzinoManager = ({ user, API_URL }) => {
     const [tab, setTab] = useState('lista'); // 'dashboard', 'calendario', 'lista', 'carico'
-    const [stats, setStats] = useState({ fornitori: [], storico: [], top_prodotti: [] });
+    const [stats, setStats] = useState({ fornitori: [], storico: [], top_prodotti: [] }); // 'storico' qui conterrà la lista magazzino
     const [assets, setAssets] = useState([]); 
     
     // Stati Modali
@@ -25,25 +25,36 @@ const MagazzinoManager = ({ user, API_URL }) => {
 
     useEffect(() => { ricaricaDati(); }, []);
 
-const ricaricaDati = () => {
-        // Carica Statistiche e Storico
+    const ricaricaDati = () => {
+        // 1. CARICA IL VERO MAGAZZINO (Nuova Tabella)
+        // Usiamo la rotta che restituisce giacenze e anagrafica
+        fetch(`${API_URL}/api/magazzino/lista/${user.id}`)
+            .then(r => r.json())
+            .then(data => {
+                // Mappiamo i dati nell'oggetto stats.storico per compatibilità
+                setStats(prev => ({
+                    ...prev,
+                    storico: Array.isArray(data) ? data : [] 
+                }));
+            })
+            .catch(err => {
+                console.error("Errore caricamento lista magazzino:", err);
+                setStats(prev => ({ ...prev, storico: [] }));
+            });
+
+        // 2. Carica Statistiche (Grafici) - Opzionale, se ti servono ancora i grafici basati sullo storico HACCP
         fetch(`${API_URL}/api/haccp/stats/magazzino/${user.id}`)
             .then(r => r.json())
             .then(data => {
-                // CONTROLLO DI SICUREZZA: Se data.storico non esiste, metti un array vuoto
-                setStats({
+                setStats(prev => ({
+                    ...prev,
                     fornitori: data.fornitori || [],
-                    storico: Array.isArray(data.storico) ? data.storico : [], // <--- QUESTA RIGA EVITA IL CRASH
                     top_prodotti: data.top_prodotti || []
-                });
+                }));
             })
-            .catch(err => {
-                console.error("Errore caricamento magazzino:", err);
-                // In caso di errore, inizializza tutto vuoto per non rompere la pagina
-                setStats({ fornitori: [], storico: [], top_prodotti: [] });
-            });
+            .catch(console.error);
 
-        // Carica Assets
+        // 3. Carica Assets
         fetch(`${API_URL}/api/haccp/assets/${user.id}`)
             .then(r => r.json())
             .then(data => setAssets(Array.isArray(data) ? data : []))

@@ -572,7 +572,61 @@ router.post('/api/haccp/import-ricette', uploadFile.single('file'), async (req, 
 });
 
 // =================================================================================
-// 9. EXPORTS GLOBALI (Labels, Generic, PDF, Excel)
+// 9. API MAGAZZINO REALE (Giacenze & Anagrafica)
+// =================================================================================
+
+// GET LISTA GIACENZE (Con orario corretto IT)
+router.get('/api/magazzino/lista/:ristorante_id', async (req, res) => {
+    try {
+        const { ristorante_id } = req.params;
+        
+        // Query che formatta la data direttamente in Italiano
+        // Gestisce il caso NULL e converte da UTC a Europe/Rome
+        const query = `
+            SELECT 
+                id, nome, marca, categoria, unita_misura,
+                giacenza, scorta_minima,
+                prezzo_medio, prezzo_ultimo, iva,
+                to_char(updated_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Rome', 'DD/MM/YYYY HH24:MI') as ultima_modifica_it
+            FROM magazzino_prodotti 
+            WHERE ristorante_id = $1 
+            ORDER BY nome ASC
+        `;
+        
+        const r = await pool.query(query, [ristorante_id]);
+        res.json(r.rows);
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: "Errore caricamento magazzino" });
+    }
+});
+
+// UPDATE RAPIDO GIACENZA (Inventario)
+router.put('/api/magazzino/update-qta/:id', async (req, res) => {
+    try {
+        const { giacenza } = req.body;
+        await pool.query(
+            "UPDATE magazzino_prodotti SET giacenza = $1, updated_at = NOW() WHERE id = $2", 
+            [giacenza, req.params.id]
+        );
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: "Errore update" });
+    }
+});
+
+// DELETE PRODOTTO DA MAGAZZINO
+router.delete('/api/magazzino/prodotto/:id', async (req, res) => {
+    try {
+        await pool.query("DELETE FROM magazzino_prodotti WHERE id = $1", [req.params.id]);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: "Errore cancellazione" });
+    }
+});
+
+// =================================================================================
+// 10. EXPORTS GLOBALI (Labels, Generic, PDF, Excel)
 // =================================================================================
 
 // EXPORT Labels

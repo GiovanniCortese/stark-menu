@@ -1,114 +1,131 @@
 import React, { useState } from 'react';
 
-const formatTimeDate = (dateStr, timeStr) => {
-    if (!dateStr) return "-";
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return dateStr;
-
-    const day = date.toLocaleDateString('it-IT', { timeZone: 'Europe/Rome', day: '2-digit', month: '2-digit', year: 'numeric' });
-    let time = timeStr;
-    if (!time) {
-        time = date.toLocaleTimeString('it-IT', { timeZone: 'Europe/Rome', hour: '2-digit', minute: '2-digit' });
-    }
-    
-    return (
-        <div>
-            <div style={{fontWeight:'bold', color:'#2c3e50'}}>{day}</div>
-            <div style={{fontSize:'11px', color:'#7f8c8d'}}>ore {time}</div>
-        </div>
-    );
-};
-
-const MagazzinoList = ({ storico, ricaricaDati, API_URL, handleFileAction, avviaModifica, openDownloadModal }) => {
+const MagazzinoList = ({ storico, ricaricaDati, API_URL, avviaModifica }) => {
     const [filtro, setFiltro] = useState("");
+    const [editGiacenzaId, setEditGiacenzaId] = useState(null);
+    const [tempGiacenza, setTempGiacenza] = useState("");
 
-    const datiSicuri = Array.isArray(storico) ? storico : [];
+    // Filtro ricerca
+    const datiFiltrati = Array.isArray(storico) ? storico.filter(r => 
+        r.nome.toLowerCase().includes(filtro.toLowerCase()) || 
+        (r.marca && r.marca.toLowerCase().includes(filtro.toLowerCase()))
+    ) : [];
 
-    const eliminaMerce = async (id) => {
-        if(!window.confirm("Eliminare questa riga?")) return;
-        await fetch(`${API_URL}/api/haccp/merci/${id}`, {method:'DELETE'});
+    // Calcolo Totali Magazzino
+    const totaleValore = datiFiltrati.reduce((acc, curr) => {
+        const qta = parseFloat(curr.giacenza) || 0;
+        const prezzo = parseFloat(curr.prezzo_medio) || 0;
+        return acc + (qta * prezzo);
+    }, 0);
+
+    // Funzione Modifica Rapida Giacenza (Inventario)
+    const salvaNuovaGiacenza = async (id) => {
+        try {
+            await fetch(`${API_URL}/api/magazzino/update-qta/${id}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ giacenza: tempGiacenza })
+            });
+            setEditGiacenzaId(null);
+            ricaricaDati();
+        } catch(e) { alert("Errore aggiornamento"); }
+    };
+
+    const eliminaProdotto = async (id) => {
+        if(!window.confirm("Eliminare definitivamente dal magazzino?")) return;
+        await fetch(`${API_URL}/api/magazzino/prodotto/${id}`, {method:'DELETE'});
         ricaricaDati();
     };
 
-    const renderRowData = (r) => {
-        const qta = parseFloat(r.quantita) || 0;
-        const unit = parseFloat(r.prezzo_unitario) || 0;
-        const imp = parseFloat(r.prezzo) || (qta * unit); 
-        const ivaPerc = parseFloat(r.iva) || 0;
-        const ivaVal = imp * (ivaPerc / 100);
-        return { imp: imp.toFixed(2), ivaVal: ivaVal.toFixed(2), totIvato: (imp + ivaVal).toFixed(2) };
-    };
-
-const movimentiFiltrati = datiSicuri.filter(r => (r.prodotto + r.fornitore + (r.note||"") + r.data_ricezione).toLowerCase().includes(filtro.toLowerCase()));    
-    const totaleVista = movimentiFiltrati.reduce((acc, r) => {
-        const d = renderRowData(r);
-        return { imp: acc.imp + parseFloat(d.imp), iva: acc.iva + parseFloat(d.ivaVal), tot: acc.tot + parseFloat(d.totIvato) };
-    }, { imp: 0, iva: 0, tot: 0 });
-
     return (
-        <div style={{background:'white', padding:25, borderRadius:15, boxShadow:'0 4px 10px rgba(0,0,0,0.05)', marginTop:20}}>
-            <div style={{display:'flex', justifyContent:'space-between', marginBottom:20}}>
-                <h3>📦 Storico</h3>
-                <div style={{display:'flex', gap:10}}>
-                     <button onClick={openDownloadModal} style={{background:'#e67e22', color:'white', border:'none', padding:'8px 15px', borderRadius:5, cursor:'pointer', fontWeight:'bold'}}>⬇ Report</button>
-                     <input type="text" placeholder="Cerca..." value={filtro} onChange={e => setFiltro(e.target.value)} style={{padding:8, borderRadius:5, border:'1px solid #ddd'}} />
+        <div style={{background:'white', padding:20, borderRadius:15, boxShadow:'0 4px 10px rgba(0,0,0,0.05)'}}>
+            
+            {/* BARRA SUPERIORE */}
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20, flexWrap:'wrap', gap:10}}>
+                <div style={{position:'relative', width:'100%', maxWidth:'300px'}}>
+                    <span style={{position:'absolute', left:10, top:10}}>🔍</span>
+                    <input 
+                        type="text" 
+                        placeholder="Cerca prodotto..." 
+                        value={filtro}
+                        onChange={(e)=>setFiltro(e.target.value)}
+                        style={{width:'100%', padding:'10px 10px 10px 35px', borderRadius:20, border:'1px solid #ddd', outline:'none'}}
+                    />
+                </div>
+                <div style={{background:'#e8f8f5', padding:'10px 20px', borderRadius:10, color:'#27ae60', fontWeight:'bold', border:'1px solid #2ecc71'}}>
+                    💎 Valore Magazzino: € {totaleValore.toFixed(2)}
                 </div>
             </div>
+
+            {/* TABELLA PRODOTTI */}
             <div style={{overflowX:'auto'}}>
-                <table style={{width:'100%', borderCollapse:'collapse', fontSize:13}}>
+                <table style={{width:'100%', borderCollapse:'collapse', minWidth:600}}>
                     <thead>
-                        <tr style={{background:'#f0f0f0', textAlign:'left', color:'#333', borderBottom:'2px solid #ddd'}}>
-                            <th style={{padding:10}}>Data</th>
-                            <th style={{padding:10}}>Fornitore</th>
-                            <th style={{padding:10}}>Prodotto</th>
-                            <th style={{padding:10}}>Qta</th>
-                            <th style={{padding:10}}>UdM</th>
-                            <th style={{padding:10}}>Unit.</th>
-                            <th style={{padding:10}}>Tot. Imp.</th>
-                            <th style={{padding:10}}>IVA %</th>
-                            <th style={{padding:10}}>Tot. IVA</th>
-                            <th style={{padding:10}}>Tot. Ivato</th>
-                            <th style={{padding:10}}>Doc</th>
-                            <th style={{padding:10}}>Azioni</th>
+                        <tr style={{background:'#f8f9fa', color:'#7f8c8d', fontSize:12, textTransform:'uppercase'}}>
+                            <th style={{padding:15, textAlign:'left'}}>Prodotto</th>
+                            <th style={{padding:15, textAlign:'center'}}>Giacenza</th>
+                            <th style={{padding:15, textAlign:'right'}}>Prezzo Medio</th>
+                            <th style={{padding:15, textAlign:'right'}}>Valore Tot.</th>
+                            <th style={{padding:15, textAlign:'right'}}>Ultimo Agg.</th>
+                            <th style={{padding:15, textAlign:'center'}}>Azioni</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {movimentiFiltrati.slice(0, 100).map((r, i) => {
-                            const calcs = renderRowData(r);
+                        {datiFiltrati.map(p => {
+                            const giacenza = parseFloat(p.giacenza).toFixed(2);
+                            const scorta = parseFloat(p.scorta_minima) || 0;
+                            const isLowStock = parseFloat(p.giacenza) <= scorta;
+                            const prezzoMedio = parseFloat(p.prezzo_medio) || 0;
+                            const valoreTot = (parseFloat(p.giacenza) * prezzoMedio);
+
                             return (
-                                <tr key={i} style={{borderBottom:'1px solid #f1f1f1'}}>
-                                    <td style={{padding:10}}>{formatTimeDate(r.data_ricezione, r.ora)}</td>
-                                    <td style={{padding:10}}>{r.fornitore}</td>
-                                    <td style={{padding:10, fontWeight:'bold'}}>{r.prodotto}</td>
-                                    <td style={{padding:10}}>{r.quantita}</td>
-                                    <td style={{padding:10, fontWeight:'bold', color:'#34495e'}}>{r.unita_misura || 'Pz'}</td>
-                                    <td style={{padding:10}}>€ {r.prezzo_unitario || '-'}</td>
-                                    <td style={{padding:10}}>€ {calcs.imp}</td>
-                                    <td style={{padding:10}}>{r.iva ? r.iva + '%' : '-'}</td>
-                                    <td style={{padding:10, color:'#e67e22'}}>€ {calcs.ivaVal}</td>
-                                    <td style={{padding:10, fontWeight:'bold', color:'#27ae60'}}>€ {calcs.totIvato}</td>
-                                    <td style={{padding:10}}>
-                                    {r.allegato_url && <button onClick={() => handleFileAction(r.allegato_url, `Doc_${r.data_ricezione}`)} style={{background:'#3498db', color:'white', border:'none', borderRadius:3, padding:'2px 6px', cursor:'pointer'}}>📎</button>}
+                                <tr key={p.id} style={{borderBottom:'1px solid #eee', background: isLowStock ? '#fff5f5' : 'white'}}>
+                                    <td style={{padding:15}}>
+                                        <div style={{fontWeight:'bold', color:'#2c3e50', fontSize:15}}>{p.nome}</div>
+                                        <div style={{fontSize:11, color:'#95a5a6'}}>{p.marca} • {p.categoria}</div>
+                                        {isLowStock && <span style={{fontSize:10, background:'#c0392b', color:'white', padding:'2px 6px', borderRadius:4}}>⚠️ SCORTA BASSA</span>}
                                     </td>
-                                    <td style={{padding:10, display:'flex', gap:5}}>
-                                        <button onClick={()=>avviaModifica(r)} style={{border:'none', background:'none', cursor:'pointer', fontSize:18}} title="Modifica">✏️</button>
-                                        <button onClick={()=>eliminaMerce(r.id)} style={{border:'none', background:'none', cursor:'pointer', fontSize:18}} title="Elimina">🗑️</button>
+                                    
+                                    <td style={{padding:15, textAlign:'center'}}>
+                                        {editGiacenzaId === p.id ? (
+                                            <div style={{display:'flex', alignItems:'center', justifyContent:'center', gap:5}}>
+                                                <input 
+                                                    type="number" 
+                                                    value={tempGiacenza} 
+                                                    onChange={e=>setTempGiacenza(e.target.value)}
+                                                    style={{width:60, padding:5, borderRadius:5, border:'1px solid #3498db'}}
+                                                />
+                                                <button onClick={()=>salvaNuovaGiacenza(p.id)} style={{background:'#27ae60', color:'white', border:'none', borderRadius:3, cursor:'pointer'}}>OK</button>
+                                            </div>
+                                        ) : (
+                                            <div onClick={() => { setEditGiacenzaId(p.id); setTempGiacenza(p.giacenza); }} style={{cursor:'pointer', fontWeight:'bold', fontSize:16, color: isLowStock ? '#c0392b' : '#2c3e50', borderBottom:'1px dashed #ccc', display:'inline-block'}}>
+                                                {giacenza} <span style={{fontSize:11, fontWeight:'normal'}}>{p.unita_misura}</span>
+                                            </div>
+                                        )}
+                                    </td>
+
+                                    <td style={{padding:15, textAlign:'right'}}>€ {prezzoMedio.toFixed(2)}</td>
+                                    <td style={{padding:15, textAlign:'right', fontWeight:'bold', color:'#2980b9'}}>€ {valoreTot.toFixed(2)}</td>
+                                    
+                                    <td style={{padding:15, textAlign:'right', fontSize:12, color:'#7f8c8d'}}>
+                                        {/* QUI L'ORA SARÀ CORRETTA PERCHÉ ARRIVA GIÀ FORMATTATA DAL DB */}
+                                        {p.ultima_modifica_it || "-"}
+                                    </td>
+
+                                    <td style={{padding:15, textAlign:'center'}}>
+                                        <button onClick={()=>eliminaProdotto(p.id)} style={{border:'none', background:'transparent', cursor:'pointer', fontSize:18}} title="Elimina">🗑️</button>
                                     </td>
                                 </tr>
                             );
                         })}
                     </tbody>
-                    <tfoot style={{background:'#2c3e50', color:'white', fontWeight:'bold'}}>
-                        <tr>
-                            <td colSpan={6} style={{padding:15, textAlign:'right'}}>TOTALE:</td>
-                            <td style={{padding:15}}>€ {totaleVista.imp.toFixed(2)}</td>
-                            <td></td>
-                            <td style={{padding:15}}>€ {totaleVista.iva.toFixed(2)}</td>
-                            <td style={{padding:15, color:'#2ecc71'}}>€ {totaleVista.tot.toFixed(2)}</td>
-                            <td colSpan={2}></td>
-                        </tr>
-                    </tfoot>
                 </table>
+                
+                {datiFiltrati.length === 0 && (
+                    <div style={{padding:40, textAlign:'center', color:'#aaa'}}>
+                        📭 Nessun prodotto in magazzino. Fai uno scan!
+                    </div>
+                )}
             </div>
         </div>
     );
