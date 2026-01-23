@@ -86,21 +86,73 @@ const MagazzinoUpload = ({ user, API_URL, ricaricaDati, recordDaModificare, setR
         });
     };
 
-    const handleScanBolla = async (e) => {
+const handleScanBolla = async (e) => {
         const file = e.target.files[0]; if(!file) return;
-        setIsScanning(true); setScannedData(null);
+        setIsScanning(true); 
+        
         try {
             const fd = new FormData();
-            if (file.type === 'application/pdf') fd.append('photo', file);
-            else { const compressed = await resizeImage(file, 800, 0.6); fd.append('photo', compressed); }
+            // Inviamo il file (PDF o Immagine)
+            fd.append('photo', file);
             
-            const res = await fetch(`${API_URL}/api/haccp/scan-bolla`, { method: 'POST', body: fd });
-            const json = await res.json();
+            // 1. SCANSIONE AI
+            const resAI = await fetch(`${API_URL}/api/haccp/scan-bolla`, { method: 'POST', body: fd });
+            const jsonAI = await resAI.json();
             
-            if (!json.success) throw new Error(json.error);
-            setScannedData(json.data);
-            if (json.isPdf) alert("📄 PDF Caricato! Allega e usa i dati di testata.");
-        } catch(err) { alert("⚠️ ERRORE SCANSIONE: " + err.message); } finally { setIsScanning(false); e.target.value = null; }
+            if (!jsonAI.success) throw new Error(jsonAI.error || "Errore AI");
+            
+            const datiTestata = jsonAI.data;
+            const prodottiTrovati = datiTestata.prodotti || [];
+
+            if (prodottiTrovati.length === 0) throw new Error("Nessun prodotto trovato nel documento.");
+
+            // 2. PREPARAZIONE DATI PER IMPORT MASSIVO
+            // Uniamo i dati della testata (Fornitore, Data) su ogni singola riga prodotto
+            const merceDaImportare = prodottiTrovati.map(p => ({
+                ristorante_id: user.id,
+                data_ricezione: datiTestata.data_ricezione || new Date().toISOString().split('T')[0],
+                ora: datiTestata.ora_consegna || "12:00",
+                fornitore: datiTestata.fornitore || "Fornitore Sconosciuto",
+                note: `Rif. Doc: ${datiTestata.numero_documento || 'ND'}`,
+                
+                prodotto: p.nome,
+                quantita: p.quantita || 1,
+                unita_misura: p.unita_misura || 'Pz',
+                prezzo_unitario: p.prezzo_unitario || 0,
+                iva: p.iva || 0,
+                prezzo: p.prezzo_totale || ((p.quantita || 1) * (p.prezzo_unitario || 0)), // Totale riga
+                
+                lotto: p.lotto || '',
+                scadenza: p.scadenza || null,
+                is_haccp: true, // Di default assumiamo sia merce alimentare se siamo in questo contesto
+                operatore: 'MAGIC_SCAN'
+            }));
+
+            // 3. INVIO DIRETTO ALL'IMPORTATORE (Upsert)
+            const resImport = await fetch(`${API_URL}/api/haccp/merci/import`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ merci: merceDaImportare })
+            });
+
+            const jsonImport = await resImport.json();
+
+            if (jsonImport.success) {
+                // 4. FEEDBACK UTENTE (Stile AdminMenu)
+                alert(`✅ SCANSIONE COMPLETATA!\n\n🆕 ${jsonImport.inserted} nuovi prodotti inseriti\n🔄 ${jsonImport.updated} prodotti aggiornati`);
+                ricaricaDati(); // Aggiorna la tabella sotto
+                if(onSuccess) onSuccess();
+            } else {
+                throw new Error(jsonImport.error);
+            }
+
+        } catch(err) { 
+            console.error(err);
+            alert("⚠️ ERRORE: " + err.message); 
+        } finally { 
+            setIsScanning(false); 
+            e.target.value = null; 
+        }
     };
 
     const usaDatiTestata = () => {
@@ -224,16 +276,15 @@ const MagazzinoUpload = ({ user, API_URL, ricaricaDati, recordDaModificare, setR
 
     return (
         <div>
-             <div style={{display:'flex', gap:15, marginBottom:20, flexWrap:'wrap'}}>
+<div style={{display:'flex', gap:15, marginBottom:20, flexWrap:'wrap'}}>
+                {/* TASTO MAGIC SCAN */}
                 <div onClick={() => fileInputRef.current.click()} style={{flex:1, minWidth:300, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', padding:20, borderRadius:15, color:'white', display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer', boxShadow:'0 4px 10px rgba(0,0,0,0.1)'}}>
-                    <div><h3 style={{margin:0}}>✨ Magic Scan (AI)</h3><p style={{margin:0, fontSize:12}}>Scansiona Fattura/Bolla</p></div>
+                    <div>
+                        <h3 style={{margin:0}}>✨ Magic Scan (Auto-Import)</h3>
+                        <p style={{margin:0, fontSize:12}}>Carica Bolla - Importazione Automatica</p>
+                    </div>
                     <span style={{fontSize:24}}>{isScanning ? '⏳' : '📸'}</span>
                     <input type="file" ref={fileInputRef} accept="image/*,application/pdf" onChange={handleScanBolla} style={{display:'none'}} />
-                </div>
-                <div onClick={() => importExcelRef.current.click()} style={{flex:1, minWidth:300, background:'white', padding:20, borderRadius:15, boxShadow:'0 4px 10px rgba(0,0,0,0.05)', display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer', borderLeft:'5px solid #27ae60'}}>
-                    <div><h3 style={{margin:0, color:'#27ae60'}}>📊 Importa Excel</h3><p style={{margin:0, fontSize:12}}>Carica lista prodotti</p></div>
-                    <span style={{fontSize:24}}>📂</span>
-                    <input type="file" ref={importExcelRef} accept=".xlsx, .xls" onChange={handleImportExcel} style={{display:'none'}} />
                 </div>
             </div>
 

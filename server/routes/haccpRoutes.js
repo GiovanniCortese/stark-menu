@@ -254,64 +254,53 @@ router.get('/api/db-fix-magazzino-v2', async (req, res) => {
 });
 
 // =================================================================================
-// 7. MAGIC SCAN (CORRETTO E UNIFICATO CON ADMIN MENU STYLE)
+// 7. MAGIC SCAN (CORRETTO E UNIFICATO STILE ADMIN MENU)
 // =================================================================================
 router.post('/api/haccp/scan-bolla', uploadFile.single('photo'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: "Nessun file inviato" });
 
-        // 1. Definizione del Prompt specifico per il Magazzino
-        // Chiediamo all'AI di comportarsi da Magazziniere Esperto
+        // Prompt specifico per Bolle/Fatture
         const prompt = `
-        Sei un assistente magazzino esperto e meticoloso. Analizza questa immagine (Bolla di accompagnamento, Fattura o DDT).
-        Devi estrarre i dati in un formato JSON rigoroso per l'importazione nel gestionale.
+        Sei un assistente contabile esperto. Analizza questa bolla/fattura.
+        Estrai i dati per un'importazione massiva.
+        
+        REGOLE:
+        1. Estrai i dati di TESTATA: Fornitore, Data Documento (YYYY-MM-DD), Numero Documento.
+        2. Estrai i dati delle RIGHE (Prodotti):
+           - "nome": Nome prodotto pulito.
+           - "quantita": Numero (es. 10).
+           - "unita_misura": Pz, Kg, Lt, ecc.
+           - "prezzo_unitario": Prezzo del singolo pezzo (senza IVA).
+           - "iva": Aliquota IVA (es. 10, 22). Se non c'è metti 0.
+           - "prezzo_totale": Il totale della riga.
+           - "lotto": Se presente.
+           - "scadenza": Se presente (YYYY-MM-DD).
 
-        REGOLE DI ESTRAZIONE:
-        1. "fornitore": Il nome dell'azienda che invia la merce.
-        2. "data_ricezione": Data del documento (formato YYYY-MM-DD). Se non c'è, usa la data di oggi.
-        3. "ora_consegna": Cerca un orario di consegna o stampa. Se non c'è, lascia stringa vuota "".
-        4. "numero_documento": Il numero della fattura o del DDT.
-        5. "prodotti": Una lista array. Per ogni riga:
-           - "nome": Nome del prodotto (es. "Farina 00", "Pomodori Pelati").
-           - "quantita": Solo il numero (es. 10). Se è "10 kg", scrivi 10.
-           - "prezzo": Il prezzo totale della riga se presente, o unitario. Se manca metti 0.
-           - "scadenza": Se trovi una data di scadenza o TMC specifica per quel prodotto, mettila (YYYY-MM-DD). Altrimenti null.
-           - "lotto": Se trovi un codice lotto specifico, mettilo. Altrimenti null.
-           - "is_haccp": true se è cibo/bevanda, false se è detersivo/carta/materiale.
-
-        OUTPUT ATTESO (Solo JSON puro, senza markdown):
+        OUTPUT JSON:
         {
-            "fornitore": "Metro Cash&Carry",
-            "data_ricezione": "2024-05-20", 
-            "ora_consegna": "10:30",
-            "numero_documento": "A-12345",
+            "fornitore": "Metro",
+            "data_ricezione": "2024-05-20",
+            "numero_documento": "A-123",
             "prodotti": [
-                { "nome": "Mozzarella", "quantita": 5, "prezzo": 25.50, "scadenza": "2024-06-01", "lotto": "L123", "is_haccp": true },
-                { "nome": "Carta Forno", "quantita": 2, "prezzo": 8.00, "scadenza": null, "lotto": null, "is_haccp": false }
+                { "nome": "Farina", "quantita": 10, "unita_misura": "Kg", "prezzo_unitario": 1.50, "iva": 4, "prezzo_totale": 15.00, "lotto": "L123" }
             ]
         }`;
 
-        // 2. Chiamata alla funzione centralizzata (come in AdminMenu)
-        // Passiamo buffer e mimetype direttamente
+        // Chiamata centralizzata all'AI (risolve l'errore "not defined")
         const data = await analyzeImageWithGemini(req.file.buffer, req.file.mimetype, prompt);
 
-        // 3. Fallback per l'ora se l'AI non la trova
-        if (!data.ora_consegna) {
-             const now = new Date();
-             data.ora_consegna = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
-        }
+        // Aggiungiamo l'ora server se l'AI non la trova, utile per il DB
+        const now = new Date();
+        const oraCorrente = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+        data.ora_consegna = oraCorrente;
 
-        // 4. Se serve, rimandiamo indietro l'URL (se hai caricato su Cloudinary nella funzione uploadFile middleware)
-        // Nota: Se usi memoryStorage (buffer), req.file.path non esiste. 
-        // Se vuoi salvare l'URL, dovresti avere una logica di upload su Cloudinary qui o nel middleware.
-        // Per ora restituiamo i dati estratti.
-        
         res.json({ success: true, data });
 
     } catch (e) {
         console.error("Errore Scan Bolla:", e);
-        // Questo catch intercetta l'errore che vedevi nello screenshot e lo formatta
-        res.status(500).json({ error: "Errore server AI: " + e.message });
+        // Restituisce un errore pulito invece di crashare
+        res.status(500).json({ error: "Errore AI: " + e.message });
     }
 });
 
