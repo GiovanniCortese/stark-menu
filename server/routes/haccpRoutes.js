@@ -1,13 +1,86 @@
-// server/routes/haccpRoutes.js - FIXED PDF & GEMINI AI SCAN
+// server/routes/haccpRoutes.js - FIXED PDF & GEMINI AI SCAN (MAGAZZINO CENTRIC V2)
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
-const { getItalyDateComponents, getTimeItaly } = require('../utils/time'); // Assicurati di avere getTimeItaly in utils
-const { uploadFile, cloudinary } = require('../config/storage'); // Assicurati che uploadFile usi memoryStorage
+const { getItalyDateComponents, getTimeItaly } = require('../utils/time'); 
+const { uploadFile, cloudinary } = require('../config/storage'); 
 const PDFDocument = require('pdfkit-table');
 const xlsx = require('xlsx');
 const stream = require('stream');
 const { analyzeImageWithGemini } = require('../utils/ai');
+
+// =================================================================================
+// HELPER: GESTIONE CENTRALE MAGAZZINO (Update o Insert)
+// =================================================================================
+async function gestisciMagazzino(client, data) {
+    const { ristorante_id, prodotto, quantita, prezzo_unitario, iva, fornitore, unita_misura, lotto, data_bolla } = data;
+    
+    // Normalizzazione numeri
+    const qta = parseFloat(quantita) || 0;
+    const prezzoUnit = parseFloat(prezzo_unitario) || 0;
+    const aliquotaIva = parseFloat(iva) || 0;
+    
+    // Calcoli Fiscali Riga
+    const valoreNetto = qta * prezzoUnit;
+    const valoreIva = valoreNetto * (aliquotaIva / 100);
+    const valoreLordo = valoreNetto + valoreIva;
+
+    // 1. Cerca se esiste in Magazzino (Case Insensitive)
+    const check = await client.query(
+        `SELECT id, giacenza, prezzo_medio FROM magazzino_prodotti 
+         WHERE ristorante_id = $1 AND LOWER(nome) = LOWER($2)`,
+        [ristorante_id, prodotto.trim()]
+    );
+
+    let magazzinoId = null;
+
+    if (check.rows.length > 0) {
+        // --- ESISTE: AGGIORNA (MEDIA PONDERATA) ---
+        const existing = check.rows[0];
+        magazzinoId = existing.id;
+
+        const oldGiacenza = parseFloat(existing.giacenza) || 0;
+        const oldPrezzo = parseFloat(existing.prezzo_medio) || 0;
+        let newPrezzoMedio = oldPrezzo;
+
+        // Formula media ponderata
+        if ((oldGiacenza + qta) > 0) {
+            newPrezzoMedio = ((oldGiacenza * oldPrezzo) + (qta * prezzoUnit)) / (oldGiacenza + qta);
+        }
+
+        await client.query(
+            `UPDATE magazzino_prodotti SET 
+                giacenza = giacenza + $1,
+                prezzo_ultimo = $2,
+                prezzo_medio = $3,
+                valore_totale_netto = valore_totale_netto + $4,
+                valore_totale_iva = valore_totale_iva + $5,
+                valore_totale_lordo = valore_totale_lordo + $6,
+                lotto = COALESCE($7, lotto),
+                data_bolla = COALESCE($8, data_bolla),
+                updated_at = NOW()
+             WHERE id = $9`,
+            [qta, prezzoUnit, newPrezzoMedio, valoreNetto, valoreIva, valoreLordo, lotto, data_bolla, magazzinoId]
+        );
+    } else {
+        // --- NUOVO: CREA ---
+        const resInsert = await client.query(
+            `INSERT INTO magazzino_prodotti 
+            (ristorante_id, nome, marca, unita_misura, giacenza, scorta_minima, 
+             prezzo_ultimo, prezzo_medio, aliquota_iva, 
+             valore_totale_netto, valore_totale_iva, valore_totale_lordo, lotto, data_bolla)
+            VALUES ($1, $2, $3, $4, $5, 5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
+            [
+                ristorante_id, prodotto.trim(), fornitore || '', unita_misura || 'Pz', 
+                qta, prezzoUnit, prezzoUnit, aliquotaIva,
+                valoreNetto, valoreIva, valoreLordo, lotto, data_bolla
+            ]
+        );
+        magazzinoId = resInsert.rows[0].id;
+    }
+
+    return magazzinoId;
+}
 
 
 // =================================================================================
@@ -33,23 +106,20 @@ router.post('/api/haccp/labels', async (req, res) => { try { const { ristorante_
 router.get('/api/haccp/labels/storico/:ristorante_id', async (req, res) => { try { const { start, end } = req.query; let sql = "SELECT * FROM haccp_labels WHERE ristorante_id = $1"; const params = [req.params.ristorante_id]; if (start && end) { sql += " AND data_produzione >= $2 AND data_produzione <= $3 ORDER BY data_produzione ASC"; params.push(start, end); } else { sql += " AND data_produzione >= NOW() - INTERVAL '7 days' ORDER BY data_produzione DESC"; } const r = await pool.query(sql, params); res.json(r.rows); } catch(e) { res.status(500).json({error: "Errore recupero storico"}); } });
 
 // =================================================================================
-// 4. RICEVIMENTO MERCI (CRUD & LISTA)
+// 4. RICEVIMENTO MERCI (CRUD & LISTA & IMPORT)
 // =================================================================================
 router.get('/api/haccp/merci/:ristorante_id', async (req, res) => {
     try {
-        const { start, end, mode } = req.query; // mode = 'haccp' (solo alimenti) o 'all' (tutto)
+        const { start, end, mode } = req.query; 
         
         let sql = "SELECT * FROM haccp_merci WHERE ristorante_id = $1";
         const params = [req.params.ristorante_id];
         let paramIndex = 2;
 
-        // Filtro Mode
         if (mode === 'haccp') {
-            sql += " AND is_haccp = TRUE";
+            sql += " AND is_haccp = TRUE"; // Filtra solo roba alimentare
         }
-        // Se mode === 'all' non aggiungiamo filtri, prendiamo tutto
 
-        // Filtro Date
         if (start && end) {
             sql += ` AND data_ricezione >= $${paramIndex} AND data_ricezione <= $${paramIndex + 1}`;
             params.push(start, end);
@@ -57,14 +127,63 @@ router.get('/api/haccp/merci/:ristorante_id', async (req, res) => {
             sql += " AND data_ricezione >= NOW() - INTERVAL '60 days'";
         }
 
-        sql += " ORDER BY data_ricezione DESC, ora DESC"; // Ordine per data e poi ora
+        sql += " ORDER BY data_ricezione DESC, ora DESC"; 
         
         const r = await pool.query(sql, params);
         res.json(r.rows);
     } catch(e) { res.status(500).json({error:"Err"}); }
 });
 
-// IMPORT MASSIVO INTELLIGENTE V2 (Magazzino Centric)
+// --- INSERIMENTO SINGOLO MANUALE (MAGAZZINO CENTRIC) ---
+router.post('/api/haccp/merci', async (req, res) => { 
+    const client = await pool.connect();
+    try { 
+        await client.query('BEGIN');
+        
+        const { 
+            ristorante_id, data_ricezione, ora, fornitore, prodotto, 
+            lotto, scadenza, temperatura, conforme, integro, note, 
+            operatore, quantita, unita_misura, allegato_url, destinazione, 
+            prezzo_unitario, iva, is_haccp 
+        } = req.body; 
+
+        // 1. UPDATE/INSERT MAGAZZINO (SEMPRE)
+        const magazzinoId = await gestisciMagazzino(client, {
+            ristorante_id, prodotto, quantita, prezzo_unitario, iva, fornitore, 
+            unita_misura, lotto, data_bolla: data_ricezione
+        });
+
+        // 2. INSERT HACCP (SOLO SE CIBO)
+        // Se is_haccp è false (es. Detersivi), saltiamo la scrittura nel registro HACCP
+        if (is_haccp === true || is_haccp === 'true') {
+            await client.query(
+                `INSERT INTO haccp_merci (
+                    ristorante_id, magazzino_id, data_ricezione, ora, fornitore, prodotto, 
+                    lotto, scadenza, temperatura, conforme, integro, note, operatore, 
+                    quantita, unita_misura, allegato_url, destinazione, 
+                    prezzo_unitario, iva, is_haccp
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`, 
+                [
+                    ristorante_id, magazzinoId, data_ricezione, ora || '', fornitore, prodotto, 
+                    lotto, scadenza || null, temperatura, conforme, integro, note, operatore, 
+                    quantita, unita_misura || '', allegato_url, destinazione, 
+                    parseFloat(prezzo_unitario)||0, parseFloat(iva)||0, true
+                ]
+            );
+        }
+
+        await client.query('COMMIT');
+        res.json({success:true, message: is_haccp ? "Salvato HACCP + Magazzino" : "Salvato solo Magazzino (No HACCP)"}); 
+    } catch(e) { 
+        await client.query('ROLLBACK');
+        console.error(e);
+        res.status(500).json({error:"Err: " + e.message}); 
+    } finally {
+        client.release();
+    }
+});
+
+// --- IMPORT MASSIVO / SCAN (MAGAZZINO CENTRIC) ---
 router.post('/api/haccp/merci/import', async (req, res) => {
     const client = await pool.connect();
     try {
@@ -72,147 +191,71 @@ router.post('/api/haccp/merci/import', async (req, res) => {
         if (!Array.isArray(merci)) return res.status(400).json({ error: "Formato non valido" });
 
         await client.query('BEGIN');
-        let updated = 0;
         let inserted = 0;
+        let haccpLogs = 0;
         
         for (const m of merci) {
-            // ---------------------------------------------------------
-            // FASE 1: GESTIONE ANAGRAFICA MAGAZZINO (Il Master)
-            // ---------------------------------------------------------
-            
-            // Cerchiamo se il prodotto esiste già nel magazzino "vero"
-            let magazzinoId = null;
-            const checkMag = await client.query(
-                `SELECT id, giacenza, prezzo_medio FROM magazzino_prodotti 
-                 WHERE ristorante_id = $1 AND LOWER(nome) = LOWER($2)`,
-                [m.ristorante_id, m.prodotto]
-            );
+            // 1. GESTIONE MAGAZZINO (MASTER)
+            const magazzinoId = await gestisciMagazzino(client, {
+                ristorante_id: m.ristorante_id,
+                prodotto: m.prodotto,
+                quantita: m.quantita,
+                prezzo_unitario: m.prezzo_unitario,
+                iva: m.iva,
+                fornitore: m.fornitore,
+                unita_misura: m.unita_misura,
+                lotto: m.lotto,
+                data_bolla: m.data_ricezione
+            });
 
-            const qtaNuova = parseFloat(m.quantita) || 0;
-            const prezzoUnitNuovo = parseFloat(m.prezzo_unitario) || 0;
+            // 2. GESTIONE HACCP (CONDITIONAL)
+            if (m.is_haccp === true || m.is_haccp === 'true') {
+                // Check duplicati HACCP (evita doppio inserimento se clicchi 2 volte)
+                const checkHaccp = await client.query(`
+                    SELECT id FROM haccp_merci 
+                    WHERE ristorante_id = $1 
+                    AND magazzino_id = $2
+                    AND data_ricezione = $3 
+                    AND lotto = $4
+                `, [m.ristorante_id, magazzinoId, m.data_ricezione, m.lotto || '']);
 
-            if (checkMag.rows.length > 0) {
-                // ESISTE: Aggiorniamo giacenza e prezzo medio ponderato
-                const prod = checkMag.rows[0];
-                magazzinoId = prod.id;
-                
-                // Calcolo Prezzo Medio Ponderato (semplificato)
-                // (Vecchio Totale + Nuovo Totale) / (Vecchia Qta + Nuova Qta)
-                const vecchiaGiacenza = parseFloat(prod.giacenza) || 0;
-                const vecchioPrezzo = parseFloat(prod.prezzo_medio) || 0;
-                
-                let nuovoPrezzoMedio = vecchioPrezzo;
-                if ((vecchiaGiacenza + qtaNuova) > 0) {
-                    nuovoPrezzoMedio = ((vecchiaGiacenza * vecchioPrezzo) + (qtaNuova * prezzoUnitNuovo)) / (vecchiaGiacenza + qtaNuova);
+                if (checkHaccp.rows.length === 0) {
+                    await client.query(
+                        `INSERT INTO haccp_merci (
+                            ristorante_id, magazzino_id, data_ricezione, fornitore, prodotto, 
+                            quantita, prezzo_unitario, iva, 
+                            lotto, scadenza, operatore, note, conforme, integro, destinazione,
+                            ora, is_haccp, allegato_url
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, true, true, $13, $14, true, $15)`,
+                        [
+                            m.ristorante_id, magazzinoId, m.data_ricezione, m.fornitore, m.prodotto,
+                            m.quantita, m.prezzo_unitario || 0, m.iva || 0,
+                            m.lotto || '', m.scadenza || null, m.operatore || 'SCAN', m.note || '', 
+                            m.destinazione || '', m.ora, m.allegato_url || ''
+                        ]
+                    );
+                    haccpLogs++;
                 }
-
-                await client.query(
-                    `UPDATE magazzino_prodotti SET 
-                        giacenza = giacenza + $1,
-                        prezzo_ultimo = $2,
-                        prezzo_medio = $3,
-                        updated_at = NOW()
-                     WHERE id = $4`,
-                    [qtaNuova, prezzoUnitNuovo, nuovoPrezzoMedio, magazzinoId]
-                );
-                updated++;
-            } else {
-                // NON ESISTE: Creiamo anagrafica
-                const resInsert = await client.query(
-                    `INSERT INTO magazzino_prodotti 
-                    (ristorante_id, nome, marca, unita_misura, giacenza, prezzo_ultimo, prezzo_medio, iva, scorta_minima)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 5) RETURNING id`,
-                    [
-                        m.ristorante_id, 
-                        m.prodotto, 
-                        m.fornitore || '', // Usiamo fornitore come marca provvisoria se manca
-                        m.unita_misura || 'Pz',
-                        qtaNuova,
-                        prezzoUnitNuovo,
-                        prezzoUnitNuovo, // Il primo prezzo è anche il medio
-                        m.iva || 0
-                    ]
-                );
-                magazzinoId = resInsert.rows[0].id;
-                inserted++;
             }
-
-            // ---------------------------------------------------------
-            // FASE 2: REGISTRAZIONE HACCP (Il Log Storico)
-            // ---------------------------------------------------------
-            // Qui scriviamo SOLO l'evento di entrata, collegandolo al magazzino
-            
-            // Verifica duplicati nel registro HACCP (per non inserire due volte la stessa riga dello stesso documento)
-            const checkHaccp = await client.query(`
-                SELECT id FROM haccp_merci 
-                WHERE ristorante_id = $1 
-                AND LOWER(prodotto) = LOWER($2) 
-                AND LOWER(fornitore) = LOWER($3)
-                AND (note = $4 OR (note IS NULL AND $4 IS NULL))
-            `, [m.ristorante_id, m.prodotto, m.fornitore, m.note]);
-
-            if (checkHaccp.rows.length === 0) {
-                // Inseriamo nel registro HACCP collegandolo al magazzino_id
-                await client.query(
-                    `INSERT INTO haccp_merci (
-                        ristorante_id, magazzino_id, data_ricezione, fornitore, prodotto, 
-                        quantita, prezzo, prezzo_unitario, iva, 
-                        lotto, scadenza, operatore, note, conforme, integro, destinazione,
-                        ora, is_haccp, allegato_url
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, true, true, $14, $15, $16, $17)`,
-                    [
-                        m.ristorante_id, magazzinoId, m.data_ricezione, m.fornitore, m.prodotto,
-                        qtaNuova, m.prezzo, prezzoUnitNuovo, m.iva,
-                        m.lotto || '', m.scadenza || null, m.operatore || 'IMPORT', m.note || '', m.destinazione || '',
-                        m.ora, m.is_haccp, m.allegato_url || ''
-                    ]
-                );
-            }
+            inserted++;
         }
 
         await client.query('COMMIT');
-        res.json({ success: true, inserted, updated, message: `Magazzino Aggiornato: ${inserted} nuovi articoli, ${updated} giacenze aggiornate.` });
+        res.json({ 
+            success: true, 
+            message: `Magazzino: ${inserted} articoli elaborati. HACCP: ${haccpLogs} righe registrate.` 
+        });
 
     } catch (e) {
         await client.query('ROLLBACK');
-        console.error("Errore Import Magazzino:", e);
+        console.error("Errore Import:", e);
         res.status(500).json({ error: e.message });
     } finally {
         client.release();
     }
 });
 
-// ROTTE STANDARD (POST, PUT, DELETE) rimangono con i nuovi campi
-router.post('/api/haccp/merci', async (req, res) => { 
-    try { 
-        // Aggiungiamo 'ora' e 'unita_misura' al destructuring
-        const { 
-            ristorante_id, data_ricezione, ora, fornitore, prodotto, 
-            lotto, scadenza, temperatura, conforme, integro, note, 
-            operatore, quantita, unita_misura, allegato_url, destinazione, 
-            prezzo, prezzo_unitario, iva 
-        } = req.body; 
-
-        await pool.query(
-            `INSERT INTO haccp_merci (
-                ristorante_id, data_ricezione, ora, fornitore, prodotto, lotto, 
-                scadenza, temperatura, conforme, integro, note, operatore, 
-                quantita, unita_misura, allegato_url, destinazione, prezzo, prezzo_unitario, iva
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`, 
-            [
-                ristorante_id, data_ricezione, ora || '', fornitore, prodotto, lotto, 
-                scadenza, temperatura, conforme, integro, note, operatore, 
-                quantita, unita_misura || '', allegato_url, destinazione, 
-                prezzo || 0, prezzo_unitario || 0, iva || 0
-            ]
-        ); 
-        res.json({success:true}); 
-    } catch(e) { 
-        console.error(e);
-        res.status(500).json({error:"Err"}); 
-    } 
-});
-
+// Update standard (solo campi HACCP)
 router.put('/api/haccp/merci/:id', async (req, res) => { 
     try { 
         const { data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione, prezzo, prezzo_unitario, iva } = req.body; 
@@ -244,64 +287,31 @@ router.delete('/api/haccp/pulizie/:id', async (req, res) => { try { await pool.q
 router.get('/api/haccp/stats/magazzino/:ristorante_id', async (req, res) => {
     try {
         const { ristorante_id } = req.params;
-        
-        // 1. Totale speso per fornitore
-        const speseFornitori = await pool.query(`
-            SELECT fornitore, SUM(prezzo) as totale, COUNT(*) as numero_bolle 
-            FROM haccp_merci WHERE ristorante_id = $1 
-            GROUP BY fornitore ORDER BY totale DESC
-        `, [ristorante_id]);
-
-        // 2. Ultimi movimenti (Log completo)
-        const storico = await pool.query(`
-            SELECT * FROM haccp_merci WHERE ristorante_id = $1 ORDER BY data_ricezione DESC LIMIT 500
-        `, [ristorante_id]);
-
-        // 3. Top prodotti acquistati (per spesa)
-        const topProdotti = await pool.query(`
-            SELECT prodotto, SUM(prezzo) as totale_speso, COUNT(*) as acquisti 
-            FROM haccp_merci WHERE ristorante_id = $1 
-            GROUP BY prodotto ORDER BY totale_speso DESC LIMIT 10
-        `, [ristorante_id]);
-
-        res.json({ 
-            fornitori: speseFornitori.rows, 
-            storico: storico.rows,
-            top_prodotti: topProdotti.rows
-        });
+        const speseFornitori = await pool.query(`SELECT fornitore, SUM(prezzo) as totale, COUNT(*) as numero_bolle FROM haccp_merci WHERE ristorante_id = $1 GROUP BY fornitore ORDER BY totale DESC`, [ristorante_id]);
+        const storico = await pool.query(`SELECT * FROM haccp_merci WHERE ristorante_id = $1 ORDER BY data_ricezione DESC LIMIT 500`, [ristorante_id]);
+        const topProdotti = await pool.query(`SELECT prodotto, SUM(prezzo) as totale_speso, COUNT(*) as acquisti FROM haccp_merci WHERE ristorante_id = $1 GROUP BY prodotto ORDER BY totale_speso DESC LIMIT 10`, [ristorante_id]);
+        res.json({ fornitori: speseFornitori.rows, storico: storico.rows, top_prodotti: topProdotti.rows });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// --- 0. DB FIX (LANCIAMI UNA VOLTA DAL BROWSER: /api/db-fix-magazzino-v2) ---
+// --- DB FIX ---
 router.get('/api/db-fix-magazzino-v2', async (req, res) => {
     try {
         await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS is_haccp BOOLEAN DEFAULT FALSE");
-        // Opzionale: Se vuoi che tutto il vecchio storico sia HACCP di default, scommenta la riga sotto:
-        // await pool.query("UPDATE haccp_merci SET is_haccp = TRUE WHERE is_haccp IS NULL");
-        
-        // Assicuriamoci che ora esista
+        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS magazzino_id INTEGER");
         await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS ora TEXT DEFAULT ''");
-        
-        res.send("✅ DATABASE AGGIORNATO: Aggiunto flag 'is_haccp' e 'ora'!");
-    } catch (e) {
-        console.error("Errore DB Fix:", e);
-        res.status(500).send("Errore DB: " + e.message);
-    }
+        res.send("✅ DATABASE AGGIORNATO: is_haccp, magazzino_id, ora");
+    } catch (e) { res.status(500).send("Errore DB: " + e.message); }
 });
 
-// Helper per convertire date strane (12/05/2024 o 12-05-24) in YYYY-MM-DD
+// Helper Date
 function normalizzaData(dataStr) {
     if (!dataStr) return new Date().toISOString().split('T')[0];
     try {
-        // Rimuove testo inutile e tiene solo numeri e separatori
         const clean = dataStr.replace(/[^0-9\/\-\.]/g, ''); 
-        // Se è già ISO
         if (clean.match(/^\d{4}-\d{2}-\d{2}$/)) return clean;
-        
-        // Se è formato IT (DD/MM/YYYY o DD.MM.YYYY)
         let parts = clean.split(/[\/\-\.]/);
         if (parts.length === 3) {
-            // Gestione anno a 2 cifre
             if (parts[2].length === 2) parts[2] = "20" + parts[2]; 
             return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
         }
@@ -324,17 +334,16 @@ router.post('/api/haccp/scan-bolla', uploadFile.single('photo'), async (req, res
            - "nome": Descrizione completa.
            - "quantita": Il numero di pezzi o peso.
            - "unita_misura": TASSATIVO scegliere SOLO tra: "Kg", "Pz", "Colli", "Lt", "Ct". 
-             (Se vedi "KG" o "KGM" scrivi "Kg". Se vedi "PZ" o "NR" scrivi "Pz").
-           - "prezzo_unitario": IL PREZZO DEL SINGOLO PEZZO (Non il totale riga!).
-           - "iva": Aliquota (4, 10, 22). Se non c'è, intuisci dal prodotto (cibo=10, alcol=22).
-           - "lotto": Cerca codici come "L.", "Lotto", "Batch". Se non c'è, lascia stringa vuota.
-           - "scadenza": Cerca date future tipo "Scad.", "TMC". Formato YYYY-MM-DD.
+           - "prezzo_unitario": IL PREZZO DEL SINGOLO PEZZO.
+           - "iva": Aliquota (4, 10, 22).
+           - "lotto": Cerca codici come "L.", "Lotto".
+           - "scadenza": Cerca date future tipo "Scad.".
+           - "is_haccp": TRUE se è cibo/bevanda, FALSE se è detersivo/carta/attrezzatura.
 
         OUTPUT JSON STRETTO (Nessun commento, solo JSON):
         {
             "fornitore": "Nome Fornitore",
             "data_documento": "DD/MM/YYYY", 
-            "numero_documento": "1234/A",
             "prodotti": [
                 { 
                   "nome": "Farina 00", 
@@ -343,18 +352,14 @@ router.post('/api/haccp/scan-bolla', uploadFile.single('photo'), async (req, res
                   "prezzo_unitario": 0.85, 
                   "iva": 4, 
                   "lotto": "L23409",
-                  "scadenza": "2025-12-31" 
+                  "scadenza": "2025-12-31",
+                  "is_haccp": true
                 }
             ]
         }`;
 
         const data = await analyzeImageWithGemini(req.file.buffer, req.file.mimetype, prompt);
-
-        // NORMALIZZAZIONE DATI LATO SERVER
-        // 1. Correggiamo la data documento per il DB
         data.data_documento_iso = normalizzaData(data.data_documento);
-        
-        // 2. Ora corrente se manca
         const now = new Date();
         data.ora_inserimento = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
 
@@ -369,332 +374,134 @@ router.post('/api/haccp/scan-bolla', uploadFile.single('photo'), async (req, res
 // =================================================================================
 // 8. GESTIONE RICETTE & AUTO-MATCHING
 // =================================================================================
-// 1. Prendi tutte le ricette del ristorante
 router.get('/api/haccp/ricette/:ristorante_id', async (req, res) => {
     try {
         const { ristorante_id } = req.params;
-        // Prende ricette e, in un array aggregato, gli ingredienti
         const query = `
             SELECT r.id, r.nome, r.descrizione, 
             COALESCE(JSON_AGG(ri.ingrediente_nome) FILTER (WHERE ri.ingrediente_nome IS NOT NULL), '[]') as ingredienti
             FROM haccp_ricette r
             LEFT JOIN haccp_ricette_ingredienti ri ON r.id = ri.ricetta_id
             WHERE r.ristorante_id = $1
-            GROUP BY r.id
-            ORDER BY r.nome ASC
+            GROUP BY r.id ORDER BY r.nome ASC
         `;
         const result = await pool.query(query, [ristorante_id]);
         res.json(result.rows);
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 2. Crea una nuova Ricetta
 router.post('/api/haccp/ricette', async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        const { ristorante_id, nome, ingredienti } = req.body; // ingredienti è un array ["Farina", "Uova"]
-        
-        // Inserisci testata ricetta
-        const resRicetta = await client.query(
-            "INSERT INTO haccp_ricette (ristorante_id, nome) VALUES ($1, $2) RETURNING id",
-            [ristorante_id, nome]
-        );
+        const { ristorante_id, nome, ingredienti } = req.body; 
+        const resRicetta = await client.query("INSERT INTO haccp_ricette (ristorante_id, nome) VALUES ($1, $2) RETURNING id", [ristorante_id, nome]);
         const ricettaId = resRicetta.rows[0].id;
-
-        // Inserisci ingredienti
         if (Array.isArray(ingredienti)) {
             for (const ing of ingredienti) {
-                await client.query(
-                    "INSERT INTO haccp_ricette_ingredienti (ricetta_id, ingrediente_nome) VALUES ($1, $2)",
-                    [ricettaId, ing]
-                );
+                await client.query("INSERT INTO haccp_ricette_ingredienti (ricetta_id, ingrediente_nome) VALUES ($1, $2)", [ricettaId, ing]);
             }
         }
-
         await client.query('COMMIT');
         res.json({ success: true });
-    } catch (e) {
-        await client.query('ROLLBACK');
-        res.status(500).json({ error: e.message });
-    } finally {
-        client.release();
-    }
+    } catch (e) { await client.query('ROLLBACK'); res.status(500).json({ error: e.message }); } finally { client.release(); }
 });
 
-// 3. LA LOGICA "SMART MATCH" (Il cuore della richiesta)
 router.get('/api/haccp/ricette/match/:id', async (req, res) => {
     try {
-        const { id } = req.params; // ID della ricetta
+        const { id } = req.params; 
         const { ristorante_id } = req.query;
-
-        // Recupera gli ingredienti richiesti dalla ricetta
         const ingRes = await pool.query("SELECT ingrediente_nome FROM haccp_ricette_ingredienti WHERE ricetta_id = $1", [id]);
         const ingredientiRichiesti = ingRes.rows.map(r => r.ingrediente_nome);
-
         const risultati = [];
 
-        // Per ogni ingrediente richiesto, cerca nel magazzino
         for (const ingName of ingredientiRichiesti) {
-            // Cerca il prodotto più recente in magazzino che contenga il nome (ILIKE = case insensitive)
-            // Esclude prodotti scaduti
+            // MATCH SUL MAGAZZINO (più preciso di HACCP)
             const matchQuery = `
-                SELECT prodotto, fornitore, lotto, scadenza 
-                FROM haccp_merci 
+                SELECT nome as prodotto, marca as fornitore, lotto, updated_at as data_ricezione
+                FROM magazzino_prodotti 
                 WHERE ristorante_id = $1 
-                AND prodotto ILIKE $2 
-                AND (scadenza IS NULL OR scadenza >= CURRENT_DATE)
-                ORDER BY data_ricezione DESC 
+                AND nome ILIKE $2 
+                AND giacenza > 0
                 LIMIT 1
             `;
-            // %nome% permette di trovare "Farina 00" cercando "Farina"
             const matchRes = await pool.query(matchQuery, [ristorante_id, `%${ingName}%`]);
 
             if (matchRes.rows.length > 0) {
-                // TROVATO!
                 const item = matchRes.rows[0];
-                risultati.push({
-                    ingrediente_base: ingName,
-                    found: true,
-                    text: `${item.prodotto} - ${item.fornitore} (L:${item.lotto})`,
-                    dati_match: item
-                });
+                risultati.push({ ingrediente_base: ingName, found: true, text: `${item.prodotto} (L:${item.lotto || 'N/D'})`, dati_match: item });
             } else {
-                // NON TROVATO (O SCADUTO)
-                risultati.push({
-                    ingrediente_base: ingName,
-                    found: false,
-                    text: `${ingName} (MANCANTE)`,
-                    dati_match: null
-                });
+                risultati.push({ ingrediente_base: ingName, found: false, text: `${ingName} (MANCANTE)`, dati_match: null });
             }
         }
-
         res.json({ success: true, risultati });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 4. Elimina Ricetta
-router.delete('/api/haccp/ricette/:id', async (req, res) => {
-    try {
-        await pool.query("DELETE FROM haccp_ricette WHERE id = $1", [req.params.id]);
-        res.json({ success: true });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
+router.delete('/api/haccp/ricette/:id', async (req, res) => { try { await pool.query("DELETE FROM haccp_ricette WHERE id = $1", [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
 
-// 5. Modifica Ricetta
 router.put('/api/haccp/ricette/:id', async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
         const { nome, ingredienti } = req.body;
-        
-        // Aggiorna nome
         await client.query("UPDATE haccp_ricette SET nome = $1 WHERE id = $2", [nome, req.params.id]);
-
-        // Aggiorna ingredienti (Strategia: Cancella tutti e reinserisci)
         await client.query("DELETE FROM haccp_ricette_ingredienti WHERE ricetta_id = $1", [req.params.id]);
-        
         if (Array.isArray(ingredienti)) {
             for (const ing of ingredienti) {
-                await client.query(
-                    "INSERT INTO haccp_ricette_ingredienti (ricetta_id, ingrediente_nome) VALUES ($1, $2)",
-                    [req.params.id, ing]
-                );
+                await client.query("INSERT INTO haccp_ricette_ingredienti (ricetta_id, ingrediente_nome) VALUES ($1, $2)", [req.params.id, ing]);
             }
         }
-
         await client.query('COMMIT');
         res.json({ success: true });
-    } catch (e) {
-        await client.query('ROLLBACK');
-        res.status(500).json({ error: e.message });
-    } finally {
-        client.release();
-    }
-});
-
-// 6. Export Ricette (Excel)
-router.get('/api/haccp/export-ricette/:ristorante_id', async (req, res) => {
-    try {
-        const { ristorante_id } = req.params;
-        const query = `
-            SELECT r.nome, 
-            STRING_AGG(ri.ingrediente_nome, ', ') as ingredienti
-            FROM haccp_ricette r
-            LEFT JOIN haccp_ricette_ingredienti ri ON r.id = ri.ricetta_id
-            WHERE r.ristorante_id = $1
-            GROUP BY r.id, r.nome
-            ORDER BY r.nome ASC
-        `;
-        const result = await pool.query(query, [ristorante_id]);
-
-        const wb = xlsx.utils.book_new();
-        const ws = xlsx.utils.json_to_sheet(result.rows); // Colonne: nome, ingredienti
-        xlsx.utils.book_append_sheet(wb, ws, "Ricette");
-        
-        const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
-        res.setHeader('Content-Disposition', 'attachment; filename="ricettario.xlsx"');
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.send(buffer);
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-// 7. Import Ricette (Excel)
-// Formato atteso Excel: Colonna A "Nome", Colonna B "Ingredienti" (separati da virgola)
-router.post('/api/haccp/import-ricette', uploadFile.single('file'), async (req, res) => {
-    if (!req.file) return res.status(400).json({ error: "File mancante" });
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-        const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
-        const sheetName = workbook.SheetNames[0];
-        const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]); // Array di oggetti
-
-        const { ristorante_id } = req.body;
-
-        for (const row of data) {
-            const nome = row['nome'] || row['Nome'];
-            const ingString = row['ingredienti'] || row['Ingredienti'];
-
-            if (nome && ingString) {
-                // Crea Ricetta
-                const resRic = await client.query(
-                    "INSERT INTO haccp_ricette (ristorante_id, nome) VALUES ($1, $2) RETURNING id",
-                    [ristorante_id, nome]
-                );
-                const newId = resRic.rows[0].id;
-
-                // Splitta ingredienti e inserisci
-                const ingArr = ingString.split(',').map(s => s.trim());
-                for (const ing of ingArr) {
-                    if(ing) {
-                        await client.query(
-                            "INSERT INTO haccp_ricette_ingredienti (ricetta_id, ingrediente_nome) VALUES ($1, $2)",
-                            [newId, ing]
-                        );
-                    }
-                }
-            }
-        }
-
-        await client.query('COMMIT');
-        res.json({ success: true });
-    } catch (e) {
-        await client.query('ROLLBACK');
-        console.error(e);
-        res.status(500).json({ error: "Errore Import: " + e.message });
-    } finally {
-        client.release();
-    }
+    } catch (e) { await client.query('ROLLBACK'); res.status(500).json({ error: e.message }); } finally { client.release(); }
 });
 
 // =================================================================================
 // 9. API MAGAZZINO REALE (Giacenze & Anagrafica)
 // =================================================================================
-
-// 1. MODIFICA LA QUERY DELLA LISTA PER INCLUDERE I NUOVI CAMPI
 router.get('/api/magazzino/lista/:ristorante_id', async (req, res) => {
     try {
-        const { ristorante_id } = req.params;
         const query = `
-            SELECT 
-                *,
-                to_char(updated_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Rome', 'DD/MM/YYYY HH24:MI') as ultima_modifica_it,
-                to_char(data_bolla, 'YYYY-MM-DD') as data_bolla_iso
-            FROM magazzino_prodotti 
-            WHERE ristorante_id = $1 
-            ORDER BY nome ASC
+            SELECT *,
+            to_char(updated_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Rome', 'DD/MM/YYYY HH24:MI') as ultima_modifica_it,
+            to_char(data_bolla, 'YYYY-MM-DD') as data_bolla_iso
+            FROM magazzino_prodotti WHERE ristorante_id = $1 ORDER BY nome ASC
         `;
-        const r = await pool.query(query, [ristorante_id]);
+        const r = await pool.query(query, [req.params.ristorante_id]);
         res.json(r.rows);
     } catch (e) { res.status(500).json({ error: "Errore loading" }); }
 });
 
-// 2. UPDATE COMPLETO PRODOTTO (Non solo giacenza)
 router.put('/api/magazzino/update-full/:id', async (req, res) => {
     try {
         const id = req.params.id;
         const body = req.body;
-        
-        // Calcoli server-side per sicurezza
         const qta = parseFloat(body.giacenza) || 0;
         const unitNetto = parseFloat(body.prezzo_unitario_netto) || 0;
         const iva = parseFloat(body.aliquota_iva) || 0;
-        
         const totNetto = qta * unitNetto;
         const totIva = totNetto * (iva / 100);
         const totLordo = totNetto + totIva;
 
-        const query = `
-            UPDATE magazzino_prodotti SET 
-                giacenza = $1,
-                prezzo_unitario_netto = $2,
-                aliquota_iva = $3,
-                valore_totale_netto = $4,
-                valore_totale_iva = $5,
-                valore_totale_lordo = $6,
-                
-                nome = COALESCE($7, nome),
-                marca = COALESCE($8, marca),
-                lotto = COALESCE($9, lotto),
-                data_bolla = COALESCE($10, data_bolla),
-                tipo_unita = COALESCE($11, tipo_unita),
-                
-                updated_at = NOW()
-            WHERE id = $12
-        `;
-
-        await pool.query(query, [
-            qta, unitNetto, iva, totNetto, totIva, totLordo,
-            body.nome, body.marca, body.lotto, body.data_bolla, body.tipo_unita,
-            id
-        ]);
-
-        res.json({ success: true });
-    } catch (e) {
-        console.error(e);
-        res.status(500).json({ error: "Errore update" });
-    }
-});
-
-// UPDATE RAPIDO GIACENZA (Inventario)
-router.put('/api/magazzino/update-qta/:id', async (req, res) => {
-    try {
-        const { giacenza } = req.body;
         await pool.query(
-            "UPDATE magazzino_prodotti SET giacenza = $1, updated_at = NOW() WHERE id = $2", 
-            [giacenza, req.params.id]
+            `UPDATE magazzino_prodotti SET 
+                giacenza = $1, prezzo_unitario_netto = $2, aliquota_iva = $3,
+                valore_totale_netto = $4, valore_totale_iva = $5, valore_totale_lordo = $6,
+                nome = COALESCE($7, nome), marca = COALESCE($8, marca), lotto = COALESCE($9, lotto),
+                data_bolla = COALESCE($10, data_bolla), tipo_unita = COALESCE($11, tipo_unita), updated_at = NOW()
+            WHERE id = $12`,
+            [qta, unitNetto, iva, totNetto, totIva, totLordo, body.nome, body.marca, body.lotto, body.data_bolla, body.tipo_unita, id]
         );
         res.json({ success: true });
-    } catch (e) {
-        res.status(500).json({ error: "Errore update" });
-    }
+    } catch (e) { res.status(500).json({ error: "Errore update" }); }
 });
 
-// DELETE PRODOTTO DA MAGAZZINO
-router.delete('/api/magazzino/prodotto/:id', async (req, res) => {
-    try {
-        await pool.query("DELETE FROM magazzino_prodotti WHERE id = $1", [req.params.id]);
-        res.json({ success: true });
-    } catch (e) {
-        res.status(500).json({ error: "Errore cancellazione" });
-    }
-});
+router.delete('/api/magazzino/prodotto/:id', async (req, res) => { try { await pool.query("DELETE FROM magazzino_prodotti WHERE id = $1", [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Errore cancellazione" }); } });
 
 // =================================================================================
-// 10. EXPORTS GLOBALI (Labels, Generic, PDF, Excel)
+// 10. EXPORTS (PDF & EXCEL)
 // =================================================================================
-
-// EXPORT Labels
 router.get('/api/haccp/export/labels/:ristorante_id', async (req, res) => {
     try {
         const { ristorante_id } = req.params;
@@ -707,119 +514,61 @@ router.get('/api/haccp/export/labels/:ristorante_id', async (req, res) => {
         sql += " ORDER BY data_produzione ASC";
         const r = await pool.query(sql, params);
         const titoloReport = "REGISTRO PRODUZIONE";
-        const headers = ["Data Prod.", "Prodotto", "Ingredienti (Produttore/Lotto)", "Tipo", "Lotto Produzione", "Scadenza", "Operatore"];
-        const rows = r.rows.map(l => [new Date(l.data_produzione).toLocaleDateString('it-IT'), String(l.prodotto || ''), String(l.ingredienti || '').replace(/, /g, '\n'), String(l.tipo_conservazione || ''), String(l.lotto || ''), new Date(l.data_scadenza).toLocaleDateString('it-IT'), String(l.operatore || '')]);
+        const headers = ["Data Prod.", "Prodotto", "Ingredienti", "Tipo", "Lotto", "Scadenza", "Operatore"];
+        const rows = r.rows.map(l => [new Date(l.data_produzione).toLocaleDateString('it-IT'), l.prodotto, l.ingredienti, l.tipo_conservazione, l.lotto, new Date(l.data_scadenza).toLocaleDateString('it-IT'), l.operatore]);
+        
         if (format === 'pdf') {
             const doc = new PDFDocument({ margin: 20, size: 'A4', layout: 'landscape' });
             res.setHeader('Content-Type', 'application/pdf');
-            res.setHeader('Content-Disposition', `attachment; filename="produzione_${rangeName || 'export'}.pdf"`);
+            res.setHeader('Content-Disposition', `attachment; filename="produzione.pdf"`);
             doc.pipe(res);
-            doc.fontSize(16).text(String(azienda.nome), { align: 'center' });
-            doc.fontSize(10).text(String(azienda.dati_fiscali || ""), { align: 'center' });
+            doc.fontSize(16).text(azienda.nome, { align: 'center' });
+            doc.fontSize(10).text(azienda.dati_fiscali || "", { align: 'center' });
             doc.moveDown();
-            doc.fontSize(14).text(`${titoloReport}: ${rangeName || 'Completo'}`, { align: 'center' });
+            doc.fontSize(14).text(`${titoloReport}: ${rangeName}`, { align: 'center' });
             doc.moveDown();
-            await doc.table({ headers, rows }, { width: 750, columnsSize: [70, 100, 250, 60, 100, 70, 80], prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8), prepareRow: () => doc.font("Helvetica").fontSize(8) });
+            await doc.table({ headers, rows }, { width: 750, prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8), prepareRow: () => doc.font("Helvetica").fontSize(8) });
             doc.end();
         } else {
             const wb = xlsx.utils.book_new();
-            const rowAzienda = [azienda.dati_fiscali || azienda.nome];
-            const rowPeriodo = [`Periodo: ${rangeName || 'Tutto lo storico'}`];
-            const rowTitolo = [titoloReport];
-            const rowEmpty = [""];
-            const finalData = [rowAzienda, rowPeriodo, rowTitolo, rowEmpty, headers, ...rows];
-            const ws = xlsx.utils.aoa_to_sheet(finalData);
-            const wscols = [{wch:12}, {wch:25}, {wch:50}, {wch:15}, {wch:20}, {wch:12}, {wch:15}];
-            ws['!cols'] = wscols;
-            if(!ws['!merges']) ws['!merges'] = [];
-            ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } });
-            ws['!merges'].push({ s: { r: 1, c: 0 }, e: { r: 1, c: 6 } });
-            ws['!merges'].push({ s: { r: 2, c: 0 }, e: { r: 2, c: 6 } });
+            const ws = xlsx.utils.aoa_to_sheet([headers, ...rows]);
             xlsx.utils.book_append_sheet(wb, ws, "Produzione");
             const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
-            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-            res.setHeader('Content-Disposition', `attachment; filename="produzione_${rangeName || 'export'}.xlsx"`);
+            res.setHeader('Content-Disposition', `attachment; filename="produzione.xlsx"`);
             res.send(buffer);
         }
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// EXPORT Generic
 router.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
     try {
         const { tipo, ristorante_id } = req.params;
         const { start, end, rangeName, format } = req.query; 
         const ristRes = await pool.query("SELECT nome, dati_fiscali FROM ristoranti WHERE id = $1", [ristorante_id]);
         const aziendaInfo = ristRes.rows[0];
-        let headers = []; let rows = []; let sheetName = "Export"; let titoloReport = "REPORT HACCP";
+        let headers = [], rows = [], sheetName = "Export", titoloReport = "REPORT";
         
         if (tipo === 'temperature') {
-            sheetName = "Temperature";
-            titoloReport = "REGISTRO TEMPERATURE";
+            sheetName = "Temperature"; titoloReport = "REGISTRO TEMPERATURE";
             headers = ["Data", "Ora", "Macchina", "Temp", "Esito", "Az. Correttiva", "Op."];
             let sql = `SELECT l.data_ora, a.nome as asset, l.valore, l.conformita, l.azione_correttiva, l.operatore FROM haccp_logs l JOIN haccp_assets a ON l.asset_id = a.id WHERE l.ristorante_id = $1`;
             const params = [ristorante_id];
             if(start && end) { sql += ` AND l.data_ora >= $2 AND l.data_ora <= $3`; params.push(start, end); }
             sql += ` ORDER BY l.data_ora ASC`; 
             const r = await pool.query(sql, params);
-            rows = r.rows.map(row => { const d = new Date(row.data_ora); return [d.toLocaleDateString('it-IT'), d.toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'}), String(row.asset || ''), String(row.valore === 'OFF' ? 'SPENTO' : `${row.valore}°C`), row.conformita ? "OK" : "NO", String(row.azione_correttiva || ""), String(row.operatore || "")]; });
+            rows = r.rows.map(row => { const d = new Date(row.data_ora); return [d.toLocaleDateString('it-IT'), d.toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'}), row.asset, `${row.valore}°C`, row.conformita ? "OK" : "NO", row.azione_correttiva, row.operatore]; });
         } else if (tipo === 'merci') { 
-    sheetName = "Registro Acquisti";
-    titoloReport = "CONTABILITÀ MAGAZZINO & ACQUISTI";
-    // INTESTAZIONI "COME DIO COMANDA"
-    headers = ["Data", "Fornitore", "Prodotto", "Qta", "Unitario €", "Imponibile €", "IVA %", "Totale IVA €", "Totale Lordo €", "Num. Doc", "Note"];
-    
-    let sql = `SELECT * FROM haccp_merci WHERE ristorante_id = $1`;
-    const params = [ristorante_id];
-    
-    if(start && end) { 
-        sql += ` AND data_ricezione >= $2 AND data_ricezione <= $3`; 
-        params.push(start, end); 
-    }
-    sql += ` ORDER BY data_ricezione ASC`; 
-    
-    const r = await pool.query(sql, params);
-    
-    rows = r.rows.map(row => {
-        // Calcoli fiscali precisi
-        const qta = parseFloat(row.quantita) || 0;
-        const unit = parseFloat(row.prezzo_unitario) || 0;
-        const imponibile = parseFloat(row.prezzo) || (qta * unit);
-        const ivaPerc = parseFloat(row.iva) || 0;
-        const ivaValore = imponibile * (ivaPerc / 100);
-        const totaleLordo = imponibile + ivaValore;
-
-        return [
-            new Date(row.data_ricezione).toLocaleDateString('it-IT'),
-            String(row.fornitore || ''),
-            String(row.prodotto || ''),
-            String(qta),
-            `€ ${unit.toFixed(2)}`,       // Unitario
-            `€ ${imponibile.toFixed(2)}`, // Imponibile
-            `${ivaPerc}%`,                // Iva %
-            `€ ${ivaValore.toFixed(2)}`,  // Totale Iva
-            `€ ${totaleLordo.toFixed(2)}`,// TOTALE LORDO
-            String(row.lotto || '-'),     // Usiamo lotto o note come rif documento
-            String(row.note || '')
-        ];
-    });
-        
-        } else if (tipo === 'assets') { 
-            sheetName = "Lista Macchine";
-            titoloReport = "LISTA MACCHINE E ATTREZZATURE";
-            headers = ["Stato", "Nome", "Tipo", "Marca", "Matricola", "Range"];
-            const r = await pool.query(`SELECT * FROM haccp_assets WHERE ristorante_id = $1 ORDER BY nome ASC`, [ristorante_id]);
-            rows = r.rows.map(row => [String(row.stato ? row.stato.toUpperCase() : "ATTIVO"), String(row.nome || ''), String(row.tipo || ''), String(row.marca || ''), String(row.serial_number || '-'), `${row.range_min}°C / ${row.range_max}°C`]);
-        } else if (tipo === 'pulizie') {
-            sheetName = "Registro Pulizie";
-            titoloReport = "REGISTRO PULIZIE E SANIFICAZIONI";
-            headers = ["Data", "Ora", "Area/Attrezzatura", "Detergente", "Operatore", "Esito"];
-            let sql = `SELECT * FROM haccp_cleaning WHERE ristorante_id = $1`;
+            sheetName = "Registro Acquisti"; titoloReport = "CONTABILITÀ MAGAZZINO & ACQUISTI";
+            headers = ["Data", "Fornitore", "Prodotto", "Qta", "Unitario €", "Imponibile €", "IVA %", "Totale IVA €", "Totale Lordo €", "Lotto/Doc", "HACCP?"];
+            let sql = `SELECT * FROM haccp_merci WHERE ristorante_id = $1`;
             const params = [ristorante_id];
-            if(start && end) { sql += ` AND data_ora >= $2 AND data_ora <= $3`; params.push(start, end); }
-            sql += ` ORDER BY data_ora ASC`;
+            if(start && end) { sql += ` AND data_ricezione >= $2 AND data_ricezione <= $3`; params.push(start, end); }
+            sql += ` ORDER BY data_ricezione ASC`; 
             const r = await pool.query(sql, params);
-            rows = r.rows.map(row => [new Date(row.data_ora).toLocaleDateString('it-IT'), new Date(row.data_ora).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'}), String(row.area || ''), String(row.prodotto || ''), String(row.operatore || ''), row.conformita ? "OK" : "NON CONFORME"]);
+            rows = r.rows.map(row => {
+                const qta = parseFloat(row.quantita)||0; const unit = parseFloat(row.prezzo_unitario)||0; const imp = qta * unit; const ivaV = imp * (parseFloat(row.iva)/100);
+                return [new Date(row.data_ricezione).toLocaleDateString('it-IT'), row.fornitore, row.prodotto, qta, `€ ${unit.toFixed(2)}`, `€ ${imp.toFixed(2)}`, `${row.iva}%`, `€ ${ivaV.toFixed(2)}`, `€ ${(imp+ivaV).toFixed(2)}`, row.lotto, row.is_haccp ? "SI" : "NO"];
+            });
         }
 
         if (format === 'pdf') {
@@ -827,37 +576,20 @@ router.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
             res.setHeader('Content-Type', 'application/pdf');
             res.setHeader('Content-Disposition', `attachment; filename="haccp_${tipo}.pdf"`);
             doc.pipe(res);
-            doc.fontSize(16).text(String(aziendaInfo.nome), { align: 'center' });
-            doc.fontSize(10).text(String(aziendaInfo.dati_fiscali || ""), { align: 'center' });
-            doc.moveDown(0.5); 
-            doc.fontSize(12).text(`${titoloReport} - ${rangeName || 'Completo'}`, { align: 'center' }); 
-            doc.moveDown(1);
-            const table = { headers: headers, rows: rows };
-            await doc.table(table, { width: 500, prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8), prepareRow: () => doc.font("Helvetica").fontSize(8).fillColor('black') });
+            doc.fontSize(16).text(aziendaInfo.nome, { align: 'center' });
+            doc.fontSize(12).text(`${titoloReport} - ${rangeName}`, { align: 'center' }); doc.moveDown();
+            await doc.table({ headers, rows }, { width: 500, prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8), prepareRow: () => doc.font("Helvetica").fontSize(8) });
             doc.end();
             return; 
         }
 
         const wb = xlsx.utils.book_new();
-        const rowAzienda = [aziendaInfo.dati_fiscali || aziendaInfo.nome];
-        const rowPeriodo = [`Periodo: ${rangeName || 'Tutto lo storico'}`];
-        const rowTitolo = [titoloReport];
-        const rowEmpty = [""];
-        const finalData = [rowAzienda, rowPeriodo, rowTitolo, rowEmpty, headers, ...rows];
-        const ws = xlsx.utils.aoa_to_sheet(finalData);
-        if(!ws['!merges']) ws['!merges'] = [];
-        ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }); 
-        ws['!merges'].push({ s: { r: 1, c: 0 }, e: { r: 1, c: headers.length - 1 } }); 
-        ws['!merges'].push({ s: { r: 2, c: 0 }, e: { r: 2, c: headers.length - 1 } }); 
-        const wscols = headers.map(() => ({wch: 20}));
-        ws['!cols'] = wscols;
+        const ws = xlsx.utils.aoa_to_sheet([headers, ...rows]);
         xlsx.utils.book_append_sheet(wb, ws, sheetName);
         const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
-        res.setHeader('Content-Disposition', `attachment; filename="haccp_${tipo}_export.xlsx"`);
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="haccp_${tipo}.xlsx"`);
         res.send(buffer);
-    } catch (err) { if (!res.headersSent) res.status(500).json({ error: "Errore Export: " + err.message }); }
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 module.exports = router;
-
