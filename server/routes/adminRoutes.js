@@ -24,6 +24,23 @@ router.put('/api/ristorante/style/:id', async (req, res) => {
     } 
 });
 
+// AGGIUNGI QUESTO IN server/routes/adminRoutes.js
+router.get('/api/db-fix-magazzino-v2', async (req, res) => {
+    try {
+        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS ora TEXT DEFAULT ''");
+        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS unita_misura TEXT DEFAULT 'Pz'");
+        
+        // Già che ci siamo, assicuriamoci che ci siano anche le colonne per i prezzi se mancavano
+        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS prezzo_unitario NUMERIC(10,2) DEFAULT 0");
+        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS iva NUMERIC(5,2) DEFAULT 0");
+        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS prezzo NUMERIC(10,2) DEFAULT 0");
+
+        res.send("✅ DATABASE AGGIORNATO: Colonne Magazzino create con successo!");
+    } catch (e) {
+        res.status(500).send("Errore DB: " + e.message);
+    }
+});
+
 // AGGIUNGI QUESTO ROUTE IN adminRoutes.js
 router.get('/api/db-fix-security-magazzino', async (req, res) => {
     try {
