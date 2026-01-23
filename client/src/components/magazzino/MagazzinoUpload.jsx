@@ -1,3 +1,4 @@
+// client/src/components_haccp/MagazzinoUpload.jsx
 import React, { useState, useEffect, useRef } from 'react';
 
 const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificare, setRecordDaModificare, ricaricaDati }) => {
@@ -90,7 +91,7 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
     }, [formData.quantita, formData.prezzo_unitario, formData.iva]);
 
 
-    // --- FUNZIONE 1: SCAN BOLLA (AI POTENZIATA) ---
+    // --- NUOVA FUNZIONE SCAN: "BULK IMPORT" (STILE ADMIN MENU) ---
     const handleScan = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -99,67 +100,85 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
         const fd = new FormData();
         fd.append('photo', file);
         
-        // 
-        // PROMPT RIGIDO PER L'AI (come nel menu)
-        const promptIstruzioni = `Sei un contabile esperto. Analizza questa bolla/fattura e restituisci un JSON con questi campi esatti:
-        fornitore (ragione sociale),
-        data_documento (YYYY-MM-DD),
-        numero_documento (numero fattura o ddt),
-        prodotti (array con: nome, quantita, prezzo_unitario_netto, iva, lotto, scadenza, unita_misura)`;
-        
-        // Nota: Il backend deve essere configurato per leggere req.body.prompt, 
-        // altrimenti userà il prompt di default nel server.js. 
-        // Invio comunque il file, la logica "cattiva" è nel backend o qui interpretiamo il risultato.
-        
         try {
-            // 1. Carichiamo l'immagine per avere l'URL
+            // 1. Carichiamo l'immagine per avere l'URL (per archivio)
             const uploadRes = await fetch(`${API_URL}/api/upload`, { method: 'POST', body: fd });
             const uploadData = await uploadRes.json();
             const urlAllegato = uploadData.url || '';
 
-            // 2. Chiamiamo l'AI
+            // 2. Chiamiamo l'AI per l'analisi
             const res = await fetch(`${API_URL}/api/haccp/scan-bolla`, { method: 'POST', body: fd });
             const result = await res.json();
 
             if (result.success && result.data) {
                 const d = result.data;
-                // Prendiamo il primo prodotto trovato come default per popolare il form
-                const primoProd = d.prodotti && d.prodotti.length > 0 ? d.prodotti[0] : {};
+                const prodottiTrovati = d.prodotti || [];
 
-                setFormData(prev => ({
-                    ...prev,
-                    data_documento: d.data_documento_iso || d.data_documento || prev.data_documento,
+                if (prodottiTrovati.length === 0) {
+                    alert("⚠️ L'AI non ha trovato prodotti validi nel documento.");
+                    setIsScanning(false);
+                    return;
+                }
+
+                // 3. Prepariamo il pacchetto per l'importazione massiva
+                // Mappiamo i campi dell'AI su quelli del Database
+                const merciDaImportare = prodottiTrovati.map(prod => ({
+                    ristorante_id: user.id,
+                    data_ricezione: d.data_documento_iso || new Date().toISOString().split('T')[0], // Usiamo la data fattura come data ricezione o oggi
+                    ora: new Date().toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'}),
+                    fornitore: d.fornitore || 'Fornitore Sconosciuto',
+                    riferimento_documento: d.numero_documento || '',
                     
-                    // MAPPATURA CRUCIALE: numero_documento -> riferimento_documento
-                    riferimento_documento: d.numero_documento || '', 
+                    // Dati Prodotto
+                    prodotto: prod.nome,
+                    quantita: parseFloat(prod.quantita) || 0,
+                    unita_misura: prod.unita_misura || 'Pz',
+                    prezzo_unitario: parseFloat(prod.prezzo_unitario_netto || prod.prezzo_unitario) || 0,
+                    iva: parseFloat(prod.iva) || 0,
                     
-                    fornitore: d.fornitore || '',
+                    // Dati Tracciabilità
+                    lotto: prod.lotto || '',
+                    scadenza: prod.scadenza || null,
+                    is_haccp: prod.is_haccp, // Boolean dall'AI
+                    
                     allegato_url: urlAllegato,
-                    
-                    prodotto: primoProd.nome || '',
-                    quantita: primoProd.quantita || '',
-                    unita_misura: primoProd.unita_misura || 'Pz',
-                    
-                    // Gestione intelligente dei prezzi (Netto vs Lordo)
-                    prezzo_unitario: primoProd.prezzo_unitario_netto || primoProd.prezzo_unitario || '',
-                    
-                    iva: primoProd.iva || '10',
-                    lotto: primoProd.lotto || '',
-                    scadenza: primoProd.scadenza || '',
+                    operatore: user.nome || 'AI Scan',
+                    note: `Scan Auto: ${d.numero_documento || ''}`
                 }));
-                alert("✨ AI: Dati estratti con successo!");
+
+                // 4. Invio diretto al Backend (Bulk Import)
+                const importRes = await fetch(`${API_URL}/api/haccp/merci/import`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ merci: merciDaImportare })
+                });
+
+                const importJson = await importRes.json();
+
+                if (importRes.ok && importJson.success) {
+                    // 5. Successo e Redirect
+                    const msg = importJson.message || `${merciDaImportare.length} righe elaborate.`;
+                    alert(`✅ (Aggiornati e caricati) con le quantità!\n\n${msg}\n\nTotale prodotti letti: ${merciDaImportare.length}`);
+                    
+                    if (ricaricaDati) ricaricaDati();
+                    onSuccess(); // Torna alla lista
+                } else {
+                    alert("Errore salvataggio dati: " + (importJson.error || "Errore sconosciuto"));
+                }
+
             } else {
                 alert("⚠️ Scan AI fallito o nessun dato leggibile.");
             }
         } catch (error) {
-            console.error("Errore AI:", error);
-            alert("Errore di connessione AI.");
+            console.error("Errore Scan:", error);
+            alert("Errore di connessione durante la scansione.");
         } finally {
             setIsScanning(false);
+            if(fileInputRef.current) fileInputRef.current.value = ''; // Reset input
         }
     };
 
-    // --- FUNZIONE 2: UPLOAD ALLEGATO MANUALE ---
+    // --- FUNZIONE UPLOAD MANUALE (RIMASTA INVARIATA) ---
     const handleAllegato = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -177,7 +196,7 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
         }
     };
 
-    // --- FUNZIONE 3: SALVATAGGIO ---
+    // --- FUNZIONE SALVATAGGIO SINGOLO (RIMASTA INVARIATA) ---
     const handleSubmit = async (e) => {
         e.preventDefault();
         setUploading(true);
@@ -196,7 +215,7 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
 
             let url = formData.id 
                 ? `${API_URL}/api/magazzino/update-full/${formData.id}`
-                : `${API_URL}/api/haccp/merci/import`; // Usa import per creare (gestisce logica magazzino+haccp)
+                : `${API_URL}/api/haccp/merci/import`; // Usa import anche per singolo per coerenza
             
             const bodyData = formData.id ? payload : { merci: [payload] };
             const method = formData.id ? 'PUT' : 'POST';
@@ -211,9 +230,7 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
 
             if (jsonRes.success) {
                 alert("✅ Salvato!");
-                // AGGIORNAMENTO LISTA PADRE
                 if (ricaricaDati) ricaricaDati(); 
-                
                 if (setRecordDaModificare) setRecordDaModificare(null);
                 onSuccess(); 
             } else {
@@ -235,26 +252,31 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
     return (
         <div style={{ background: 'white', padding: 30, borderRadius: 15, boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }}>
             
+            {/* OVERLAY LOADING */}
             {isScanning && (
                 <div style={{ position:'fixed', inset:0, background:'rgba(255,255,255,0.9)', zIndex:9999, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
                     <div style={{fontSize:50, animation:'spin 2s linear infinite'}}>🤖</div>
-                    <h3>Jarvis sta analizzando il documento...</h3>
+                    <h3>Jarvis sta analizzando la bolla...</h3>
+                    <p style={{color:'#666'}}>Lettura prodotti, lotti e prezzi in corso...</p>
                     <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
                 </div>
             )}
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, borderBottom:'1px solid #eee', paddingBottom:10 }}>
                 <h3 style={{ margin: 0, color: '#2c3e50' }}>{formData.id ? '✏️ Modifica Riga' : '📥 Nuovo Carico Merce'}</h3>
-                <div style={{display:'flex', gap:10}}>
-                    <button 
-                        type="button"
-                        onClick={() => fileInputRef.current.click()}
-                        style={{ background: 'linear-gradient(135deg, #6a11cb 0%, #2575fc 100%)', color: 'white', border: 'none', padding: '10px 20px', borderRadius: 30, cursor: 'pointer', fontWeight: 'bold' }}
-                    >
-                        ✨ SCAN BOLLA AI
-                    </button>
-                    <input type="file" ref={fileInputRef} onChange={handleScan} style={{ display: 'none' }} accept="image/*,application/pdf" />
-                </div>
+                
+                {!formData.id && (
+                    <div style={{display:'flex', gap:10}}>
+                        <button 
+                            type="button"
+                            onClick={() => fileInputRef.current.click()}
+                            style={{ background: 'linear-gradient(135deg, #6a11cb 0%, #2575fc 100%)', color: 'white', border: 'none', padding: '10px 20px', borderRadius: 30, cursor: 'pointer', fontWeight: 'bold', display:'flex', alignItems:'center', gap:5, boxShadow:'0 4px 15px rgba(37, 117, 252, 0.3)' }}
+                        >
+                            <span>📸</span> SCAN BOLLA "AUTO-SAVE"
+                        </button>
+                        <input type="file" ref={fileInputRef} onChange={handleScan} style={{ display: 'none' }} accept="image/*,application/pdf" />
+                    </div>
+                )}
             </div>
 
             <form onSubmit={handleSubmit}>
@@ -283,7 +305,7 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
 
                 {/* BLOCCO 2: PRODOTTO */}
                 <div style={{background:'#fff', border:'1px solid #eee', padding:15, borderRadius:8, marginBottom:20}}>
-                    <h4 style={{marginTop:0, fontSize:14, color:'#27ae60'}}>📦 Dati Prodotto</h4>
+                    <h4 style={{marginTop:0, fontSize:14, color:'#27ae60'}}>📦 Dati Prodotto (Manuale)</h4>
                     <div style={rowStyle}>
                         <div style={{...colStyle, flex:2}}>
                             <label style={labelStyle}>Prodotto</label>
@@ -325,7 +347,7 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
 
                 {/* BLOCCO 3: TOTALI */}
                 <div style={{background:'#eaf2f8', padding:15, borderRadius:8, marginBottom:20, border:'1px solid #d6eaf8'}}>
-                    <h4 style={{marginTop:0, fontSize:14, color:'#2980b9'}}>🧮 Riepilogo Costi (Calcolo Automatico)</h4>
+                    <h4 style={{marginTop:0, fontSize:14, color:'#2980b9'}}>🧮 Riepilogo Costi</h4>
                     <div style={{display:'flex', gap:15}}>
                         <div style={{flex:1, textAlign:'center', borderRight:'1px solid #ccc'}}>
                             <div style={{fontSize:11, color:'#7f8c8d'}}>TOTALE NETTO</div>
