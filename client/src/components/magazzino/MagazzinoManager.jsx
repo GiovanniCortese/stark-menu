@@ -25,9 +25,29 @@ const MagazzinoManager = ({ user, API_URL }) => {
 
     useEffect(() => { ricaricaDati(); }, []);
 
-    const ricaricaDati = () => {
-        fetch(`${API_URL}/api/haccp/stats/magazzino/${user.id}`).then(r => r.json()).then(setStats).catch(console.error);
-        fetch(`${API_URL}/api/haccp/assets/${user.id}`).then(r => r.json()).then(setAssets).catch(console.error);
+const ricaricaDati = () => {
+        // Carica Statistiche e Storico
+        fetch(`${API_URL}/api/haccp/stats/magazzino/${user.id}`)
+            .then(r => r.json())
+            .then(data => {
+                // CONTROLLO DI SICUREZZA: Se data.storico non esiste, metti un array vuoto
+                setStats({
+                    fornitori: data.fornitori || [],
+                    storico: Array.isArray(data.storico) ? data.storico : [], // <--- QUESTA RIGA EVITA IL CRASH
+                    top_prodotti: data.top_prodotti || []
+                });
+            })
+            .catch(err => {
+                console.error("Errore caricamento magazzino:", err);
+                // In caso di errore, inizializza tutto vuoto per non rompere la pagina
+                setStats({ fornitori: [], storico: [], top_prodotti: [] });
+            });
+
+        // Carica Assets
+        fetch(`${API_URL}/api/haccp/assets/${user.id}`)
+            .then(r => r.json())
+            .then(data => setAssets(Array.isArray(data) ? data : []))
+            .catch(console.error);
     };
 
     // Gestione Modifica

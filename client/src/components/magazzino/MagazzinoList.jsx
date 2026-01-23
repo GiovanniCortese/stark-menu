@@ -22,6 +22,8 @@ const formatTimeDate = (dateStr, timeStr) => {
 const MagazzinoList = ({ storico, ricaricaDati, API_URL, handleFileAction, avviaModifica, openDownloadModal }) => {
     const [filtro, setFiltro] = useState("");
 
+    const datiSicuri = Array.isArray(storico) ? storico : [];
+
     const eliminaMerce = async (id) => {
         if(!window.confirm("Eliminare questa riga?")) return;
         await fetch(`${API_URL}/api/haccp/merci/${id}`, {method:'DELETE'});
@@ -37,8 +39,7 @@ const MagazzinoList = ({ storico, ricaricaDati, API_URL, handleFileAction, avvia
         return { imp: imp.toFixed(2), ivaVal: ivaVal.toFixed(2), totIvato: (imp + ivaVal).toFixed(2) };
     };
 
-    const movimentiFiltrati = storico.filter(r => (r.prodotto + r.fornitore + (r.note||"") + r.data_ricezione).toLowerCase().includes(filtro.toLowerCase()));
-    
+const movimentiFiltrati = datiSicuri.filter(r => (r.prodotto + r.fornitore + (r.note||"") + r.data_ricezione).toLowerCase().includes(filtro.toLowerCase()));    
     const totaleVista = movimentiFiltrati.reduce((acc, r) => {
         const d = renderRowData(r);
         return { imp: acc.imp + parseFloat(d.imp), iva: acc.iva + parseFloat(d.ivaVal), tot: acc.tot + parseFloat(d.totIvato) };
