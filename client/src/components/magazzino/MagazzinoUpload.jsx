@@ -100,7 +100,7 @@ const MagazzinoUpload = ({ user, API_URL, ricaricaDati, recordDaModificare, setR
     }, [merciForm.quantita, merciForm.prezzo_unitario_netto, merciForm.aliquota_iva]);
 
 
-    // --- FUNZIONI AI SCAN (AGGIORNATA PER NUOVI CAMPI) ---
+    // --- FUNZIONI AI SCAN POTENZIATA ---
     const handleScanBolla = async (e) => {
         const file = e.target.files[0]; if(!file) return;
         setIsScanning(true); 
@@ -108,23 +108,39 @@ const MagazzinoUpload = ({ user, API_URL, ricaricaDati, recordDaModificare, setR
         try {
             const fd = new FormData();
             fd.append('photo', file);
+
+            // PARTE 1: UPLOAD FISICO DEL FILE (In Parallelo)
+            // Carichiamo subito il file per avere l'URL disponibile
+            const uploadPromise = fetch(`${API_URL}/api/upload`, { method: 'POST', body: fd });
             
-            // 1. SCANSIONE AI
-            const resAI = await fetch(`${API_URL}/api/haccp/scan-bolla`, { method: 'POST', body: fd });
+            // PARTE 2: ANALISI AI
+            // Creiamo un nuovo FormData per l'AI
+            const fdAI = new FormData();
+            fdAI.append('photo', file);
+            const aiPromise = fetch(`${API_URL}/api/haccp/scan-bolla`, { method: 'POST', body: fdAI });
+
+            // Attendiamo entrambi i processi
+            const [resUpload, resAI] = await Promise.all([uploadPromise, aiPromise]);
+            
+            const jsonUpload = await resUpload.json();
             const jsonAI = await resAI.json();
-            
+
             if (!jsonAI.success) throw new Error(jsonAI.error || "Errore AI");
+
+            // URL Allegato recuperato!
+            const urlAllegatoDefinitivo = jsonUpload.url || "";
             
             const datiTestata = jsonAI.data;
             const prodottiTrovati = datiTestata.prodotti || [];
 
-            if (prodottiTrovati.length === 0) throw new Error("Nessun prodotto trovato nel documento.");
+            if (prodottiTrovati.length === 0) throw new Error("Nessun prodotto trovato. Riprova con una foto più nitida.");
 
-            // 2. PREPARAZIONE DATI PER IMPORT MASSIVO (CALCOLI INCLUSI)
+            // 2. MAPPING INTELLIGENTE E CALCOLI
             const merceDaImportare = prodottiTrovati.map(p => {
                 const qta = parseFloat(p.quantita) || 1;
+                // AI restituisce unitario, usalo. Se 0, prova a calcolarlo se hai il totale (logica inversa se servisse)
                 const unitNetto = parseFloat(p.prezzo_unitario) || 0;
-                const ivaPerc = parseFloat(p.iva) || 0; // L'AI cerca di indovinare l'IVA
+                const ivaPerc = parseFloat(p.iva) || 10; // Default 10% se AI fallisce
 
                 const totNetto = qta * unitNetto;
                 const totIva = totNetto * (ivaPerc / 100);
@@ -132,16 +148,22 @@ const MagazzinoUpload = ({ user, API_URL, ricaricaDati, recordDaModificare, setR
 
                 return {
                     ristorante_id: user.id,
-                    data_ricezione: datiTestata.data_ricezione || new Date().toISOString().split('T')[0],
-                    data_bolla: datiTestata.data_ricezione || new Date().toISOString().split('T')[0],
-                    ora: datiTestata.ora_consegna || "12:00",
+                    // Usa data documento se trovata dall'AI, altrimenti oggi
+                    data_ricezione: getNowLocalISO().slice(0, 10), // Data sistema
+                    data_bolla: datiTestata.data_documento_iso || getNowLocalISO().slice(0, 10), 
+                    ora: datiTestata.ora_inserimento || "12:00",
                     fornitore: datiTestata.fornitore || "Fornitore Sconosciuto",
-                    note: `Rif. Doc: ${datiTestata.numero_documento || 'ND'}`,
+                    
+                    note: `Doc N. ${datiTestata.numero_documento || 'ND'}`,
+                    allegato_url: urlAllegatoDefinitivo, // <--- ECCO L'ALLEGATO COLLEGATO
                     
                     prodotto: p.nome,
+                    lotto: p.lotto || '', // <--- ECCO IL LOTTO
+                    scadenza: p.scadenza || null,
+
+                    tipo_unita: p.unita_misura || 'Pz', // Kg, Pz, Colli, ecc.
+                    unita_misura: p.unita_misura || 'Pz', // Fallback legacy
                     quantita: qta,
-                    tipo_unita: p.unita_misura || 'Pz', // Mappa su tipo_unita
-                    unita_misura: p.unita_misura || 'Pz', // Legacy fallback
                     
                     prezzo_unitario_netto: unitNetto,
                     aliquota_iva: ivaPerc,
@@ -150,13 +172,11 @@ const MagazzinoUpload = ({ user, API_URL, ricaricaDati, recordDaModificare, setR
                     valore_totale_iva: totIva,
                     valore_totale_lordo: totLordo,
 
-                    // Campi legacy per compatibilità
+                    // Campi Legacy per compatibilità
                     prezzo: totLordo, 
                     prezzo_unitario: unitNetto,
                     iva: ivaPerc,
                     
-                    lotto: p.lotto || '',
-                    scadenza: p.scadenza || null,
                     is_haccp: true,
                     operatore: 'MAGIC_SCAN'
                 };
@@ -173,7 +193,7 @@ const MagazzinoUpload = ({ user, API_URL, ricaricaDati, recordDaModificare, setR
 
             if (jsonImport.success) {
                 setIsScanning(false);
-                alert(`✅ SCANSIONE COMPLETATA!\n\n🆕 ${jsonImport.inserted} nuovi prodotti inseriti\n🔄 ${jsonImport.updated} prodotti aggiornati`);
+                alert(`✅ OPERAZIONE COMPLETATA!\n\n📄 Documento del: ${datiTestata.data_documento_iso}\n📎 File allegato\n📦 ${jsonImport.inserted} Prodotti Inseriti`);
                 ricaricaDati();
                 if(onSuccess) onSuccess();
             } else {
@@ -220,7 +240,7 @@ const MagazzinoUpload = ({ user, API_URL, ricaricaDati, recordDaModificare, setR
         setScannedData(prev => ({ ...prev, prodotti: prev.prodotti.filter(p => p !== prod) }));
     };
 
-    // --- UPLOAD FOTO ---
+    // --- UPLOAD FOTO MANUALE ---
     const handleMerciPhoto = async (e) => {
         const f = e.target.files[0]; if(!f) return;
         setUploadingMerci(true);
@@ -237,9 +257,6 @@ const MagazzinoUpload = ({ user, API_URL, ricaricaDati, recordDaModificare, setR
         e.preventDefault();
         try {
             const method = merciForm.id ? 'PUT' : 'POST';
-            // Se è modifica usiamo la nuova rotta update-full, se è nuovo usiamo l'import
-            // Ma per semplicità, usiamo l'endpoint di import per il nuovo, e update-full per l'update
-            
             let url, payload;
 
             // ESTRAGGO DATA E ORA
@@ -253,7 +270,7 @@ const MagazzinoUpload = ({ user, API_URL, ricaricaDati, recordDaModificare, setR
                 operatore: 'ADMIN',
                 data_ricezione: dataDb,
                 ora: oraDb,
-                // Mappatura Legacy per HACCP
+                // Campi legacy
                 prezzo: parseFloat(merciForm.valore_totale_lordo) || 0,
                 prezzo_unitario: parseFloat(merciForm.prezzo_unitario_netto) || 0,
                 iva: parseFloat(merciForm.aliquota_iva) || 0,
@@ -261,13 +278,13 @@ const MagazzinoUpload = ({ user, API_URL, ricaricaDati, recordDaModificare, setR
             };
 
             if (merciForm.id) {
-                // UPDATE ESISTENTE
+                // UPDATE
                 url = `${API_URL}/api/magazzino/update-full/${merciForm.id}`;
-                payload = basePayload; // La rotta update-full gestisce tutti i campi nuovi
+                payload = basePayload; 
             } else {
-                // NUOVO INSERIMENTO (Usiamo l'import per sfruttare la logica magazzino "smart")
+                // NUOVO
                 url = `${API_URL}/api/haccp/merci/import`;
-                payload = { merci: [basePayload] }; // L'import si aspetta un array
+                payload = { merci: [basePayload] }; // Array per l'import
             }
             
             const res = await fetch(url, { method: merciForm.id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -301,8 +318,8 @@ const MagazzinoUpload = ({ user, API_URL, ricaricaDati, recordDaModificare, setR
                 }}>
                     <div style={{fontSize:'60px', animation: 'spin 2s linear infinite'}}>🤖</div>
                     <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
-                    <h2 style={{color:'#3498db', marginTop:'20px'}}>Analisi Bolla in corso...</h2>
-                    <p style={{color:'#666'}}>Non chiudere la pagina.</p>
+                    <h2 style={{color:'#3498db', marginTop:'20px'}}>Analisi Bolla & Upload...</h2>
+                    <p style={{color:'#666'}}>Sto leggendo prezzi, lotti e caricando il file.</p>
                 </div>
             )}
 

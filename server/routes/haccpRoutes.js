@@ -289,53 +289,79 @@ router.get('/api/db-fix-magazzino-v2', async (req, res) => {
     }
 });
 
-// =================================================================================
-// 7. MAGIC SCAN (CORRETTO E UNIFICATO STILE ADMIN MENU)
-// =================================================================================
+// Helper per convertire date strane (12/05/2024 o 12-05-24) in YYYY-MM-DD
+function normalizzaData(dataStr) {
+    if (!dataStr) return new Date().toISOString().split('T')[0];
+    try {
+        // Rimuove testo inutile e tiene solo numeri e separatori
+        const clean = dataStr.replace(/[^0-9\/\-\.]/g, ''); 
+        // Se è già ISO
+        if (clean.match(/^\d{4}-\d{2}-\d{2}$/)) return clean;
+        
+        // Se è formato IT (DD/MM/YYYY o DD.MM.YYYY)
+        let parts = clean.split(/[\/\-\.]/);
+        if (parts.length === 3) {
+            // Gestione anno a 2 cifre
+            if (parts[2].length === 2) parts[2] = "20" + parts[2]; 
+            return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+        }
+    } catch(e) { return new Date().toISOString().split('T')[0]; }
+    return new Date().toISOString().split('T')[0];
+}
+
+// 7. MAGIC SCAN SUPER (Versione 3.0 - Contabile)
 router.post('/api/haccp/scan-bolla', uploadFile.single('photo'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: "Nessun file inviato" });
 
-        // Prompt specifico per Bolle/Fatture
         const prompt = `
-        Sei un assistente contabile esperto. Analizza questa bolla/fattura.
-        Estrai i dati per un'importazione massiva.
-        
-        REGOLE:
-        1. Estrai i dati di TESTATA: Fornitore, Data Documento (YYYY-MM-DD), Numero Documento.
-        2. Estrai i dati delle RIGHE (Prodotti):
-           - "nome": Nome prodotto pulito.
-           - "quantita": Numero (es. 10).
-           - "unita_misura": Pz, Kg, Lt, ecc.
-           - "prezzo_unitario": Prezzo del singolo pezzo (senza IVA).
-           - "iva": Aliquota IVA (es. 10, 22). Se non c'è metti 0.
-           - "prezzo_totale": Il totale della riga.
-           - "lotto": Se presente.
-           - "scadenza": Se presente (YYYY-MM-DD).
+        Sei un contabile esperto italiano. Analizza questa fattura o DDT.
+        Devi estrarre i dati con precisione chirurgica per l'inventario.
 
-        OUTPUT JSON:
+        ISTRUZIONI CRITICHE:
+        1. **DATA DOCUMENTO**: Cerca la data della fattura/ddt.
+        2. **RIGHE PRODOTTO**: Per ogni riga estrai:
+           - "nome": Descrizione completa.
+           - "quantita": Il numero di pezzi o peso.
+           - "unita_misura": TASSATIVO scegliere SOLO tra: "Kg", "Pz", "Colli", "Lt", "Ct". 
+             (Se vedi "KG" o "KGM" scrivi "Kg". Se vedi "PZ" o "NR" scrivi "Pz").
+           - "prezzo_unitario": IL PREZZO DEL SINGOLO PEZZO (Non il totale riga!).
+           - "iva": Aliquota (4, 10, 22). Se non c'è, intuisci dal prodotto (cibo=10, alcol=22).
+           - "lotto": Cerca codici come "L.", "Lotto", "Batch". Se non c'è, lascia stringa vuota.
+           - "scadenza": Cerca date future tipo "Scad.", "TMC". Formato YYYY-MM-DD.
+
+        OUTPUT JSON STRETTO (Nessun commento, solo JSON):
         {
-            "fornitore": "Metro",
-            "data_ricezione": "2024-05-20",
-            "numero_documento": "A-123",
+            "fornitore": "Nome Fornitore",
+            "data_documento": "DD/MM/YYYY", 
+            "numero_documento": "1234/A",
             "prodotti": [
-                { "nome": "Farina", "quantita": 10, "unita_misura": "Kg", "prezzo_unitario": 1.50, "iva": 4, "prezzo_totale": 15.00, "lotto": "L123" }
+                { 
+                  "nome": "Farina 00", 
+                  "quantita": 10, 
+                  "unita_misura": "Kg", 
+                  "prezzo_unitario": 0.85, 
+                  "iva": 4, 
+                  "lotto": "L23409",
+                  "scadenza": "2025-12-31" 
+                }
             ]
         }`;
 
-        // Chiamata centralizzata all'AI (risolve l'errore "not defined")
         const data = await analyzeImageWithGemini(req.file.buffer, req.file.mimetype, prompt);
 
-        // Aggiungiamo l'ora server se l'AI non la trova, utile per il DB
+        // NORMALIZZAZIONE DATI LATO SERVER
+        // 1. Correggiamo la data documento per il DB
+        data.data_documento_iso = normalizzaData(data.data_documento);
+        
+        // 2. Ora corrente se manca
         const now = new Date();
-        const oraCorrente = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
-        data.ora_consegna = oraCorrente;
+        data.ora_inserimento = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
 
         res.json({ success: true, data });
 
     } catch (e) {
         console.error("Errore Scan Bolla:", e);
-        // Restituisce un errore pulito invece di crashare
         res.status(500).json({ error: "Errore AI: " + e.message });
     }
 });
