@@ -575,29 +575,68 @@ router.post('/api/haccp/import-ricette', uploadFile.single('file'), async (req, 
 // 9. API MAGAZZINO REALE (Giacenze & Anagrafica)
 // =================================================================================
 
-// GET LISTA GIACENZE (Con orario corretto IT)
+// 1. MODIFICA LA QUERY DELLA LISTA PER INCLUDERE I NUOVI CAMPI
 router.get('/api/magazzino/lista/:ristorante_id', async (req, res) => {
     try {
         const { ristorante_id } = req.params;
-        
-        // Query che formatta la data direttamente in Italiano
-        // Gestisce il caso NULL e converte da UTC a Europe/Rome
         const query = `
             SELECT 
-                id, nome, marca, categoria, unita_misura,
-                giacenza, scorta_minima,
-                prezzo_medio, prezzo_ultimo, iva,
-                to_char(updated_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Rome', 'DD/MM/YYYY HH24:MI') as ultima_modifica_it
+                *,
+                to_char(updated_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Rome', 'DD/MM/YYYY HH24:MI') as ultima_modifica_it,
+                to_char(data_bolla, 'YYYY-MM-DD') as data_bolla_iso
             FROM magazzino_prodotti 
             WHERE ristorante_id = $1 
             ORDER BY nome ASC
         `;
-        
         const r = await pool.query(query, [ristorante_id]);
         res.json(r.rows);
+    } catch (e) { res.status(500).json({ error: "Errore loading" }); }
+});
+
+// 2. UPDATE COMPLETO PRODOTTO (Non solo giacenza)
+router.put('/api/magazzino/update-full/:id', async (req, res) => {
+    try {
+        const id = req.params.id;
+        const body = req.body;
+        
+        // Calcoli server-side per sicurezza
+        const qta = parseFloat(body.giacenza) || 0;
+        const unitNetto = parseFloat(body.prezzo_unitario_netto) || 0;
+        const iva = parseFloat(body.aliquota_iva) || 0;
+        
+        const totNetto = qta * unitNetto;
+        const totIva = totNetto * (iva / 100);
+        const totLordo = totNetto + totIva;
+
+        const query = `
+            UPDATE magazzino_prodotti SET 
+                giacenza = $1,
+                prezzo_unitario_netto = $2,
+                aliquota_iva = $3,
+                valore_totale_netto = $4,
+                valore_totale_iva = $5,
+                valore_totale_lordo = $6,
+                
+                nome = COALESCE($7, nome),
+                marca = COALESCE($8, marca),
+                lotto = COALESCE($9, lotto),
+                data_bolla = COALESCE($10, data_bolla),
+                tipo_unita = COALESCE($11, tipo_unita),
+                
+                updated_at = NOW()
+            WHERE id = $12
+        `;
+
+        await pool.query(query, [
+            qta, unitNetto, iva, totNetto, totIva, totLordo,
+            body.nome, body.marca, body.lotto, body.data_bolla, body.tipo_unita,
+            id
+        ]);
+
+        res.json({ success: true });
     } catch (e) {
         console.error(e);
-        res.status(500).json({ error: "Errore caricamento magazzino" });
+        res.status(500).json({ error: "Errore update" });
     }
 });
 
