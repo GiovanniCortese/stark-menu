@@ -324,6 +324,7 @@ function Admin() {
             <button onClick={() => apriLink(`/cucina/${slug}`)} className="action-btn" style={{background:'#e67e22'}}>👨‍🍳 Cucina</button>
             <button onClick={() => apriLink(`/pizzeria/${slug}`)} className="action-btn" style={{background:'#c0392b'}}>🍕 Pizzeria</button>
             <button onClick={() => apriLink(`/bar/${slug}`)} className="action-btn" style={{background:'#1abc9c'}}>🍹 Bar</button>
+            <button onClick={() => apriLink(`/magazzino/${slug}`)} className="action-btn" style={{background:'#8e44ad'}}>📦 Magazzino</button>
             <button onClick={() => apriLink(`/haccp/${slug}`)} className="action-btn" style={{background:'#2c3e50'}}>🛡️ HACCP</button>
             <button onClick={handleLogout} className="action-btn" style={{background:'#333', marginLeft:'auto'}}>🚪 Esci</button>
         </div>
