@@ -63,6 +63,36 @@ router.get('/api/db-init-magazzino-pro', async (req, res) => {
     }
 });
 
+router.get('/api/db-fix-magazzino-full', async (req, res) => {
+    try {
+        const client = await pool.connect();
+        try {
+            // Aggiungiamo campi contabili e logistici precisi
+            await client.query(`
+                ALTER TABLE magazzino_prodotti 
+                ADD COLUMN IF NOT EXISTS data_bolla DATE DEFAULT CURRENT_DATE,
+                ADD COLUMN IF NOT EXISTS numero_bolla TEXT DEFAULT '',
+                ADD COLUMN IF NOT EXISTS lotto TEXT DEFAULT '',
+                
+                ADD COLUMN IF NOT EXISTS tipo_unita TEXT DEFAULT 'Pz', -- Es: Kg, Pz, Colli, Lt
+                ADD COLUMN IF NOT EXISTS peso_per_unita NUMERIC(10,3) DEFAULT 1, -- Es: 1 Collo = 6 Pz
+                
+                ADD COLUMN IF NOT EXISTS prezzo_unitario_netto NUMERIC(10,3) DEFAULT 0, -- Prezzo singolo imponibile
+                ADD COLUMN IF NOT EXISTS aliquota_iva NUMERIC(5,2) DEFAULT 22, -- 4, 10, 22
+                ADD COLUMN IF NOT EXISTS valore_totale_netto NUMERIC(12,2) DEFAULT 0, -- (Qta * Unitario Netto)
+                ADD COLUMN IF NOT EXISTS valore_totale_iva NUMERIC(12,2) DEFAULT 0, -- (TotNetto * Iva)
+                ADD COLUMN IF NOT EXISTS valore_totale_lordo NUMERIC(12,2) DEFAULT 0; -- (TotNetto + TotIva)
+            `);
+            
+            res.send("✅ DB MAGAZZINO AGGIORNATO: Aggiunti campi fiscali (IVA, Netto, Lordo) e logistici (Colli, Kg).");
+        } finally {
+            client.release();
+        }
+    } catch (e) {
+        res.status(500).send("Errore DB: " + e.message);
+    }
+});
+
 // AGGIUNGI QUESTO IN server/routes/adminRoutes.js
 router.get('/api/db-fix-magazzino-v2', async (req, res) => {
     try {
