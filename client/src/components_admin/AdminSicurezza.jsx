@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 
 function AdminSicurezza({ user, API_URL }) {
-    const [passwords, setPasswords] = useState({ pw_cassa: '', pw_cucina: '', pw_pizzeria: '', pw_bar: '', pw_haccp: '' });
+    const [passwords, setPasswords] = useState({ pw_cassa: '', pw_cucina: '', pw_pizzeria: '', pw_bar: '', pw_haccp: '', pw_magazzino: '' });
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -14,7 +14,8 @@ function AdminSicurezza({ user, API_URL }) {
                     pw_cucina: data.pw_cucina || '1234',
                     pw_pizzeria: data.pw_pizzeria || '1234',
                     pw_bar: data.pw_bar || '1234',
-                    pw_haccp: data.pw_haccp || '1234'
+                    pw_haccp: data.pw_haccp || '1234',
+                    pw_magazzino: data.pw_magazzino || '1234'
                 });
                 setLoading(false);
             });
@@ -62,6 +63,7 @@ function AdminSicurezza({ user, API_URL }) {
                 <SecurityCard title="Reparto Pizzeria" icon="🍕" field="pw_pizzeria" color="#c0392b" />
                 <SecurityCard title="Reparto Bar" icon="🍹" field="pw_bar" color="#1abc9c" />
                 <SecurityCard title="Admin HACCP" icon="🛡️" field="pw_haccp" color="#34495e" />
+                <SecurityCard title="Responsabile Magazzino" icon="📦" field="pw_magazzino" color="#8e44ad" />
             </div>
 
             <button onClick={handleSave} style={{display: 'block', width: '100%', maxWidth: '400px', margin: '0 auto', padding: '18px', background: '#2c3e50', color: 'white', border: 'none', borderRadius: '50px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 10px 20px rgba(44, 62, 80, 0.3)', transform: 'scale(1)', transition: 'transform 0.2s'}}>

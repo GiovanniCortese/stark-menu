@@ -24,8 +24,29 @@ router.put('/api/ristorante/style/:id', async (req, res) => {
     } 
 });
 
+// AGGIUNGI QUESTO ROUTE IN adminRoutes.js
+router.get('/api/db-fix-security-magazzino', async (req, res) => {
+    try {
+        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS pw_magazzino TEXT DEFAULT '1234'");
+        res.send("✅ DATABASE AGGIORNATO: Aggiunta password Magazzino!");
+    } catch (e) {
+        res.status(500).send("Errore DB: " + e.message);
+    }
+});
+
 router.put('/api/ristorante/servizio/:id', async (req, res) => { try { const { id } = req.params; if (req.body.ordini_abilitati !== undefined) await pool.query('UPDATE ristoranti SET ordini_abilitati = $1 WHERE id = $2', [req.body.ordini_abilitati, id]); if (req.body.servizio_attivo !== undefined) await pool.query('UPDATE ristoranti SET servizio_attivo = $1 WHERE id = $2', [req.body.servizio_attivo, id]); res.json({ success: true }); } catch (e) { res.status(500).json({error:"Err"}); } });
-router.put('/api/ristorante/security/:id', async (req, res) => { try { const { pw_cassa, pw_cucina, pw_pizzeria, pw_bar, pw_haccp } = req.body; await pool.query(`UPDATE ristoranti SET pw_cassa=$1, pw_cucina=$2, pw_pizzeria=$3, pw_bar=$4, pw_haccp=$5 WHERE id=$6`, [pw_cassa, pw_cucina, pw_pizzeria, pw_bar, pw_haccp, req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
+router.put('/api/ristorante/security/:id', async (req, res) => { 
+    try { 
+        // AGGIUNTO pw_magazzino nel destructuring
+        const { pw_cassa, pw_cucina, pw_pizzeria, pw_bar, pw_haccp, pw_magazzino } = req.body; 
+        
+        await pool.query(
+            `UPDATE ristoranti SET pw_cassa=$1, pw_cucina=$2, pw_pizzeria=$3, pw_bar=$4, pw_haccp=$5, pw_magazzino=$6 WHERE id=$7`, 
+            [pw_cassa, pw_cucina, pw_pizzeria, pw_bar, pw_haccp, pw_magazzino, req.params.id]
+        ); 
+        res.json({ success: true }); 
+    } catch (e) { res.status(500).json({ error: "Err" }); } 
+});
 router.put('/api/ristorante/dati-fiscali/:id', async (req, res) => { try { const { dati_fiscali } = req.body; await pool.query('UPDATE ristoranti SET dati_fiscali = $1 WHERE id = $2', [dati_fiscali, req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
 
 // --- DB FIX FORZATO (AGGIORNATO) ---
@@ -61,7 +82,38 @@ router.get('/api/db-fix-menu', async (req, res) => {
 router.post('/api/login', async (req, res) => { const { email, password } = req.body; try { const result = await pool.query("SELECT * FROM ristoranti WHERE email = $1", [email]); if (result.rows.length > 0) { const ristorante = result.rows[0]; if (ristorante.password === password) { return res.json({ success: true, user: { id: ristorante.id, nome: ristorante.nome, slug: ristorante.slug } }); } } res.status(401).json({ success: false, error: "Credenziali errate" }); } catch (e) { res.status(500).json({ success: false, error: "Errore interno" }); } });
 
 // Auth Station
-router.post('/api/auth/station', async (req, res) => { try { const { ristorante_id, role, password } = req.body; const roleMap = { 'cassa': 'pw_cassa', 'cucina': 'pw_cucina', 'pizzeria': 'pw_pizzeria', 'bar': 'pw_bar', 'haccp': 'pw_haccp' }; const colonnaPwd = roleMap[role]; if (!colonnaPwd) return res.json({ success: false, error: "Ruolo non valido" }); const r = await pool.query(`SELECT id, nome, ${colonnaPwd} as password_reparto FROM ristoranti WHERE id = $1`, [ristorante_id]); if (r.rows.length === 0) return res.json({ success: false, error: "Ristorante non trovato" }); if (String(r.rows[0].password_reparto) === String(password)) res.json({ success: true, nome_ristorante: r.rows[0].nome }); else res.json({ success: false, error: "Password Errata" }); } catch (e) { res.status(500).json({ error: "Err" }); } });
+router.post('/api/auth/station', async (req, res) => { 
+    try { 
+        const { ristorante_id, role, password } = req.body; 
+        
+        // AGGIUNTO 'magazzino': 'pw_magazzino' alla mappa
+        const roleMap = { 
+            'cassa': 'pw_cassa', 
+            'cucina': 'pw_cucina', 
+            'pizzeria': 'pw_pizzeria', 
+            'bar': 'pw_bar', 
+            'haccp': 'pw_haccp',
+            'magazzino': 'pw_magazzino' 
+        }; 
+        
+        const colonnaPwd = roleMap[role]; 
+        if (!colonnaPwd) return res.json({ success: false, error: "Ruolo non valido" }); 
+        
+        // Nota: Assicurati di selezionare anche la nuova colonna nella query se non usi SELECT *
+        // Se usi SELECT * va bene, ma per sicurezza cambiamo la query per essere espliciti o dinamici
+        const r = await pool.query(`SELECT * FROM ristoranti WHERE id = $1`, [ristorante_id]); 
+        
+        if (r.rows.length === 0) return res.json({ success: false, error: "Ristorante non trovato" }); 
+        
+        // Controllo password
+        const storedPwd = r.rows[0][colonnaPwd];
+        
+        if (String(storedPwd) === String(password)) 
+            res.json({ success: true, nome_ristorante: r.rows[0].nome }); 
+        else 
+            res.json({ success: false, error: "Password Errata" }); 
+    } catch (e) { res.status(500).json({ error: "Err: " + e.message }); } 
+});
 
 // Super Admin
 router.get('/api/super/ristoranti', async (req, res) => { try { const r = await pool.query('SELECT * FROM ristoranti ORDER BY id ASC'); res.json(r.rows); } catch (e) { res.status(500).json({error:"Err"}); } });
