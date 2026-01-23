@@ -354,11 +354,6 @@ function Admin() {
             🎨 Grafica
         </button>
         
-        <button onClick={() => setTab('magazzino')} className="nav-btn" 
-            style={{background: tab==='magazzino'?'#27ae60':'white', color: tab==='magazzino'?'white':'#444'}}>
-            📊 Magazzino
-        </button>
-        
         {user.ruolo !== 'editor' && (
             <>
                 <button onClick={() => setTab('users')} className="nav-btn" 
@@ -407,15 +402,6 @@ function Admin() {
                 API_URL={API_URL} 
             />
         )}
-
-        {tab === 'magazzino' && (
-   <div style={{ padding: '0 20px' }}>
-        <MagazzinoManager 
-            ristoranteId={user.id} 
-            API_URL={API_URL} 
-        />
-    </div>
-)}
 
         {tab === 'users' && (
             <AdminUsers 
