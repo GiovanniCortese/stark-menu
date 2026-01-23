@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
+import API_URL from './config'; 
+
+// IMPORTA IL NUOVO MANAGER DALLA CARTELLA GIUSTA
 import MagazzinoManager from './components/magazzino/MagazzinoManager'; 
-import API_URL from './config'; // Usa il config centralizzato
 
 function Magazzino() {
     const { slug } = useParams();
@@ -12,13 +14,13 @@ function Magazzino() {
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        // 1. Scarica info ristorante (ID e Nome)
+        // Scarica info ristorante (ID e Nome)
         fetch(`${API_URL}/api/menu/${slug}`)
             .then(r => r.json())
             .then(data => setInfoRistorante(data))
             .catch(err => console.error("Errore recupero ID", err));
 
-        // 2. Controlla se è già loggato in questa sessione
+        // Controlla sessione
         if (localStorage.getItem(`magazzino_auth_${slug}`) === "true") {
             setAuthorized(true);
         }
@@ -30,13 +32,12 @@ function Magazzino() {
         setLoading(true);
 
         try {
-            // CHIAMATA ALLA NUOVA ROTTA DI SICUREZZA REALE
             const res = await fetch(`${API_URL}/api/auth/station`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
                     ristorante_id: infoRistorante.id, 
-                    role: 'magazzino', // Ruolo specifico
+                    role: 'magazzino', 
                     password: password 
                 })
             });
@@ -56,14 +57,13 @@ function Magazzino() {
         }
     };
 
-    // Logout
     const handleLogout = () => {
         localStorage.removeItem(`magazzino_auth_${slug}`);
         setAuthorized(false);
         setPassword("");
     };
 
-    if (!infoRistorante) return <div style={{padding:20, color:'white', background:'#2c3e50', minHeight:'100vh'}}>Caricamento Ristorante...</div>;
+    if (!infoRistorante) return <div style={{padding:20, color:'white', background:'#2c3e50', minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center'}}>Caricamento...</div>;
 
     // --- SCHERMATA LOGIN ---
     if (!authorized) {
@@ -80,7 +80,7 @@ function Magazzino() {
                             placeholder="Password Reparto" 
                             value={password} 
                             onChange={e=>setPassword(e.target.value)} 
-                            style={{padding:15, borderRadius:8, border:'1px solid #ddd', fontSize:'16px', outline:'none'}}
+                            style={{padding:15, borderRadius:8, border:'1px solid #ddd', fontSize:'16px', outline:'none', textAlign:'center'}}
                         />
                         
                         {error && <div style={{color:'#e74c3c', fontWeight:'bold', fontSize:'0.9rem'}}>{error}</div>}
@@ -94,10 +94,10 @@ function Magazzino() {
         );
     }
 
-    // --- APPLICAZIONE MAGAZZINO VERA E PROPRIA ---
+    // --- APPLICAZIONE MAGAZZINO ---
     return (
         <div style={{minHeight:'100vh', background:'#ecf0f1'}}>
-            {/* Header Semplice con Logout */}
+            {/* Header */}
             <div style={{background:'#2c3e50', padding:'10px 20px', color:'white', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                 <div style={{display:'flex', alignItems:'center', gap:10}}>
                     <span style={{fontSize:'1.5rem'}}>📦</span>
@@ -108,9 +108,12 @@ function Magazzino() {
                 </button>
             </div>
             
-            {/* Componente Manager che abbiamo creato prima */}
+            {/* IMPORTANTE: Qui passiamo 'user' che contiene l'ID del ristorante.
+                MagazzinoManager usa user.id per le chiamate API.
+                Quindi trucchiamo passando infoRistorante come se fosse l'user.
+            */}
             <MagazzinoManager 
-                ristoranteId={infoRistorante.id} 
+                user={infoRistorante} 
                 API_URL={API_URL}
             />
         </div>
