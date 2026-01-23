@@ -10,6 +10,60 @@ const stream = require('stream');
 const { analyzeImageWithGemini } = require('../utils/ai');
 
 // =================================================================================
+// 0. DB FIX (LANCIARE UNA VOLTA: /api/db-fix-magazzino-full)
+// =================================================================================
+router.get('/api/db-fix-magazzino-full', async (req, res) => {
+    try {
+        const client = await pool.connect();
+        // Aggiungiamo i campi per la visione dettagliata "Documento"
+        await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS data_documento DATE");
+        await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS riferimento_documento TEXT"); // Num Fattura/Bolla
+        await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS fornitore_full TEXT"); // Dati completi fornitore
+        
+        // Totali Monetari
+        await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS prezzo_unitario_netto NUMERIC DEFAULT 0");
+        await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS totale_netto NUMERIC DEFAULT 0");
+        await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS totale_iva NUMERIC DEFAULT 0");
+        await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS totale_lordo NUMERIC DEFAULT 0");
+
+        // Timestamp inserimento
+        await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS data_inserimento TIMESTAMP DEFAULT NOW()");
+
+        client.release();
+        res.send("✅ DATABASE AGGIORNATO: Colonne Fattura e Totali create!");
+    } catch (e) {
+        res.status(500).send("Errore DB Fix: " + e.message);
+    }
+});
+
+// =================================================================================
+// 1. CANCELLAZIONE MULTIPLA (BULK DELETE)
+// =================================================================================
+router.post('/api/magazzino/delete-bulk', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { ids } = req.body; // Array di ID [1, 2, 55]
+        if (!ids || ids.length === 0) return res.json({ success: true });
+
+        await client.query('BEGIN');
+        
+        // 1. Elimina dal registro storico (haccp_merci)
+        await client.query("DELETE FROM haccp_merci WHERE id = ANY($1::int[])", [ids]);
+
+        // Nota: Se volessi scalare anche la giacenza dal magazzino master, servirebbe una logica più complessa.
+        // Per ora eliminiamo le righe di registrazione.
+
+        await client.query('COMMIT');
+        res.json({ success: true, deleted: ids.length });
+    } catch (e) {
+        await client.query('ROLLBACK');
+        res.status(500).json({ error: e.message });
+    } finally {
+        client.release();
+    }
+});
+
+// =================================================================================
 // HELPER: GESTIONE CENTRALE MAGAZZINO (Update o Insert)
 // =================================================================================
 async function gestisciMagazzino(client, data) {
@@ -110,24 +164,23 @@ router.get('/api/haccp/labels/storico/:ristorante_id', async (req, res) => { try
 // =================================================================================
 router.get('/api/haccp/merci/:ristorante_id', async (req, res) => {
     try {
-        const { start, end, mode } = req.query; 
+        const { start, end } = req.query; 
         
-        let sql = "SELECT * FROM haccp_merci WHERE ristorante_id = $1";
+        let sql = `
+            SELECT *, 
+            to_char(data_documento, 'DD/MM/YYYY') as data_doc_fmt,
+            to_char(data_inserimento, 'DD/MM/YYYY HH24:MI') as data_ins_fmt
+            FROM haccp_merci 
+            WHERE ristorante_id = $1
+        `;
         const params = [req.params.ristorante_id];
-        let paramIndex = 2;
-
-        if (mode === 'haccp') {
-            sql += " AND is_haccp = TRUE"; // Filtra solo roba alimentare
-        }
-
+        
         if (start && end) {
-            sql += ` AND data_ricezione >= $${paramIndex} AND data_ricezione <= $${paramIndex + 1}`;
+            sql += ` AND data_ricezione >= $2 AND data_ricezione <= $3`;
             params.push(start, end);
-        } else {
-            sql += " AND data_ricezione >= NOW() - INTERVAL '60 days'";
         }
 
-        sql += " ORDER BY data_ricezione DESC, ora DESC"; 
+        sql += " ORDER BY data_ricezione DESC, id DESC"; 
         
         const r = await pool.query(sql, params);
         res.json(r.rows);

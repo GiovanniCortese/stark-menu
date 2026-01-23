@@ -1,168 +1,212 @@
 import React, { useState } from 'react';
 
-const MagazzinoList = ({ storico, ricaricaDati, API_URL }) => {
+const MagazzinoList = ({ storico, ricaricaDati, API_URL, onEdit }) => {
     const [filtro, setFiltro] = useState("");
-    const [sortConfig, setSortConfig] = useState({ key: 'nome', direction: 'asc' });
-    const [editRow, setEditRow] = useState(null); // Riga in modifica
+    const [selectedIds, setSelectedIds] = useState([]); // ID selezionati per cancellazione
+    const [sortConfig, setSortConfig] = useState({ key: 'data_ricezione', direction: 'desc' });
 
-    // --- FUNZIONE ORDINAMENTO ---
+    // --- CALCOLI AL VOLO PER VISUALIZZAZIONE ---
+    // Se il DB non ha i totali salvati, li calcoliamo qui per sicurezza
+    const enrichData = (item) => {
+        const qta = parseFloat(item.quantita) || 0;
+        const unitNetto = parseFloat(item.prezzo_unitario) || 0;
+        const ivaPerc = parseFloat(item.iva) || 0;
+        
+        // Se i campi esistono nel DB usiamo quelli, altrimenti calcoliamo
+        const totNetto = item.totale_netto ? parseFloat(item.totale_netto) : (qta * unitNetto);
+        const totIva = item.totale_iva ? parseFloat(item.totale_iva) : (totNetto * (ivaPerc / 100));
+        const totLordo = item.totale_lordo ? parseFloat(item.totale_lordo) : (totNetto + totIva);
+
+        return {
+            ...item,
+            _totNetto: totNetto,
+            _totIva: totIva,
+            _totLordo: totLordo
+        };
+    };
+
+    // --- ORDINAMENTO ---
     const handleSort = (key) => {
         let direction = 'asc';
-        if (sortConfig.key === key && sortConfig.direction === 'asc') {
-            direction = 'desc';
-        }
+        if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
         setSortConfig({ key, direction });
     };
 
-    const sortedData = [...storico].sort((a, b) => {
-        let valA = a[sortConfig.key];
-        let valB = b[sortConfig.key];
-
-        // Gestione Numeri
-        if (!isNaN(parseFloat(valA)) && !isNaN(parseFloat(valB))) {
-            valA = parseFloat(valA);
-            valB = parseFloat(valB);
-        } else {
-            // Gestione Stringhe (case insensitive)
-            valA = valA ? valA.toString().toLowerCase() : '';
-            valB = valB ? valB.toString().toLowerCase() : '';
-        }
-
-        if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
-        if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+    const sortedData = [...storico].map(enrichData).sort((a, b) => {
+        if (a[sortConfig.key] < b[sortConfig.key]) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (a[sortConfig.key] > b[sortConfig.key]) return sortConfig.direction === 'asc' ? 1 : -1;
         return 0;
     });
 
-    const datiFiltrati = sortedData.filter(r => 
-        r.nome.toLowerCase().includes(filtro.toLowerCase()) || 
-        (r.marca && r.marca.toLowerCase().includes(filtro.toLowerCase())) ||
-        (r.lotto && r.lotto.toLowerCase().includes(filtro.toLowerCase()))
+    const datiFiltrati = sortedData.filter(item => 
+        item.prodotto?.toLowerCase().includes(filtro.toLowerCase()) ||
+        item.fornitore?.toLowerCase().includes(filtro.toLowerCase()) ||
+        item.riferimento_documento?.toLowerCase().includes(filtro.toLowerCase())
     );
 
-    // --- SALVATAGGIO MODIFICHE ---
-    const handleSave = async (e) => {
-        e.preventDefault();
-        try {
-            await fetch(`${API_URL}/api/magazzino/update-full/${editRow.id}`, {
-                method: 'PUT',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(editRow)
-            });
-            setEditRow(null);
-            ricaricaDati();
-        } catch(err) { alert("Errore salvataggio"); }
+    // --- GESTIONE SELEZIONE CHECKBOX ---
+    const handleSelectAll = (e) => {
+        if (e.target.checked) {
+            setSelectedIds(datiFiltrati.map(i => i.id));
+        } else {
+            setSelectedIds([]);
+        }
     };
 
-    const Th = ({ label, sortKey, width }) => (
-        <th 
-            onClick={() => handleSort(sortKey)} 
-            style={{
-                padding:12, cursor:'pointer', userSelect:'none', 
-                background: sortConfig.key === sortKey ? '#ecf0f1' : 'transparent',
-                minWidth: width || 'auto'
-            }}
-        >
-            {label} {sortConfig.key === sortKey ? (sortConfig.direction === 'asc' ? '🔼' : '🔽') : ''}
-        </th>
-    );
+    const handleSelectRow = (id) => {
+        if (selectedIds.includes(id)) {
+            setSelectedIds(selectedIds.filter(sid => sid !== id));
+        } else {
+            setSelectedIds([...selectedIds, id]);
+        }
+    };
+
+    // --- CANCELLAZIONE ---
+    const handleDeleteSingle = async (id) => {
+        if (!window.confirm("Eliminare questa riga?")) return;
+        try {
+            await fetch(`${API_URL}/api/haccp/merci/${id}`, { method: 'DELETE' });
+            ricaricaDati();
+        } catch (e) { alert("Errore cancellazione"); }
+    };
+
+    const handleDeleteSelected = async () => {
+        if (selectedIds.length === 0) return;
+        if (!window.confirm(`Eliminare definitivamente ${selectedIds.length} elementi selezionati?`)) return;
+
+        try {
+            await fetch(`${API_URL}/api/magazzino/delete-bulk`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: selectedIds })
+            });
+            setSelectedIds([]);
+            ricaricaDati();
+        } catch (e) { alert("Errore cancellazione multipla"); }
+    };
+
+    // STILI CSS RAPIDI
+    const thStyle = { padding: '12px 8px', textAlign: 'left', borderBottom: '2px solid #ddd', background: '#f8f9fa', fontSize: '13px', whiteSpace: 'nowrap', cursor: 'pointer' };
+    const tdStyle = { padding: '10px 8px', borderBottom: '1px solid #eee', fontSize: '13px', verticalAlign: 'middle' };
 
     return (
-        <div style={{background:'white', padding:20, borderRadius:15, boxShadow:'0 4px 10px rgba(0,0,0,0.05)'}}>
+        <div style={{ background: 'white', padding: 20, borderRadius: 10, boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
             
-            {/* SEARCH BAR */}
-            <div style={{marginBottom:20}}>
+            {/* BARRA SUPERIORE */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
                 <input 
                     type="text" 
-                    placeholder="🔍 Cerca per nome, marca, lotto..." 
+                    placeholder="🔍 Cerca prodotto, fornitore, n. fattura..." 
                     value={filtro}
-                    onChange={(e)=>setFiltro(e.target.value)}
-                    style={{width:'100%', padding:'12px', borderRadius:8, border:'1px solid #ddd', fontSize:14}}
+                    onChange={e => setFiltro(e.target.value)}
+                    style={{ padding: '10px', width: '300px', borderRadius: 5, border: '1px solid #ccc' }}
                 />
+                
+                {selectedIds.length > 0 && (
+                    <button 
+                        onClick={handleDeleteSelected}
+                        style={{ background: '#c0392b', color: 'white', border: 'none', padding: '10px 20px', borderRadius: 5, cursor: 'pointer', fontWeight: 'bold' }}
+                    >
+                        🗑️ ELIMINA ({selectedIds.length}) SELEZIONATI
+                    </button>
+                )}
             </div>
 
-            <div style={{overflowX:'auto'}}>
-                <table style={{width:'100%', borderCollapse:'collapse', fontSize:13, minWidth:1000}}>
+            {/* TABELLA */}
+            <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1600px' }}>
                     <thead>
-                        <tr style={{background:'#2c3e50', color:'white', textAlign:'left'}}>
-                            <Th label="DATA BOLLA" sortKey="data_bolla_iso" />
-                            <Th label="PRODOTTO" sortKey="nome" />
-                            <Th label="FORNITORE" sortKey="marca" />
-                            <Th label="LOTTO" sortKey="lotto" />
-                            <Th label="QTA" sortKey="giacenza" />
-                            <Th label="UNITÀ" sortKey="tipo_unita" />
-                            <Th label="€ NETTO (Unit)" sortKey="prezzo_unitario_netto" />
-                            <Th label="IVA %" sortKey="aliquota_iva" />
-                            <Th label="€ TOT NETTO" sortKey="valore_totale_netto" />
-                            <Th label="€ TOT IVA" sortKey="valore_totale_iva" />
-                            <Th label="€ TOT LORDO" sortKey="valore_totale_lordo" />
-                            <th style={{padding:12}}>AZIONI</th>
+                        <tr>
+                            <th style={{...thStyle, width: 40}}>
+                                <input type="checkbox" onChange={handleSelectAll} checked={datiFiltrati.length > 0 && selectedIds.length === datiFiltrati.length} />
+                            </th>
+                            <th style={thStyle} onClick={() => handleSort('data_documento')}>📅 Data Doc.</th>
+                            <th style={thStyle} onClick={() => handleSort('riferimento_documento')}>📄 Rif. Doc</th>
+                            <th style={thStyle} onClick={() => handleSort('fornitore')}>🚚 Fornitore</th>
+                            <th style={thStyle} onClick={() => handleSort('prodotto')}>📦 Prodotto</th>
+                            <th style={thStyle} onClick={() => handleSort('lotto')}>🔢 Lotto</th>
+                            <th style={thStyle} onClick={() => handleSort('scadenza')}>⏳ Scadenza</th>
+                            <th style={thStyle}>Qta</th>
+                            <th style={thStyle}>Unità</th>
+                            <th style={thStyle}>€ Netto (Unit)</th>
+                            <th style={thStyle}>IVA %</th>
+                            <th style={thStyle}>Tot. Netto</th>
+                            <th style={thStyle}>Tot. IVA</th>
+                            <th style={thStyle}>Tot. Lordo</th>
+                            <th style={thStyle}>📎 All.</th>
+                            <th style={thStyle}>🕒 Ins.</th>
+                            <th style={{...thStyle, textAlign:'center'}}>🛠️ Azioni</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {datiFiltrati.map(p => (
-                            <tr key={p.id} style={{borderBottom:'1px solid #eee', hover: {background:'#f9f9f9'}}}>
-                                <td style={{padding:10}}>{p.data_bolla_iso || '-'}</td>
-                                <td style={{padding:10, fontWeight:'bold'}}>{p.nome}</td>
-                                <td style={{padding:10}}>{p.marca}</td>
-                                <td style={{padding:10}}>{p.lotto}</td>
-                                <td style={{padding:10, fontWeight:'bold', color:'#2980b9'}}>{Number(p.giacenza).toFixed(2)}</td>
-                                <td style={{padding:10}}>{p.tipo_unita}</td>
-                                <td style={{padding:10}}>€ {Number(p.prezzo_unitario_netto).toFixed(3)}</td>
-                                <td style={{padding:10}}>{p.aliquota_iva}%</td>
-                                <td style={{padding:10}}>€ {Number(p.valore_totale_netto).toFixed(2)}</td>
-                                <td style={{padding:10, color:'#7f8c8d'}}>€ {Number(p.valore_totale_iva).toFixed(2)}</td>
-                                <td style={{padding:10, fontWeight:'bold', color:'#27ae60'}}>€ {Number(p.valore_totale_lordo).toFixed(2)}</td>
-                                <td style={{padding:10}}>
-                                    <button onClick={()=>setEditRow(p)} style={{border:'none', background:'transparent', cursor:'pointer'}}>✏️</button>
+                        {datiFiltrati.map(row => (
+                            <tr key={row.id} style={{ background: selectedIds.includes(row.id) ? '#fff3cd' : 'white' }}>
+                                <td style={tdStyle}>
+                                    <input 
+                                        type="checkbox" 
+                                        checked={selectedIds.includes(row.id)} 
+                                        onChange={() => handleSelectRow(row.id)} 
+                                    />
+                                </td>
+                                <td style={tdStyle}>{row.data_doc_fmt || row.data_bolla_iso || '-'}</td>
+                                <td style={tdStyle}>
+                                    <span style={{fontWeight:'bold', color:'#2980b9'}}>{row.riferimento_documento || row.lotto || '-'}</span>
+                                </td>
+                                <td style={tdStyle}>
+                                    <div><strong>{row.fornitore}</strong></div>
+                                    {/* Tooltip o piccolo testo per i dettagli completi se presenti */}
+                                    {row.fornitore_full && <div style={{fontSize:10, color:'#777'}}>{row.fornitore_full.substring(0, 20)}...</div>}
+                                </td>
+                                <td style={tdStyle}><strong>{row.prodotto}</strong></td>
+                                <td style={tdStyle}><span style={{background:'#eee', padding:'2px 5px', borderRadius:3}}>{row.lotto || '-'}</span></td>
+                                <td style={{...tdStyle, color: row.scadenza ? '#c0392b' : '#333'}}>
+                                    {row.scadenza ? new Date(row.scadenza).toLocaleDateString() : '-'}
+                                </td>
+                                <td style={{...tdStyle, fontWeight:'bold', fontSize:14}}>{row.quantita}</td>
+                                <td style={tdStyle}>{row.unita_misura || 'Pz'}</td>
+                                <td style={tdStyle}>€ {Number(row.prezzo_unitario).toFixed(2)}</td>
+                                <td style={tdStyle}>{row.iva}%</td>
+                                <td style={tdStyle}>€ {row._totNetto.toFixed(2)}</td>
+                                <td style={{...tdStyle, color:'#7f8c8d'}}>€ {row._totIva.toFixed(2)}</td>
+                                <td style={{...tdStyle, fontWeight:'bold', color:'#27ae60'}}>€ {row._totLordo.toFixed(2)}</td>
+                                <td style={tdStyle}>
+                                    {row.allegato_url ? (
+                                        <a href={row.allegato_url} target="_blank" rel="noopener noreferrer" style={{textDecoration:'none', fontSize:16}}>📎</a>
+                                    ) : <span style={{color:'#eee'}}>—</span>}
+                                </td>
+                                <td style={{...tdStyle, fontSize:10, color:'#999'}}>
+                                    {row.data_ins_fmt || new Date(row.data_ricezione).toLocaleDateString()}
+                                </td>
+                                <td style={{...tdStyle, textAlign:'center'}}>
+                                    <div style={{display:'flex', gap:5, justifyContent:'center'}}>
+                                        <button 
+                                            onClick={() => onEdit(row)} 
+                                            title="Modifica"
+                                            style={{background:'#f1c40f', border:'none', borderRadius:4, padding:'6px', cursor:'pointer'}}
+                                        >
+                                            ✏️
+                                        </button>
+                                        <button 
+                                            onClick={() => handleDeleteSingle(row.id)} 
+                                            title="Elimina"
+                                            style={{background:'#e74c3c', color:'white', border:'none', borderRadius:4, padding:'6px', cursor:'pointer'}}
+                                        >
+                                            🗑️
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         ))}
+                        {datiFiltrati.length === 0 && (
+                            <tr>
+                                <td colSpan="17" style={{textAlign:'center', padding:30, color:'#999'}}>
+                                    Nessun documento trovato.
+                                </td>
+                            </tr>
+                        )}
                     </tbody>
                 </table>
             </div>
-
-            {/* MODALE DI MODIFICA RAPIDA */}
-            {editRow && (
-                <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.5)', display:'flex', justifyContent:'center', alignItems:'center', zIndex:1000}}>
-                    <div style={{background:'white', padding:30, borderRadius:15, width:500, maxWidth:'90%'}}>
-                        <h3>✏️ Modifica: {editRow.nome}</h3>
-                        <form onSubmit={handleSave} style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:15}}>
-                            
-                            <div><label>Data Bolla</label><input type="date" value={editRow.data_bolla ? editRow.data_bolla.split('T')[0] : ''} onChange={e=>setEditRow({...editRow, data_bolla: e.target.value})} style={{width:'100%', padding:8}} /></div>
-                            <div><label>Fornitore</label><input value={editRow.marca || ''} onChange={e=>setEditRow({...editRow, marca: e.target.value})} style={{width:'100%', padding:8}} /></div>
-                            
-                            <div><label>Lotto</label><input value={editRow.lotto || ''} onChange={e=>setEditRow({...editRow, lotto: e.target.value})} style={{width:'100%', padding:8}} /></div>
-                            <div>
-                                <label>Tipo Unità</label>
-                                <select value={editRow.tipo_unita} onChange={e=>setEditRow({...editRow, tipo_unita: e.target.value})} style={{width:'100%', padding:8}}>
-                                    <option value="Pz">Pezzi (Pz)</option>
-                                    <option value="Kg">Chilogrammi (Kg)</option>
-                                    <option value="Colli">Colli / Pacchi</option>
-                                    <option value="Lt">Litri (Lt)</option>
-                                </select>
-                            </div>
-
-                            <div><label>Quantità</label><input type="number" step="0.01" value={editRow.giacenza} onChange={e=>setEditRow({...editRow, giacenza: e.target.value})} style={{width:'100%', padding:8}} /></div>
-                            <div><label>Prezzo Netto Unitario</label><input type="number" step="0.001" value={editRow.prezzo_unitario_netto} onChange={e=>setEditRow({...editRow, prezzo_unitario_netto: e.target.value})} style={{width:'100%', padding:8}} /></div>
-                            
-                            <div>
-                                <label>IVA %</label>
-                                <select value={editRow.aliquota_iva} onChange={e=>setEditRow({...editRow, aliquota_iva: e.target.value})} style={{width:'100%', padding:8}}>
-                                    <option value="4">4%</option>
-                                    <option value="10">10%</option>
-                                    <option value="22">22%</option>
-                                    <option value="0">0%</option>
-                                </select>
-                            </div>
-
-                            <div style={{gridColumn:'span 2', marginTop:10, display:'flex', gap:10}}>
-                                <button type="button" onClick={()=>setEditRow(null)} style={{flex:1, padding:10, background:'#95a5a6', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Annulla</button>
-                                <button type="submit" style={{flex:1, padding:10, background:'#27ae60', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>SALVA MODIFICHE</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };
