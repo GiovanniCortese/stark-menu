@@ -1,3 +1,4 @@
+// client/src/components_haccp/MagazzinoManager.jsx
 import React, { useState, useEffect } from 'react';
 import MagazzinoDashboard from './MagazzinoDashboard';
 import MagazzinoCalendar from './MagazzinoCalendar';
@@ -10,7 +11,13 @@ const formatDateISO = (date) => date.toISOString().split('T')[0];
 
 const MagazzinoManager = ({ user, API_URL }) => {
     const [tab, setTab] = useState('lista'); // 'dashboard', 'calendario', 'lista', 'carico'
-    const [stats, setStats] = useState({ fornitori: [], storico: [], top_prodotti: [] }); // 'storico' qui conterrà la lista magazzino
+    
+    // STATO SDOPPIATO: 
+    // - storico: contiene le bolle/fatture (haccp_merci) -> Per la TABELLA
+    // - magazzino: contiene le giacenze attuali (magazzino_prodotti) -> Per futuri controlli stock
+    const [stats, setStats] = useState({ fornitori: [], storico: [], top_prodotti: [] }); 
+    const [magazzinoReale, setMagazzinoReale] = useState([]); // Giacenze attuali
+
     const [assets, setAssets] = useState([]); 
     
     // Stati Modali
@@ -20,29 +27,32 @@ const MagazzinoManager = ({ user, API_URL }) => {
     const [previewDoc, setPreviewDoc] = useState(null); 
     const [isDownloading, setIsDownloading] = useState(false);
 
-    // Stato modifica (condiviso tra Lista e Carico)
+    // Stato modifica
     const [recordDaModificare, setRecordDaModificare] = useState(null);
 
     useEffect(() => { ricaricaDati(); }, []);
 
     const ricaricaDati = () => {
-        // 1. CARICA IL VERO MAGAZZINO (Nuova Tabella)
-        // Usiamo la rotta che restituisce giacenze e anagrafica dettagliata
+        // 1. CARICA LO STORICO MOVIMENTI (HACCP MERCI) -> QUELLO CHE SERVE ALLA TABELLA
+        fetch(`${API_URL}/api/haccp/merci/${user.id}`)
+            .then(r => r.json())
+            .then(data => {
+                setStats(prev => ({
+                    ...prev,
+                    storico: Array.isArray(data) ? data : [] // Popola la tabella con le bolle
+                }));
+            })
+            .catch(console.error);
+
+        // 2. CARICA LE GIACENZE ATTUALI (MAGAZZINO MASTER) -> Utile per logiche di stock
         fetch(`${API_URL}/api/magazzino/lista/${user.id}`)
             .then(r => r.json())
             .then(data => {
-                // Mappiamo i dati nell'oggetto stats.storico per compatibilità con i figli
-                setStats(prev => ({
-                    ...prev,
-                    storico: Array.isArray(data) ? data : [] 
-                }));
+                setMagazzinoReale(Array.isArray(data) ? data : []);
             })
-            .catch(err => {
-                console.error("Errore caricamento lista magazzino:", err);
-                setStats(prev => ({ ...prev, storico: [] }));
-            });
+            .catch(console.error);
 
-        // 2. Carica Statistiche (Grafici) 
+        // 3. Carica Statistiche (Grafici) 
         fetch(`${API_URL}/api/haccp/stats/magazzino/${user.id}`)
             .then(r => r.json())
             .then(data => {
@@ -54,17 +64,17 @@ const MagazzinoManager = ({ user, API_URL }) => {
             })
             .catch(console.error);
 
-        // 3. Carica Assets (Macchinari HACCP)
+        // 4. Carica Assets
         fetch(`${API_URL}/api/haccp/assets/${user.id}`)
             .then(r => r.json())
             .then(data => setAssets(Array.isArray(data) ? data : []))
             .catch(console.error);
     };
 
-    // Gestione Avvio Modifica (Dalla Lista -> Al Form)
+    // Gestione Avvio Modifica
     const gestisciModifica = (record) => {
         setRecordDaModificare(record);
-        setTab('carico'); // Sposta l'utente sulla tab di caricamento
+        setTab('carico'); 
     };
 
     // --- EXPORT LOGIC ---
@@ -98,11 +108,10 @@ const MagazzinoManager = ({ user, API_URL }) => {
         setShowDownloadModal(false);
     };
 
-    // --- FILE VIEWER & PROXY DOWNLOAD ---
+    // --- FILE VIEWER ---
     const handleFileAction = (url, name) => {
         if(!url) return;
         const isPdf = url.toLowerCase().includes('.pdf');
-        // Usiamo un proxy se necessario per evitare blocchi CORS o per forzare il download
         let previewUrl = isPdf ? `${API_URL}/api/proxy-download?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}` : url;
         setPreviewDoc({ url, previewUrl, name, type: isPdf ? 'pdf' : 'image' });
     };
@@ -127,7 +136,7 @@ const MagazzinoManager = ({ user, API_URL }) => {
     return (
         <div style={{padding: '20px', background: '#f4f6f8', minHeight: '90vh', fontFamily:"'Inter', sans-serif"}}>
             
-            {/* HEADER & NAVIGAZIONE */}
+            {/* HEADER */}
             <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20, flexWrap:'wrap', gap:10}}>
                 <div>
                     <h2 style={{color: '#2c3e50', margin:0}}>📦 Magazzino & Contabilità</h2>
@@ -143,11 +152,10 @@ const MagazzinoManager = ({ user, API_URL }) => {
                 </div>
             </div>
 
-            {/* --- CONTENUTO TABS --- */}
-
+            {/* CONTENT */}
             {tab === 'dashboard' && <MagazzinoDashboard stats={stats} />}
             
-            {tab === 'calendario' && <MagazzinoCalendar stats={stats} setTab={setTab} setFiltro={(f) => console.log(f)} />}
+            {tab === 'calendario' && <MagazzinoCalendar stats={stats} />}
 
             {tab === 'carico' && (
                 <MagazzinoUpload 
@@ -162,16 +170,16 @@ const MagazzinoManager = ({ user, API_URL }) => {
 
             {tab === 'lista' && (
                 <MagazzinoList 
-                    storico={stats.storico} 
+                    storico={stats.storico}  // ORA QUESTO È CORRETTO (Prende haccp_merci)
                     ricaricaDati={ricaricaDati}
                     API_URL={API_URL}
                     handleFileAction={handleFileAction}
-                    avviaModifica={gestisciModifica}
+                    onEdit={gestisciModifica} // Era 'onEdit' nel MagazzinoList, non avviaModifica
                     openDownloadModal={() => setShowDownloadModal(true)}
                 />
             )}
 
-            {/* --- MODALE DOWNLOAD REPORT --- */}
+            {/* MODALI (Download & Preview) RIMASTI INVARIATI */}
             {showDownloadModal && (
                 <div style={{position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000}}>
                     <div style={{background: 'white', padding: '20px', borderRadius: '10px', width: '350px', textAlign: 'center'}}>
@@ -194,7 +202,6 @@ const MagazzinoManager = ({ user, API_URL }) => {
                 </div>
             )}
 
-            {/* --- MODALE PREVIEW FILE --- */}
             {previewDoc && (
                 <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.85)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center'}}>
                     <div style={{background:'white', width:'90%', height:'90%', maxWidth:'1000px', borderRadius:8, display:'flex', flexDirection:'column', overflow:'hidden'}}>
