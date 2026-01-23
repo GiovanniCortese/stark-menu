@@ -64,11 +64,11 @@ router.get('/api/haccp/merci/:ristorante_id', async (req, res) => {
     } catch(e) { res.status(500).json({error:"Err"}); }
 });
 
-// IMPORT MASSIVO EXCEL CON LOGICA "AGGIORNA SE ESISTE"
+// IMPORT MASSIVO INTELLIGENTE V2 (Magazzino Centric)
 router.post('/api/haccp/merci/import', async (req, res) => {
     const client = await pool.connect();
     try {
-        const { merci } = req.body; // Array di oggetti dal Frontend
+        const { merci } = req.body; 
         if (!Array.isArray(merci)) return res.status(400).json({ error: "Formato non valido" });
 
         await client.query('BEGIN');
@@ -76,70 +76,106 @@ router.post('/api/haccp/merci/import', async (req, res) => {
         let inserted = 0;
         
         for (const m of merci) {
-            // LOGICA INTELLIGENTE:
-            // Cerchiamo se esiste già questo prodotto per questo fornitore con questo documento (Note/DDT)
-            // Se le note sono vuote, usiamo la data come discriminante aggiuntivo
-            const checkSql = `
+            // ---------------------------------------------------------
+            // FASE 1: GESTIONE ANAGRAFICA MAGAZZINO (Il Master)
+            // ---------------------------------------------------------
+            
+            // Cerchiamo se il prodotto esiste già nel magazzino "vero"
+            let magazzinoId = null;
+            const checkMag = await client.query(
+                `SELECT id, giacenza, prezzo_medio FROM magazzino_prodotti 
+                 WHERE ristorante_id = $1 AND LOWER(nome) = LOWER($2)`,
+                [m.ristorante_id, m.prodotto]
+            );
+
+            const qtaNuova = parseFloat(m.quantita) || 0;
+            const prezzoUnitNuovo = parseFloat(m.prezzo_unitario) || 0;
+
+            if (checkMag.rows.length > 0) {
+                // ESISTE: Aggiorniamo giacenza e prezzo medio ponderato
+                const prod = checkMag.rows[0];
+                magazzinoId = prod.id;
+                
+                // Calcolo Prezzo Medio Ponderato (semplificato)
+                // (Vecchio Totale + Nuovo Totale) / (Vecchia Qta + Nuova Qta)
+                const vecchiaGiacenza = parseFloat(prod.giacenza) || 0;
+                const vecchioPrezzo = parseFloat(prod.prezzo_medio) || 0;
+                
+                let nuovoPrezzoMedio = vecchioPrezzo;
+                if ((vecchiaGiacenza + qtaNuova) > 0) {
+                    nuovoPrezzoMedio = ((vecchiaGiacenza * vecchioPrezzo) + (qtaNuova * prezzoUnitNuovo)) / (vecchiaGiacenza + qtaNuova);
+                }
+
+                await client.query(
+                    `UPDATE magazzino_prodotti SET 
+                        giacenza = giacenza + $1,
+                        prezzo_ultimo = $2,
+                        prezzo_medio = $3,
+                        updated_at = NOW()
+                     WHERE id = $4`,
+                    [qtaNuova, prezzoUnitNuovo, nuovoPrezzoMedio, magazzinoId]
+                );
+                updated++;
+            } else {
+                // NON ESISTE: Creiamo anagrafica
+                const resInsert = await client.query(
+                    `INSERT INTO magazzino_prodotti 
+                    (ristorante_id, nome, marca, unita_misura, giacenza, prezzo_ultimo, prezzo_medio, iva, scorta_minima)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 5) RETURNING id`,
+                    [
+                        m.ristorante_id, 
+                        m.prodotto, 
+                        m.fornitore || '', // Usiamo fornitore come marca provvisoria se manca
+                        m.unita_misura || 'Pz',
+                        qtaNuova,
+                        prezzoUnitNuovo,
+                        prezzoUnitNuovo, // Il primo prezzo è anche il medio
+                        m.iva || 0
+                    ]
+                );
+                magazzinoId = resInsert.rows[0].id;
+                inserted++;
+            }
+
+            // ---------------------------------------------------------
+            // FASE 2: REGISTRAZIONE HACCP (Il Log Storico)
+            // ---------------------------------------------------------
+            // Qui scriviamo SOLO l'evento di entrata, collegandolo al magazzino
+            
+            // Verifica duplicati nel registro HACCP (per non inserire due volte la stessa riga dello stesso documento)
+            const checkHaccp = await client.query(`
                 SELECT id FROM haccp_merci 
                 WHERE ristorante_id = $1 
                 AND LOWER(prodotto) = LOWER($2) 
                 AND LOWER(fornitore) = LOWER($3)
                 AND (note = $4 OR (note IS NULL AND $4 IS NULL))
-            `;
-            
-            const checkRes = await client.query(checkSql, [m.ristorante_id, m.prodotto, m.fornitore, m.note]);
+            `, [m.ristorante_id, m.prodotto, m.fornitore, m.note]);
 
-            // Valori sicuri
-            const qta = parseFloat(m.quantita) || 0;
-            const przUnit = parseFloat(m.prezzo_unitario) || 0;
-            const iva = parseFloat(m.iva) || 0;
-            const prezzoTot = parseFloat(m.prezzo) || (qta * przUnit); // Totale Imponibile
-            const oraCarico = m.ora || getTimeItaly(); // Usa ora passata o corrente
-            const isHaccp = m.is_haccp === true || m.is_haccp === 'true' || m.is_haccp === 1;
-
-            if (checkRes.rows.length > 0) {
-                // >>> ESISTE: FACCIO UPGRADE (UPDATE)
-                const id = checkRes.rows[0].id;
-                await client.query(
-                    `UPDATE haccp_merci SET 
-                        quantita = $1, 
-                        prezzo = $2, 
-                        prezzo_unitario = $3, 
-                        iva = $4,
-                        data_ricezione = $5,
-                        scadenza = $6,
-                        ora = $7,
-                        is_haccp = $8
-                     WHERE id = $9`,
-                    [qta, prezzoTot, przUnit, iva, m.data_ricezione, m.scadenza, oraCarico, isHaccp, id]
-                );
-                updated++;
-            } else {
-                // >>> NON ESISTE: INSERISCO
+            if (checkHaccp.rows.length === 0) {
+                // Inseriamo nel registro HACCP collegandolo al magazzino_id
                 await client.query(
                     `INSERT INTO haccp_merci (
-                        ristorante_id, data_ricezione, fornitore, prodotto, 
+                        ristorante_id, magazzino_id, data_ricezione, fornitore, prodotto, 
                         quantita, prezzo, prezzo_unitario, iva, 
                         lotto, scadenza, operatore, note, conforme, integro, destinazione,
                         ora, is_haccp, allegato_url
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, true, true, $13, $14, $15, $16)`,
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, true, true, $14, $15, $16, $17)`,
                     [
-                        m.ristorante_id, m.data_ricezione, m.fornitore, m.prodotto,
-                        qta, prezzoTot, przUnit, iva,
+                        m.ristorante_id, magazzinoId, m.data_ricezione, m.fornitore, m.prodotto,
+                        qtaNuova, m.prezzo, prezzoUnitNuovo, m.iva,
                         m.lotto || '', m.scadenza || null, m.operatore || 'IMPORT', m.note || '', m.destinazione || '',
-                        oraCarico, isHaccp, m.allegato_url || ''
+                        m.ora, m.is_haccp, m.allegato_url || ''
                     ]
                 );
-                inserted++;
             }
         }
 
         await client.query('COMMIT');
-        res.json({ success: true, inserted, updated, message: `Caricamento: ${inserted} nuovi, ${updated} aggiornati.` });
+        res.json({ success: true, inserted, updated, message: `Magazzino Aggiornato: ${inserted} nuovi articoli, ${updated} giacenze aggiornate.` });
 
     } catch (e) {
         await client.query('ROLLBACK');
-        console.error("Errore Import Excel:", e);
+        console.error("Errore Import Magazzino:", e);
         res.status(500).json({ error: e.message });
     } finally {
         client.release();

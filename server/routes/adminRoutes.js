@@ -24,6 +24,45 @@ router.put('/api/ristorante/style/:id', async (req, res) => {
     } 
 });
 
+router.get('/api/db-init-magazzino-pro', async (req, res) => {
+    try {
+        // 1. Creiamo la tabella MASTER del magazzino
+        // Questa tabella comanda su tutto. HACCP farà riferimento a questa.
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS magazzino_prodotti (
+                id SERIAL PRIMARY KEY,
+                ristorante_id INTEGER NOT NULL,
+                nome TEXT NOT NULL,
+                marca TEXT,
+                ean_barcode TEXT,
+                categoria TEXT DEFAULT 'Generale',
+                reparto TEXT, -- Es. Cucina, Bar, Pizzeria
+                unita_misura TEXT DEFAULT 'Pz',
+                confezione_da NUMERIC(10,2) DEFAULT 1, -- Es. Cartone da 6
+                
+                -- Gestione Stock
+                giacenza NUMERIC(10,2) DEFAULT 0,
+                scorta_minima NUMERIC(10,2) DEFAULT 0,
+                
+                -- Gestione Economica
+                prezzo_ultimo NUMERIC(10,2) DEFAULT 0,
+                prezzo_medio NUMERIC(10,2) DEFAULT 0,
+                iva NUMERIC(5,2) DEFAULT 0,
+                
+                updated_at TIMESTAMP DEFAULT NOW()
+            );
+        `);
+
+        // 2. Colleghiamo HACCP al Magazzino (aggiungiamo colonna link se non c'è)
+        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS magazzino_id INTEGER");
+
+        res.send("✅ ARCHITETTURA MAGAZZINO V2 ATTIVATA: Tabella 'magazzino_prodotti' creata e collegata!");
+    } catch (e) {
+        console.error(e);
+        res.status(500).send("Errore DB: " + e.message);
+    }
+});
+
 // AGGIUNGI QUESTO IN server/routes/adminRoutes.js
 router.get('/api/db-fix-magazzino-v2', async (req, res) => {
     try {
