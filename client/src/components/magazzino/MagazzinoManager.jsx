@@ -1,102 +1,180 @@
 import React, { useState, useEffect } from 'react';
+import MagazzinoDashboard from './MagazzinoDashboard';
+import MagazzinoCalendar from './MagazzinoCalendar';
 import MagazzinoUpload from './MagazzinoUpload';
-import MagazzinoStaging from './MagazzinoStaging';
 import MagazzinoList from './MagazzinoList';
 
-const MagazzinoManager = ({ ristoranteId, API_URL }) => {
-    // Stati
-    const [view, setView] = useState('list'); // 'list', 'upload', 'staging'
-    const [stagingData, setStagingData] = useState([]); // Dati letti dall'AI/Excel in attesa di conferma
-    const [refreshTrigger, setRefreshTrigger] = useState(0); // Per ricaricare la lista
+// Helper date
+const getMonday = (d) => { const date = new Date(d); const day = date.getDay(), diff = date.getDate() - day + (day === 0 ? -6 : 1); return new Date(date.setDate(diff)); };
+const formatDateISO = (date) => date.toISOString().split('T')[0];
 
-    // Funzione chiamata quando l'Upload (AI o Excel) ha finito di leggere i dati
-    const handleDataLoaded = (data) => {
-        // Normalizziamo i dati per assicurarci che abbiano i campi giusti
-        const normalized = data.map((item, index) => ({
-            tempId: Date.now() + index, // ID temporaneo per l'editing
-            prodotto: item.nome || item.prodotto || '',
-            quantita: item.quantita || 1,
-            unita_misura: item.unita_misura || 'pz',
-            prezzo: item.prezzo || 0,
-            scadenza: item.scadenza || '',
-            lotto: item.lotto || '',
-            fornitore: item.fornitore || 'Generico'
-        }));
+const MagazzinoManager = ({ user, API_URL }) => {
+    const [tab, setTab] = useState('lista'); // 'dashboard', 'calendario', 'lista', 'carico'
+    const [stats, setStats] = useState({ fornitori: [], storico: [], top_prodotti: [] });
+    const [assets, setAssets] = useState([]); 
+    
+    // Stati Modali
+    const [showDownloadModal, setShowDownloadModal] = useState(false);
+    const [downloadFormat, setDownloadFormat] = useState('excel');
+    const [selectedMonth, setSelectedMonth] = useState(''); 
+    const [previewDoc, setPreviewDoc] = useState(null); 
+    const [isDownloading, setIsDownloading] = useState(false);
 
-        setStagingData(normalized);
-        setView('staging'); // Passiamo alla vista di revisione
+    // Stato modifica (condiviso tra Lista e Carico)
+    const [recordDaModificare, setRecordDaModificare] = useState(null);
+
+    useEffect(() => { ricaricaDati(); }, []);
+
+    const ricaricaDati = () => {
+        fetch(`${API_URL}/api/haccp/stats/magazzino/${user.id}`).then(r => r.json()).then(setStats).catch(console.error);
+        fetch(`${API_URL}/api/haccp/assets/${user.id}`).then(r => r.json()).then(setAssets).catch(console.error);
     };
 
-    // Funzione chiamata quando l'utente conferma i dati in staging
-    const handleConfirmStaging = async (prodottiConfermati) => {
-        try {
-            // Prepariamo il payload per l'import massivo esistente nel backend
-            const payload = {
-                merci: prodottiConfermati.map(p => ({
-                    ...p,
-                    ristorante_id: ristoranteId,
-                    data_ricezione: new Date().toISOString().split('T')[0],
-                    ora: new Date().toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'}),
-                    is_haccp: true // Di default lo mettiamo in HACCP, poi vedremo
-                }))
-            };
+    // Gestione Modifica
+    const gestisciModifica = (record) => {
+        setRecordDaModificare(record);
+        setTab('carico');
+    };
 
-            const res = await fetch(`${API_URL}/api/haccp/merci/import`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
+    // --- EXPORT LOGIC ---
+    const executeDownload = (rangeType) => {
+        let start, end, rangeName;
+        const today = new Date();
 
-            if (res.ok) {
-                alert("✅ Merce caricata con successo!");
-                setStagingData([]);
-                setView('list');
-                setRefreshTrigger(prev => prev + 1); // Ricarica la lista
-            } else {
-                alert("Errore nel salvataggio.");
-            }
-        } catch (error) {
-            console.error("Errore save:", error);
-            alert("Errore di connessione.");
+        if (rangeType === 'week') {
+            start = getMonday(today);
+            end = new Date(start); end.setDate(end.getDate() + 6);
+            rangeName = "Ultima_Settimana";
+        } else if (rangeType === 'month') {
+            start = new Date(today.getFullYear(), today.getMonth(), 1);
+            end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            rangeName = "Mese_Corrente";
+        } else if (rangeType === 'custom-month') {
+            if (!selectedMonth) return alert("Seleziona un mese!");
+            const [y, m] = selectedMonth.split('-');
+            start = new Date(y, m - 1, 1);
+            end = new Date(y, m, 0, 23, 59, 59);
+            rangeName = `Mese_${selectedMonth}`;
+        } else {
+            start = null; end = null;
+            rangeName = "Storico_Completo";
         }
+
+        let url = `${API_URL}/api/haccp/export/merci/${user.id}?format=${downloadFormat}&rangeName=${rangeName}`;
+        if(start && end) url += `&start=${formatDateISO(start)}&end=${formatDateISO(end)}`;
+        
+        window.open(url, '_blank');
+        setShowDownloadModal(false);
+    };
+
+    // --- FILE VIEWER ---
+    const handleFileAction = (url, name) => {
+        if(!url) return;
+        const isPdf = url.toLowerCase().includes('.pdf');
+        let previewUrl = isPdf ? `${API_URL}/api/proxy-download?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}` : url;
+        setPreviewDoc({ url, previewUrl, name, type: isPdf ? 'pdf' : 'image' });
+    };
+
+    const handleForceDownload = async () => {
+        if (!previewDoc) return;
+        setIsDownloading(true);
+        try {
+            const proxyDownloadUrl = `${API_URL}/api/proxy-download?url=${encodeURIComponent(previewDoc.url)}&name=${encodeURIComponent(previewDoc.name)}`;
+            const response = await fetch(proxyDownloadUrl);
+            const blob = await response.blob();
+            const link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            link.download = previewDoc.name || "documento"; 
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (error) { alert("Errore download."); } 
+        finally { setIsDownloading(false); }
     };
 
     return (
-        <div style={{ padding: '20px', background: '#ecf0f1', minHeight: '100vh' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <h1 style={{ margin: 0, color: '#2c3e50' }}>📦 Magazzino & Acquisti</h1>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                    {view !== 'list' && (
-                        <button onClick={() => setView('list')} style={{ padding: '10px', background: '#95a5a6', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
-                            ⬅ Torna alla Lista
-                        </button>
-                    )}
-                    {view === 'list' && (
-                        <button onClick={() => setView('upload')} style={{ padding: '10px 20px', background: '#3498db', color: 'white', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer' }}>
-                            ➕ CARICA FATTURA / BOLLA
-                        </button>
-                    )}
+        <div style={{padding: '20px', background: '#f4f6f8', minHeight: '90vh', fontFamily:"'Inter', sans-serif"}}>
+            
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20}}>
+                <div><h2 style={{color: '#2c3e50', margin:0}}>📦 Magazzino & Contabilità</h2><p style={{margin:0, fontSize:12, color:'#7f8c8d'}}>Gestione acquisti e giacenze</p></div>
+                <div style={{display:'flex', gap:10}}>
+                    {['dashboard','calendario','lista','carico'].map(t => (
+                        <button key={t} onClick={() => { setTab(t); if(t!=='carico') setRecordDaModificare(null); }} style={{
+                            padding:'8px 15px', borderRadius:20, cursor:'pointer', border:'1px solid #ccc',
+                            background: tab===t ? '#34495e' : 'white', color: tab===t ? 'white' : '#333', textTransform:'capitalize'
+                        }}>{t}</button>
+                    ))}
                 </div>
             </div>
 
-            {/* VISTE */}
-            {view === 'list' && (
-                <MagazzinoList ristoranteId={ristoranteId} API_URL={API_URL} refreshTrigger={refreshTrigger} />
-            )}
+            {tab === 'dashboard' && <MagazzinoDashboard stats={stats} />}
+            
+            {tab === 'calendario' && <MagazzinoCalendar stats={stats} setTab={setTab} setFiltro={(f) => console.log(f)} />}
 
-            {view === 'upload' && (
-                <MagazzinoUpload API_URL={API_URL} onDataLoaded={handleDataLoaded} />
-            )}
-
-            {view === 'staging' && (
-                <MagazzinoStaging 
-                    initialData={stagingData} 
-                    onConfirm={handleConfirmStaging} 
-                    onCancel={() => setView('list')} 
+            {tab === 'carico' && (
+                <MagazzinoUpload 
+                    user={user} 
+                    API_URL={API_URL} 
+                    ricaricaDati={ricaricaDati}
+                    recordDaModificare={recordDaModificare}
+                    setRecordDaModificare={setRecordDaModificare}
+                    onSuccess={() => { setRecordDaModificare(null); setTab('lista'); }}
                 />
+            )}
+
+            {tab === 'lista' && (
+                <MagazzinoList 
+                    storico={stats.storico} 
+                    ricaricaDati={ricaricaDati}
+                    API_URL={API_URL}
+                    handleFileAction={handleFileAction}
+                    avviaModifica={gestisciModifica}
+                    openDownloadModal={() => setShowDownloadModal(true)}
+                />
+            )}
+
+            {/* MODALE DOWNLOAD */}
+            {showDownloadModal && (
+                <div style={{position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000}}>
+                    <div style={{background: 'white', padding: '20px', borderRadius: '10px', width: '350px', textAlign: 'center'}}>
+                        <h3 style={{marginBottom: '15px'}}>Scarica Report</h3>
+                        <div style={{display:'flex', justifyContent:'center', gap:10, marginBottom:15}}>
+                             <button onClick={()=>setDownloadFormat('excel')} style={{padding:'5px 15px', borderRadius:20, border:'none', cursor:'pointer', background: downloadFormat==='excel'?'#27ae60':'#eee', color: downloadFormat==='excel'?'white':'#333', fontWeight:'bold'}}>Excel</button>
+                             <button onClick={()=>setDownloadFormat('pdf')} style={{padding:'5px 15px', borderRadius:20, border:'none', cursor:'pointer', background: downloadFormat==='pdf'?'#e74c3c':'#eee', color: downloadFormat==='pdf'?'white':'#333', fontWeight:'bold'}}>PDF</button>
+                        </div>
+                        <div style={{display:'flex', gap:5, marginBottom:15, justifyContent:'center'}}>
+                            <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} style={{padding:8, borderRadius:5, border:'1px solid #ddd'}} />
+                            <button onClick={()=>executeDownload('custom-month')} style={{background:'#8e44ad', color:'white', border:'none', padding:'8px', borderRadius:5, cursor:'pointer', fontWeight:'bold'}}>SCARICA</button>
+                        </div>
+                        <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+                            <button onClick={()=>executeDownload('week')} style={{background: '#3498db', color: 'white', border: 'none', padding: '12px', borderRadius: '5px', cursor: 'pointer', fontWeight:'bold'}}>Ultima Settimana</button>
+                            <button onClick={()=>executeDownload('month')} style={{background: '#2980b9', color: 'white', border: 'none', padding: '12px', borderRadius: '5px', cursor: 'pointer', fontWeight:'bold'}}>Mese Corrente</button>
+                            <button onClick={()=>executeDownload('all')} style={{background: '#2c3e50', color: 'white', border: 'none', padding: '12px', borderRadius: '5px', cursor: 'pointer', fontWeight:'bold'}}>Tutto lo storico</button>
+                        </div>
+                        <button onClick={()=>setShowDownloadModal(false)} style={{marginTop: '20px', background: 'transparent', border: 'none', color: '#999', cursor: 'pointer', textDecoration: 'underline'}}>Annulla</button>
+                    </div>
+                </div>
+            )}
+
+            {/* MODALE PREVIEW */}
+            {previewDoc && (
+                <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.85)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center'}}>
+                    <div style={{background:'white', width:'90%', height:'90%', maxWidth:'1000px', borderRadius:8, display:'flex', flexDirection:'column', overflow:'hidden'}}>
+                        <div style={{padding:'10px 15px', background:'#ecf0f1', borderBottom:'1px solid #ccc', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                            <span style={{fontWeight:'bold', color:'#2c3e50'}}>📄 {previewDoc.name}</span>
+                            <div style={{display:'flex', gap:10}}>
+                                <button onClick={handleForceDownload} disabled={isDownloading} style={{background:'#27ae60', color:'white', border:'none', padding:'6px 12px', borderRadius:4, cursor:'pointer', fontWeight:'bold'}}>{isDownloading ? '⏳...' : '⬇️ Scarica'}</button>
+                                <button onClick={()=>setPreviewDoc(null)} style={{background:'#e74c3c', color:'white', border:'none', padding:'6px 12px', borderRadius:4, cursor:'pointer', fontWeight:'bold'}}>Chiudi X</button>
+                            </div>
+                        </div>
+                        <div style={{flex:1, background:'#555', overflow:'hidden', display:'flex', justifyContent:'center', alignItems:'center'}}>
+                            {previewDoc.type === 'pdf' ? <iframe src={previewDoc.previewUrl} style={{width:'100%', height:'100%', border:'none'}} title="Anteprima PDF" /> : <img src={previewDoc.previewUrl} alt="Anteprima" style={{maxWidth:'100%', maxHeight:'100%', objectFit:'contain'}} />}
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );
-};
+}
 
 export default MagazzinoManager;
