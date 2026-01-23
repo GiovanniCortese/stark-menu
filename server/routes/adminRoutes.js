@@ -24,6 +24,28 @@ router.put('/api/ristorante/style/:id', async (req, res) => {
     } 
 });
 
+router.get('/api/db-fix-magazzino-v3', async (req, res) => {
+    try {
+        const client = await pool.connect();
+        try {
+            // Aggiungiamo Codice Articolo e Sconto sia al Magazzino Master che allo Storico HACCP
+            
+            // 1. Tabella HACCP_MERCI (Storico Bolle)
+            await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS codice_articolo TEXT DEFAULT ''");
+            await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS sconto NUMERIC(5,2) DEFAULT 0");
+
+            // 2. Tabella MAGAZZINO_PRODOTTI (Giacenze)
+            await client.query("ALTER TABLE magazzino_prodotti ADD COLUMN IF NOT EXISTS codice_articolo TEXT DEFAULT ''");
+            
+            res.send("✅ DB AGGIORNATO V3: Aggiunti campi 'codice_articolo' e 'sconto'.");
+        } finally {
+            client.release();
+        }
+    } catch (e) {
+        res.status(500).send("Errore DB: " + e.message);
+    }
+});
+
 router.get('/api/db-init-magazzino-pro', async (req, res) => {
     try {
         // 1. Creiamo la tabella MASTER del magazzino

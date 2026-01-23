@@ -372,46 +372,61 @@ function normalizzaData(dataStr) {
     return new Date().toISOString().split('T')[0];
 }
 
-// 7. MAGIC SCAN SUPER (Versione 3.0 - Contabile)
+// 7. MAGIC SCAN SUPER (Versione 4.0 - PINETA SRL FIX)
 router.post('/api/haccp/scan-bolla', uploadFile.single('photo'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: "Nessun file inviato" });
 
+        // PROMPT OTTIMIZZATO PER FATTURE ITALIANE COMPLESSE
         const prompt = `
-        Sei un contabile esperto italiano. Analizza questa fattura o DDT.
-        Devi estrarre i dati con precisione chirurgica per l'inventario.
+        Sei un contabile esperto italiano. Analizza questa immagine di fattura o DDT.
+        Devi estrarre i dati con estrema precisione.
 
-        ISTRUZIONI CRITICHE:
-        1. **DATA DOCUMENTO**: Cerca la data della fattura/ddt.
-        2. **RIGHE PRODOTTO**: Per ogni riga estrai:
-           - "nome": Descrizione completa.
-           - "quantita": Il numero di pezzi o peso.
-           - "unita_misura": TASSATIVO scegliere SOLO tra: "Kg", "Pz", "Colli", "Lt", "Ct". 
-           - "prezzo_unitario": IL PREZZO DEL SINGOLO PEZZO.
-           - "iva": Aliquota (4, 10, 22).
-           - "lotto": Cerca codici come "L.", "Lotto".
-           - "scadenza": Cerca date future tipo "Scad.".
-           - "is_haccp": TRUE se è cibo/bevanda, FALSE se è detersivo/carta/attrezzatura.
+        ISTRUZIONI PER L'INTESTAZIONE:
+        1. **DATA DOCUMENTO**: Cerca date in alto a destra o sinistra. Attento ai formati estesi come "martedì 4 giugno 2024". Converti SEMPRE in formato ISO "YYYY-MM-DD".
+        2. **NUMERO DOCUMENTO**: Cerca numeri isolati in alto (es. "110201", "N. 402").
+        3. **FORNITORE**: Cerca la ragione sociale in alto (es. "PINETA SRL").
 
-        OUTPUT JSON STRETTO (Nessun commento, solo JSON):
+        ISTRUZIONI PER LA TABELLA PRODOTTI (Riga per Riga):
+        Esamina ogni riga della tabella articoli. Estrai:
+        - "codice_articolo": Il codice numerico o alfanumerico (es. "21038.1", "23585.1"). Spesso è la prima colonna.
+        - "nome": Descrizione del prodotto.
+        - "quantita": La quantità fatturata. ATTENZIONE: Se ci sono colonne "Colli", "Cartoni" o "Pezzi", cerca di capire la quantità totale unitaria.
+        - "unita_misura": 
+           - Se vedi "CA", "CT", "CART" -> scrivi "Ct".
+           - Se vedi "PZ", "PEZZI" -> scrivi "Pz".
+           - Se vedi "KG" -> scrivi "Kg".
+        - "prezzo_unitario": Il prezzo del singolo pezzo/kg (NON il totale riga).
+        - "sconto": Se c'è una colonna sconto (es. "10", "50"), riporta il numero. Se vuoto metti 0.
+        - "iva": Cerca l'aliquota (4, 10, 22). Se non è scritta sulla riga, prova a dedurla o metti 0.
+        - "lotto": Cerca codici come "L.", "Lotto".
+        - "scadenza": Cerca date future sulla riga.
+        - "is_haccp": TRUE se cibo/bevanda, FALSE se detersivo/carta.
+
+        OUTPUT JSON PURO (Senza Markdown):
         {
-            "fornitore": "Nome Fornitore",
-            "data_documento": "DD/MM/YYYY", 
+            "fornitore": "PINETA SRL",
+            "data_documento": "2024-06-04", 
+            "numero_documento": "110201",
             "prodotti": [
                 { 
-                  "nome": "Farina 00", 
-                  "quantita": 10, 
-                  "unita_misura": "Kg", 
-                  "prezzo_unitario": 0.85, 
+                  "codice_articolo": "21038.1",
+                  "nome": "RISO ARBORIO ARCO KG.5", 
+                  "quantita": 2, 
+                  "unita_misura": "Ct", 
+                  "prezzo_unitario": 9.506, 
+                  "sconto": 0,
                   "iva": 4, 
-                  "lotto": "L23409",
-                  "scadenza": "2025-12-31",
+                  "lotto": "",
+                  "scadenza": "",
                   "is_haccp": true
                 }
             ]
         }`;
 
         const data = await analyzeImageWithGemini(req.file.buffer, req.file.mimetype, prompt);
+        
+        // Post-processing date e ore
         data.data_documento_iso = normalizzaData(data.data_documento);
         const now = new Date();
         data.ora_inserimento = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');

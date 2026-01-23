@@ -6,7 +6,6 @@ const MagazzinoList = ({ storico, ricaricaDati, API_URL, onEdit }) => {
     const [sortConfig, setSortConfig] = useState({ key: 'data_ricezione', direction: 'desc' });
 
     // --- CALCOLI AL VOLO PER VISUALIZZAZIONE ---
-    // Se il DB non ha i totali salvati, li calcoliamo qui per sicurezza
     const enrichData = (item) => {
         const qta = parseFloat(item.quantita) || 0;
         const unitNetto = parseFloat(item.prezzo_unitario) || 0;
@@ -41,7 +40,8 @@ const MagazzinoList = ({ storico, ricaricaDati, API_URL, onEdit }) => {
     const datiFiltrati = sortedData.filter(item => 
         item.prodotto?.toLowerCase().includes(filtro.toLowerCase()) ||
         item.fornitore?.toLowerCase().includes(filtro.toLowerCase()) ||
-        item.riferimento_documento?.toLowerCase().includes(filtro.toLowerCase())
+        item.riferimento_documento?.toLowerCase().includes(filtro.toLowerCase()) ||
+        item.codice_articolo?.toLowerCase().includes(filtro.toLowerCase()) // Cerca anche per codice
     );
 
     // --- GESTIONE SELEZIONE CHECKBOX ---
@@ -96,10 +96,10 @@ const MagazzinoList = ({ storico, ricaricaDati, API_URL, onEdit }) => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
                 <input 
                     type="text" 
-                    placeholder="🔍 Cerca prodotto, fornitore, n. fattura..." 
+                    placeholder="🔍 Cerca prodotto, codice, fornitore, n. fattura..." 
                     value={filtro}
                     onChange={e => setFiltro(e.target.value)}
-                    style={{ padding: '10px', width: '300px', borderRadius: 5, border: '1px solid #ccc' }}
+                    style={{ padding: '10px', width: '350px', borderRadius: 5, border: '1px solid #ccc' }}
                 />
                 
                 {selectedIds.length > 0 && (
@@ -114,7 +114,7 @@ const MagazzinoList = ({ storico, ricaricaDati, API_URL, onEdit }) => {
 
             {/* TABELLA */}
             <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1600px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1700px' }}>
                     <thead>
                         <tr>
                             <th style={{...thStyle, width: 40}}>
@@ -123,12 +123,20 @@ const MagazzinoList = ({ storico, ricaricaDati, API_URL, onEdit }) => {
                             <th style={thStyle} onClick={() => handleSort('data_documento')}>📅 Data Doc.</th>
                             <th style={thStyle} onClick={() => handleSort('riferimento_documento')}>📄 Rif. Doc</th>
                             <th style={thStyle} onClick={() => handleSort('fornitore')}>🚚 Fornitore</th>
+                            
+                            {/* NUOVO: CODICE ARTICOLO */}
+                            <th style={thStyle} onClick={() => handleSort('codice_articolo')}>🔢 Cod.</th>
+                            
                             <th style={thStyle} onClick={() => handleSort('prodotto')}>📦 Prodotto</th>
                             <th style={thStyle} onClick={() => handleSort('lotto')}>🔢 Lotto</th>
                             <th style={thStyle} onClick={() => handleSort('scadenza')}>⏳ Scadenza</th>
                             <th style={thStyle}>Qta</th>
                             <th style={thStyle}>Unità</th>
                             <th style={thStyle}>€ Netto (Unit)</th>
+                            
+                            {/* NUOVO: SCONTO */}
+                            <th style={thStyle}>✂️ Sc.%</th>
+                            
                             <th style={thStyle}>IVA %</th>
                             <th style={thStyle}>Tot. Netto</th>
                             <th style={thStyle}>Tot. IVA</th>
@@ -154,9 +162,14 @@ const MagazzinoList = ({ storico, ricaricaDati, API_URL, onEdit }) => {
                                 </td>
                                 <td style={tdStyle}>
                                     <div><strong>{row.fornitore}</strong></div>
-                                    {/* Tooltip o piccolo testo per i dettagli completi se presenti */}
                                     {row.fornitore_full && <div style={{fontSize:10, color:'#777'}}>{row.fornitore_full.substring(0, 20)}...</div>}
                                 </td>
+
+                                {/* NUOVO: CODICE ARTICOLO */}
+                                <td style={{...tdStyle, fontSize:11, color:'#666', fontFamily:'monospace'}}>
+                                    {row.codice_articolo || '-'}
+                                </td>
+
                                 <td style={tdStyle}><strong>{row.prodotto}</strong></td>
                                 <td style={tdStyle}><span style={{background:'#eee', padding:'2px 5px', borderRadius:3}}>{row.lotto || '-'}</span></td>
                                 <td style={{...tdStyle, color: row.scadenza ? '#c0392b' : '#333'}}>
@@ -165,6 +178,12 @@ const MagazzinoList = ({ storico, ricaricaDati, API_URL, onEdit }) => {
                                 <td style={{...tdStyle, fontWeight:'bold', fontSize:14}}>{row.quantita}</td>
                                 <td style={tdStyle}>{row.unita_misura || 'Pz'}</td>
                                 <td style={tdStyle}>€ {Number(row.prezzo_unitario).toFixed(2)}</td>
+
+                                {/* NUOVO: SCONTO */}
+                                <td style={{...tdStyle, color: row.sconto > 0 ? '#e74c3c' : '#ccc', fontWeight: row.sconto > 0 ? 'bold' : 'normal'}}>
+                                    {row.sconto > 0 ? `-${Number(row.sconto).toFixed(0)}%` : '-'}
+                                </td>
+
                                 <td style={tdStyle}>{row.iva}%</td>
                                 <td style={tdStyle}>€ {row._totNetto.toFixed(2)}</td>
                                 <td style={{...tdStyle, color:'#7f8c8d'}}>€ {row._totIva.toFixed(2)}</td>
@@ -199,7 +218,7 @@ const MagazzinoList = ({ storico, ricaricaDati, API_URL, onEdit }) => {
                         ))}
                         {datiFiltrati.length === 0 && (
                             <tr>
-                                <td colSpan="17" style={{textAlign:'center', padding:30, color:'#999'}}>
+                                <td colSpan="19" style={{textAlign:'center', padding:30, color:'#999'}}>
                                     Nessun documento trovato.
                                 </td>
                             </tr>

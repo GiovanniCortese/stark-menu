@@ -18,28 +18,33 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
     };
 
     // Form Completo (Allineato al DB)
-    const [formData, setFormData] = useState({
-        id: null, 
-        ristorante_id: user.id,
-        data_ricezione: getNowLocalISO(), 
-        data_documento: new Date().toISOString().split('T')[0], 
-        riferimento_documento: '', // NUMERO FATTURA / BOLLA
-        fornitore: '',
-        prodotto: '',
-        lotto: '',
-        scadenza: '',
-        note: '',
-        quantita: '',
-        unita_misura: 'Pz',
-        prezzo_unitario: '', // NETTO UNITARIO
-        iva: '10', 
-        totale_netto: '',
-        totale_iva: '',
-        totale_lordo: '',
-        allegato_url: '',
-        is_haccp: true,
-        operatore: user.nome || 'Admin'
-    });
+const [formData, setFormData] = useState({
+    id: null, 
+    ristorante_id: user.id,
+    data_ricezione: getNowLocalISO(), 
+    data_documento: new Date().toISOString().split('T')[0], 
+    riferimento_documento: '',
+    fornitore: '',
+    
+    // NUOVI CAMPI
+    codice_articolo: '',
+    sconto: 0,
+    
+    prodotto: '',
+    lotto: '',
+    scadenza: '',
+    note: '',
+    quantita: '',
+    unita_misura: 'Pz',
+    prezzo_unitario: '',
+    iva: '10', 
+    totale_netto: '',
+    totale_iva: '',
+    totale_lordo: '',
+    allegato_url: '',
+    is_haccp: true,
+    operatore: user.nome || 'Admin'
+});
 
     // --- EFFETTO CARICAMENTO DATI PER MODIFICA ---
     useEffect(() => {
@@ -93,90 +98,93 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
 
     // --- NUOVA FUNZIONE SCAN: "BULK IMPORT" (STILE ADMIN MENU) ---
     const handleScan = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
+    const file = e.target.files[0];
+    if (!file) return;
 
-        setIsScanning(true);
-        const fd = new FormData();
-        fd.append('photo', file);
-        
-        try {
-            // 1. Carichiamo l'immagine per avere l'URL (per archivio)
-            const uploadRes = await fetch(`${API_URL}/api/upload`, { method: 'POST', body: fd });
-            const uploadData = await uploadRes.json();
-            const urlAllegato = uploadData.url || '';
+    setIsScanning(true);
+    const fd = new FormData();
+    fd.append('photo', file);
+    
+    try {
+        // 1. Upload Immagine
+        const uploadRes = await fetch(`${API_URL}/api/upload`, { method: 'POST', body: fd });
+        const uploadData = await uploadRes.json();
+        const urlAllegato = uploadData.url || '';
 
-            // 2. Chiamiamo l'AI per l'analisi
-            const res = await fetch(`${API_URL}/api/haccp/scan-bolla`, { method: 'POST', body: fd });
-            const result = await res.json();
+        // 2. Analisi AI
+        const res = await fetch(`${API_URL}/api/haccp/scan-bolla`, { method: 'POST', body: fd });
+        const result = await res.json();
 
-            if (result.success && result.data) {
-                const d = result.data;
-                const prodottiTrovati = d.prodotti || [];
+        if (result.success && result.data) {
+            const d = result.data;
+            const prodottiTrovati = d.prodotti || [];
 
-                if (prodottiTrovati.length === 0) {
-                    alert("⚠️ L'AI non ha trovato prodotti validi nel documento.");
-                    setIsScanning(false);
-                    return;
-                }
-
-                // 3. Prepariamo il pacchetto per l'importazione massiva
-                // Mappiamo i campi dell'AI su quelli del Database
-                const merciDaImportare = prodottiTrovati.map(prod => ({
-                    ristorante_id: user.id,
-                    data_ricezione: d.data_documento_iso || new Date().toISOString().split('T')[0], // Usiamo la data fattura come data ricezione o oggi
-                    ora: new Date().toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'}),
-                    fornitore: d.fornitore || 'Fornitore Sconosciuto',
-                    riferimento_documento: d.numero_documento || '',
-                    
-                    // Dati Prodotto
-                    prodotto: prod.nome,
-                    quantita: parseFloat(prod.quantita) || 0,
-                    unita_misura: prod.unita_misura || 'Pz',
-                    prezzo_unitario: parseFloat(prod.prezzo_unitario_netto || prod.prezzo_unitario) || 0,
-                    iva: parseFloat(prod.iva) || 0,
-                    
-                    // Dati Tracciabilità
-                    lotto: prod.lotto || '',
-                    scadenza: prod.scadenza || null,
-                    is_haccp: prod.is_haccp, // Boolean dall'AI
-                    
-                    allegato_url: urlAllegato,
-                    operatore: user.nome || 'AI Scan',
-                    note: `Scan Auto: ${d.numero_documento || ''}`
-                }));
-
-                // 4. Invio diretto al Backend (Bulk Import)
-                const importRes = await fetch(`${API_URL}/api/haccp/merci/import`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ merci: merciDaImportare })
-                });
-
-                const importJson = await importRes.json();
-
-                if (importRes.ok && importJson.success) {
-                    // 5. Successo e Redirect
-                    const msg = importJson.message || `${merciDaImportare.length} righe elaborate.`;
-                    alert(`✅ (Aggiornati e caricati) con le quantità!\n\n${msg}\n\nTotale prodotti letti: ${merciDaImportare.length}`);
-                    
-                    if (ricaricaDati) ricaricaDati();
-                    onSuccess(); // Torna alla lista
-                } else {
-                    alert("Errore salvataggio dati: " + (importJson.error || "Errore sconosciuto"));
-                }
-
-            } else {
-                alert("⚠️ Scan AI fallito o nessun dato leggibile.");
+            if (prodottiTrovati.length === 0) {
+                alert("⚠️ L'AI non ha trovato prodotti. Riprova con una foto più nitida.");
+                setIsScanning(false);
+                return;
             }
-        } catch (error) {
-            console.error("Errore Scan:", error);
-            alert("Errore di connessione durante la scansione.");
-        } finally {
-            setIsScanning(false);
-            if(fileInputRef.current) fileInputRef.current.value = ''; // Reset input
+
+            // 3. Mapping dei dati AI -> DB
+            const merciDaImportare = prodottiTrovati.map(prod => ({
+                ristorante_id: user.id,
+                // Usa la data documento letta dall'AI, se manca usa oggi
+                data_ricezione: d.data_documento_iso || new Date().toISOString().split('T')[0],
+                ora: new Date().toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'}),
+                fornitore: d.fornitore || 'Fornitore Sconosciuto',
+                riferimento_documento: d.numero_documento || '', // Qui finirà "110201"
+                
+                // Dati Prodotto Estesi
+                codice_articolo: prod.codice_articolo || '', // NUOVO
+                prodotto: prod.nome,
+                quantita: parseFloat(prod.quantita) || 0,
+                unita_misura: prod.unita_misura || 'Pz', // Ora dovrebbe arrivare "Ct" o "Kg"
+                
+                // Prezzi e Sconti
+                prezzo_unitario: parseFloat(prod.prezzo_unitario) || 0,
+                sconto: parseFloat(prod.sconto) || 0, // NUOVO
+                iva: parseFloat(prod.iva) || 0,
+                
+                lotto: prod.lotto || '',
+                scadenza: prod.scadenza || null,
+                is_haccp: prod.is_haccp,
+                
+                allegato_url: urlAllegato,
+                operatore: user.nome || 'AI Scan',
+                note: `AI Scan: ${d.numero_documento || ''}`
+            }));
+
+            // 4. Invio al Backend
+            const importRes = await fetch(`${API_URL}/api/haccp/merci/import`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ merci: merciDaImportare })
+            });
+
+            const importJson = await importRes.json();
+
+            if (importRes.ok && importJson.success) {
+                const msg = importJson.message || `${merciDaImportare.length} righe elaborate.`;
+                // Alert più dettagliato
+                alert(`✅ SCANSIONE RIUSCITA!\n\n📄 Doc: ${d.numero_documento || 'N/D'}\n📅 Data: ${d.data_documento || 'N/D'}\n📦 Prodotti: ${merciDaImportare.length}\n\n${msg}`);
+                
+                if (ricaricaDati) ricaricaDati();
+                onSuccess();
+            } else {
+                alert("Errore salvataggio: " + (importJson.error || "Sconosciuto"));
+            }
+
+        } else {
+            alert("⚠️ AI non ha restituito dati leggibili.");
         }
-    };
+    } catch (error) {
+        console.error("Errore Scan:", error);
+        alert("Errore connessione AI.");
+    } finally {
+        setIsScanning(false);
+        if(fileInputRef.current) fileInputRef.current.value = '';
+    }
+};
 
     // --- FUNZIONE UPLOAD MANUALE (RIMASTA INVARIATA) ---
     const handleAllegato = async (e) => {
@@ -256,8 +264,8 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
             {isScanning && (
                 <div style={{ position:'fixed', inset:0, background:'rgba(255,255,255,0.9)', zIndex:9999, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
                     <div style={{fontSize:50, animation:'spin 2s linear infinite'}}>🤖</div>
-                    <h3>Jarvis sta analizzando la bolla...</h3>
-                    <p style={{color:'#666'}}>Lettura prodotti, lotti e prezzi in corso...</p>
+                    <h3>Jarvis sta analizzando il documento...</h3>
+                    <p style={{color:'#666'}}>Lettura prodotti, ci possono volere fino a 5 minuti...</p>
                     <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
                 </div>
             )}
