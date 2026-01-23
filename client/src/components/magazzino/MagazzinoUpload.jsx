@@ -86,8 +86,10 @@ const MagazzinoUpload = ({ user, API_URL, ricaricaDati, recordDaModificare, setR
         });
     };
 
-const handleScanBolla = async (e) => {
+    const handleScanBolla = async (e) => {
         const file = e.target.files[0]; if(!file) return;
+        
+        // ATTIVA L'OVERLAY
         setIsScanning(true); 
         
         try {
@@ -138,6 +140,9 @@ const handleScanBolla = async (e) => {
             const jsonImport = await resImport.json();
 
             if (jsonImport.success) {
+                // DISATTIVA OVERLAY PRIMA DELL'ALERT
+                setIsScanning(false);
+                
                 // 4. FEEDBACK UTENTE (Stile AdminMenu)
                 alert(`✅ SCANSIONE COMPLETATA!\n\n🆕 ${jsonImport.inserted} nuovi prodotti inseriti\n🔄 ${jsonImport.updated} prodotti aggiornati`);
                 ricaricaDati(); // Aggiorna la tabella sotto
@@ -148,9 +153,10 @@ const handleScanBolla = async (e) => {
 
         } catch(err) { 
             console.error(err);
+            setIsScanning(false); // Disattiva overlay in caso di errore
             alert("⚠️ ERRORE: " + err.message); 
         } finally { 
-            setIsScanning(false); 
+             // Assicuriamoci che l'input file si resetti
             e.target.value = null; 
         }
     };
@@ -275,8 +281,28 @@ const handleScanBolla = async (e) => {
     };
 
     return (
-        <div>
-<div style={{display:'flex', gap:15, marginBottom:20, flexWrap:'wrap'}}>
+        <div style={{position:'relative'}}>
+            
+            {/* --- OVERLAY LOADING (COPIATO DA ADMIN MENU) --- */}
+            {isScanning && (
+                <div style={{
+                    position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(255,255,255,0.95)', 
+                    zIndex:9999, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'
+                }}>
+                    <div style={{fontSize:'60px', animation: 'spin 2s linear infinite'}}>🤖</div>
+                    <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+                    <h2 style={{color:'#3498db', marginTop:'20px', fontFamily:'sans-serif'}}>Analisi Bolla in corso...</h2>
+                    <p style={{color:'#666', fontSize:'18px', textAlign:'center'}}>
+                        Sto leggendo il documento e importando i prodotti nel magazzino.<br/>
+                        Potrebbe richiedere fino a 5 Minuti.
+                    </p>
+                    <div style={{marginTop:'20px', padding:'10px 20px', background:'#eafaf1', color:'#27ae60', borderRadius:'20px', fontWeight:'bold'}}>
+                        Non chiudere la pagina
+                    </div>
+                </div>
+            )}
+
+            <div style={{display:'flex', gap:15, marginBottom:20, flexWrap:'wrap'}}>
                 {/* TASTO MAGIC SCAN */}
                 <div onClick={() => fileInputRef.current.click()} style={{flex:1, minWidth:300, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', padding:20, borderRadius:15, color:'white', display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer', boxShadow:'0 4px 10px rgba(0,0,0,0.1)'}}>
                     <div>
