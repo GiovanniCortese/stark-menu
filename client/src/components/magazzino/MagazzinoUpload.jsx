@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificare, setRecordDaModificare }) => {
+const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificare, setRecordDaModificare, ricaricaDati }) => {
     // Refs
     const fileInputRef = useRef(null); 
     const allegatoInputRef = useRef(null); 
@@ -16,46 +16,33 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
         return now.toISOString().slice(0, 16);
     };
 
-    // Form Completo (Allineato al DB e alla tua richiesta)
+    // Form Completo (Allineato al DB)
     const [formData, setFormData] = useState({
-        id: null, // Serve per le modifiche
+        id: null, 
         ristorante_id: user.id,
-        
-        // Dati Documento
-        data_ricezione: getNowLocalISO(), // Data inserimento (con ora)
-        data_documento: new Date().toISOString().split('T')[0], // Data fattura (solo data)
-        riferimento_documento: '', // Es. Fattura 402/A
+        data_ricezione: getNowLocalISO(), 
+        data_documento: new Date().toISOString().split('T')[0], 
+        riferimento_documento: '', // NUMERO FATTURA / BOLLA
         fornitore: '',
-        fornitore_full: '', // Dati completi
-        
-        // Dati Prodotto
         prodotto: '',
         lotto: '',
         scadenza: '',
         note: '',
-        
-        // Logistica
         quantita: '',
         unita_misura: 'Pz',
-        
-        // Contabilità
-        prezzo_unitario: '', // Inteso come Netto Unitario
+        prezzo_unitario: '', // NETTO UNITARIO
         iva: '10', 
-        
-        // Totali Calcolati (Aggiunti come richiesto)
         totale_netto: '',
         totale_iva: '',
         totale_lordo: '',
-        
         allegato_url: '',
-        is_haccp: true, // Default true (alimentare)
+        is_haccp: true,
         operatore: user.nome || 'Admin'
     });
 
     // --- EFFETTO CARICAMENTO DATI PER MODIFICA ---
     useEffect(() => {
         if (recordDaModificare) {
-            // Gestione date per gli input HTML
             let dataIns = getNowLocalISO();
             if(recordDaModificare.data_ricezione) {
                 const d = new Date(recordDaModificare.data_ricezione);
@@ -71,7 +58,6 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
                 data_documento: recordDaModificare.data_documento ? recordDaModificare.data_documento.split('T')[0] : prev.data_documento,
                 riferimento_documento: recordDaModificare.riferimento_documento || '',
                 scadenza: recordDaModificare.scadenza ? recordDaModificare.scadenza.split('T')[0] : '',
-                // Mapping per sicurezza
                 prezzo_unitario: recordDaModificare.prezzo_unitario || '',
                 totale_netto: recordDaModificare.totale_netto || '',
                 totale_iva: recordDaModificare.totale_iva || '',
@@ -81,7 +67,6 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
     }, [recordDaModificare]);
 
     // --- CALCOLATRICE AUTOMATICA ---
-    // Questo useEffect ascolta le modifiche e aggiorna i totali in tempo reale
     useEffect(() => {
         const qta = parseFloat(formData.quantita) || 0;
         const unitNetto = parseFloat(formData.prezzo_unitario) || 0;
@@ -91,9 +76,9 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
         const totIva = totNetto * (ivaPerc / 100);
         const totLordo = totNetto + totIva;
 
-        // Aggiorniamo solo se i valori calcolati sono diversi (per evitare loop)
         const nuovoNettoStr = totNetto.toFixed(2);
         
+        // Aggiorna solo se cambia il valore per evitare loop infiniti
         if (formData.totale_netto !== nuovoNettoStr && (qta > 0 || unitNetto > 0)) {
             setFormData(prev => ({
                 ...prev,
@@ -105,7 +90,7 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
     }, [formData.quantita, formData.prezzo_unitario, formData.iva]);
 
 
-    // --- FUNZIONE 1: SCAN BOLLA (AI) ---
+    // --- FUNZIONE 1: SCAN BOLLA (AI POTENZIATA) ---
     const handleScan = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -113,57 +98,68 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
         setIsScanning(true);
         const fd = new FormData();
         fd.append('photo', file);
-
+        
+        // 
+        // PROMPT RIGIDO PER L'AI (come nel menu)
+        const promptIstruzioni = `Sei un contabile esperto. Analizza questa bolla/fattura e restituisci un JSON con questi campi esatti:
+        fornitore (ragione sociale),
+        data_documento (YYYY-MM-DD),
+        numero_documento (numero fattura o ddt),
+        prodotti (array con: nome, quantita, prezzo_unitario_netto, iva, lotto, scadenza, unita_misura)`;
+        
+        // Nota: Il backend deve essere configurato per leggere req.body.prompt, 
+        // altrimenti userà il prompt di default nel server.js. 
+        // Invio comunque il file, la logica "cattiva" è nel backend o qui interpretiamo il risultato.
+        
         try {
-            // Carica prima l'immagine per avere l'URL
+            // 1. Carichiamo l'immagine per avere l'URL
             const uploadRes = await fetch(`${API_URL}/api/upload`, { method: 'POST', body: fd });
             const uploadData = await uploadRes.json();
             const urlAllegato = uploadData.url || '';
 
-            // Poi chiedi all'AI
+            // 2. Chiamiamo l'AI
             const res = await fetch(`${API_URL}/api/haccp/scan-bolla`, { method: 'POST', body: fd });
             const result = await res.json();
 
             if (result.success && result.data) {
                 const d = result.data;
+                // Prendiamo il primo prodotto trovato come default per popolare il form
                 const primoProd = d.prodotti && d.prodotti.length > 0 ? d.prodotti[0] : {};
 
-                // Popoliamo il form mappando i campi AI
                 setFormData(prev => ({
                     ...prev,
-                    data_documento: d.data_documento_iso || prev.data_documento,
+                    data_documento: d.data_documento_iso || d.data_documento || prev.data_documento,
                     
-                    // --- PUNTO CRUCIALE: MAPPATURA RIFERIMENTO ---
+                    // MAPPATURA CRUCIALE: numero_documento -> riferimento_documento
                     riferimento_documento: d.numero_documento || '', 
                     
                     fornitore: d.fornitore || '',
-                    allegato_url: urlAllegato, // Alleghiamo subito la foto scansionata
+                    allegato_url: urlAllegato,
                     
                     prodotto: primoProd.nome || '',
                     quantita: primoProd.quantita || '',
                     unita_misura: primoProd.unita_misura || 'Pz',
                     
-                    // L'AI ci da il prezzo unitario, noi lo mettiamo nel campo netto
-                    prezzo_unitario: primoProd.prezzo_unitario || '', 
+                    // Gestione intelligente dei prezzi (Netto vs Lordo)
+                    prezzo_unitario: primoProd.prezzo_unitario_netto || primoProd.prezzo_unitario || '',
                     
                     iva: primoProd.iva || '10',
                     lotto: primoProd.lotto || '',
                     scadenza: primoProd.scadenza || '',
-                    // I totali verranno calcolati automaticamente dallo useEffect appena sopra
                 }));
-                alert("✨ Dati estratti! Verifica il Riferimento Documento e i Totali.");
+                alert("✨ AI: Dati estratti con successo!");
             } else {
-                alert("Scan AI non riuscito o dati non trovati.");
+                alert("⚠️ Scan AI fallito o nessun dato leggibile.");
             }
         } catch (error) {
-            console.error(error);
-            alert("Errore durante la scansione AI.");
+            console.error("Errore AI:", error);
+            alert("Errore di connessione AI.");
         } finally {
             setIsScanning(false);
         }
     };
 
-    // --- FUNZIONE 2: UPLOAD ALLEGATO ---
+    // --- FUNZIONE 2: UPLOAD ALLEGATO MANUALE ---
     const handleAllegato = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -173,9 +169,7 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
         try {
             const res = await fetch(`${API_URL}/api/upload`, { method: 'POST', body: fd });
             const data = await res.json();
-            if (data.url) {
-                setFormData(prev => ({ ...prev, allegato_url: data.url }));
-            }
+            if (data.url) setFormData(prev => ({ ...prev, allegato_url: data.url }));
         } catch (error) {
             alert("Errore caricamento file");
         } finally {
@@ -189,25 +183,21 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
         setUploading(true);
 
         try {
-            // Prepariamo i dati formattati per il DB
             const payload = {
                 ...formData,
-                // Assicuriamoci che i numeri siano numeri
                 prezzo_unitario: parseFloat(formData.prezzo_unitario) || 0,
                 totale_netto: parseFloat(formData.totale_netto) || 0,
                 totale_iva: parseFloat(formData.totale_iva) || 0,
                 totale_lordo: parseFloat(formData.totale_lordo) || 0,
-                // Campi legacy per compatibilità
-                prezzo: parseFloat(formData.totale_lordo) || 0, // Il vecchio campo 'prezzo'
+                // Campo legacy per compatibilità
+                prezzo: parseFloat(formData.totale_lordo) || 0,
                 ora: new Date(formData.data_ricezione).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'})
             };
 
-            // Se c'è un ID, usiamo PUT (aggiornamento), altrimenti POST (nuovo/import)
             let url = formData.id 
                 ? `${API_URL}/api/magazzino/update-full/${formData.id}`
-                : `${API_URL}/api/haccp/merci/import`; // Usiamo la rotta import che gestisce magazzino+haccp
+                : `${API_URL}/api/haccp/merci/import`; // Usa import per creare (gestisce logica magazzino+haccp)
             
-            // Se è nuovo inserimento, la rotta import si aspetta un array "merci"
             const bodyData = formData.id ? payload : { merci: [payload] };
             const method = formData.id ? 'PUT' : 'POST';
 
@@ -220,17 +210,17 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
             const jsonRes = await res.json();
 
             if (jsonRes.success) {
-                alert(formData.id ? "✅ Riga aggiornata!" : "✅ Merce registrata!");
-                // Reset form
-                setFormData({ ...formData, id: null, prodotto: '', quantita: '', prezzo_unitario: '', totale_netto: '', totale_lordo: '', lotto: '', scadenza: '', allegato_url: '', riferimento_documento: '' });
-                if(setRecordDaModificare) setRecordDaModificare(null);
+                alert("✅ Salvato!");
+                // AGGIORNAMENTO LISTA PADRE
+                if (ricaricaDati) ricaricaDati(); 
+                
+                if (setRecordDaModificare) setRecordDaModificare(null);
                 onSuccess(); 
             } else {
-                alert("Errore salvataggio: " + (jsonRes.error || "Errore sconosciuto"));
+                alert("Errore: " + jsonRes.error);
             }
         } catch (error) {
-            console.error(error);
-            alert("Errore connessione server.");
+            alert("Errore server.");
         } finally {
             setUploading(false);
         }
@@ -239,45 +229,36 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
     // Stili
     const rowStyle = { display: 'flex', gap: 15, marginBottom: 15, flexWrap:'wrap' };
     const colStyle = { flex: 1, minWidth: '150px' };
-    const labelStyle = { display: 'block', marginBottom: 5, fontWeight: 'bold', fontSize: '13px', color: '#7f8c8d' };
+    const labelStyle = { display: 'block', marginBottom: 5, fontWeight: 'bold', fontSize: '12px', color: '#7f8c8d' };
     const inputStyle = { width: '100%', padding: '10px', borderRadius: 5, border: '1px solid #ccc', fontSize: '14px' };
 
     return (
         <div style={{ background: 'white', padding: 30, borderRadius: 15, boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }}>
             
-            {/* OVERLAY CARICAMENTO AI */}
             {isScanning && (
-                <div style={{
-                    position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(255,255,255,0.9)', 
-                    zIndex:9999, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'
-                }}>
-                    <div style={{fontSize:50}}>🤖</div>
-                    <h3>Analisi Bolla in corso...</h3>
+                <div style={{ position:'fixed', inset:0, background:'rgba(255,255,255,0.9)', zIndex:9999, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
+                    <div style={{fontSize:50, animation:'spin 2s linear infinite'}}>🤖</div>
+                    <h3>Jarvis sta analizzando il documento...</h3>
+                    <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
                 </div>
             )}
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, borderBottom:'1px solid #eee', paddingBottom:10 }}>
                 <h3 style={{ margin: 0, color: '#2c3e50' }}>{formData.id ? '✏️ Modifica Riga' : '📥 Nuovo Carico Merce'}</h3>
                 <div style={{display:'flex', gap:10}}>
-                     {/* BOTTONE MAGIC SCAN */}
                     <button 
+                        type="button"
                         onClick={() => fileInputRef.current.click()}
-                        disabled={isScanning}
-                        style={{ 
-                            background: 'linear-gradient(135deg, #6a11cb 0%, #2575fc 100%)', 
-                            color: 'white', border: 'none', padding: '10px 20px', 
-                            borderRadius: 30, cursor: 'pointer', fontWeight: 'bold',
-                            display:'flex', alignItems:'center', gap:5
-                        }}
+                        style={{ background: 'linear-gradient(135deg, #6a11cb 0%, #2575fc 100%)', color: 'white', border: 'none', padding: '10px 20px', borderRadius: 30, cursor: 'pointer', fontWeight: 'bold' }}
                     >
-                        {isScanning ? '...' : '✨ SCAN BOLLA AI'}
+                        ✨ SCAN BOLLA AI
                     </button>
                     <input type="file" ref={fileInputRef} onChange={handleScan} style={{ display: 'none' }} accept="image/*,application/pdf" />
                 </div>
             </div>
 
             <form onSubmit={handleSubmit}>
-                {/* SEZIONE 1: DOCUMENTO */}
+                {/* BLOCCO 1: DATI DOCUMENTO */}
                 <div style={{background:'#f8f9fa', padding:15, borderRadius:8, marginBottom:20}}>
                     <h4 style={{marginTop:0, fontSize:14, color:'#3498db'}}>📄 Dati Documento</h4>
                     <div style={rowStyle}>
@@ -286,7 +267,7 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
                             <input type="datetime-local" required style={inputStyle} value={formData.data_ricezione} onChange={e => setFormData({ ...formData, data_ricezione: e.target.value })} />
                         </div>
                         <div style={colStyle}>
-                            <label style={labelStyle}>Data Documento (Fattura)</label>
+                            <label style={labelStyle}>Data Doc. (Fattura)</label>
                             <input type="date" required style={inputStyle} value={formData.data_documento} onChange={e => setFormData({ ...formData, data_documento: e.target.value })} />
                         </div>
                         <div style={colStyle}>
@@ -295,22 +276,22 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
                         </div>
                         <div style={colStyle}>
                             <label style={labelStyle}>Fornitore</label>
-                            <input type="text" required placeholder="Es. Metro Cash & Carry" style={inputStyle} value={formData.fornitore} onChange={e => setFormData({ ...formData, fornitore: e.target.value })} />
+                            <input type="text" required style={inputStyle} value={formData.fornitore} onChange={e => setFormData({ ...formData, fornitore: e.target.value })} />
                         </div>
                     </div>
                 </div>
 
-                {/* SEZIONE 2: PRODOTTO */}
+                {/* BLOCCO 2: PRODOTTO */}
                 <div style={{background:'#fff', border:'1px solid #eee', padding:15, borderRadius:8, marginBottom:20}}>
                     <h4 style={{marginTop:0, fontSize:14, color:'#27ae60'}}>📦 Dati Prodotto</h4>
                     <div style={rowStyle}>
                         <div style={{...colStyle, flex:2}}>
                             <label style={labelStyle}>Prodotto</label>
-                            <input type="text" required placeholder="Es. Farina 00" style={inputStyle} value={formData.prodotto} onChange={e => setFormData({ ...formData, prodotto: e.target.value })} />
+                            <input type="text" required style={inputStyle} value={formData.prodotto} onChange={e => setFormData({ ...formData, prodotto: e.target.value })} />
                         </div>
                         <div style={colStyle}>
                             <label style={labelStyle}>Lotto</label>
-                            <input type="text" placeholder="L-12345" style={inputStyle} value={formData.lotto} onChange={e => setFormData({ ...formData, lotto: e.target.value })} />
+                            <input type="text" style={inputStyle} value={formData.lotto} onChange={e => setFormData({ ...formData, lotto: e.target.value })} />
                         </div>
                         <div style={colStyle}>
                             <label style={labelStyle}>Scadenza</label>
@@ -326,29 +307,23 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
                         <div style={colStyle}>
                             <label style={labelStyle}>Unità</label>
                             <select style={inputStyle} value={formData.unita_misura} onChange={e => setFormData({ ...formData, unita_misura: e.target.value })}>
-                                <option value="Pz">Pezzi (Pz)</option>
-                                <option value="Kg">Kg</option>
-                                <option value="Lt">Litri</option>
-                                <option value="Ct">Cartoni</option>
+                                <option value="Pz">Pezzi (Pz)</option><option value="Kg">Kg</option><option value="Lt">Litri</option><option value="Ct">Cartoni</option>
                             </select>
                         </div>
                         <div style={colStyle}>
                             <label style={labelStyle}>€ Netto (Unitario)</label>
-                            <input type="number" step="0.001" required style={inputStyle} value={formData.prezzo_unitario} onChange={e => setFormData({ ...formData, prezzo_unitario: e.target.value })} placeholder="0.00" />
+                            <input type="number" step="0.001" required style={inputStyle} value={formData.prezzo_unitario} onChange={e => setFormData({ ...formData, prezzo_unitario: e.target.value })} />
                         </div>
                         <div style={colStyle}>
                             <label style={labelStyle}>IVA %</label>
                             <select style={inputStyle} value={formData.iva} onChange={e => setFormData({ ...formData, iva: e.target.value })}>
-                                <option value="4">4%</option>
-                                <option value="10">10%</option>
-                                <option value="22">22%</option>
-                                <option value="0">0%</option>
+                                <option value="4">4%</option><option value="10">10%</option><option value="22">22%</option><option value="0">0%</option>
                             </select>
                         </div>
                     </div>
                 </div>
 
-                {/* SEZIONE 3: TOTALI CALCOLATI (READ ONLY) */}
+                {/* BLOCCO 3: TOTALI */}
                 <div style={{background:'#eaf2f8', padding:15, borderRadius:8, marginBottom:20, border:'1px solid #d6eaf8'}}>
                     <h4 style={{marginTop:0, fontSize:14, color:'#2980b9'}}>🧮 Riepilogo Costi (Calcolo Automatico)</h4>
                     <div style={{display:'flex', gap:15}}>
@@ -367,20 +342,16 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
                     </div>
                 </div>
 
-                {/* FOOTER AZIONI */}
+                {/* FOOTER */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 30 }}>
-                    
-                    {/* Upload Allegato */}
                     <div onClick={() => allegatoInputRef.current.click()} style={{ cursor: 'pointer', color: formData.allegato_url ? '#27ae60' : '#7f8c8d', display:'flex', alignItems:'center', gap:5 }}>
-                        <span style={{fontSize:20}}>📎</span> 
-                        {formData.allegato_url ? <b>Allegato Caricato!</b> : "Carica Foto/PDF Manuale"}
+                        <span style={{fontSize:20}}>📎</span> {formData.allegato_url ? <b>Allegato OK!</b> : "Carica Foto Manuale"}
                         <input type="file" ref={allegatoInputRef} onChange={handleAllegato} style={{ display: 'none' }} />
                     </div>
-
                     <div style={{ display: 'flex', gap: 10 }}>
                         <button type="button" onClick={onCancel} style={{ padding: '12px 20px', background: '#95a5a6', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight:'bold' }}>ANNULLA</button>
                         <button type="submit" disabled={uploading} style={{ padding: '12px 30px', background: '#27ae60', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 4px 10px rgba(39, 174, 96, 0.3)' }}>
-                            {uploading ? 'SALVATAGGIO...' : (formData.id ? '💾 AGGIORNA' : '💾 SALVA RIGA')}
+                            {uploading ? '...' : (formData.id ? '💾 AGGIORNA' : '💾 SALVA RIGA')}
                         </button>
                     </div>
                 </div>
