@@ -19,12 +19,17 @@ function Haccp() {
   // --- STATO GLOBALE ---
   const [info, setInfo] = useState(null);
   const [isAuthorized, setIsAuthorized] = useState(false);
-  const [password, setPassword] = useState("");
   
-  // Dati
+  // Login State
+  const [password, setPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loadingLogin, setLoadingLogin] = useState(false);
+  
+  // Dati Applicativi
   const [assets, setAssets] = useState([]);
   const [logs, setLogs] = useState([]); 
   const [merci, setMerci] = useState([]); 
+  
   // Dati Calendario (Unificati)
   const [calendarData, setCalendarData] = useState({ logs: [], merci: [], pulizie: [], labels: [] });
   const [calendarLogs, setCalendarLogs] = useState([]); // Legacy fallback
@@ -41,14 +46,7 @@ function Haccp() {
   const [tempInput, setTempInput] = useState({}); 
   const [uploadingLog, setUploadingLog] = useState(null); 
   
-  // Stati Merci
-  const [merciForm, setMerciForm] = useState({
-      id: null,
-      data_ricezione: new Date().toISOString().split('T')[0],
-      fornitore: '', prodotto: '', lotto: '', scadenza: '',
-      temperatura: '', conforme: true, integro: true, note: '',
-      quantita: '', allegato_url: '', destinazione: ''
-  });
+  // Stati Merci (Form gestito internamente da MerciManager se mode="haccp", ma manteniamo stati se servono props)
   const [uploadingMerci, setUploadingMerci] = useState(false);
 
   // Stati Asset / Modali
@@ -63,8 +61,7 @@ function Haccp() {
   const [uploadingLabel, setUploadingLabel] = useState(false); 
   const [showQRModal, setShowQRModal] = useState(null);
 
-  // Stati UI Extra
-  const [previewImage, setPreviewImage] = useState(null);
+  // Stati UI Extra & Download
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [downloadType, setDownloadType] = useState(null); 
   const [downloadFormat, setDownloadFormat] = useState('excel'); 
@@ -107,16 +104,18 @@ function Haccp() {
   }, [isAuthorized, info, tab, currentDate]);
 
   const ricaricaDati = () => {
+      if(!info?.id) return;
       fetch(`${API_URL}/api/haccp/assets/${info.id}`).then(r=>r.json()).then(setAssets);
       fetch(`${API_URL}/api/haccp/logs/${info.id}`).then(r=>r.json()).then(setLogs);
-      fetch(`${API_URL}/api/haccp/merci/${info.id}`).then(r=>r.json()).then(setMerci);
+      // Carichiamo merci HACCP per averle disponibili (es. per etichette)
+      fetch(`${API_URL}/api/haccp/merci/${info.id}?mode=haccp`).then(r=>r.json()).then(setMerci);
       fetch(`${API_URL}/api/utenti?mode=staff&ristorante_id=${info.id}&t=${new Date().getTime()}`)
         .then(r=>r.json())
         .then(data => setStaffList(Array.isArray(data) ? data : []));
   };
 
   const ricaricaCalendario = async () => {
-      if(tab !== 'calendario') return;
+      if(tab !== 'calendario' || !info?.id) return;
       const year = currentDate.getFullYear();
       const month = currentDate.getMonth();
       const start = new Date(year, month, 1).toISOString();
@@ -137,7 +136,7 @@ function Haccp() {
               pulizie: await resPulizie.json(),
               labels: await resLabels.json()
           });
-          setCalendarLogs(logsData); // Mantieni compatibilità
+          setCalendarLogs(logsData); 
 
       } catch (e) { console.error("Err Cal", e); }
   };
@@ -177,24 +176,69 @@ function Haccp() {
       finally { setIsDownloading(false); }
   };
 
-  // Funzioni compatibilità legacy (se usate nei componenti figli)
-  const handleFileAction = (url) => openGlobalPreview(url, "Allegato");
+  // --- LOGICA LOGIN ---
+  const handleLogin = async (e) => { 
+      e.preventDefault(); 
+      setLoadingLogin(true);
+      setLoginError("");
+      try { 
+          const r = await fetch(`${API_URL}/api/auth/station`, { 
+              method:'POST', 
+              headers:{'Content-Type':'application/json'}, 
+              body: JSON.stringify({ ristorante_id: info.id, role: 'haccp', password }) 
+          }); 
+          const d = await r.json(); 
+          if(d.success) { 
+              setIsAuthorized(true); 
+              localStorage.setItem(`haccp_session_${slug}`, "true"); 
+          } else {
+              setLoginError("Password Errata");
+          }
+      } catch(e) { 
+          setLoginError("Errore connessione"); 
+      } finally {
+          setLoadingLogin(false);
+      }
+  };
 
-  // --- LOGICA STANDARD ---
-  const handleLogin = async (e) => { e.preventDefault(); try { const r = await fetch(`${API_URL}/api/auth/station`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ristorante_id: info.id, role: 'haccp', password }) }); const d = await r.json(); if(d.success) { setIsAuthorized(true); localStorage.setItem(`haccp_session_${slug}`, "true"); } else alert("Password Errata"); } catch(e) { alert("Errore connessione"); } };
+  // --- LOGICA UTILS ---
   const uploadFile = async (file) => { const fd = new FormData(); fd.append('photo', file); const res = await fetch(`${API_URL}/api/upload`, { method:'POST', body:fd }); const data = await res.json(); return data.url; };
   const getTodayLog = (assetId) => { const today = new Date().toDateString(); return logs.find(l => l.asset_id === assetId && new Date(l.data_ora).toDateString() === today); };
   
   const handleLogPhoto = async (e, assetId) => { const f = e.target.files[0]; if(!f) return; setUploadingLog(assetId); try { const url = await uploadFile(f); setTempInput(prev => ({...prev, [assetId]: { ...(prev[assetId] || {}), photo: url }})); } finally { setUploadingLog(null); } };
-  const registraTemperatura = async (asset, isSpento = false) => { let val = 'OFF', conforme = true, azione = ""; if (!isSpento) { const currentInput = tempInput[asset.id] || {}; val = parseFloat(currentInput.val); if(isNaN(val) && currentInput.val !== '0') return alert("Inserisci un numero valido"); const realMin = Math.min(parseFloat(asset.range_min), parseFloat(asset.range_max)); const realMax = Math.max(parseFloat(asset.range_min), parseFloat(asset.range_max)); conforme = val >= realMin && val <= realMax; if(!conforme) { azione = prompt(`⚠️ ATTENZIONE: Temp ${val}°C fuori range.\nDescrivi azione correttiva:`, ""); if(!azione) return alert("Azione correttiva obbligatoria!"); } val = val.toString(); } else { val = "OFF"; conforme = true; azione = "Macchinario spento/inutilizzato in data odierna"; } await fetch(`${API_URL}/api/haccp/logs`, { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ristorante_id: info.id, asset_id: asset.id, operatore: 'Staff', tipo_log: 'temperatura', valore: val, conformita: conforme, azione_correttiva: azione, foto_prova_url: (tempInput[asset.id] || {}).photo || '' }) }); setTempInput(prev => { const n = {...prev}; delete n[asset.id]; return n; }); ricaricaDati(); if(scanId) navigate(`/haccp/${slug}`); };
+  
+  const registraTemperatura = async (asset, isSpento = false) => { 
+      let val = 'OFF', conforme = true, azione = ""; 
+      if (!isSpento) { 
+          const currentInput = tempInput[asset.id] || {}; 
+          val = parseFloat(currentInput.val); 
+          if(isNaN(val) && currentInput.val !== '0') return alert("Inserisci un numero valido"); 
+          const realMin = Math.min(parseFloat(asset.range_min), parseFloat(asset.range_max)); 
+          const realMax = Math.max(parseFloat(asset.range_min), parseFloat(asset.range_max)); 
+          conforme = val >= realMin && val <= realMax; 
+          if(!conforme) { 
+              azione = prompt(`⚠️ ATTENZIONE: Temp ${val}°C fuori range.\nDescrivi azione correttiva:`, ""); 
+              if(!azione) return alert("Azione correttiva obbligatoria!"); 
+          } 
+          val = val.toString(); 
+      } else { 
+          val = "OFF"; conforme = true; azione = "Macchinario spento/inutilizzato in data odierna"; 
+      } 
+      await fetch(`${API_URL}/api/haccp/logs`, { 
+          method: 'POST', 
+          headers:{'Content-Type':'application/json'}, 
+          body: JSON.stringify({ 
+              ristorante_id: info.id, asset_id: asset.id, operatore: 'Staff', tipo_log: 'temperatura', 
+              valore: val, conformita: conforme, azione_correttiva: azione, 
+              foto_prova_url: (tempInput[asset.id] || {}).photo || '' 
+          }) 
+      }); 
+      setTempInput(prev => { const n = {...prev}; delete n[asset.id]; return n; }); 
+      ricaricaDati(); 
+      if(scanId) navigate(`/haccp/${slug}`); 
+  };
+  
   const abilitaNuovaMisurazione = (asset) => { const logEsistente = getTodayLog(asset.id); setTempInput(prev => ({ ...prev, [asset.id]: { val: logEsistente ? logEsistente.valore : '', photo: '' } })); };
-
-  // MERCI LOGIC
-  const handleMerciPhoto = async (e) => { const f = e.target.files[0]; if(!f) return; setUploadingMerci(true); try { const url = await uploadFile(f); setMerciForm(prev => ({...prev, allegato_url: url})); } finally { setUploadingMerci(false); } };
-  const salvaMerci = async (e) => { e.preventDefault(); try { const endpoint = merciForm.id ? `${API_URL}/api/haccp/merci/${merciForm.id}` : `${API_URL}/api/haccp/merci`; const method = merciForm.id ? 'PUT' : 'POST'; const payload = { ...merciForm, ristorante_id: info.id, operatore: 'Staff' }; if (!payload.scadenza || payload.scadenza === "") payload.scadenza = null; if (!payload.temperatura || payload.temperatura === "") payload.temperatura = null; if (!payload.quantita || payload.quantita === "") payload.quantita = null; const res = await fetch(endpoint, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const data = await res.json(); if (data.success) { resetMerciForm(); ricaricaDati(); alert("✅ Salvataggio riuscito!"); } else alert("❌ Errore Server: " + data.error); } catch (err) { alert("❌ Errore Connessione"); } };
-  const resetMerciForm = () => { setMerciForm({ id: null, data_ricezione: new Date().toISOString().split('T')[0], fornitore: '', prodotto: '', lotto: '', scadenza: '', temperatura: '', conforme: true, integro: true, note: '', quantita: '', allegato_url: '', destinazione: '' }); };
-  const iniziaModificaMerci = (m) => { setMerciForm({ ...m, data_ricezione: m.data_ricezione.split('T')[0], scadenza: m.scadenza ? m.scadenza.split('T')[0] : '' }); window.scrollTo(0,0); };
-  const eliminaMerce = async (id) => { if(confirm("Eliminare riga?")) { await fetch(`${API_URL}/api/haccp/merci/${id}`, {method:'DELETE'}); ricaricaDati(); } };
 
   // ASSETS
   const apriModaleAsset = (asset = null) => { if(asset) { setEditingAsset(asset); setAssetForm({ ...asset }); } else { setEditingAsset(null); setAssetForm({ nome:'', tipo:'frigo', range_min:0, range_max:4, marca:'', modello:'', serial_number:'', foto_url:'', etichetta_url:'', stato:'attivo' }); } setShowAssetModal(true); };
@@ -217,16 +261,72 @@ function Haccp() {
   const handlePrintQR = (asset) => { setShowQRModal(asset); };
   const printOnlyQR = () => { setPrintMode('qr'); setTimeout(() => { window.print(); setPrintMode(null); }, 500); };
 
-  if(!info) return <div>Caricamento...</div>;
-  if(!isAuthorized) return <div className="auth-container"><h1 style={{fontSize:'24px'}}>🔒 Accesso HACCP</h1><form onSubmit={handleLogin}><input type="password" placeholder="Password Reparto" value={password} onChange={e=>setPassword(e.target.value)} /><button>Accedi</button></form></div>;
+  // --- RENDER 1: CARICAMENTO ---
+  if(!info) {
+      return (
+          <div style={{minHeight:'100vh', background:'#2c3e50', display:'flex', justifyContent:'center', alignItems:'center', flexDirection:'column', color:'white'}}>
+              <div style={{fontSize:'3rem', marginBottom:'15px'}}>🛡️</div>
+              <h2 style={{fontWeight:'400'}}>Caricamento Sistema HACCP...</h2>
+          </div>
+      );
+  }
+
+  // --- RENDER 2: LOGIN ---
+  if(!isAuthorized) {
+      return (
+        <div style={{minHeight:'100vh', background:'#2c3e50', display:'flex', justifyContent:'center', alignItems:'center'}}>
+            <div style={{background:'white', padding:'40px', borderRadius:'15px', textAlign:'center', width:'90%', maxWidth:'400px', boxShadow:'0 15px 35px rgba(0,0,0,0.2)'}}>
+                <div style={{fontSize:'4rem', marginBottom:'10px'}}>🛡️</div>
+                <h2 style={{margin:'0 0 5px 0', color:'#2c3e50', fontSize:'1.8rem'}}>Accesso HACCP</h2>
+                <p style={{color:'#7f8c8d', margin:'0 0 30px 0', fontSize:'1rem'}}>{info.ristorante}</p>
+                
+                <form onSubmit={handleLogin} style={{display:'flex', flexDirection:'column', gap:'15px'}}>
+                    <input 
+                        type="password" 
+                        placeholder="Password Reparto" 
+                        value={password} 
+                        onChange={e=>setPassword(e.target.value)} 
+                        style={{
+                            padding:'15px', borderRadius:'10px', border:'2px solid #ecf0f1', 
+                            fontSize:'16px', outline:'none', background:'#f8f9fa',
+                            color: '#2c3e50', textAlign: 'center', width: '100%', boxSizing: 'border-box'
+                        }}
+                    />
+                    
+                    {loginError && (
+                        <div style={{background:'#fadbd8', color:'#c0392b', padding:'10px', borderRadius:'8px', fontSize:'0.9rem', fontWeight:'bold'}}>
+                            ⚠️ {loginError}
+                        </div>
+                    )}
+                    
+                    <button disabled={loadingLogin} style={{
+                        padding:'16px', background:'#2c3e50', color:'white', border:'none', 
+                        borderRadius:'10px', fontSize:'16px', fontWeight:'bold', cursor:'pointer', 
+                        opacity: loadingLogin ? 0.7 : 1, boxShadow: '0 4px 6px rgba(44, 62, 80, 0.2)'
+                    }}>
+                        {loadingLogin ? "Verifica..." : "ENTRA NEL SISTEMA"}
+                    </button>
+                </form>
+            </div>
+        </div>
+      );
+  }
+
   const assetsToDisplay = scanId ? assets.filter(a => a.id.toString() === scanId) : assets.filter(a=>['frigo','cella','vetrina'].includes(a.tipo));
 
+  // --- RENDER 3: APPLICAZIONE ---
   return (
     <div className="haccp-container main-wrapper">
       
       {!scanId && (
           <div className="no-print header-nav">
-              <div style={{flex:1}}><h1 className="app-title">🛡️ HACCP Control</h1></div>
+              <div style={{flex:1, display:'flex', alignItems:'center', gap:10}}>
+                  <div style={{fontSize:'2rem'}}>🛡️</div>
+                  <div>
+                    <h1 className="app-title">HACCP Control</h1>
+                    <div style={{fontSize:'0.8rem', opacity:0.7}}>{info.ristorante}</div>
+                  </div>
+              </div>
               <div className="nav-buttons">
                   {['temperature', 'merci', 'pulizie', 'calendario', 'etichette', 'staff', 'setup'].map(t => (
                     <button key={t} onClick={()=>setTab(t)} className={`nav-btn ${tab===t ? 'active' : ''}`}>
@@ -247,15 +347,15 @@ function Haccp() {
               />
           )}
 
-{tab === 'merci' && !scanId && (
-    <MerciManager 
-       ristoranteId={info?.id} 
-       mode="haccp"             // <--- IMPORTANTE: Qui dici "Solo Alimenti"
-       title="Ricevimento Merci (HACCP)"
-       API_URL={API_URL} 
-       openDownloadModal={openDownloadModal}
-    />
-)}
+          {tab === 'merci' && !scanId && (
+            <MerciManager 
+               ristoranteId={info.id} 
+               mode="haccp" 
+               title="Ricevimento Materie Prime" 
+               API_URL={API_URL} 
+               openDownloadModal={openDownloadModal}
+            />
+          )}
           
           {tab === 'pulizie' && !scanId && (
               <CleaningManager info={info} API_URL={API_URL} staffList={staffList} openDownloadModal={openDownloadModal} />
@@ -388,11 +488,6 @@ function Haccp() {
         .nav-btn.active { background: #2c3e50; color: white; }
         .nav-btn.logout { background: #e74c3c; color: white; }
 
-        /* AUTH */
-        .auth-container { padding: 50px; text-align: center; }
-        .auth-container input { padding: 10px; margin-right: 10px; border: 1px solid #ccc; border-radius: 4px; }
-        .auth-container button { padding: 10px 20px; background: #2c3e50; color: white; border: none; border-radius: 4px; }
-
         /* MODALS (RESPONSIVE) */
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 2000; padding: 10px; }
         .modal-content { background: white; padding: 20px; border-radius: 10px; width: 100%; max-height: 90vh; overflow-y: auto; box-sizing: border-box; }
@@ -512,4 +607,5 @@ function Haccp() {
     </div>
   );
 }
+
 export default Haccp;
