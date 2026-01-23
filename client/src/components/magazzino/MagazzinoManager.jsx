@@ -27,11 +27,11 @@ const MagazzinoManager = ({ user, API_URL }) => {
 
     const ricaricaDati = () => {
         // 1. CARICA IL VERO MAGAZZINO (Nuova Tabella)
-        // Usiamo la rotta che restituisce giacenze e anagrafica
+        // Usiamo la rotta che restituisce giacenze e anagrafica dettagliata
         fetch(`${API_URL}/api/magazzino/lista/${user.id}`)
             .then(r => r.json())
             .then(data => {
-                // Mappiamo i dati nell'oggetto stats.storico per compatibilità
+                // Mappiamo i dati nell'oggetto stats.storico per compatibilità con i figli
                 setStats(prev => ({
                     ...prev,
                     storico: Array.isArray(data) ? data : [] 
@@ -42,7 +42,7 @@ const MagazzinoManager = ({ user, API_URL }) => {
                 setStats(prev => ({ ...prev, storico: [] }));
             });
 
-        // 2. Carica Statistiche (Grafici) - Opzionale, se ti servono ancora i grafici basati sullo storico HACCP
+        // 2. Carica Statistiche (Grafici) 
         fetch(`${API_URL}/api/haccp/stats/magazzino/${user.id}`)
             .then(r => r.json())
             .then(data => {
@@ -54,17 +54,17 @@ const MagazzinoManager = ({ user, API_URL }) => {
             })
             .catch(console.error);
 
-        // 3. Carica Assets
+        // 3. Carica Assets (Macchinari HACCP)
         fetch(`${API_URL}/api/haccp/assets/${user.id}`)
             .then(r => r.json())
             .then(data => setAssets(Array.isArray(data) ? data : []))
             .catch(console.error);
     };
 
-    // Gestione Modifica
+    // Gestione Avvio Modifica (Dalla Lista -> Al Form)
     const gestisciModifica = (record) => {
         setRecordDaModificare(record);
-        setTab('carico');
+        setTab('carico'); // Sposta l'utente sulla tab di caricamento
     };
 
     // --- EXPORT LOGIC ---
@@ -98,10 +98,11 @@ const MagazzinoManager = ({ user, API_URL }) => {
         setShowDownloadModal(false);
     };
 
-    // --- FILE VIEWER ---
+    // --- FILE VIEWER & PROXY DOWNLOAD ---
     const handleFileAction = (url, name) => {
         if(!url) return;
         const isPdf = url.toLowerCase().includes('.pdf');
+        // Usiamo un proxy se necessario per evitare blocchi CORS o per forzare il download
         let previewUrl = isPdf ? `${API_URL}/api/proxy-download?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}` : url;
         setPreviewDoc({ url, previewUrl, name, type: isPdf ? 'pdf' : 'image' });
     };
@@ -126,17 +127,23 @@ const MagazzinoManager = ({ user, API_URL }) => {
     return (
         <div style={{padding: '20px', background: '#f4f6f8', minHeight: '90vh', fontFamily:"'Inter', sans-serif"}}>
             
-            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20}}>
-                <div><h2 style={{color: '#2c3e50', margin:0}}>📦 Magazzino & Contabilità</h2><p style={{margin:0, fontSize:12, color:'#7f8c8d'}}>Gestione acquisti e giacenze</p></div>
-                <div style={{display:'flex', gap:10}}>
+            {/* HEADER & NAVIGAZIONE */}
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20, flexWrap:'wrap', gap:10}}>
+                <div>
+                    <h2 style={{color: '#2c3e50', margin:0}}>📦 Magazzino & Contabilità</h2>
+                    <p style={{margin:0, fontSize:12, color:'#7f8c8d'}}>Gestione acquisti, giacenze e registro HACCP</p>
+                </div>
+                <div style={{display:'flex', gap:10, flexWrap:'wrap'}}>
                     {['dashboard','calendario','lista','carico'].map(t => (
                         <button key={t} onClick={() => { setTab(t); if(t!=='carico') setRecordDaModificare(null); }} style={{
                             padding:'8px 15px', borderRadius:20, cursor:'pointer', border:'1px solid #ccc',
-                            background: tab===t ? '#34495e' : 'white', color: tab===t ? 'white' : '#333', textTransform:'capitalize'
-                        }}>{t}</button>
+                            background: tab===t ? '#34495e' : 'white', color: tab===t ? 'white' : '#333', textTransform:'capitalize', fontWeight: tab===t?'bold':'normal'
+                        }}>{t === 'carico' ? '+ Nuovo Carico' : t}</button>
                     ))}
                 </div>
             </div>
+
+            {/* --- CONTENUTO TABS --- */}
 
             {tab === 'dashboard' && <MagazzinoDashboard stats={stats} />}
             
@@ -164,7 +171,7 @@ const MagazzinoManager = ({ user, API_URL }) => {
                 />
             )}
 
-            {/* MODALE DOWNLOAD */}
+            {/* --- MODALE DOWNLOAD REPORT --- */}
             {showDownloadModal && (
                 <div style={{position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000}}>
                     <div style={{background: 'white', padding: '20px', borderRadius: '10px', width: '350px', textAlign: 'center'}}>
@@ -187,7 +194,7 @@ const MagazzinoManager = ({ user, API_URL }) => {
                 </div>
             )}
 
-            {/* MODALE PREVIEW */}
+            {/* --- MODALE PREVIEW FILE --- */}
             {previewDoc && (
                 <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.85)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center'}}>
                     <div style={{background:'white', width:'90%', height:'90%', maxWidth:'1000px', borderRadius:8, display:'flex', flexDirection:'column', overflow:'hidden'}}>
@@ -199,7 +206,11 @@ const MagazzinoManager = ({ user, API_URL }) => {
                             </div>
                         </div>
                         <div style={{flex:1, background:'#555', overflow:'hidden', display:'flex', justifyContent:'center', alignItems:'center'}}>
-                            {previewDoc.type === 'pdf' ? <iframe src={previewDoc.previewUrl} style={{width:'100%', height:'100%', border:'none'}} title="Anteprima PDF" /> : <img src={previewDoc.previewUrl} alt="Anteprima" style={{maxWidth:'100%', maxHeight:'100%', objectFit:'contain'}} />}
+                            {previewDoc.type === 'pdf' ? (
+                                <iframe src={previewDoc.previewUrl} style={{width:'100%', height:'100%', border:'none'}} title="Anteprima PDF" />
+                            ) : (
+                                <img src={previewDoc.previewUrl} alt="Anteprima" style={{maxWidth:'100%', maxHeight:'100%', objectFit:'contain'}} />
+                            )}
                         </div>
                     </div>
                 </div>
