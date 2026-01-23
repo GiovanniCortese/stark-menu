@@ -7,7 +7,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import AdminMenu from './components_admin/AdminMenu';
 import AdminCategorie from './components_admin/AdminCategorie';
 import AdminGrafica from './components_admin/AdminGrafica';
-import AdminMagazzino from './components_admin/AdminMagazzino'; // Importalo in alto
+import MagazzinoManager from './components/magazzino/MagazzinoManager';
 import AdminUsers from './components_admin/AdminUsers';
 import AdminSicurezza from './components_admin/AdminSicurezza';
 import AdminDashboard from './components_admin/AdminDashboard';
@@ -408,7 +408,12 @@ function Admin() {
         )}
 
         {tab === 'magazzino' && (
-    <AdminMagazzino user={user} API_URL={API_URL} />
+   <div style={{ padding: '0 20px' }}>
+        <MagazzinoManager 
+            ristoranteId={user.id} 
+            API_URL={API_URL} 
+        />
+    </div>
 )}
 
         {tab === 'users' && (
