@@ -280,15 +280,28 @@ router.post('/api/haccp/merci', async (req, res) => {
             ristorante_id, data_ricezione, ora, fornitore, prodotto, 
             lotto, scadenza, temperatura, conforme, integro, note, 
             operatore, quantita, unita_misura, allegato_url, destinazione, 
-            prezzo_unitario, iva, is_haccp 
+            prezzo_unitario, iva, is_haccp, 
+            // FIX: Recuperiamo i campi Documento che mancavano
+            data_documento, riferimento_documento, codice_articolo, sconto
         } = req.body; 
 
         // 1. UPDATE/INSERT MAGAZZINO (SEMPRE)
-        // Usa la funzione centralizzata che calcola i totali
-        const resMag = await gestisciMagazzino(client, {
-            ristorante_id, prodotto, quantita, prezzo_unitario, iva, fornitore, 
-            unita_misura, lotto, data_bolla: data_ricezione
+        const resultMagazzino = await gestisciMagazzino(client, {
+            ristorante_id, 
+            prodotto, 
+            quantita: parseFloat(quantita)||0, 
+            prezzo_unitario: parseFloat(prezzo_unitario)||0, 
+            iva: parseFloat(iva)||0, 
+            fornitore, 
+            unita_misura, 
+            lotto, 
+            data_bolla: data_documento || data_ricezione, // Usa data documento se c'è
+            numero_bolla: riferimento_documento || '',
+            codice_articolo: codice_articolo || '',
+            sconto: parseFloat(sconto)||0
         });
+
+        const { totaleNetto, totaleIva, totaleLordo, prezzoNettoUnitario } = resultMagazzino;
 
         // 2. INSERT HACCP (SOLO SE CIBO)
         if (is_haccp === true || is_haccp === 'true') {
@@ -298,20 +311,28 @@ router.post('/api/haccp/merci', async (req, res) => {
                     lotto, scadenza, temperatura, conforme, integro, note, operatore, 
                     quantita, unita_misura, allegato_url, destinazione, 
                     prezzo_unitario, prezzo_unitario_netto, iva, 
-                    totale_netto, totale_iva, totale_lordo, is_haccp
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, true)`, 
+                    totale_netto, totale_iva, totale_lordo, is_haccp,
+                    
+                    -- FIX: Colonne Aggiunte
+                    data_documento, riferimento_documento, codice_articolo, sconto
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, true, $24, $25, $26, $27)`, 
                 [
-                    ristorante_id, resMag.id, data_ricezione, ora || '', fornitore, prodotto, 
+                    ristorante_id, resultMagazzino.id, data_ricezione, ora || '', fornitore, prodotto, 
                     lotto, scadenza || null, temperatura, conforme, integro, note, operatore, 
                     quantita, unita_misura || '', allegato_url, destinazione, 
-                    parseFloat(prezzo_unitario)||0, resMag.prezzoNettoUnitario, parseFloat(iva)||0,
-                    resMag.totaleNetto, resMag.totaleIva, resMag.totaleLordo // Salva i totali anche qui
+                    parseFloat(prezzo_unitario)||0, prezzoNettoUnitario, parseFloat(iva)||0,
+                    totaleNetto, totaleIva, totaleLordo,
+                    // FIX: Valori Aggiunti
+                    data_documento || data_ricezione, // Se manca data doc, usa ricezione
+                    riferimento_documento || '', 
+                    codice_articolo || '',
+                    parseFloat(sconto) || 0
                 ]
             );
         }
 
         await client.query('COMMIT');
-        res.json({success:true, message: is_haccp ? "Salvato HACCP + Magazzino" : "Salvato solo Magazzino (No HACCP)"}); 
+        res.json({success:true, message: "Salvato correttamente!"}); 
     } catch(e) { 
         await client.query('ROLLBACK');
         console.error(e);

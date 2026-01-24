@@ -221,7 +221,8 @@ const MagazzinoManager = ({ user, API_URL }) => {
                     {['dashboard','calendario','lista','carico'].map(t => (
                         <button key={t} onClick={() => { 
                             setTab(t); 
-                            if(t === 'lista') resetFiltro(); // Reset se clicco Tab Lista
+                            // Se clicco manualmente "lista", resetto il filtro data
+                            if(t === 'lista') resetFiltro(); 
                             if(t!=='carico') setRecordDaModificare(null); 
                         }} style={{
                             padding:'8px 15px', borderRadius:20, cursor:'pointer', border:'1px solid #ccc',
@@ -234,7 +235,12 @@ const MagazzinoManager = ({ user, API_URL }) => {
             {/* CONTENT */}
             {tab === 'dashboard' && <MagazzinoDashboard stats={stats} />}
             
-            {tab === 'calendario' && <MagazzinoCalendar stats={stats} onDateClick={onSelectDataCalendario} />}
+            {tab === 'calendario' && (
+                <MagazzinoCalendar 
+                    stats={stats} 
+                    onDateClick={onSelectDataCalendario}
+                />
+            )}
 
             {tab === 'carico' && (
                 <MagazzinoUpload 
@@ -244,7 +250,13 @@ const MagazzinoManager = ({ user, API_URL }) => {
                     recordDaModificare={recordDaModificare}
                     setRecordDaModificare={setRecordDaModificare}
                     onSuccess={() => { setRecordDaModificare(null); setTab('lista'); }}
+                    // PASSO LA FUNZIONE PER GESTIRE LA SCANSIONE AI
                     onScanComplete={handleScanSuccess}
+                    // FIX: AGGIUNTA GESTIONE DEL TASTO ANNULLA
+                    onCancel={() => { 
+                        setRecordDaModificare(null); 
+                        setTab('lista'); 
+                    }}
                 />
             )}
 

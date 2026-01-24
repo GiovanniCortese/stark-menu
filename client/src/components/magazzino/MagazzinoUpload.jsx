@@ -56,7 +56,6 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
             if(recordDaModificare.data_ricezione) {
                 try {
                     const d = new Date(recordDaModificare.data_ricezione);
-                    // Controllo validità data
                     if(!isNaN(d.getTime())) {
                         d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
                         dataIns = d.toISOString().slice(0, 16);
@@ -103,39 +102,49 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
                 totale_lordo: safeVal(recordDaModificare.totale_lordo, 0),
                 
                 scadenza: recordDaModificare.scadenza ? recordDaModificare.scadenza.split('T')[0] : '',
-                is_haccp: recordDaModificare.is_haccp !== undefined ? recordDaModificare.is_haccp : true
+                is_haccp: recordDaModificare.is_haccp !== undefined ? recordDaModificare.is_haccp : true,
+                operatore: recordDaModificare.operatore || user.nome || 'Admin'
             }));
         }
     }, [recordDaModificare]);
 
-    // --- CALCOLATRICE AUTOMATICA ---
+    // --- CALCOLATRICE AUTOMATICA (LIVE) ---
     useEffect(() => {
         const qta = parseFloat(formData.quantita) || 0;
         const unitListino = parseFloat(formData.prezzo_unitario) || 0;
         const sc = parseFloat(formData.sconto) || 0;
         const ivaPerc = parseFloat(formData.iva) || 0;
         
-        // Calcolo Netto Scontato
+        // 1. Calcolo Netto Scontato Unitario
         const unitNetto = unitListino * (1 - sc/100);
         
+        // 2. Totali
         const totNetto = qta * unitNetto;
         const totIva = totNetto * (ivaPerc / 100);
         const totLordo = totNetto + totIva;
 
         const nuovoNettoStr = totNetto.toFixed(2);
+        const nuovoIvaStr = totIva.toFixed(2);
+        const nuovoLordoStr = totLordo.toFixed(2);
         
-        // Aggiorna solo se cambia il valore per evitare loop
-        if (formData.totale_netto !== nuovoNettoStr && (qta > 0 || unitListino > 0)) {
+        // Aggiorna lo stato SOLO se i valori sono cambiati (per evitare loop infiniti)
+        // Aggiunto controllo: esegui solo se ci sono quantità o prezzi inseriti
+        if (
+            (formData.totale_netto !== nuovoNettoStr || 
+             formData.totale_iva !== nuovoIvaStr || 
+             formData.totale_lordo !== nuovoLordoStr) 
+        ) {
             setFormData(prev => ({
                 ...prev,
                 totale_netto: nuovoNettoStr,
-                totale_iva: totIva.toFixed(2),
-                totale_lordo: totLordo.toFixed(2)
+                totale_iva: nuovoIvaStr,
+                totale_lordo: nuovoLordoStr
             }));
         }
+        // DIPENDENZE: Ricalcola se cambia qta, prezzo, sconto o iva
     }, [formData.quantita, formData.prezzo_unitario, formData.sconto, formData.iva]);
 
-    // --- FUNZIONE SCAN ---
+    // --- FUNZIONE SCAN (AI) ---
     const handleScan = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -223,28 +232,29 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
         } catch (error) { alert("Errore caricamento file"); } finally { setUploading(false); }
     };
 
+    // --- SALVATAGGIO ---
     const handleSubmit = async (e) => {
         e.preventDefault();
         setUploading(true);
         try {
             const payload = {
                 ...formData,
+                // Assicuriamoci che i numeri siano numeri
+                quantita: parseFloat(formData.quantita) || 0,
                 prezzo_unitario: parseFloat(formData.prezzo_unitario) || 0,
                 sconto: parseFloat(formData.sconto) || 0,
+                iva: parseFloat(formData.iva) || 0,
+                // I totali vengono ricalcolati dal backend, ma li mandiamo per sicurezza
                 totale_netto: parseFloat(formData.totale_netto) || 0,
                 totale_iva: parseFloat(formData.totale_iva) || 0,
                 totale_lordo: parseFloat(formData.totale_lordo) || 0,
+                
                 ora: new Date(formData.data_ricezione).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'})
             };
 
             let url = formData.id 
-                ? `${API_URL}/api/haccp/merci/${formData.id}` // PUT Update HACCP
-                : `${API_URL}/api/haccp/merci`; // POST Nuovo (Singolo)
-            
-            // Nota: Se è nuovo inserimento manuale singolo, usiamo la rotta singola o import array?
-            // Per coerenza con la logica "import", se è nuovo, lo incapsuliamo.
-            // MA se la rotta 'merci' singola esiste ed è buona, usiamola. 
-            // Nel tuo backend hai: router.post('/api/haccp/merci') e router.put('/api/haccp/merci/:id')
+                ? `${API_URL}/api/haccp/merci/${formData.id}` // PUT
+                : `${API_URL}/api/haccp/merci`; // POST
             
             const method = formData.id ? 'PUT' : 'POST';
 
@@ -256,12 +266,18 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
             const jsonRes = await res.json();
             
             if (jsonRes.success) {
-                alert("✅ Salvato!");
+                alert("✅ Salvato con successo!");
                 if (ricaricaDati) ricaricaDati(); 
                 if (setRecordDaModificare) setRecordDaModificare(null);
-                onSuccess(); 
-            } else { alert("Errore: " + jsonRes.error); }
-        } catch (error) { alert("Errore server."); } finally { setUploading(false); }
+                onSuccess(); // Torna alla lista
+            } else { 
+                alert("Errore: " + jsonRes.error); 
+            }
+        } catch (error) { 
+            alert("Errore server."); 
+        } finally { 
+            setUploading(false); 
+        }
     };
 
     const rowStyle = { display: 'flex', gap: 15, marginBottom: 15, flexWrap:'wrap' };
@@ -285,7 +301,7 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
                 {!formData.id && (
                     <div style={{display:'flex', gap:10}}>
                         <button type="button" onClick={() => fileInputRef.current.click()} style={{ background: 'linear-gradient(135deg, #6a11cb 0%, #2575fc 100%)', color: 'white', border: 'none', padding: '10px 20px', borderRadius: 30, cursor: 'pointer', fontWeight: 'bold', display:'flex', alignItems:'center', gap:5, boxShadow:'0 4px 15px rgba(37, 117, 252, 0.3)' }}>
-                            <span>📸</span> SCAN BOLLA "AUTO-SAVE"
+                            <span>📸</span> SCAN BOLLA AI
                         </button>
                         <input type="file" ref={fileInputRef} onChange={handleScan} style={{ display: 'none' }} accept="image/*,application/pdf" />
                     </div>
@@ -392,7 +408,7 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
                         <input type="file" ref={allegatoInputRef} onChange={handleAllegato} style={{ display: 'none' }} />
                     </div>
                     <div style={{ display: 'flex', gap: 10 }}>
-                        <button type="button" onClick={onCancel} style={{ padding: '12px 20px', background: '#95a5a6', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight:'bold' }}>ANNULLA</button>
+                        <button type="button" onClick={onCancel} style={{ padding: '12px 20px', background: '#95a5a6', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 'bold' }}>ANNULLA</button>
                         <button type="submit" disabled={uploading} style={{ padding: '12px 30px', background: '#27ae60', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 4px 10px rgba(39, 174, 96, 0.3)' }}>
                             {uploading ? '...' : (formData.id ? '💾 AGGIORNA' : '💾 SALVA RIGA')}
                         </button>
