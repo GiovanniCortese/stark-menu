@@ -4,23 +4,24 @@ import MagazzinoDashboard from './MagazzinoDashboard';
 import MagazzinoCalendar from './MagazzinoCalendar';
 import MagazzinoUpload from './MagazzinoUpload';
 import MagazzinoList from './MagazzinoList';
+// IMPORTA IL NUOVO COMPONENTE DI STAGING
+import MagazzinoStaging from './MagazzinoStaging'; 
 
 // Helper date
 const getMonday = (d) => { const date = new Date(d); const day = date.getDay(), diff = date.getDate() - day + (day === 0 ? -6 : 1); return new Date(date.setDate(diff)); };
 const formatDateISO = (date) => date.toISOString().split('T')[0];
 
 const MagazzinoManager = ({ user, API_URL }) => {
-    const [tab, setTab] = useState('lista'); // 'dashboard', 'calendario', 'lista', 'carico'
+    const [tab, setTab] = useState('lista'); // 'dashboard', 'calendario', 'lista', 'carico', 'staging'
     
-    // STATO PER FILTRARE LA LISTA TRAMITE CALENDARIO (NUOVO)
+    // STATO PER FILTRARE LA LISTA TRAMITE CALENDARIO
     const [filtroData, setFiltroData] = useState(null); 
+    
+    // STATO PER I DATI IN REVISIONE (AI SCAN)
+    const [stagingData, setStagingData] = useState(null);
 
-    // STATO SDOPPIATO: 
-    // - storico: contiene le bolle/fatture (haccp_merci) -> Per la TABELLA
-    // - magazzino: contiene le giacenze attuali (magazzino_prodotti) -> Per futuri controlli stock
     const [stats, setStats] = useState({ fornitori: [], storico: [], top_prodotti: [] }); 
     const [magazzinoReale, setMagazzinoReale] = useState([]); // Giacenze attuali
-
     const [assets, setAssets] = useState([]); 
     
     // Stati Modali
@@ -36,18 +37,18 @@ const MagazzinoManager = ({ user, API_URL }) => {
     useEffect(() => { ricaricaDati(); }, []);
 
     const ricaricaDati = () => {
-        // 1. CARICA LO STORICO MOVIMENTI (HACCP MERCI) -> QUELLO CHE SERVE ALLA TABELLA
+        // 1. CARICA LO STORICO MOVIMENTI
         fetch(`${API_URL}/api/haccp/merci/${user.id}`)
             .then(r => r.json())
             .then(data => {
                 setStats(prev => ({
                     ...prev,
-                    storico: Array.isArray(data) ? data : [] // Popola la tabella con le bolle
+                    storico: Array.isArray(data) ? data : []
                 }));
             })
             .catch(console.error);
 
-        // 2. CARICA LE GIACENZE ATTUALI (MAGAZZINO MASTER) -> Utile per logiche di stock
+        // 2. CARICA LE GIACENZE ATTUALI
         fetch(`${API_URL}/api/magazzino/lista/${user.id}`)
             .then(r => r.json())
             .then(data => {
@@ -55,7 +56,7 @@ const MagazzinoManager = ({ user, API_URL }) => {
             })
             .catch(console.error);
 
-        // 3. Carica Statistiche (Grafici) 
+        // 3. Carica Statistiche
         fetch(`${API_URL}/api/haccp/stats/magazzino/${user.id}`)
             .then(r => r.json())
             .then(data => {
@@ -74,18 +75,48 @@ const MagazzinoManager = ({ user, API_URL }) => {
             .catch(console.error);
     };
 
-    // --- NUOVA LOGICA: CLICK DAL CALENDARIO ---
+    // --- LOGICA CLICK CALENDARIO ---
     const onSelectDataCalendario = (dataIso) => {
-        setFiltroData(dataIso); // Imposta il filtro (es. "2024-06-04")
-        setTab('lista');        // Porta l'utente alla lista filtrata
+        setFiltroData(dataIso);
+        setTab('lista');
     };
 
     const resetFiltro = () => setFiltroData(null);
 
-    // Gestione Avvio Modifica
     const gestisciModifica = (record) => {
         setRecordDaModificare(record);
         setTab('carico'); 
+    };
+
+    // --- NUOVA LOGICA STAGING (SCAN -> REVISIONE -> SAVE) ---
+    
+    // 1. Riceve i dati dall'Upload (dopo la scansione AI)
+    const handleScanSuccess = (datiGrezzi) => {
+        setStagingData(datiGrezzi); // Salva i dati in memoria
+        setTab('staging');          // Cambia vista per la revisione
+    };
+
+    // 2. Salva effettivamente nel DB dopo la conferma utente
+    const handleStagingConfirm = async (datiFinali) => {
+        try {
+            const res = await fetch(`${API_URL}/api/haccp/merci/import`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ merci: datiFinali })
+            });
+            const json = await res.json();
+            
+            if (json.success) {
+                alert("✅ Carico salvato con successo!");
+                setStagingData(null); // Pulisce staging
+                ricaricaDati();       // Aggiorna tabella
+                setTab('lista');      // Torna alla lista
+            } else {
+                alert("Errore salvataggio: " + json.error);
+            }
+        } catch (e) {
+            alert("Errore server durante il salvataggio.");
+        }
     };
 
     // --- EXPORT LOGIC ---
@@ -160,6 +191,7 @@ const MagazzinoManager = ({ user, API_URL }) => {
                             // Se clicco manualmente "lista", resetto il filtro data
                             if(t === 'lista') resetFiltro(); 
                             if(t!=='carico') setRecordDaModificare(null); 
+                            // Se esco dalla tab staging manualmente, resetto i dati (opzionale)
                         }} style={{
                             padding:'8px 15px', borderRadius:20, cursor:'pointer', border:'1px solid #ccc',
                             background: tab===t ? '#34495e' : 'white', color: tab===t ? 'white' : '#333', textTransform:'capitalize', fontWeight: tab===t?'bold':'normal'
@@ -174,7 +206,7 @@ const MagazzinoManager = ({ user, API_URL }) => {
             {tab === 'calendario' && (
                 <MagazzinoCalendar 
                     stats={stats} 
-                    onDateClick={onSelectDataCalendario} // Passo la funzione click
+                    onDateClick={onSelectDataCalendario}
                 />
             )}
 
@@ -186,6 +218,22 @@ const MagazzinoManager = ({ user, API_URL }) => {
                     recordDaModificare={recordDaModificare}
                     setRecordDaModificare={setRecordDaModificare}
                     onSuccess={() => { setRecordDaModificare(null); setTab('lista'); }}
+                    // PASSO LA FUNZIONE PER GESTIRE LA SCANSIONE AI
+                    onScanComplete={handleScanSuccess}
+                />
+            )}
+
+            {/* VISTA DI REVISIONE (STAGING) */}
+            {tab === 'staging' && stagingData && (
+                <MagazzinoStaging 
+                    initialData={stagingData}
+                    onConfirm={handleStagingConfirm}
+                    onCancel={() => { 
+                        if(window.confirm("Se annulli, perderai i dati scansionati. Continuare?")) {
+                            setStagingData(null); 
+                            setTab('carico'); 
+                        }
+                    }}
                 />
             )}
 
@@ -197,7 +245,6 @@ const MagazzinoManager = ({ user, API_URL }) => {
                     handleFileAction={handleFileAction}
                     onEdit={gestisciModifica}
                     openDownloadModal={() => setShowDownloadModal(true)}
-                    // Passo il filtro data e il reset al componente figlio
                     filtroDataEsterno={filtroData}
                     resetFiltroEsterno={resetFiltro}
                 />
