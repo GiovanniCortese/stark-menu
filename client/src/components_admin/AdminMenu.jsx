@@ -10,7 +10,16 @@ const LISTA_ALLERGENI = [
   "Prodotto Surgelato/Abbattuto ❄️" 
 ];
 
-// Helper per parsare allergeni in modo sicuro
+const LANGUAGES_MAP = {
+    en: "Inglese 🇬🇧",
+    fr: "Francese 🇫🇷",
+    de: "Tedesco 🇩🇪",
+    es: "Spagnolo 🇪🇸",
+    pt: "Portoghese 🇵🇹",
+    pl: "Polacco 🇵🇱",
+    ru: "Russo 🇷🇺"
+};
+
 const parseAllergeniSicuro = (valore) => {
     try {
         if (Array.isArray(valore)) return valore;
@@ -76,13 +85,15 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const [isScanningMenu, setIsScanningMenu] = useState(false);
   const menuScanRef = useRef(null);
   
-  // Non gestiamo più input manuali per le traduzioni, usiamo l'AI
   const [traduzioniInput, setTraduzioniInput] = useState({});
+  
+  // NUOVO: Selezione lingue
+  const [selectedLangs, setSelectedLangs] = useState(['en']);
 
   const [editId, setEditId] = useState(null); 
   const [uploading, setUploading] = useState(false);
   const [importing, setImporting] = useState(false); 
-  const [translating, setTranslating] = useState(false); // NUOVO STATO TRADUZIONE
+  const [translating, setTranslating] = useState(false); 
 
   if (!config || !categorie || !menu) {
       return <div style={{padding:'40px', textAlign:'center', color:'#666'}}>🔄 Caricamento Menu...</div>;
@@ -119,20 +130,25 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       } catch (error) { alert("Errore connessione."); setConfig({...config, ordini_abilitati: !nuovoStatoCucina}); }
   };
 
-  // --- NUOVA FUNZIONE TRADUZIONE MASSIVA ---
+  // --- NUOVA FUNZIONE TRADUZIONE MASSIVA CON SELEZIONE ---
   const handleTranslateAll = async () => {
-        if(!confirm("🤖 TRADUZIONE AI MASSIVA\n\nQuesta operazione invierà tutto il menu a Gemini Pro per tradurlo in 7 lingue (Inglese, Francese, Tedesco, Spagnolo, Portoghese, Polacco, Russo).\n\nL'operazione potrebbe richiedere fino a 60 secondi.\nVuoi procedere?")) return;
+        if (selectedLangs.length === 0) return alert("Seleziona almeno una lingua!");
+        
+        if(!confirm(`🤖 TRADUZIONE AI MASSIVA\n\nStai per tradurre il menu in: ${selectedLangs.map(l => l.toUpperCase()).join(', ')}.\n\nL'operazione avverrà una lingua alla volta per garantire la massima qualità e stabilità.\nVuoi procedere?`)) return;
 
         setTranslating(true);
         try {
             const res = await fetch(`${API_URL}/api/menu/translate-all`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ristorante_id: user.id })
+                body: JSON.stringify({ 
+                    ristorante_id: user.id,
+                    languages: selectedLangs // Invio l'array delle lingue scelte
+                })
             });
             const data = await res.json();
             if(data.success) {
-                alert("✅ Menu tradotto con successo in tutte le lingue!");
+                alert(`✅ ${data.message}`);
                 if(ricaricaDati) ricaricaDati(); 
             } else {
                 alert("Errore durante la traduzione: " + data.error);
@@ -142,6 +158,14 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
         } finally {
             setTranslating(false);
         }
+  };
+
+  const toggleLang = (code) => {
+      if (selectedLangs.includes(code)) {
+          setSelectedLangs(selectedLangs.filter(l => l !== code));
+      } else {
+          setSelectedLangs([...selectedLangs, code]);
+      }
   };
 
   const handleSalvaPiatto = async (e) => { 
@@ -167,7 +191,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
           ristorante_id: user.id, 
           varianti: JSON.stringify(variantiFinali),
           allergeni: JSON.stringify(allergeniFinali),
-          // Passiamo le traduzioni esistenti (se ci sono nel DB), ma non le modifichiamo manualmente qui
           traduzioni: traduzioniInput 
       };
       delete payload.varianti_str; delete payload.ingredienti_base;
@@ -203,8 +226,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
     } catch(err) { alert("Errore Connessione"); } finally { setImporting(false); }
   };
 
-  // --- FUNZIONE SCANSIONE MENU (AI) ---
-const handleMenuScan = async (e) => {
+  const handleMenuScan = async (e) => {
     const file = e.target.files[0];
     if(!file) return;
 
@@ -213,7 +235,6 @@ const handleMenuScan = async (e) => {
     formData.append('photo', file);
 
     try {
-        // 1. Chiamata AI
         const resAI = await fetch(`${API_URL}/api/menu/scan-photo`, { method: 'POST', body: formData });
         const jsonAI = await resAI.json();
         
@@ -221,7 +242,6 @@ const handleMenuScan = async (e) => {
         const items = jsonAI.data;
         if(!Array.isArray(items) || items.length === 0) throw new Error("Nessun piatto trovato.");
 
-        // 2. Invio al Server per l'Upsert
         const resImport = await fetch(`${API_URL}/api/prodotti/import-massivo`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -231,7 +251,6 @@ const handleMenuScan = async (e) => {
         const dataImport = await resImport.json();
         if (!resImport.ok) throw new Error(dataImport.error || "Errore salvataggio");
 
-        // 3. MESSAGGIO
         alert(`✅ Scansione completata!\n\n🆕 ${dataImport.added} piatti aggiunti\n🔄 ${dataImport.updated} piatti aggiornati`);
         
         if(ricaricaDati) ricaricaDati(); 
@@ -263,7 +282,6 @@ const handleMenuScan = async (e) => {
           varianti_str: (variantiObj.aggiunte || []).map(v => `${v.nome}:${v.prezzo}`).join(', ') 
       }); 
       
-      // Manteniamo le traduzioni nel state ma non le mostriamo in UI per editing manuale
       setTraduzioniInput(piatto.traduzioni || {});
 
       window.scrollTo({ top: 0, behavior: 'smooth' }); 
@@ -292,7 +310,6 @@ const handleMenuScan = async (e) => {
     await fetch(`${API_URL}/api/prodotti/riordina`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prodotti: piattiDestinazioneFinali.map(p => ({ id: p.id, posizione: p.posizione, categoria: destCat })) }) });
   };
 
-  // --- STILI CSS ---
   const containerStyle = { width: '100%', margin: '0 auto', fontFamily: "'Inter', sans-serif", color: '#333', boxSizing: 'border-box' };
   const cardStyle = { background: 'white', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', padding: '25px', marginBottom: '30px', border: '1px solid #f0f0f0', boxSizing: 'border-box' };
   const inputStyle = { width: '100%', padding: '12px 15px', borderRadius: '8px', border: '1px solid #e0e0e0', fontSize: '14px', background: '#f9f9f9', transition: 'all 0.3s', boxSizing: 'border-box' };
@@ -301,7 +318,7 @@ const handleMenuScan = async (e) => {
   return (
     <div style={containerStyle}>
         
-        {/* OVERLAY LOADING EXCEL/SCAN */}
+        {/* OVERLAY LOADING */}
         {(importing || isScanningMenu || translating) && (
             <div style={{
                 position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(255,255,255,0.9)', 
@@ -313,7 +330,7 @@ const handleMenuScan = async (e) => {
                 <h2 style={{color: translating ? '#16a085' : '#3498db'}}>
                     {translating ? "Traduzione Intelligente in corso..." : (isScanningMenu ? "Analisi Menu con AI..." : "Sto elaborando il file...")}
                 </h2>
-                <p>{translating ? "Gemini sta traducendo tutto il menu in 7 lingue." : "Potrebbe richiedere fino a 5 Minuti."}</p>
+                <p>{translating ? "Gemini sta traducendo il menu (una lingua alla volta)." : "Potrebbe richiedere fino a 5 Minuti."}</p>
             </div>
         )}
 
@@ -365,26 +382,45 @@ const handleMenuScan = async (e) => {
         </div>
 
         {/* --- PANNEL TRADUZIONE AI --- */}
-        <div style={{...cardStyle, display:'flex', justifyContent:'space-between', alignItems:'center', padding:'15px 25px', background:'#e8f8f5', border:'1px solid #1abc9c', flexWrap:'wrap', gap:'15px'}}>
-            <div style={{display:'flex', alignItems:'center', gap:'15px'}}>
+        <div style={{...cardStyle, padding:'20px', background:'#e8f8f5', border:'1px solid #1abc9c', gap:'15px'}}>
+            <div style={{display:'flex', alignItems:'center', gap:'15px', marginBottom:'15px'}}>
                 <span style={{fontSize:'24px'}}>🌍</span>
                 <div>
                     <h4 style={{margin:0, color:'#16a085'}}>Traduzione Automatica AI</h4>
-                    <p style={{margin:0, fontSize:'12px', color:'#7f8c8d'}}>Genera traduzioni in 7 lingue (EN, FR, DE, ES, PT, PL, RU)</p>
+                    <p style={{margin:0, fontSize:'12px', color:'#7f8c8d'}}>Scegli le lingue e lascia fare a Gemini!</p>
                 </div>
             </div>
+            
+            <div style={{display:'flex', flexWrap:'wrap', gap:'10px', marginBottom:'20px'}}>
+                {Object.entries(LANGUAGES_MAP).map(([code, label]) => (
+                    <div 
+                        key={code}
+                        onClick={() => toggleLang(code)}
+                        style={{
+                            padding:'8px 15px', borderRadius:'20px', cursor:'pointer', fontSize:'13px', fontWeight:'bold',
+                            background: selectedLangs.includes(code) ? '#16a085' : 'white',
+                            color: selectedLangs.includes(code) ? 'white' : '#7f8c8d',
+                            border: selectedLangs.includes(code) ? '1px solid #16a085' : '1px solid #bdc3c7',
+                            transition: 'all 0.2s', userSelect:'none'
+                        }}
+                    >
+                        {label}
+                    </div>
+                ))}
+            </div>
+
             <button 
                 onClick={handleTranslateAll} 
                 disabled={translating}
                 style={{
                     background: translating ? '#95a5a6' : '#16a085', 
-                    color:'white', padding:'10px 20px', borderRadius:'6px', 
+                    color:'white', padding:'12px 25px', borderRadius:'6px', 
                     border:'none', cursor: translating ? 'wait' : 'pointer', 
                     fontWeight:'bold', display:'flex', alignItems:'center', gap:'10px',
-                    boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                    boxShadow: '0 4px 6px rgba(0,0,0,0.1)', width:'100%', justifyContent:'center'
                 }}
             >
-                {translating ? "⏳ Traduzione in corso..." : "🤖 TRADUCI TUTTO ORA"}
+                {translating ? "⏳ Traduzione in corso..." : "🤖 TRADUCI LINGUE SELEZIONATE"}
             </button>
         </div>
 

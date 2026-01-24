@@ -1,14 +1,16 @@
 // PERCORSO: server/utils/ai.js
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-/* CONFIGURAZIONE MODELLI
-   Lasciamo gemini-3-pro-preview come PRIMA SCELTA assoluta.
+/* CONFIGURAZIONE MODELLI AGGIORNATA
+   - gemini-3-pro-preview: Il tuo preferito.
+   - gemini-1.5-pro: Ottimo per ragionamenti complessi.
+   - gemini-1.5-flash: VELOCISSIMO, ideale per traduzioni rapide (sostituisce gemini-pro).
 */
 const MODELS_TO_TRY = [
-    "gemini-3-pro-preview",    // <--- IL TUO PREFERITO (Funziona benissimo)
-    "gemini-2.0-pro-exp",      // Fallback
+    "gemini-3-pro-preview",    
+    "gemini-2.0-pro-exp",
     "gemini-1.5-pro",
-    "gemini-pro"
+    "gemini-1.5-flash"         // <--- NUOVO STANDARD VELOCE (Sostituisce il vecchio gemini-pro che dava 404)
 ];
 
 // Funzione Helper interna per provare i modelli in cascata
@@ -29,7 +31,7 @@ async function tryGeminiModels(api_key, promptParts, jsonMode = true) {
             const result = await model.generateContent(promptParts);
             const responseText = result.response.text();
             
-            // Se jsonMode è attivo, parsiamo qui per essere sicuri che sia valido
+            // Se jsonMode è attivo, parsiamo qui
             return jsonMode ? JSON.parse(responseText) : responseText;
 
         } catch (e) {
@@ -41,7 +43,7 @@ async function tryGeminiModels(api_key, promptParts, jsonMode = true) {
     throw new Error(`Tutti i modelli AI hanno fallito. Ultimo errore: ${lastError?.message}`);
 }
 
-// 1. Analisi Immagini (Menu cartacei, Bolle)
+// 1. Analisi Immagini
 async function analyzeImageWithGemini(buffer, mimeType, promptText) {
     const imagePart = {
         inlineData: {
@@ -52,7 +54,7 @@ async function analyzeImageWithGemini(buffer, mimeType, promptText) {
     return await tryGeminiModels(process.env.GEMINI_API_KEY, [promptText, imagePart], true);
 }
 
-// 2. Generazione Testo (Per TRADUZIONI Menu) - NUOVA FUNZIONE
+// 2. Generazione Testo
 async function generateTextWithGemini(promptText) {
     return await tryGeminiModels(process.env.GEMINI_API_KEY, [promptText], true);
 }

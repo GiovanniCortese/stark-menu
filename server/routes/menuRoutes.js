@@ -3,7 +3,7 @@ const router = express.Router();
 const pool = require('../config/db');
 const { uploadFile } = require('../config/storage');
 const xlsx = require('xlsx');
-// IMPORTIAMO LA NUOVA FUNZIONE PER IL TESTO (Centralizzata)
+// IMPORTIAMO LA FUNZIONE DI GENERAZIONE TESTO DA AI.JS
 const { analyzeImageWithGemini, generateTextWithGemini } = require('../utils/ai'); 
 
 
@@ -47,12 +47,11 @@ router.get('/api/categorie/:ristorante_id', async (req, res) => { try { const r 
 router.put('/api/categorie/:id', async (req, res) => { try { const { nome, is_bar, is_pizzeria, descrizione, varianti_default, traduzioni } = req.body; await pool.query('UPDATE categorie SET nome=$1, is_bar=$2, is_pizzeria=$3, descrizione=$4, varianti_default=$5, traduzioni=$6 WHERE id=$7', [nome, is_bar, is_pizzeria, descrizione, varianti_default, JSON.stringify(traduzioni || {}), req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
 router.delete('/api/categorie/:id', async (req, res) => { const client = await pool.connect(); try { await client.query('BEGIN'); const { id } = req.params; const catRes = await client.query('SELECT nome, ristorante_id FROM categorie WHERE id = $1', [id]); if (catRes.rows.length > 0) { const { nome, ristorante_id } = catRes.rows[0]; await client.query('DELETE FROM prodotti WHERE categoria = $1 AND ristorante_id = $2', [nome, ristorante_id]); } await client.query('DELETE FROM categorie WHERE id = $1', [id]); await client.query('COMMIT'); res.json({ success: true }); } catch (e) { await client.query('ROLLBACK'); res.status(500).json({ error: "Errore durante l'eliminazione" }); } finally { client.release(); } });
 
-// Gestione Prodotti (AGGIORNATO CON qta_minima)
+// Gestione Prodotti
 router.post('/api/prodotti', async (req, res) => { 
     try { 
         const { nome, prezzo, categoria, sottocategoria, descrizione, ristorante_id, immagine_url, varianti, allergeni, traduzioni, unita_misura, qta_minima } = req.body; 
         
-        // Controllo e parsing sicuro dei JSON per evitare crash lato client
         let safeVarianti = '{}';
         if (typeof varianti === 'string') safeVarianti = varianti;
         else if (typeof varianti === 'object') safeVarianti = JSON.stringify(varianti);
@@ -69,7 +68,6 @@ router.post('/api/prodotti', async (req, res) => {
         
         await pool.query(queryText, values); 
         
-        // Check se la categoria esiste, altrimenti creala
         const checkCat = await pool.query("SELECT id FROM categorie WHERE nome = $1 AND ristorante_id = $2", [categoria, ristorante_id]);
         if (checkCat.rows.length === 0) {
              const maxCat = await pool.query('SELECT MAX(posizione) as max FROM categorie WHERE ristorante_id = $1', [ristorante_id]);
@@ -92,13 +90,12 @@ router.put('/api/prodotti/:id', async (req, res) => {
 
 router.delete('/api/prodotti/:id', async (req, res) => { try { await pool.query('DELETE FROM prodotti WHERE id=$1', [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
 
-// --- SCANSIONE MENU INTELLIGENTE (IMG + PDF + AUTO-FIX) ---
+// Scansione Menu
 router.post('/api/menu/scan-photo', uploadFile.single('photo'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: "Nessun file inviato" });
 
-        // Prompt specifico per i Menu
-const prompt = `
+        const prompt = `
         Sei un data entry meticoloso. Analizza questo menu (PDF o Immagine).
         Estrai TUTTI i piatti presenti.
         
@@ -122,9 +119,7 @@ const prompt = `
             }
         ]`;
 
-        // Chiamata al cervello centrale (gestisce PDF, Immagini e errori di versione)
         const data = await analyzeImageWithGemini(req.file.buffer, req.file.mimetype, prompt);
-        
         res.json({ success: true, data });
 
     } catch (e) {
@@ -133,9 +128,8 @@ const prompt = `
     }
 });
 
-// Import Excel Menu (Upsert + Unità + Minimo)
+// Import Excel
 router.post('/api/import-excel', uploadFile.single('file'), async (req, res) => { 
-    // ... (rest of excel import code same as before, no changes needed) ...
     const { ristorante_id } = req.body; 
     if (!req.file || !ristorante_id) return res.status(400).json({ error: "Dati mancanti." }); 
     const client = await pool.connect(); 
@@ -212,10 +206,10 @@ router.post('/api/import-excel', uploadFile.single('file'), async (req, res) => 
     } finally { client.release(); } 
 });
 
-// Export Excel Menu
+// Export Excel
 router.get('/api/export-excel/:ristorante_id', async (req, res) => { try { const result = await pool.query(`SELECT p.*, c.varianti_default as cat_varianti FROM prodotti p LEFT JOIN categorie c ON p.categoria = c.nome AND p.ristorante_id = c.ristorante_id WHERE p.ristorante_id = $1 ORDER BY c.posizione, p.posizione`, [req.params.ristorante_id]); const dataForExcel = result.rows.map(row => { let baseStr = "", aggiunteStr = "", catVarStr = "", allergeniStr = ""; try { const v = typeof row.varianti === 'string' ? JSON.parse(row.varianti) : (row.varianti || {}); if(v.base && Array.isArray(v.base)) baseStr = v.base.join(', '); if(v.aggiunte && Array.isArray(v.aggiunte)) { aggiunteStr = v.aggiunte.map(a => `${a.nome}:${Number(a.prezzo).toFixed(2)}`).join(', '); } } catch(e) {} try { const cv = typeof row.cat_varianti === 'string' ? JSON.parse(row.cat_varianti) : (row.cat_varianti || []); if(Array.isArray(cv)) { catVarStr = cv.map(a => `${a.nome}:${Number(a.prezzo).toFixed(2)}`).join(', '); } } catch(e) {} try { const all = typeof row.allergeni === 'string' ? JSON.parse(row.allergeni) : (row.allergeni || []); if(Array.isArray(all)) { allergeniStr = all.join(', '); } } catch(e) {} return { "Categoria": row.categoria, "Varianti Categoria (Default)": catVarStr, "Sottocategoria": row.sottocategoria || "", "Nome": row.nome, "Prezzo": row.prezzo, "Unita": row.unita_misura || "", "Minimo": row.qta_minima || 1, "Descrizione": row.descrizione || "", "Ingredienti Base (Rimovibili)": baseStr, "Aggiunte Prodotto (Formato Nome:Prezzo)": aggiunteStr, "Allergeni": allergeniStr }; }); const workbook = xlsx.utils.book_new(); const worksheet = xlsx.utils.json_to_sheet(dataForExcel); const wscols = [{wch:15}, {wch:30}, {wch:15}, {wch:25}, {wch:10}, {wch:10}, {wch:10}, {wch:30}, {wch:30}, {wch:30}, {wch:30}]; worksheet['!cols'] = wscols; xlsx.utils.book_append_sheet(workbook, worksheet, "Menu"); const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' }); res.setHeader('Content-Disposition', 'attachment; filename="menu_export_completo.xlsx"'); res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); res.send(buffer); } catch (err) { res.status(500).json({ error: "Errore durante l'esportazione Excel" }); } });
 
-// --- NUOVA ROTTA: IMPORTAZIONE MASSIVA CON UPSERT (AI INTELLIGENTE) ---
+// Import Massivo
 router.post('/api/prodotti/import-massivo', async (req, res) => {
     const client = await pool.connect();
     try {
@@ -228,7 +222,6 @@ router.post('/api/prodotti/import-massivo', async (req, res) => {
         let nextProdPos = (await client.query('SELECT MAX(posizione) as max FROM prodotti WHERE ristorante_id = $1', [ristorante_id])).rows[0].max || 0;
         nextCatPos++; nextProdPos++;
 
-        // --- CONTATORI ---
         let addedCount = 0;
         let updatedCount = 0;
 
@@ -240,41 +233,30 @@ router.post('/api/prodotti/import-massivo', async (req, res) => {
             const ingredientiArr = Array.isArray(p.ingredienti) ? p.ingredienti : [];
             const variantiProdotto = { base: ingredientiArr, aggiunte: [] };
 
-            // Gestione Categoria
             const catCheck = await client.query('SELECT id FROM categorie WHERE nome = $1 AND ristorante_id = $2', [categoria, ristorante_id]);
             if (catCheck.rows.length === 0) {
                 await client.query('INSERT INTO categorie (nome, posizione, ristorante_id, descrizione, varianti_default) VALUES ($1, $2, $3, $4, $5)', [categoria, nextCatPos++, ristorante_id, "", '[]']);
             }
 
-            // Check Esistenza Piatto
             const prodCheck = await client.query('SELECT id FROM prodotti WHERE nome = $1 AND ristorante_id = $2', [nome, ristorante_id]);
 
             if (prodCheck.rows.length > 0) {
-                // >>> UPDATE
                 await client.query(
                     `UPDATE prodotti SET prezzo=$1, categoria=$2, descrizione=$3, varianti=$4 WHERE id=$5`,
                     [prezzo, categoria, descrizione, JSON.stringify(variantiProdotto), prodCheck.rows[0].id]
                 );
-                updatedCount++; // Incrementa aggiornati
+                updatedCount++;
             } else {
-                // >>> INSERT
                 await client.query(
                     `INSERT INTO prodotti (nome, prezzo, categoria, descrizione, ristorante_id, posizione, varianti, allergeni, qta_minima) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
                     [nome, prezzo, categoria, descrizione, ristorante_id, nextProdPos++, JSON.stringify(variantiProdotto), '[]', 1]
                 );
-                addedCount++; // Incrementa aggiunti
+                addedCount++;
             }
         }
 
         await client.query('COMMIT');
-        
-        // Restituiamo i contatori al frontend
-        res.json({ 
-            success: true, 
-            added: addedCount, 
-            updated: updatedCount,
-            message: `Operazione completata.` 
-        });
+        res.json({ success: true, added: addedCount, updated: updatedCount, message: `Operazione completata.` });
 
     } catch (err) {
         await client.query('ROLLBACK');
@@ -285,69 +267,98 @@ router.post('/api/prodotti/import-massivo', async (req, res) => {
     }
 });
 
-// --- NUOVA ROTTA: TRADUZIONE MASSIVA CON GEMINI (CENTRALIZZATA) ---
+// --- NUOVA ROTTA: TRADUZIONE MULTILINGUA SEQUENZIALE E ROBUSTA ---
 router.post('/api/menu/translate-all', async (req, res) => {
-    const { ristorante_id } = req.body;
+    const { ristorante_id, languages } = req.body;
+    // Se non vengono fornite lingue, di default traduciamo in Inglese.
+    // Il frontend dovrebbe però sempre inviare l'array scelto.
+    const targetLangs = (languages && Array.isArray(languages) && languages.length > 0) ? languages : ['en'];
+    
     const client = await pool.connect();
     
     try {
-        // 1. Recupera TUTTO il menu (Prodotti + Categorie)
+        // 1. Recupera TUTTO il menu
         const prodotti = await client.query("SELECT * FROM prodotti WHERE ristorante_id = $1", [ristorante_id]);
         const categorie = await client.query("SELECT * FROM categorie WHERE ristorante_id = $1", [ristorante_id]);
 
-        if (prodotti.rows.length === 0) return res.status(400).json({ error: "Menu vuoto, nulla da tradurre." });
+        if (prodotti.rows.length === 0) return res.status(400).json({ error: "Menu vuoto." });
 
-        // 2. Prepara il payload per l'AI
+        // 2. Prepara il payload base (Dati Originali in Italiano)
         const dataToTranslate = {
             categories: categorie.rows.map(c => ({ id: c.id, nome: c.nome, descrizione: c.descrizione })),
             products: prodotti.rows.map(p => ({ 
                 id: p.id, 
                 nome: p.nome, 
                 descrizione: p.descrizione,
-                // Includiamo anche le varianti se sono testo libero
+                // Includiamo anche i nomi delle varianti se presenti
                 varianti_nomi: p.varianti ? (typeof p.varianti === 'string' ? JSON.parse(p.varianti) : p.varianti).aggiunte?.map(a => a.nome) : []
             }))
         };
 
-        // 3. Prompt Ottimizzato per Gemini
-        const prompt = `
-            Sei un traduttore esperto di menu gastronomici. 
-            Traduci il seguente JSON in queste lingue: 
-            en (Inglese), fr (Francese), de (Tedesco), pl (Polacco), pt (Portoghese), ru (Russo), es (Spagnolo).
-            
-            REGOLE:
-            1. Restituisci SOLO JSON valido.
-            2. Mantieni gli ID come chiavi.
-            3. Non tradurre nomi propri intraducibili (es. "Pizza Margherita").
-            
-            INPUT:
-            ${JSON.stringify(dataToTranslate)}
+        const completedLanguages = [];
 
-            OUTPUT FORMAT (JSON):
-            {
-                "categories": { "ID": { "en": {"nome": "...", "descrizione": "..."}, ... } },
-                "products": { "ID": { "en": {"nome": "...", "descrizione": "..."}, ... } }
+        // 3. CICLO SULLE LINGUE (Sequenziale per evitare timeout)
+        for (const lang of targetLangs) {
+            
+            const prompt = `
+                Sei un traduttore gastronomico esperto.
+                Traduci il seguente menu dall'Italiano alla lingua: "${lang}".
+                
+                REGOLE FONDAMENTALI:
+                1. Restituisci SOLO un oggetto JSON valido. Nessun markdown o testo extra.
+                2. Mantieni gli ID originali come chiavi dell'oggetto.
+                3. Traduci i campi "nome" e "descrizione".
+                4. Non tradurre nomi propri intraducibili (es. "Pizza Margherita", "Coca Cola", "Prosecco").
+                
+                INPUT:
+                ${JSON.stringify(dataToTranslate)}
+
+                OUTPUT FORMAT (JSON):
+                {
+                    "categories": { "ID_CAT": { "nome": "...", "descrizione": "..." } },
+                    "products": { "ID_PROD": { "nome": "...", "descrizione": "..." } }
+                }
+            `;
+
+            // Chiamata AI (Usa il modello definito in ai.js)
+            const translationResult = await generateTextWithGemini(prompt);
+
+            // 4. Salvataggio nel DB (Merge con dati esistenti)
+            await client.query('BEGIN');
+
+            // --- Aggiornamento Categorie ---
+            if (translationResult.categories) {
+                for (const [id, t] of Object.entries(translationResult.categories)) {
+                    // Recuperiamo traduzioni correnti per non sovrascrivere altre lingue
+                    const currentRes = await client.query("SELECT traduzioni FROM categorie WHERE id = $1", [id]);
+                    let currentTrads = currentRes.rows[0]?.traduzioni || {};
+                    if (typeof currentTrads === 'string') currentTrads = JSON.parse(currentTrads);
+                    
+                    // Aggiungiamo/Aggiorniamo solo la lingua corrente
+                    currentTrads[lang] = t;
+                    
+                    await client.query("UPDATE categorie SET traduzioni = $1 WHERE id = $2", [JSON.stringify(currentTrads), id]);
+                }
             }
-        `;
 
-        // 4. CHIAMATA CENTRALIZZATA (Ora userà gemini-3-pro-preview definito in ai.js)
-        const translations = await generateTextWithGemini(prompt);
+            // --- Aggiornamento Prodotti ---
+            if (translationResult.products) {
+                for (const [id, t] of Object.entries(translationResult.products)) {
+                    const currentRes = await client.query("SELECT traduzioni FROM prodotti WHERE id = $1", [id]);
+                    let currentTrads = currentRes.rows[0]?.traduzioni || {};
+                    if (typeof currentTrads === 'string') currentTrads = JSON.parse(currentTrads);
+                    
+                    currentTrads[lang] = t;
+                    
+                    await client.query("UPDATE prodotti SET traduzioni = $1 WHERE id = $2", [JSON.stringify(currentTrads), id]);
+                }
+            }
 
-        // 5. Salvataggio nel DB (Bulk Update)
-        await client.query('BEGIN');
-
-        // Aggiorna Categorie
-        for (const [id, trads] of Object.entries(translations.categories || {})) {
-            await client.query("UPDATE categorie SET traduzioni = $1 WHERE id = $2", [JSON.stringify(trads), id]);
+            await client.query('COMMIT');
+            completedLanguages.push(lang.toUpperCase());
         }
 
-        // Aggiorna Prodotti
-        for (const [id, trads] of Object.entries(translations.products || {})) {
-            await client.query("UPDATE prodotti SET traduzioni = $1 WHERE id = $2", [JSON.stringify(trads), id]);
-        }
-
-        await client.query('COMMIT');
-        res.json({ success: true, message: "Traduzione completata con successo!" });
+        res.json({ success: true, message: `Traduzione completata per: ${completedLanguages.join(', ')}` });
 
     } catch (e) {
         await client.query('ROLLBACK');
