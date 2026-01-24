@@ -1,7 +1,6 @@
-// client/src/components_haccp/MagazzinoList.jsx
 import React, { useState, useEffect } from 'react';
 
-const MagazzinoList = ({ storico, ricaricaDati, API_URL, onEdit, filtroDataEsterno, resetFiltroEsterno, onBulkEdit }) => {
+const MagazzinoList = ({ storico, ricaricaDati, API_URL, onEdit, filtroDataEsterno, resetFiltroEsterno, onBulkEdit, handleFileAction }) => {
     const [filtro, setFiltro] = useState("");
     const [selectedIds, setSelectedIds] = useState([]); 
     const [sortConfig, setSortConfig] = useState({ key: 'data_ricezione', direction: 'desc' });
@@ -65,10 +64,9 @@ const MagazzinoList = ({ storico, ricaricaDati, API_URL, onEdit, filtroDataEster
     // --- NUOVA LOGICA MODIFICA MASSIVA ---
     const handleBulkEditClick = () => {
         if (selectedIds.length === 0) return;
-        // Recupera gli oggetti completi corrispondenti agli ID selezionati
         const rowsToEdit = sortedData.filter(row => selectedIds.includes(row.id));
         if (onBulkEdit) {
-            onBulkEdit(rowsToEdit); // Passa i dati al Manager per aprire lo Staging
+            onBulkEdit(rowsToEdit); 
         }
     };
 
@@ -123,7 +121,6 @@ const MagazzinoList = ({ storico, ricaricaDati, API_URL, onEdit, filtroDataEster
                 <div style={{display:'flex', gap:10}}>
                     {selectedIds.length > 0 && (
                         <>
-                            {/* TASTO MODIFICA MASSIVA AGGIUNTO */}
                             <button 
                                 onClick={handleBulkEditClick}
                                 style={{ background: '#f1c40f', color: '#2c3e50', border: 'none', padding: '10px 20px', borderRadius: 5, cursor: 'pointer', fontWeight: 'bold', display:'flex', alignItems:'center', gap:5 }}
@@ -204,9 +201,17 @@ const MagazzinoList = ({ storico, ricaricaDati, API_URL, onEdit, filtroDataEster
                                 <td style={tdStyle}>€ {row._totNetto.toFixed(2)}</td>
                                 <td style={{...tdStyle, color:'#7f8c8d'}}>€ {row._totIva.toFixed(2)}</td>
                                 <td style={{...tdStyle, fontWeight:'bold', color:'#27ae60'}}>€ {row._totLordo.toFixed(2)}</td>
+                                
+                                {/* MODIFICA: Uso di handleFileAction per aprire il popup */}
                                 <td style={tdStyle}>
                                     {row.allegato_url ? (
-                                        <a href={row.allegato_url} target="_blank" rel="noopener noreferrer" style={{textDecoration:'none', fontSize:16}}>📎</a>
+                                        <button 
+                                            onClick={() => handleFileAction && handleFileAction(row.allegato_url, row.riferimento_documento || 'documento')}
+                                            style={{background:'transparent', border:'none', cursor:'pointer', fontSize:18}}
+                                            title="Vedi Allegato"
+                                        >
+                                            📎
+                                        </button>
                                     ) : <span style={{color:'#eee'}}>—</span>}
                                 </td>
                                 
