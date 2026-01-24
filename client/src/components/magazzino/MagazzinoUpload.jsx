@@ -1,7 +1,8 @@
 // client/src/components_haccp/MagazzinoUpload.jsx
 import React, { useState, useEffect, useRef } from 'react';
 
-const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificare, setRecordDaModificare, ricaricaDati, onScanComplete }) => {    // Refs
+const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificare, setRecordDaModificare, ricaricaDati, onScanComplete }) => {
+    // Refs
     const fileInputRef = useRef(null); 
     const allegatoInputRef = useRef(null); 
 
@@ -9,43 +10,39 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
     const [isScanning, setIsScanning] = useState(false);
     const [uploading, setUploading] = useState(false);
 
-    // Helper data odierna per input datetime-local (YYYY-MM-DDTHH:mm)
+    // Helper data odierna per input datetime-local
     const getNowLocalISO = () => {
         const now = new Date();
         now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
         return now.toISOString().slice(0, 16);
     };
 
-    // Form Completo (Allineato al DB)
-const [formData, setFormData] = useState({
-    id: null, 
-    ristorante_id: user.id,
-    data_ricezione: getNowLocalISO(), 
-    data_documento: new Date().toISOString().split('T')[0], 
-    riferimento_documento: '',
-    fornitore: '',
-    
-    // NUOVI CAMPI
-    codice_articolo: '',
-    sconto: 0,
-    
-    prodotto: '',
-    lotto: '',
-    scadenza: '',
-    note: '',
-    quantita: '',
-    unita_misura: 'Pz',
-    prezzo_unitario: '',
-    iva: '10', 
-    totale_netto: '',
-    totale_iva: '',
-    totale_lordo: '',
-    allegato_url: '',
-    is_haccp: true,
-    operatore: user.nome || 'Admin'
-});
+    // Form Completo
+    const [formData, setFormData] = useState({
+        id: null, 
+        ristorante_id: user.id,
+        data_ricezione: getNowLocalISO(), 
+        data_documento: new Date().toISOString().split('T')[0], 
+        riferimento_documento: '',
+        fornitore: '',
+        codice_articolo: '',
+        sconto: 0,
+        prodotto: '',
+        lotto: '',
+        scadenza: '',
+        note: '',
+        quantita: '',
+        unita_misura: 'Pz',
+        prezzo_unitario: '',
+        iva: '10', 
+        totale_netto: '',
+        totale_iva: '',
+        totale_lordo: '',
+        allegato_url: '',
+        is_haccp: true,
+        operatore: user.nome || 'Admin'
+    });
 
-    // --- EFFETTO CARICAMENTO DATI PER MODIFICA ---
     useEffect(() => {
         if (recordDaModificare) {
             let dataIns = getNowLocalISO();
@@ -71,19 +68,15 @@ const [formData, setFormData] = useState({
         }
     }, [recordDaModificare]);
 
-    // --- CALCOLATRICE AUTOMATICA ---
     useEffect(() => {
         const qta = parseFloat(formData.quantita) || 0;
         const unitNetto = parseFloat(formData.prezzo_unitario) || 0;
         const ivaPerc = parseFloat(formData.iva) || 0;
-
         const totNetto = qta * unitNetto;
         const totIva = totNetto * (ivaPerc / 100);
         const totLordo = totNetto + totIva;
-
         const nuovoNettoStr = totNetto.toFixed(2);
         
-        // Aggiorna solo se cambia il valore per evitare loop infiniti
         if (formData.totale_netto !== nuovoNettoStr && (qta > 0 || unitNetto > 0)) {
             setFormData(prev => ({
                 ...prev,
@@ -94,9 +87,8 @@ const [formData, setFormData] = useState({
         }
     }, [formData.quantita, formData.prezzo_unitario, formData.iva]);
 
-
-    // --- NUOVA FUNZIONE SCAN: "BULK IMPORT" (STILE ADMIN MENU) ---
-const handleScan = async (e) => {
+    // --- FUNZIONE SCAN CORRECTA ---
+    const handleScan = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
@@ -105,12 +97,10 @@ const handleScan = async (e) => {
         fd.append('photo', file);
         
         try {
-            // 1. Upload Immagine
             const uploadRes = await fetch(`${API_URL}/api/upload`, { method: 'POST', body: fd });
             const uploadData = await uploadRes.json();
             const urlAllegato = uploadData.url || '';
 
-            // 2. Analisi AI
             const res = await fetch(`${API_URL}/api/haccp/scan-bolla`, { method: 'POST', body: fd });
             const result = await res.json();
 
@@ -124,11 +114,18 @@ const handleScan = async (e) => {
                     return;
                 }
 
-                // 3. Mapping dei dati AI -> Formato DB (MA SENZA SALVARE)
-                // Prepariamo l'array pulito da passare allo Staging
+                // FIX QUI: Mappatura esplicita delle due date
                 const merciDaRevisionare = prodottiTrovati.map(prod => ({
                     ristorante_id: user.id,
-                    data_ricezione: d.data_documento_iso || new Date().toISOString().split('T')[0],
+                    
+                    // 1. DATA FATTURA (Dall'AI)
+                    // Se l'AI ha trovato data_documento_iso usiamo quella, altrimenti stringa vuota
+                    data_documento: d.data_documento_iso || '', 
+
+                    // 2. DATA INSERIMENTO (Oggi)
+                    // Usiamo la data odierna locale YYYY-MM-DD
+                    data_ricezione: new Date().toISOString().split('T')[0],
+
                     ora: new Date().toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'}),
                     fornitore: d.fornitore || 'Fornitore Sconosciuto',
                     riferimento_documento: d.numero_documento || '',
@@ -151,11 +148,8 @@ const handleScan = async (e) => {
                     note: `AI Scan: ${d.numero_documento || ''}`
                 }));
 
-                // QUI CAMBIA TUTTO: Invece di fetch(.../import), passiamo i dati al Manager!
                 if (onScanComplete) {
                     onScanComplete(merciDaRevisionare);
-                } else {
-                    console.error("Manca la funzione onScanComplete!");
                 }
 
             } else {
@@ -170,7 +164,6 @@ const handleScan = async (e) => {
         }
     };
 
-    // --- FUNZIONE UPLOAD MANUALE (RIMASTA INVARIATA) ---
     const handleAllegato = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -181,18 +174,12 @@ const handleScan = async (e) => {
             const res = await fetch(`${API_URL}/api/upload`, { method: 'POST', body: fd });
             const data = await res.json();
             if (data.url) setFormData(prev => ({ ...prev, allegato_url: data.url }));
-        } catch (error) {
-            alert("Errore caricamento file");
-        } finally {
-            setUploading(false);
-        }
+        } catch (error) { alert("Errore caricamento file"); } finally { setUploading(false); }
     };
 
-    // --- FUNZIONE SALVATAGGIO SINGOLO (RIMASTA INVARIATA) ---
     const handleSubmit = async (e) => {
         e.preventDefault();
         setUploading(true);
-
         try {
             const payload = {
                 ...formData,
@@ -200,14 +187,13 @@ const handleScan = async (e) => {
                 totale_netto: parseFloat(formData.totale_netto) || 0,
                 totale_iva: parseFloat(formData.totale_iva) || 0,
                 totale_lordo: parseFloat(formData.totale_lordo) || 0,
-                // Campo legacy per compatibilità
                 prezzo: parseFloat(formData.totale_lordo) || 0,
                 ora: new Date(formData.data_ricezione).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'})
             };
 
             let url = formData.id 
                 ? `${API_URL}/api/magazzino/update-full/${formData.id}`
-                : `${API_URL}/api/haccp/merci/import`; // Usa import anche per singolo per coerenza
+                : `${API_URL}/api/haccp/merci/import`;
             
             const bodyData = formData.id ? payload : { merci: [payload] };
             const method = formData.id ? 'PUT' : 'POST';
@@ -217,25 +203,16 @@ const handleScan = async (e) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(bodyData)
             });
-            
             const jsonRes = await res.json();
-
             if (jsonRes.success) {
                 alert("✅ Salvato!");
                 if (ricaricaDati) ricaricaDati(); 
                 if (setRecordDaModificare) setRecordDaModificare(null);
                 onSuccess(); 
-            } else {
-                alert("Errore: " + jsonRes.error);
-            }
-        } catch (error) {
-            alert("Errore server.");
-        } finally {
-            setUploading(false);
-        }
+            } else { alert("Errore: " + jsonRes.error); }
+        } catch (error) { alert("Errore server."); } finally { setUploading(false); }
     };
 
-    // Stili
     const rowStyle = { display: 'flex', gap: 15, marginBottom: 15, flexWrap:'wrap' };
     const colStyle = { flex: 1, minWidth: '150px' };
     const labelStyle = { display: 'block', marginBottom: 5, fontWeight: 'bold', fontSize: '12px', color: '#7f8c8d' };
@@ -243,8 +220,6 @@ const handleScan = async (e) => {
 
     return (
         <div style={{ background: 'white', padding: 30, borderRadius: 15, boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }}>
-            
-            {/* OVERLAY LOADING */}
             {isScanning && (
                 <div style={{ position:'fixed', inset:0, background:'rgba(255,255,255,0.9)', zIndex:9999, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
                     <div style={{fontSize:50, animation:'spin 2s linear infinite'}}>🤖</div>
@@ -256,14 +231,9 @@ const handleScan = async (e) => {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, borderBottom:'1px solid #eee', paddingBottom:10 }}>
                 <h3 style={{ margin: 0, color: '#2c3e50' }}>{formData.id ? '✏️ Modifica Riga' : '📥 Nuovo Carico Merce'}</h3>
-                
                 {!formData.id && (
                     <div style={{display:'flex', gap:10}}>
-                        <button 
-                            type="button"
-                            onClick={() => fileInputRef.current.click()}
-                            style={{ background: 'linear-gradient(135deg, #6a11cb 0%, #2575fc 100%)', color: 'white', border: 'none', padding: '10px 20px', borderRadius: 30, cursor: 'pointer', fontWeight: 'bold', display:'flex', alignItems:'center', gap:5, boxShadow:'0 4px 15px rgba(37, 117, 252, 0.3)' }}
-                        >
+                        <button type="button" onClick={() => fileInputRef.current.click()} style={{ background: 'linear-gradient(135deg, #6a11cb 0%, #2575fc 100%)', color: 'white', border: 'none', padding: '10px 20px', borderRadius: 30, cursor: 'pointer', fontWeight: 'bold', display:'flex', alignItems:'center', gap:5, boxShadow:'0 4px 15px rgba(37, 117, 252, 0.3)' }}>
                             <span>📸</span> SCAN BOLLA "AUTO-SAVE"
                         </button>
                         <input type="file" ref={fileInputRef} onChange={handleScan} style={{ display: 'none' }} accept="image/*,application/pdf" />
@@ -272,7 +242,6 @@ const handleScan = async (e) => {
             </div>
 
             <form onSubmit={handleSubmit}>
-                {/* BLOCCO 1: DATI DOCUMENTO */}
                 <div style={{background:'#f8f9fa', padding:15, borderRadius:8, marginBottom:20}}>
                     <h4 style={{marginTop:0, fontSize:14, color:'#3498db'}}>📄 Dati Documento</h4>
                     <div style={rowStyle}>
@@ -295,7 +264,6 @@ const handleScan = async (e) => {
                     </div>
                 </div>
 
-                {/* BLOCCO 2: PRODOTTO */}
                 <div style={{background:'#fff', border:'1px solid #eee', padding:15, borderRadius:8, marginBottom:20}}>
                     <h4 style={{marginTop:0, fontSize:14, color:'#27ae60'}}>📦 Dati Prodotto (Manuale)</h4>
                     <div style={rowStyle}>
@@ -337,7 +305,6 @@ const handleScan = async (e) => {
                     </div>
                 </div>
 
-                {/* BLOCCO 3: TOTALI */}
                 <div style={{background:'#eaf2f8', padding:15, borderRadius:8, marginBottom:20, border:'1px solid #d6eaf8'}}>
                     <h4 style={{marginTop:0, fontSize:14, color:'#2980b9'}}>🧮 Riepilogo Costi</h4>
                     <div style={{display:'flex', gap:15}}>
@@ -356,7 +323,6 @@ const handleScan = async (e) => {
                     </div>
                 </div>
 
-                {/* FOOTER */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 30 }}>
                     <div onClick={() => allegatoInputRef.current.click()} style={{ cursor: 'pointer', color: formData.allegato_url ? '#27ae60' : '#7f8c8d', display:'flex', alignItems:'center', gap:5 }}>
                         <span style={{fontSize:20}}>📎</span> {formData.allegato_url ? <b>Allegato OK!</b> : "Carica Foto Manuale"}

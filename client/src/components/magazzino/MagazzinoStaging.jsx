@@ -1,4 +1,3 @@
-// client/src/components_haccp/MagazzinoStaging.jsx
 import React, { useState, useEffect } from 'react';
 
 const MagazzinoStaging = ({ initialData, onConfirm, onCancel }) => {
@@ -24,16 +23,16 @@ const MagazzinoStaging = ({ initialData, onConfirm, onCancel }) => {
         if (initialData && initialData.length > 0) {
             const first = initialData[0];
             
-            // LOGICA DI ASSEGNAZIONE DATE CORRETTA:
-            // 1. data_documento = Quella letta dall'AI sul foglio (se c'è), altrimenti vuota.
-            // 2. data_ricezione = Sempre OGGI (data di carico a sistema), modificabile.
+            // LOGICA DI ASSEGNAZIONE DATE:
+            // 1. data_documento: Quella letta dall'AI. Usiamo il valore diretto o stringa vuota (rimosso split che poteva dare errore).
+            // 2. data_ricezione: Impostiamo di default OGGI per il carico a sistema.
             
             setHeaderData({
                 fornitore: first.fornitore || '',
                 riferimento_documento: first.riferimento_documento || '',
                 
-                // Se l'AI ha letto una data documento, la usiamo. Altrimenti vuota.
-                data_documento: first.data_documento ? first.data_documento.split('T')[0] : '', 
+                // CORREZIONE QUI: Evitiamo crash se undefined e rimuoviamo .split inutile se già formattata
+                data_documento: first.data_documento || '', 
                 
                 // Questa è la data di "Carico Magazzino", di default mettiamo OGGI
                 data_ricezione: getTodayItaly(),
