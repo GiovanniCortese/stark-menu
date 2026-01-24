@@ -1,4 +1,3 @@
-// client/src/components_haccp/MagazzinoUpload.jsx
 import React, { useState, useEffect, useRef } from 'react';
 
 const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificare, setRecordDaModificare, ricaricaDati, onScanComplete }) => {
@@ -94,7 +93,9 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
                 quantita: safeVal(recordDaModificare.quantita, 0),
                 prezzo_unitario: safeVal(recordDaModificare.prezzo_unitario, 0),
                 sconto: safeVal(recordDaModificare.sconto, 0),
-                iva: safeVal(recordDaModificare.iva, 10),
+                
+                // FIX IVA: Trasforma "10.00" (DB) in "10" (Select)
+                iva: recordDaModificare.iva ? String(parseFloat(recordDaModificare.iva)) : '10',
                 
                 // Totali (verranno sovrascritti dal calcolo automatico, ma inizializziamoli)
                 totale_netto: safeVal(recordDaModificare.totale_netto, 0),
@@ -239,16 +240,11 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
         try {
             const payload = {
                 ...formData,
-                // Assicuriamoci che i numeri siano numeri
-                quantita: parseFloat(formData.quantita) || 0,
                 prezzo_unitario: parseFloat(formData.prezzo_unitario) || 0,
                 sconto: parseFloat(formData.sconto) || 0,
-                iva: parseFloat(formData.iva) || 0,
-                // I totali vengono ricalcolati dal backend, ma li mandiamo per sicurezza
                 totale_netto: parseFloat(formData.totale_netto) || 0,
                 totale_iva: parseFloat(formData.totale_iva) || 0,
                 totale_lordo: parseFloat(formData.totale_lordo) || 0,
-                
                 ora: new Date(formData.data_ricezione).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'})
             };
 
@@ -266,18 +262,12 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
             const jsonRes = await res.json();
             
             if (jsonRes.success) {
-                alert("✅ Salvato con successo!");
+                alert("✅ Salvato!");
                 if (ricaricaDati) ricaricaDati(); 
                 if (setRecordDaModificare) setRecordDaModificare(null);
-                onSuccess(); // Torna alla lista
-            } else { 
-                alert("Errore: " + jsonRes.error); 
-            }
-        } catch (error) { 
-            alert("Errore server."); 
-        } finally { 
-            setUploading(false); 
-        }
+                onSuccess(); 
+            } else { alert("Errore: " + jsonRes.error); }
+        } catch (error) { alert("Errore server."); } finally { setUploading(false); }
     };
 
     const rowStyle = { display: 'flex', gap: 15, marginBottom: 15, flexWrap:'wrap' };
@@ -359,13 +349,9 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
                         </div>
                         <div style={colStyle}>
                             <label style={labelStyle}>Unità</label>
-                            <input type="text" list="unita_list" style={{...inputStyle, textAlign:'center'}} value={formData.unita_misura} onChange={e => setFormData({ ...formData, unita_misura: e.target.value })} />
-                            <datalist id="unita_list">
-                                <option value="Pz" />
-                                <option value="Kg" />
-                                <option value="Lt" />
-                                <option value="Ct" />
-                            </datalist>
+                            <select style={inputStyle} value={formData.unita_misura} onChange={e => setFormData({ ...formData, unita_misura: e.target.value })}>
+                                <option value="Pz">Pezzi (Pz)</option><option value="Kg">Kg</option><option value="Lt">Litri</option><option value="Ct">Cartoni</option>
+                            </select>
                         </div>
                         <div style={colStyle}>
                             <label style={labelStyle}>€ Netto (Unit)</label>
