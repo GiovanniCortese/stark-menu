@@ -49,9 +49,17 @@ const MagazzinoStaging = ({ initialData, onConfirm, onCancel }) => {
                 note: first.note || ''
             });
 
-            // Mappiamo le righe aggiungendo un tempId per React e preservando l'ID originale
+            // Mappiamo le righe con NORMALIZZAZIONE DATI (Fix IVA 4% default)
             setRows(initialData.map((item, idx) => ({ 
                 ...item, 
+                // FIX CRUCIALE: Trasforma "10.00" (stringa DB) in "10" (stringa select)
+                iva: item.iva ? String(parseFloat(item.iva)) : '0', 
+                
+                // Assicuriamoci che i numeri siano numeri per i calcoli
+                sconto: item.sconto ? parseFloat(item.sconto) : 0,
+                quantita: item.quantita ? parseFloat(item.quantita) : 0,
+                prezzo_unitario: item.prezzo_unitario ? parseFloat(item.prezzo_unitario) : 0,
+
                 id: item.id || null, // Importante per distinguere INSERT da UPDATE
                 tempId: Date.now() + idx 
             })));
@@ -82,7 +90,7 @@ const MagazzinoStaging = ({ initialData, onConfirm, onCancel }) => {
             unita_misura: 'Pz',
             prezzo_unitario: 0,
             sconto: 0,
-            iva: 10,
+            iva: '10', // Default stringa per select
             scadenza: '',
             lotto: '',
             is_haccp: true
@@ -232,8 +240,16 @@ const MagazzinoStaging = ({ initialData, onConfirm, onCancel }) => {
                                     <input type="number" step="0.01" value={item.sconto} onChange={(e) => handleRowChange(item.tempId, 'sconto', e.target.value)} style={{...inputTableStyle, color: item.sconto > 0 ? '#e74c3c' : '#ccc'}} />
                                 </td>
                                 <td style={tdStyle}>
-                                    <select value={item.iva} onChange={(e) => handleRowChange(item.tempId, 'iva', e.target.value)} style={inputTableStyle}>
-                                        <option value="4">4%</option><option value="10">10%</option><option value="22">22%</option><option value="0">0%</option>
+                                    {/* SELECT IVA AGGIORNATA */}
+                                    <select 
+                                        value={item.iva} 
+                                        onChange={(e) => handleRowChange(item.tempId, 'iva', e.target.value)} 
+                                        style={inputTableStyle}
+                                    >
+                                        <option value="4">4%</option>
+                                        <option value="10">10%</option>
+                                        <option value="22">22%</option>
+                                        <option value="0">0%</option>
                                     </select>
                                 </td>
                                 <td style={tdStyle}>
