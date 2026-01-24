@@ -277,4 +277,33 @@ router.get('/api/db-fix-haccp-merci', async (req, res) => {
     }
 });
 
+// AGGIUNGI QUESTA ROTTA IN FONDO O DOVE VUOI
+router.get('/api/db-fix-emergency-columns', async (req, res) => {
+    try {
+        const client = await pool.connect();
+        try {
+            console.log("AVVIO FIX EMERGENZA COLONNE...");
+
+            // 1. FIX TABELLA MAGAZZINO (Giacenze Master)
+            await client.query("ALTER TABLE magazzino_prodotti ADD COLUMN IF NOT EXISTS codice_articolo TEXT DEFAULT ''");
+            await client.query("ALTER TABLE magazzino_prodotti ADD COLUMN IF NOT EXISTS sconto NUMERIC(5,2) DEFAULT 0");
+
+            // 2. FIX TABELLA HACCP (Storico Ricevimento)
+            await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS codice_articolo TEXT DEFAULT ''");
+            await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS sconto NUMERIC(5,2) DEFAULT 0");
+            
+            // 3. FIX SICUREZZA (Già che ci siamo, per evitare altri errori futuri)
+            await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS data_documento DATE DEFAULT CURRENT_DATE");
+            await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS riferimento_documento TEXT DEFAULT ''");
+
+            res.send("✅ DATABASE FIX COMPLETATO: Colonne 'codice_articolo' e 'sconto' create ovunque.");
+        } finally {
+            client.release();
+        }
+    } catch (e) {
+        console.error("Errore Fix:", e);
+        res.status(500).send("Errore DB Fix: " + e.message);
+    }
+});
+
 module.exports = router;

@@ -238,91 +238,108 @@ router.post('/api/haccp/merci', async (req, res) => {
     }
 });
 
-// --- IMPORT MASSIVO / SCAN (MAGAZZINO CENTRIC) ---
+// --- IMPORT MASSIVO / SCAN (NON-BLOCKING VERSION) ---
 router.post('/api/haccp/merci/import', async (req, res) => {
-    const client = await pool.connect();
+    // Nota: Non usiamo più una transazione globale (BEGIN/COMMIT) qui,
+    // perché vogliamo che se una riga fallisce, le altre vengano comunque salvate.
+    
     try {
         const { merci } = req.body; 
         if (!Array.isArray(merci)) return res.status(400).json({ error: "Formato non valido" });
 
-        await client.query('BEGIN');
         let inserted = 0;
+        let errors = []; // Raccogliamo qui gli errori per non bloccare tutto
         
         for (const m of merci) {
-            // Normalizza valori numerici per evitare errori DB
-            const sconto = parseFloat(m.sconto) || 0;
-            const qta = parseFloat(m.quantita) || 0;
-            const przUnit = parseFloat(m.prezzo_unitario) || 0;
-            const iva = parseFloat(m.iva) || 0;
-            const dataDoc = m.data_documento || m.data_ricezione; // Data fattura
-            const numDoc = m.riferimento_documento || ''; // Numero fattura
+            // Usiamo un client dedicato per ogni iterazione o il pool direttamente
+            // Per semplicità e sicurezza concorrente qui usiamo pool.connect per singola operazione atomica se necessario,
+            // ma dato che gestisciMagazzino fa query multiple, meglio avvolgere il singolo item in try/catch.
+            
+            const client = await pool.connect();
 
-            // 1. GESTIONE MAGAZZINO (MASTER - Aggiorna Giacenze e Prezzi)
-            // Qui passiamo ANCHE i dati della bolla (numero e data) per averli anche nella scheda prodotto
-            const magazzinoId = await gestisciMagazzino(client, {
-                ristorante_id: m.ristorante_id,
-                prodotto: m.prodotto,
-                quantita: qta,
-                prezzo_unitario: przUnit,
-                iva: iva,
-                fornitore: m.fornitore,
-                unita_misura: m.unita_misura,
-                lotto: m.lotto,
-                data_bolla: dataDoc,        // <--- IMPORTANTE: Data Fattura
-                numero_bolla: numDoc,       // <--- IMPORTANTE: Numero Fattura
-                codice_articolo: m.codice_articolo, // <--- IMPORTANTE
-                sconto: sconto
-            });
+            try {
+                await client.query('BEGIN'); // Transazione PER SINGOLA RIGA
 
-            // 2. GESTIONE HACCP (STORICO - La lista che vedi a video)
-            // Questa è la tabella che popola la "Lista" nel frontend. Deve avere TUTTO.
-            if (m.is_haccp === true || m.is_haccp === 'true') {
-                
-                // Evitiamo duplicati identici (stessa fattura, stesso prodotto, stesso lotto)
-                const checkHaccp = await client.query(`
-                    SELECT id FROM haccp_merci 
-                    WHERE ristorante_id = $1 
-                    AND magazzino_id = $2
-                    AND riferimento_documento = $3 
-                    AND lotto = $4
-                `, [m.ristorante_id, magazzinoId, numDoc, m.lotto || '']);
+                // Normalizza valori numerici per evitare crash
+                const sconto = parseFloat(m.sconto) || 0;
+                const qta = parseFloat(m.quantita) || 0;
+                const przUnit = parseFloat(m.prezzo_unitario) || 0;
+                const iva = parseFloat(m.iva) || 0;
+                const dataDoc = m.data_documento || m.data_ricezione; 
+                const numDoc = m.riferimento_documento || ''; 
 
-                if (checkHaccp.rows.length === 0) {
-                    await client.query(
-                        `INSERT INTO haccp_merci (
-                            ristorante_id, magazzino_id, 
-                            data_ricezione, data_documento, riferimento_documento,
-                            fornitore, prodotto, codice_articolo,
-                            quantita, unita_misura, prezzo_unitario, sconto, iva, 
-                            lotto, scadenza, operatore, note, 
-                            conforme, integro, destinazione, ora, is_haccp, allegato_url
-                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, true, true, $18, $19, true, $20)`,
-                        [
-                            m.ristorante_id, magazzinoId, 
-                            m.data_ricezione, dataDoc, numDoc, // Date e Riferimenti corretti
-                            m.fornitore, m.prodotto, m.codice_articolo || '',
-                            qta, m.unita_misura, przUnit, sconto, iva,
-                            m.lotto || '', m.scadenza || null, m.operatore || 'SCAN', m.note || '', 
-                            m.destinazione || '', m.ora, m.allegato_url || ''
-                        ]
-                    );
+                // 1. GESTIONE MAGAZZINO (MASTER)
+                const magazzinoId = await gestisciMagazzino(client, {
+                    ristorante_id: m.ristorante_id,
+                    prodotto: m.prodotto,
+                    quantita: qta,
+                    prezzo_unitario: przUnit,
+                    iva: iva,
+                    fornitore: m.fornitore,
+                    unita_misura: m.unita_misura,
+                    lotto: m.lotto,
+                    data_bolla: dataDoc,        
+                    numero_bolla: numDoc,       
+                    codice_articolo: m.codice_articolo, 
+                    sconto: sconto
+                });
+
+                // 2. GESTIONE HACCP (STORICO)
+                if (m.is_haccp === true || m.is_haccp === 'true') {
+                    // Check duplicati
+                    const checkHaccp = await client.query(`
+                        SELECT id FROM haccp_merci 
+                        WHERE ristorante_id = $1 
+                        AND magazzino_id = $2
+                        AND riferimento_documento = $3 
+                        AND lotto = $4
+                    `, [m.ristorante_id, magazzinoId, numDoc, m.lotto || '']);
+
+                    if (checkHaccp.rows.length === 0) {
+                        await client.query(
+                            `INSERT INTO haccp_merci (
+                                ristorante_id, magazzino_id, 
+                                data_ricezione, data_documento, riferimento_documento,
+                                fornitore, prodotto, codice_articolo,
+                                quantita, unita_misura, prezzo_unitario, sconto, iva, 
+                                lotto, scadenza, operatore, note, 
+                                conforme, integro, destinazione, ora, is_haccp, allegato_url
+                            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, true, true, $18, $19, true, $20)`,
+                            [
+                                m.ristorante_id, magazzinoId, 
+                                m.data_ricezione, dataDoc, numDoc, 
+                                m.fornitore, m.prodotto, m.codice_articolo || '',
+                                qta, m.unita_misura, przUnit, sconto, iva,
+                                m.lotto || '', m.scadenza || null, m.operatore || 'SCAN', m.note || '', 
+                                m.destinazione || '', m.ora, m.allegato_url || ''
+                            ]
+                        );
+                    }
                 }
+                
+                await client.query('COMMIT'); // Salva QUESTA riga
+                inserted++;
+
+            } catch (innerError) {
+                await client.query('ROLLBACK'); // Annulla SOLO questa riga
+                console.error(`Errore importazione prodotto: ${m.prodotto}`, innerError.message);
+                errors.push({ prodotto: m.prodotto, errore: innerError.message });
+                // IL CICLO CONTINUA, NON SI FERMA
+            } finally {
+                client.release();
             }
-            inserted++;
         }
 
-        await client.query('COMMIT');
+        // Risposta finale con riepilogo
         res.json({ 
             success: true, 
-            message: `Carico completato. ${inserted} righe aggiornate in Magazzino e Storico.` 
+            message: `Carico terminato. Inseriti: ${inserted}. Errori/Saltati: ${errors.length}`,
+            dettagli_errori: errors // Il frontend potrà mostrare quali righe hanno fallito
         });
 
     } catch (e) {
-        await client.query('ROLLBACK');
-        console.error("Errore Import:", e);
-        res.status(500).json({ error: e.message });
-    } finally {
-        client.release();
+        console.error("Errore Generale Import:", e);
+        res.status(500).json({ error: "Errore critico server: " + e.message });
     }
 });
 
