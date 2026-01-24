@@ -1,4 +1,4 @@
-// server/routes/haccpRoutes.js - FIXED PDF & GEMINI AI SCAN (MAGAZZINO CENTRIC V2)
+// server/routes/haccpRoutes.js - FIXED PREZZI, TOTALI & CALCOLI (MAGAZZINO CENTRIC V3)
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
@@ -50,9 +50,6 @@ router.post('/api/magazzino/delete-bulk', async (req, res) => {
         // 1. Elimina dal registro storico (haccp_merci)
         await client.query("DELETE FROM haccp_merci WHERE id = ANY($1::int[])", [ids]);
 
-        // Nota: Se volessi scalare anche la giacenza dal magazzino master, servirebbe una logica più complessa.
-        // Per ora eliminiamo le righe di registrazione.
-
         await client.query('COMMIT');
         res.json({ success: true, deleted: ids.length });
     } catch (e) {
@@ -64,78 +61,103 @@ router.post('/api/magazzino/delete-bulk', async (req, res) => {
 });
 
 // =================================================================================
-// HELPER: GESTIONE CENTRALE MAGAZZINO (Update o Insert)
+// HELPER: GESTIONE CENTRALE MAGAZZINO (CALCOLO PREZZI + AGGIORNAMENTO)
 // =================================================================================
 async function gestisciMagazzino(client, data) {
     const { ristorante_id, prodotto, quantita, prezzo_unitario, iva, fornitore, unita_misura, lotto, data_bolla, numero_bolla, codice_articolo, sconto } = data;
     
-    // Normalizzazione numeri
+    // 1. Normalizzazione numeri
     const qta = parseFloat(quantita) || 0;
-    const prezzoUnit = parseFloat(prezzo_unitario) || 0;
-    const aliquotaIva = parseFloat(iva) || 0;
-    
-    // Calcoli Fiscali Riga
-    const valoreNetto = qta * prezzoUnit;
-    const valoreIva = valoreNetto * (aliquotaIva / 100);
-    const valoreLordo = valoreNetto + valoreIva;
-
-    // Calcoli
-    const prezzoListino = parseFloat(prezzo_unitario) || 0;
+    const przUnit = parseFloat(prezzo_unitario) || 0;
+    const aliIva = parseFloat(iva) || 0;
     const sc = parseFloat(sconto) || 0;
-    // Prezzo netto reale (scontato)
-    const prezzoNetto = prezzoListino * (1 - (sc / 100));
 
-    // 1. Cerca se esiste in Magazzino (Case Insensitive)
-const check = await client.query(
+    // 2. CALCOLI MATEMATICI (Il cuore del fix)
+    // Prezzo unitario scontato
+    const prezzoNettoUnitario = przUnit * (1 - (sc / 100));
+    
+    // Totali riga
+    const totaleNetto = qta * prezzoNettoUnitario;
+    const totaleIva = totaleNetto * (aliIva / 100);
+    const totaleLordo = totaleNetto + totaleIva;
+
+    // 3. Cerca se esiste in Magazzino (Case Insensitive)
+    const check = await client.query(
         `SELECT id, giacenza, prezzo_medio FROM magazzino_prodotti WHERE ristorante_id = $1 AND LOWER(nome) = LOWER($2)`,
         [ristorante_id, prodotto.trim()]
     );
 
-let magazzinoId = null;
+    let magazzinoId = null;
 
     if (check.rows.length > 0) {
-        // UPDATE
+        // --- UPDATE ESISTENTE ---
         const existing = check.rows[0];
         magazzinoId = existing.id;
         const oldGiacenza = parseFloat(existing.giacenza) || 0;
         const oldPrezzo = parseFloat(existing.prezzo_medio) || 0;
         
+        // Calcolo nuovo prezzo medio ponderato
         let newPrezzoMedio = oldPrezzo;
         if ((oldGiacenza + qta) > 0) {
-            newPrezzoMedio = ((oldGiacenza * oldPrezzo) + (qta * prezzoNetto)) / (oldGiacenza + qta);
+            newPrezzoMedio = ((oldGiacenza * oldPrezzo) + (qta * prezzoNettoUnitario)) / (oldGiacenza + qta);
         }
 
         await client.query(
             `UPDATE magazzino_prodotti SET 
                 giacenza = giacenza + $1,
+                
+                -- Aggiornamento Prezzi Unitari
                 prezzo_ultimo = $2,
                 prezzo_medio = $3,
-                sconto = $4,
-                codice_articolo = COALESCE(NULLIF($5, ''), codice_articolo),
-                data_bolla = $6,
-                numero_bolla = $7,
-                lotto = COALESCE(NULLIF($8, ''), lotto),
+                prezzo_unitario_netto = $4,
+                
+                -- Aggiornamento Totali (Valore attuale dell'ultima fornitura)
+                valore_totale_netto = $5,
+                valore_totale_iva = $6,
+                valore_totale_lordo = $7,
+                
+                sconto = $8,
+                aliquota_iva = $9,
+                
+                codice_articolo = COALESCE(NULLIF($10, ''), codice_articolo),
+                data_bolla = $11,
+                numero_bolla = $12,
+                lotto = COALESCE(NULLIF($13, ''), lotto),
                 updated_at = NOW()
-             WHERE id = $9`,
-            [qta, prezzoNetto, newPrezzoMedio, sc, codice_articolo, data_bolla, numero_bolla, lotto, magazzinoId]
+             WHERE id = $14`,
+            [
+                qta, 
+                prezzoNettoUnitario, newPrezzoMedio, prezzoNettoUnitario, // $2, $3, $4
+                totaleNetto, totaleIva, totaleLordo, // $5, $6, $7 (I CAMPI CHE PRIMA ERANO A ZERO)
+                sc, aliIva, // $8, $9
+                codice_articolo, data_bolla, numero_bolla, lotto, // $10, $11, $12, $13
+                magazzinoId // $14
+            ]
         );
     } else {
-        // INSERT
+        // --- INSERT NUOVO ---
         const resInsert = await client.query(
             `INSERT INTO magazzino_prodotti 
             (ristorante_id, nome, marca, unita_misura, giacenza, scorta_minima, 
-             prezzo_ultimo, prezzo_medio, aliquota_iva, codice_articolo, sconto,
+             prezzo_ultimo, prezzo_medio, prezzo_unitario_netto,
+             valore_totale_netto, valore_totale_iva, valore_totale_lordo,
+             aliquota_iva, codice_articolo, sconto,
              data_bolla, numero_bolla, lotto)
-            VALUES ($1, $2, $3, $4, $5, 5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
+            VALUES ($1, $2, $3, $4, $5, 5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
             [
                 ristorante_id, prodotto.trim(), fornitore || '', unita_misura || 'Pz', 
-                qta, prezzoNetto, prezzoNetto, aliquotaIva, codice_articolo || '', sc,
-                data_bolla, numero_bolla, lotto
+                qta, // $5
+                prezzoNettoUnitario, prezzoNettoUnitario, prezzoNettoUnitario, // $6, $7, $8
+                totaleNetto, totaleIva, totaleLordo, // $9, $10, $11 (I CAMPI NUOVI)
+                aliIva, codice_articolo || '', sc, // $12, $13, $14
+                data_bolla, numero_bolla, lotto // $15, $16, $17
             ]
         );
         magazzinoId = resInsert.rows[0].id;
     }
-    return magazzinoId;
+    
+    // IMPORTANTE: Ritorniamo i totali calcolati per usarli nell'HACCP senza ricalcolarli
+    return { id: magazzinoId, totaleNetto, totaleIva, totaleLordo, prezzoNettoUnitario };
 }
 
 
@@ -189,7 +211,7 @@ router.get('/api/haccp/merci/:ristorante_id', async (req, res) => {
     } catch(e) { res.status(500).json({error:"Err"}); }
 });
 
-// --- INSERIMENTO SINGOLO MANUALE (MAGAZZINO CENTRIC) ---
+// --- INSERIMENTO SINGOLO MANUALE (MAGAZZINO CENTRIC + CALCOLI) ---
 router.post('/api/haccp/merci', async (req, res) => { 
     const client = await pool.connect();
     try { 
@@ -203,26 +225,28 @@ router.post('/api/haccp/merci', async (req, res) => {
         } = req.body; 
 
         // 1. UPDATE/INSERT MAGAZZINO (SEMPRE)
-        const magazzinoId = await gestisciMagazzino(client, {
+        // Usa la funzione centralizzata che calcola i totali
+        const resMag = await gestisciMagazzino(client, {
             ristorante_id, prodotto, quantita, prezzo_unitario, iva, fornitore, 
             unita_misura, lotto, data_bolla: data_ricezione
         });
 
         // 2. INSERT HACCP (SOLO SE CIBO)
-        // Se is_haccp è false (es. Detersivi), saltiamo la scrittura nel registro HACCP
         if (is_haccp === true || is_haccp === 'true') {
             await client.query(
                 `INSERT INTO haccp_merci (
                     ristorante_id, magazzino_id, data_ricezione, ora, fornitore, prodotto, 
                     lotto, scadenza, temperatura, conforme, integro, note, operatore, 
                     quantita, unita_misura, allegato_url, destinazione, 
-                    prezzo_unitario, iva, is_haccp
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`, 
+                    prezzo_unitario, prezzo_unitario_netto, iva, 
+                    totale_netto, totale_iva, totale_lordo, is_haccp
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, true)`, 
                 [
-                    ristorante_id, magazzinoId, data_ricezione, ora || '', fornitore, prodotto, 
+                    ristorante_id, resMag.id, data_ricezione, ora || '', fornitore, prodotto, 
                     lotto, scadenza || null, temperatura, conforme, integro, note, operatore, 
                     quantita, unita_misura || '', allegato_url, destinazione, 
-                    parseFloat(prezzo_unitario)||0, parseFloat(iva)||0, true
+                    parseFloat(prezzo_unitario)||0, resMag.prezzoNettoUnitario, parseFloat(iva)||0,
+                    resMag.totaleNetto, resMag.totaleIva, resMag.totaleLordo // Salva i totali anche qui
                 ]
             );
         }
@@ -238,29 +262,21 @@ router.post('/api/haccp/merci', async (req, res) => {
     }
 });
 
-// --- IMPORT MASSIVO / SCAN (NON-BLOCKING VERSION) ---
+// --- IMPORT MASSIVO / SCAN (NON-BLOCKING & CALCOLI FIX) ---
 router.post('/api/haccp/merci/import', async (req, res) => {
-    // Nota: Non usiamo più una transazione globale (BEGIN/COMMIT) qui,
-    // perché vogliamo che se una riga fallisce, le altre vengano comunque salvate.
-    
     try {
         const { merci } = req.body; 
         if (!Array.isArray(merci)) return res.status(400).json({ error: "Formato non valido" });
 
         let inserted = 0;
-        let errors = []; // Raccogliamo qui gli errori per non bloccare tutto
+        let errors = [];
         
         for (const m of merci) {
-            // Usiamo un client dedicato per ogni iterazione o il pool direttamente
-            // Per semplicità e sicurezza concorrente qui usiamo pool.connect per singola operazione atomica se necessario,
-            // ma dato che gestisciMagazzino fa query multiple, meglio avvolgere il singolo item in try/catch.
-            
             const client = await pool.connect();
-
             try {
-                await client.query('BEGIN'); // Transazione PER SINGOLA RIGA
+                await client.query('BEGIN');
 
-                // Normalizza valori numerici per evitare crash
+                // Dati base
                 const sconto = parseFloat(m.sconto) || 0;
                 const qta = parseFloat(m.quantita) || 0;
                 const przUnit = parseFloat(m.prezzo_unitario) || 0;
@@ -268,8 +284,8 @@ router.post('/api/haccp/merci/import', async (req, res) => {
                 const dataDoc = m.data_documento || m.data_ricezione; 
                 const numDoc = m.riferimento_documento || ''; 
 
-                // 1. GESTIONE MAGAZZINO (MASTER)
-                const magazzinoId = await gestisciMagazzino(client, {
+                // 1. GESTIONE MAGAZZINO (MASTER) & CALCOLO
+                const resultMagazzino = await gestisciMagazzino(client, {
                     ristorante_id: m.ristorante_id,
                     prodotto: m.prodotto,
                     quantita: qta,
@@ -283,6 +299,11 @@ router.post('/api/haccp/merci/import', async (req, res) => {
                     codice_articolo: m.codice_articolo, 
                     sconto: sconto
                 });
+
+                const magazzinoId = resultMagazzino.id;
+                
+                // Recuperiamo i totali calcolati dalla funzione gestisciMagazzino
+                const { totaleNetto, totaleIva, totaleLordo, prezzoNettoUnitario } = resultMagazzino;
 
                 // 2. GESTIONE HACCP (STORICO)
                 if (m.is_haccp === true || m.is_haccp === 'true') {
@@ -301,15 +322,19 @@ router.post('/api/haccp/merci/import', async (req, res) => {
                                 ristorante_id, magazzino_id, 
                                 data_ricezione, data_documento, riferimento_documento,
                                 fornitore, prodotto, codice_articolo,
-                                quantita, unita_misura, prezzo_unitario, sconto, iva, 
+                                quantita, unita_misura, 
+                                prezzo_unitario, prezzo_unitario_netto, sconto, iva, 
+                                totale_netto, totale_iva, totale_lordo,
                                 lotto, scadenza, operatore, note, 
                                 conforme, integro, destinazione, ora, is_haccp, allegato_url
-                            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, true, true, $18, $19, true, $20)`,
+                            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, true, true, $22, $23, true, $24)`,
                             [
                                 m.ristorante_id, magazzinoId, 
                                 m.data_ricezione, dataDoc, numDoc, 
                                 m.fornitore, m.prodotto, m.codice_articolo || '',
-                                qta, m.unita_misura, przUnit, sconto, iva,
+                                qta, m.unita_misura, 
+                                przUnit, prezzoNettoUnitario, sconto, iva, // $11, $12, $13, $14
+                                totaleNetto, totaleIva, totaleLordo,       // $15, $16, $17 (INSERIAMO I TOTALI ANCHE NELLO STORICO)
                                 m.lotto || '', m.scadenza || null, m.operatore || 'SCAN', m.note || '', 
                                 m.destinazione || '', m.ora, m.allegato_url || ''
                             ]
@@ -317,24 +342,22 @@ router.post('/api/haccp/merci/import', async (req, res) => {
                     }
                 }
                 
-                await client.query('COMMIT'); // Salva QUESTA riga
+                await client.query('COMMIT');
                 inserted++;
 
             } catch (innerError) {
-                await client.query('ROLLBACK'); // Annulla SOLO questa riga
-                console.error(`Errore importazione prodotto: ${m.prodotto}`, innerError.message);
+                await client.query('ROLLBACK');
+                console.error(`Errore importazione riga: ${m.prodotto}`, innerError.message);
                 errors.push({ prodotto: m.prodotto, errore: innerError.message });
-                // IL CICLO CONTINUA, NON SI FERMA
             } finally {
                 client.release();
             }
         }
 
-        // Risposta finale con riepilogo
         res.json({ 
             success: true, 
-            message: `Carico terminato. Inseriti: ${inserted}. Errori/Saltati: ${errors.length}`,
-            dettagli_errori: errors // Il frontend potrà mostrare quali righe hanno fallito
+            message: `Importato: ${inserted}. Saltati/Errori: ${errors.length}`,
+            dettagli_errori: errors 
         });
 
     } catch (e) {
