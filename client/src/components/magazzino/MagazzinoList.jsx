@@ -1,7 +1,7 @@
 // client/src/components_haccp/MagazzinoList.jsx
 import React, { useState, useEffect } from 'react';
 
-const MagazzinoList = ({ storico, ricaricaDati, API_URL, onEdit, filtroDataEsterno, resetFiltroEsterno }) => {
+const MagazzinoList = ({ storico, ricaricaDati, API_URL, onEdit, filtroDataEsterno, resetFiltroEsterno, onBulkEdit }) => {
     const [filtro, setFiltro] = useState("");
     const [selectedIds, setSelectedIds] = useState([]); 
     const [sortConfig, setSortConfig] = useState({ key: 'data_ricezione', direction: 'desc' });
@@ -62,6 +62,16 @@ const MagazzinoList = ({ storico, ricaricaDati, API_URL, onEdit, filtroDataEster
         else setSelectedIds([...selectedIds, id]);
     };
 
+    // --- NUOVA LOGICA MODIFICA MASSIVA ---
+    const handleBulkEditClick = () => {
+        if (selectedIds.length === 0) return;
+        // Recupera gli oggetti completi corrispondenti agli ID selezionati
+        const rowsToEdit = sortedData.filter(row => selectedIds.includes(row.id));
+        if (onBulkEdit) {
+            onBulkEdit(rowsToEdit); // Passa i dati al Manager per aprire lo Staging
+        }
+    };
+
     const handleDeleteSingle = async (id) => {
         if (!window.confirm("Eliminare questa riga?")) return;
         try {
@@ -109,11 +119,27 @@ const MagazzinoList = ({ storico, ricaricaDati, API_URL, onEdit, filtroDataEster
                     )}
                 </div>
                 
-                {selectedIds.length > 0 && (
-                    <button onClick={handleDeleteSelected} style={{ background: '#c0392b', color: 'white', border: 'none', padding: '10px 20px', borderRadius: 5, cursor: 'pointer', fontWeight: 'bold' }}>
-                        🗑️ ELIMINA ({selectedIds.length}) SELEZIONATI
-                    </button>
-                )}
+                {/* BOTTONI AZIONI DI MASSA */}
+                <div style={{display:'flex', gap:10}}>
+                    {selectedIds.length > 0 && (
+                        <>
+                            {/* TASTO MODIFICA MASSIVA AGGIUNTO */}
+                            <button 
+                                onClick={handleBulkEditClick}
+                                style={{ background: '#f1c40f', color: '#2c3e50', border: 'none', padding: '10px 20px', borderRadius: 5, cursor: 'pointer', fontWeight: 'bold', display:'flex', alignItems:'center', gap:5 }}
+                            >
+                                ✏️ MODIFICA ({selectedIds.length})
+                            </button>
+
+                            <button 
+                                onClick={handleDeleteSelected}
+                                style={{ background: '#c0392b', color: 'white', border: 'none', padding: '10px 20px', borderRadius: 5, cursor: 'pointer', fontWeight: 'bold' }}
+                            >
+                                🗑️ ELIMINA ({selectedIds.length})
+                            </button>
+                        </>
+                    )}
+                </div>
             </div>
 
             <div style={{ overflowX: 'auto' }}>
@@ -139,7 +165,7 @@ const MagazzinoList = ({ storico, ricaricaDati, API_URL, onEdit, filtroDataEster
                             <th style={thStyle}>Tot. IVA</th>
                             <th style={thStyle}>Tot. Lordo</th>
                             <th style={thStyle}>📎 All.</th>
-                            <th style={thStyle}>🕒 Ins. (IT)</th> {/* MODIFICATO HEADER */}
+                            <th style={thStyle}>🕒 Ins. (IT)</th> 
                             <th style={{...thStyle, textAlign:'center'}}>🛠️ Azioni</th>
                         </tr>
                     </thead>
@@ -150,7 +176,6 @@ const MagazzinoList = ({ storico, ricaricaDati, API_URL, onEdit, filtroDataEster
                                     <input type="checkbox" checked={selectedIds.includes(row.id)} onChange={() => handleSelectRow(row.id)} />
                                 </td>
                                 
-                                {/* DATA DOCUMENTO (Dalla fattura) */}
                                 <td style={tdStyle}>
                                     {row.data_documento ? new Date(row.data_documento).toLocaleDateString('it-IT') : '-'}
                                 </td>
@@ -185,7 +210,7 @@ const MagazzinoList = ({ storico, ricaricaDati, API_URL, onEdit, filtroDataEster
                                     ) : <span style={{color:'#eee'}}>—</span>}
                                 </td>
                                 
-                                {/* DATA INSERIMENTO (Correzione Fuso Orario) */}
+                                {/* DATA INSERIMENTO (Fuso Orario IT) */}
                                 <td style={{...tdStyle, fontSize:10, color:'#999'}}>
                                     {row.data_inserimento 
                                         ? new Date(row.data_inserimento).toLocaleString('it-IT', { 

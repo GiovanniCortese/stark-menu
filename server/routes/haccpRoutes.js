@@ -183,15 +183,15 @@ router.delete('/api/haccp/logs/:id', async (req, res) => { try { await pool.quer
 router.post('/api/haccp/labels', async (req, res) => { try { const { ristorante_id, prodotto, data_scadenza, operatore, tipo_conservazione, ingredienti } = req.body; const t = getItalyDateComponents(); const lotto = `L-${t.year}${t.month}${t.day}-${t.hour}${t.minute}`; const r = await pool.query("INSERT INTO haccp_labels (ristorante_id, prodotto, lotto, data_produzione, data_scadenza, operatore, tipo_conservazione, ingredienti) VALUES ($1,$2,$3,NOW(),$4,$5,$6,$7) RETURNING *", [ristorante_id, prodotto, lotto, data_scadenza, operatore, tipo_conservazione, ingredienti || '']); res.json({success:true, label: r.rows[0]}); } catch(e) { res.status(500).json({error:"Err"}); } });
 router.get('/api/haccp/labels/storico/:ristorante_id', async (req, res) => { try { const { start, end } = req.query; let sql = "SELECT * FROM haccp_labels WHERE ristorante_id = $1"; const params = [req.params.ristorante_id]; if (start && end) { sql += " AND data_produzione >= $2 AND data_produzione <= $3 ORDER BY data_produzione ASC"; params.push(start, end); } else { sql += " AND data_produzione >= NOW() - INTERVAL '7 days' ORDER BY data_produzione DESC"; } const r = await pool.query(sql, params); res.json(r.rows); } catch(e) { res.status(500).json({error: "Errore recupero storico"}); } });
 
-// =================================================================================
 // 4. RICEVIMENTO MERCI (CRUD & LISTA & IMPORT)
-// =================================================================================
 router.get('/api/haccp/merci/:ristorante_id', async (req, res) => {
     try {
         const { start, end } = req.query; 
         
         let sql = `
             SELECT *, 
+            to_char(data_documento, 'YYYY-MM-DD') as data_documento_iso, 
+            to_char(data_ricezione, 'YYYY-MM-DD') as data_ricezione_iso,
             to_char(data_documento, 'DD/MM/YYYY') as data_doc_fmt,
             to_char(data_inserimento, 'DD/MM/YYYY HH24:MI') as data_ins_fmt
             FROM haccp_merci 
@@ -200,8 +200,12 @@ router.get('/api/haccp/merci/:ristorante_id', async (req, res) => {
         const params = [req.params.ristorante_id];
         
         if (start && end) {
+            // Se ci sono date specifiche (dal calendario), usale
             sql += ` AND data_ricezione >= $2 AND data_ricezione <= $3`;
             params.push(start, end);
+        } else {
+            // DEFAULT: ULTIMI 7 GIORNI
+            sql += ` AND data_ricezione >= CURRENT_DATE - INTERVAL '7 days'`;
         }
 
         sql += " ORDER BY data_ricezione DESC, id DESC"; 
@@ -209,6 +213,61 @@ router.get('/api/haccp/merci/:ristorante_id', async (req, res) => {
         const r = await pool.query(sql, params);
         res.json(r.rows);
     } catch(e) { res.status(500).json({error:"Err"}); }
+});
+
+// --- NUOVA ROTTA: AGGIORNAMENTO MASSIVO (BULK UPDATE) ---
+router.post('/api/haccp/merci/update-bulk', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { merci } = req.body;
+        if (!Array.isArray(merci)) return res.status(400).json({ error: "Dati non validi" });
+
+        await client.query('BEGIN');
+
+        for (const m of merci) {
+            // Se ha un ID, è un UPDATE
+            if (m.id) {
+                 // Ricalcoli sicurezza
+                 const qta = parseFloat(m.quantita) || 0;
+                 const przUnit = parseFloat(m.prezzo_unitario) || 0;
+                 const sc = parseFloat(m.sconto) || 0;
+                 const aliIva = parseFloat(m.iva) || 0;
+                 
+                 const prezzoNettoUnitario = przUnit * (1 - (sc / 100));
+                 const totaleNetto = qta * prezzoNettoUnitario;
+                 const totaleIva = totaleNetto * (aliIva / 100);
+                 const totaleLordo = totaleNetto + totaleIva;
+
+                 await client.query(
+                    `UPDATE haccp_merci SET 
+                        data_documento=$1, riferimento_documento=$2, fornitore=$3, 
+                        codice_articolo=$4, prodotto=$5, quantita=$6, unita_misura=$7, 
+                        prezzo_unitario=$8, sconto=$9, iva=$10, 
+                        prezzo_unitario_netto=$11, totale_netto=$12, totale_iva=$13, totale_lordo=$14,
+                        lotto=$15, scadenza=$16
+                     WHERE id=$17`,
+                    [
+                        m.data_documento, m.riferimento_documento, m.fornitore,
+                        m.codice_articolo, m.prodotto, qta, m.unita_misura,
+                        przUnit, sc, aliIva,
+                        prezzoNettoUnitario, totaleNetto, totaleIva, totaleLordo,
+                        m.lotto, m.scadenza || null,
+                        m.id
+                    ]
+                 );
+            }
+            // Se non ha ID (nuova riga aggiunta in revisione), potresti gestire un INSERT qui se vuoi
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true });
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error("Bulk Update Error:", e);
+        res.status(500).json({ error: e.message });
+    } finally {
+        client.release();
+    }
 });
 
 // --- INSERIMENTO SINGOLO MANUALE (MAGAZZINO CENTRIC + CALCOLI) ---

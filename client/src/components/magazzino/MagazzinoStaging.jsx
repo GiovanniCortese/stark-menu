@@ -1,3 +1,4 @@
+// client/src/components_haccp/MagazzinoStaging.jsx
 import React, { useState, useEffect } from 'react';
 
 const MagazzinoStaging = ({ initialData, onConfirm, onCancel }) => {
@@ -8,12 +9,19 @@ const MagazzinoStaging = ({ initialData, onConfirm, onCancel }) => {
         return new Date(d.getTime() - offset).toISOString().split('T')[0];
     };
 
+    // Helper per formattare qualsiasi data in YYYY-MM-DD per l'input HTML
+    const safeDate = (val) => {
+        if (!val) return '';
+        // Se c'è la T (ISO string), splitta. Altrimenti restituisci così com'è.
+        return val.includes('T') ? val.split('T')[0] : val;
+    };
+
     // --- STATO INTESTAZIONE ---
     const [headerData, setHeaderData] = useState({
         fornitore: '',
         riferimento_documento: '',
         data_documento: '', // Data scritta sulla FATTURA
-        data_ricezione: '', // Data di INSERIMENTO (Oggi)
+        data_ricezione: '', // Data di INSERIMENTO
         note: ''
     });
 
@@ -23,24 +31,30 @@ const MagazzinoStaging = ({ initialData, onConfirm, onCancel }) => {
         if (initialData && initialData.length > 0) {
             const first = initialData[0];
             
-            // LOGICA DI ASSEGNAZIONE DATE:
-            // 1. data_documento: Quella letta dall'AI. Usiamo il valore diretto o stringa vuota (rimosso split che poteva dare errore).
-            // 2. data_ricezione: Impostiamo di default OGGI per il carico a sistema.
-            
+            // Capiamo se è una MODIFICA (ha ID) o NUOVO CARICO (non ha ID)
+            const isEditMode = !!first.id; 
+
             setHeaderData({
                 fornitore: first.fornitore || '',
                 riferimento_documento: first.riferimento_documento || '',
                 
-                // CORREZIONE QUI: Evitiamo crash se undefined e rimuoviamo .split inutile se già formattata
-                data_documento: first.data_documento || '', 
+                // Data Fattura: pulisce eventuali formati ISO
+                data_documento: safeDate(first.data_documento), 
                 
-                // Questa è la data di "Carico Magazzino", di default mettiamo OGGI
-                data_ricezione: getTodayItaly(),
+                // Data Inserimento:
+                // - Se Modifica: mantiene la data originale del primo record
+                // - Se Nuovo: imposta OGGI
+                data_ricezione: isEditMode && first.data_ricezione ? safeDate(first.data_ricezione) : getTodayItaly(),
                 
                 note: first.note || ''
             });
 
-            setRows(initialData.map((item, idx) => ({ ...item, tempId: Date.now() + idx })));
+            // Mappiamo le righe aggiungendo un tempId per React e preservando l'ID originale
+            setRows(initialData.map((item, idx) => ({ 
+                ...item, 
+                id: item.id || null, // Importante per distinguere INSERT da UPDATE
+                tempId: Date.now() + idx 
+            })));
         }
     }, [initialData]);
 
@@ -60,6 +74,7 @@ const MagazzinoStaging = ({ initialData, onConfirm, onCancel }) => {
 
     const addRow = () => {
         setRows([...rows, {
+            id: null, // Nuova riga manuale
             tempId: Date.now(),
             codice_articolo: '',
             prodotto: '',
@@ -75,14 +90,16 @@ const MagazzinoStaging = ({ initialData, onConfirm, onCancel }) => {
     };
 
     const handleConfirm = () => {
+        // Applica i dati dell'intestazione a TUTTE le righe e prepara il payload finale
         const finalData = rows.map(row => ({
             ...row,
-            // Sovrascriviamo le righe con i dati dell'intestazione corretti
+            // Sovrascriviamo le righe con i dati dell'intestazione globali
             fornitore: headerData.fornitore,
             riferimento_documento: headerData.riferimento_documento,
-            data_documento: headerData.data_documento, // Va nella colonna Data Doc
-            data_ricezione: headerData.data_ricezione, // Va nella colonna Data Inserimento/Ricezione
+            data_documento: headerData.data_documento,
+            data_ricezione: headerData.data_ricezione,
             note: headerData.note,
+            // (L'ID è già dentro row grazie allo spread ...row)
         }));
         onConfirm(finalData);
     };
@@ -93,13 +110,15 @@ const MagazzinoStaging = ({ initialData, onConfirm, onCancel }) => {
             const prz = parseFloat(item.prezzo_unitario) || 0;
             const sc = parseFloat(item.sconto) || 0;
             const iva = parseFloat(item.iva) || 0;
+            
             const nettoScontato = prz * (1 - sc/100);
             const totRiga = (qta * nettoScontato) * (1 + iva/100);
+            
             return acc + totRiga;
         }, 0).toFixed(2);
     };
 
-    // Stili
+    // Stili CSS
     const labelStyle = { display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#7f8c8d', marginBottom: '4px' };
     const inputHeaderStyle = { width: '100%', padding: '8px', border: '1px solid #bdc3c7', borderRadius: '4px', background: '#fff', fontSize:'14px' };
     const thStyle = { padding: '10px', textAlign: 'left', background:'#f1f2f6', borderBottom:'2px solid #ddd', fontSize:'12px', color:'#2c3e50', whiteSpace:'nowrap' };
@@ -109,14 +128,15 @@ const MagazzinoStaging = ({ initialData, onConfirm, onCancel }) => {
     return (
         <div style={{ background: 'white', padding: '25px', borderRadius: '15px', boxShadow: '0 5px 25px rgba(0,0,0,0.1)' }}>
             
+            {/* --- SEZIONE INTESTAZIONE --- */}
             <div style={{ marginBottom: 25, borderBottom: '1px solid #eee', paddingBottom: 20 }}>
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:15}}>
                     <div>
                         <h2 style={{ margin: 0, color:'#2c3e50', display:'flex', alignItems:'center', gap:10 }}>
-                            🧐 Revisione Bolla AI
+                            🧐 Revisione & Modifica Massiva
                         </h2>
                         <p style={{ margin:0, color:'#7f8c8d', fontSize:13 }}>
-                            Verifica intestazione. <b>Data Documento</b> = Data sulla carta. <b>Data Inserimento</b> = Oggi.
+                            Verifica intestazione. Le modifiche qui sopra verranno applicate a <b>tutte</b> le righe.
                         </p>
                     </div>
                     <div style={{textAlign:'right'}}>
@@ -157,7 +177,7 @@ const MagazzinoStaging = ({ initialData, onConfirm, onCancel }) => {
                         />
                     </div>
 
-                    {/* CAMPO 2: DATA INSERIMENTO (Oggi) */}
+                    {/* CAMPO 2: DATA INSERIMENTO */}
                     <div style={{ flex: 1, minWidth: '140px' }}>
                         <label style={{...labelStyle, color:'#27ae60'}}>📥 DATA INSERIMENTO</label>
                         <input 
@@ -170,7 +190,7 @@ const MagazzinoStaging = ({ initialData, onConfirm, onCancel }) => {
                 </div>
             </div>
 
-            {/* TABELLA */}
+            {/* --- TABELLA PRODOTTI --- */}
             <div style={{ overflowX: 'auto', maxHeight: '55vh', overflowY: 'auto', border:'1px solid #eee', borderRadius:8 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1200px' }}>
                     <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
@@ -191,7 +211,7 @@ const MagazzinoStaging = ({ initialData, onConfirm, onCancel }) => {
                         {rows.map(item => (
                             <tr key={item.tempId} style={{ background: '#fff' }}>
                                 <td style={{...tdStyle, textAlign: 'center'}}>
-                                    <button onClick={() => handleDeleteRow(item.tempId)} style={{ background: '#fff0f0', border: '1px solid #ffcccc', color: '#e74c3c', borderRadius:4, cursor: 'pointer', fontWeight:'bold', width:24, height:24, padding:0 }}>✕</button>
+                                    <button onClick={() => handleDeleteRow(item.tempId)} style={{ background: '#fff0f0', border: '1px solid #ffcccc', color: '#e74c3c', borderRadius:4, cursor: 'pointer', fontWeight:'bold', width:24, height:24, padding:0 }} title="Elimina riga">✕</button>
                                 </td>
                                 <td style={tdStyle}>
                                     <input type="text" value={item.codice_articolo || ''} onChange={(e) => handleRowChange(item.tempId, 'codice_articolo', e.target.value)} style={{...inputTableStyle, fontFamily:'monospace', fontSize:12}} />
@@ -217,7 +237,7 @@ const MagazzinoStaging = ({ initialData, onConfirm, onCancel }) => {
                                     </select>
                                 </td>
                                 <td style={tdStyle}>
-                                    <input type="date" value={item.scadenza ? item.scadenza.split('T')[0] : ''} onChange={(e) => handleRowChange(item.tempId, 'scadenza', e.target.value)} style={{...inputTableStyle, fontSize:12}} />
+                                    <input type="date" value={safeDate(item.scadenza)} onChange={(e) => handleRowChange(item.tempId, 'scadenza', e.target.value)} style={{...inputTableStyle, fontSize:12}} />
                                 </td>
                                 <td style={tdStyle}>
                                     <input type="text" value={item.lotto} onChange={(e) => handleRowChange(item.tempId, 'lotto', e.target.value)} style={inputTableStyle} />
@@ -239,7 +259,7 @@ const MagazzinoStaging = ({ initialData, onConfirm, onCancel }) => {
                     ❌ ANNULLA TUTTO
                 </button>
                 <button onClick={handleConfirm} style={{ flex: 3, padding: 15, background: 'linear-gradient(135deg, #27ae60 0%, #2ecc71 100%)', color: 'white', border: 'none', borderRadius: 8, fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', boxShadow:'0 4px 15px rgba(46, 204, 113, 0.4)' }}>
-                    ✅ CONFERMA E IMPORTA ({rows.length} Righe)
+                    ✅ CONFERMA E SALVA ({rows.length} Righe)
                 </button>
             </div>
         </div>

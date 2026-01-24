@@ -4,7 +4,6 @@ import MagazzinoDashboard from './MagazzinoDashboard';
 import MagazzinoCalendar from './MagazzinoCalendar';
 import MagazzinoUpload from './MagazzinoUpload';
 import MagazzinoList from './MagazzinoList';
-// IMPORTA IL NUOVO COMPONENTE DI STAGING
 import MagazzinoStaging from './MagazzinoStaging'; 
 
 // Helper date
@@ -14,14 +13,15 @@ const formatDateISO = (date) => date.toISOString().split('T')[0];
 const MagazzinoManager = ({ user, API_URL }) => {
     const [tab, setTab] = useState('lista'); // 'dashboard', 'calendario', 'lista', 'carico', 'staging'
     
-    // STATO PER FILTRARE LA LISTA TRAMITE CALENDARIO
+    // STATO PER FILTRARE LA LISTA (Calendario o Default)
     const [filtroData, setFiltroData] = useState(null); 
     
-    // STATO PER I DATI IN REVISIONE (AI SCAN)
+    // STATO PER I DATI IN REVISIONE (AI SCAN o EDIT MASSIVO)
     const [stagingData, setStagingData] = useState(null);
+    const [isBulkEditMode, setIsBulkEditMode] = useState(false); // Distingue tra "Nuovo Import" e "Modifica Massiva"
 
     const [stats, setStats] = useState({ fornitori: [], storico: [], top_prodotti: [] }); 
-    const [magazzinoReale, setMagazzinoReale] = useState([]); // Giacenze attuali
+    const [magazzinoReale, setMagazzinoReale] = useState([]); 
     const [assets, setAssets] = useState([]); 
     
     // Stati Modali
@@ -31,19 +31,26 @@ const MagazzinoManager = ({ user, API_URL }) => {
     const [previewDoc, setPreviewDoc] = useState(null); 
     const [isDownloading, setIsDownloading] = useState(false);
 
-    // Stato modifica
+    // Stato modifica singola
     const [recordDaModificare, setRecordDaModificare] = useState(null);
 
-    useEffect(() => { ricaricaDati(); }, []);
+    // Caricamento dati (incluso refresh al cambio filtro data)
+    useEffect(() => { ricaricaDati(); }, [filtroData]);
 
     const ricaricaDati = () => {
-        // 1. CARICA LO STORICO MOVIMENTI
-        fetch(`${API_URL}/api/haccp/merci/${user.id}`)
+        // 1. CARICA LO STORICO MOVIMENTI (HACCP MERCI)
+        // Se filtroData è null, il backend restituisce di default gli ultimi 7 giorni
+        let url = `${API_URL}/api/haccp/merci/${user.id}`;
+        if (filtroData) {
+            url += `?start=${filtroData}&end=${filtroData}`;
+        }
+
+        fetch(url)
             .then(r => r.json())
             .then(data => {
                 setStats(prev => ({
                     ...prev,
-                    storico: Array.isArray(data) ? data : []
+                    storico: Array.isArray(data) ? data : [] 
                 }));
             })
             .catch(console.error);
@@ -77,40 +84,66 @@ const MagazzinoManager = ({ user, API_URL }) => {
 
     // --- LOGICA CLICK CALENDARIO ---
     const onSelectDataCalendario = (dataIso) => {
-        setFiltroData(dataIso);
-        setTab('lista');
+        setFiltroData(dataIso); // Imposta filtro data specifico
+        setTab('lista');        
     };
 
-    const resetFiltro = () => setFiltroData(null);
+    const resetFiltro = () => {
+        setFiltroData(null); // Resetta al default (7 giorni)
+    };
 
     const gestisciModifica = (record) => {
         setRecordDaModificare(record);
         setTab('carico'); 
     };
 
-    // --- NUOVA LOGICA STAGING (SCAN -> REVISIONE -> SAVE) ---
-    
-    // 1. Riceve i dati dall'Upload (dopo la scansione AI)
-    const handleScanSuccess = (datiGrezzi) => {
-        setStagingData(datiGrezzi); // Salva i dati in memoria
-        setTab('staging');          // Cambia vista per la revisione
+    // --- NUOVA LOGICA: MODIFICA MASSIVA (BULK EDIT) ---
+    const handleBulkEdit = (selectedRows) => {
+        if (!selectedRows || selectedRows.length === 0) return;
+        setStagingData(selectedRows);
+        setIsBulkEditMode(true); // Attiva modalità aggiornamento
+        setTab('staging');
     };
 
-    // 2. Salva effettivamente nel DB dopo la conferma utente
+    // --- LOGICA STAGING (SCAN -> REVISIONE -> SAVE) ---
+    
+    // 1. Riceve i dati dall'Upload (Nuovo Import)
+    const handleScanSuccess = (datiGrezzi) => {
+        setStagingData(datiGrezzi);
+        setIsBulkEditMode(false); // Modalità nuovo inserimento
+        setTab('staging');
+    };
+
+    // 2. Salva o Aggiorna nel DB
     const handleStagingConfirm = async (datiFinali) => {
         try {
-            const res = await fetch(`${API_URL}/api/haccp/merci/import`, {
-                method: 'POST',
+            let url, method, body;
+
+            if (isBulkEditMode) {
+                // MODALITÀ AGGIORNAMENTO
+                url = `${API_URL}/api/haccp/merci/update-bulk`;
+                method = 'POST';
+                body = JSON.stringify({ merci: datiFinali });
+            } else {
+                // MODALITÀ NUOVO IMPORT
+                url = `${API_URL}/api/haccp/merci/import`;
+                method = 'POST';
+                body = JSON.stringify({ merci: datiFinali });
+            }
+
+            const res = await fetch(url, {
+                method: method,
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ merci: datiFinali })
+                body: body
             });
             const json = await res.json();
             
             if (json.success) {
-                alert("✅ Carico salvato con successo!");
-                setStagingData(null); // Pulisce staging
-                ricaricaDati();       // Aggiorna tabella
-                setTab('lista');      // Torna alla lista
+                alert(isBulkEditMode ? "✅ Modifiche salvate con successo!" : "✅ Carico salvato con successo!");
+                setStagingData(null); 
+                setIsBulkEditMode(false);
+                ricaricaDati();       
+                setTab('lista');      
             } else {
                 alert("Errore salvataggio: " + json.error);
             }
@@ -188,10 +221,8 @@ const MagazzinoManager = ({ user, API_URL }) => {
                     {['dashboard','calendario','lista','carico'].map(t => (
                         <button key={t} onClick={() => { 
                             setTab(t); 
-                            // Se clicco manualmente "lista", resetto il filtro data
-                            if(t === 'lista') resetFiltro(); 
+                            if(t === 'lista') resetFiltro(); // Reset se clicco Tab Lista
                             if(t!=='carico') setRecordDaModificare(null); 
-                            // Se esco dalla tab staging manualmente, resetto i dati (opzionale)
                         }} style={{
                             padding:'8px 15px', borderRadius:20, cursor:'pointer', border:'1px solid #ccc',
                             background: tab===t ? '#34495e' : 'white', color: tab===t ? 'white' : '#333', textTransform:'capitalize', fontWeight: tab===t?'bold':'normal'
@@ -203,12 +234,7 @@ const MagazzinoManager = ({ user, API_URL }) => {
             {/* CONTENT */}
             {tab === 'dashboard' && <MagazzinoDashboard stats={stats} />}
             
-            {tab === 'calendario' && (
-                <MagazzinoCalendar 
-                    stats={stats} 
-                    onDateClick={onSelectDataCalendario}
-                />
-            )}
+            {tab === 'calendario' && <MagazzinoCalendar stats={stats} onDateClick={onSelectDataCalendario} />}
 
             {tab === 'carico' && (
                 <MagazzinoUpload 
@@ -218,20 +244,20 @@ const MagazzinoManager = ({ user, API_URL }) => {
                     recordDaModificare={recordDaModificare}
                     setRecordDaModificare={setRecordDaModificare}
                     onSuccess={() => { setRecordDaModificare(null); setTab('lista'); }}
-                    // PASSO LA FUNZIONE PER GESTIRE LA SCANSIONE AI
                     onScanComplete={handleScanSuccess}
                 />
             )}
 
-            {/* VISTA DI REVISIONE (STAGING) */}
+            {/* VISTA DI REVISIONE (STAGING & BULK EDIT) */}
             {tab === 'staging' && stagingData && (
                 <MagazzinoStaging 
                     initialData={stagingData}
                     onConfirm={handleStagingConfirm}
                     onCancel={() => { 
-                        if(window.confirm("Se annulli, perderai i dati scansionati. Continuare?")) {
+                        if(window.confirm("Annullare le modifiche?")) {
                             setStagingData(null); 
-                            setTab('carico'); 
+                            // Se eravamo in edit, torna alla lista, altrimenti al carico
+                            setTab(isBulkEditMode ? 'lista' : 'carico'); 
                         }
                     }}
                 />
@@ -244,6 +270,7 @@ const MagazzinoManager = ({ user, API_URL }) => {
                     API_URL={API_URL}
                     handleFileAction={handleFileAction}
                     onEdit={gestisciModifica}
+                    onBulkEdit={handleBulkEdit} // Passiamo la funzione per modifica massiva
                     openDownloadModal={() => setShowDownloadModal(true)}
                     filtroDataEsterno={filtroData}
                     resetFiltroEsterno={resetFiltro}

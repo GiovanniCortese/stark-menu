@@ -17,6 +17,9 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
         return now.toISOString().slice(0, 16);
     };
 
+    // Helper per evitare valori null/undefined nei campi input
+    const safeVal = (val, def = '') => (val !== undefined && val !== null) ? val : def;
+
     // Form Completo
     const [formData, setFormData] = useState({
         id: null, 
@@ -43,41 +46,86 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
         operatore: user.nome || 'Admin'
     });
 
+    // --- CARICAMENTO DATI PER MODIFICA (FIX ROBUSTO) ---
     useEffect(() => {
         if (recordDaModificare) {
+            console.log("Caricamento Record:", recordDaModificare);
+
             let dataIns = getNowLocalISO();
+            // Gestione data ricezione sicura
             if(recordDaModificare.data_ricezione) {
-                const d = new Date(recordDaModificare.data_ricezione);
-                d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-                dataIns = d.toISOString().slice(0, 16);
+                try {
+                    const d = new Date(recordDaModificare.data_ricezione);
+                    // Controllo validità data
+                    if(!isNaN(d.getTime())) {
+                        d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+                        dataIns = d.toISOString().slice(0, 16);
+                    }
+                } catch(e) { console.error("Errore parsing data ricezione", e); }
+            }
+
+            // Gestione data documento sicura
+            let dataDoc = new Date().toISOString().split('T')[0];
+            if (recordDaModificare.data_documento) {
+                dataDoc = recordDaModificare.data_documento.split('T')[0];
+            } else if (recordDaModificare.data_documento_iso) {
+                dataDoc = recordDaModificare.data_documento_iso;
             }
 
             setFormData(prev => ({
                 ...prev,
-                ...recordDaModificare,
                 id: recordDaModificare.id,
+                ristorante_id: recordDaModificare.ristorante_id || user.id,
+                
+                // Date
                 data_ricezione: dataIns,
-                data_documento: recordDaModificare.data_documento ? recordDaModificare.data_documento.split('T')[0] : prev.data_documento,
-                riferimento_documento: recordDaModificare.riferimento_documento || '',
+                data_documento: dataDoc,
+                
+                // Campi Testo (safeVal evita crash su null)
+                riferimento_documento: safeVal(recordDaModificare.riferimento_documento),
+                fornitore: safeVal(recordDaModificare.fornitore),
+                codice_articolo: safeVal(recordDaModificare.codice_articolo),
+                prodotto: safeVal(recordDaModificare.prodotto),
+                lotto: safeVal(recordDaModificare.lotto),
+                unita_misura: safeVal(recordDaModificare.unita_misura, 'Pz'),
+                note: safeVal(recordDaModificare.note),
+                allegato_url: safeVal(recordDaModificare.allegato_url),
+                
+                // Campi Numerici
+                quantita: safeVal(recordDaModificare.quantita, 0),
+                prezzo_unitario: safeVal(recordDaModificare.prezzo_unitario, 0),
+                sconto: safeVal(recordDaModificare.sconto, 0),
+                iva: safeVal(recordDaModificare.iva, 10),
+                
+                // Totali (verranno sovrascritti dal calcolo automatico, ma inizializziamoli)
+                totale_netto: safeVal(recordDaModificare.totale_netto, 0),
+                totale_iva: safeVal(recordDaModificare.totale_iva, 0),
+                totale_lordo: safeVal(recordDaModificare.totale_lordo, 0),
+                
                 scadenza: recordDaModificare.scadenza ? recordDaModificare.scadenza.split('T')[0] : '',
-                prezzo_unitario: recordDaModificare.prezzo_unitario || '',
-                totale_netto: recordDaModificare.totale_netto || '',
-                totale_iva: recordDaModificare.totale_iva || '',
-                totale_lordo: recordDaModificare.totale_lordo || ''
+                is_haccp: recordDaModificare.is_haccp !== undefined ? recordDaModificare.is_haccp : true
             }));
         }
     }, [recordDaModificare]);
 
+    // --- CALCOLATRICE AUTOMATICA ---
     useEffect(() => {
         const qta = parseFloat(formData.quantita) || 0;
-        const unitNetto = parseFloat(formData.prezzo_unitario) || 0;
+        const unitListino = parseFloat(formData.prezzo_unitario) || 0;
+        const sc = parseFloat(formData.sconto) || 0;
         const ivaPerc = parseFloat(formData.iva) || 0;
+        
+        // Calcolo Netto Scontato
+        const unitNetto = unitListino * (1 - sc/100);
+        
         const totNetto = qta * unitNetto;
         const totIva = totNetto * (ivaPerc / 100);
         const totLordo = totNetto + totIva;
+
         const nuovoNettoStr = totNetto.toFixed(2);
         
-        if (formData.totale_netto !== nuovoNettoStr && (qta > 0 || unitNetto > 0)) {
+        // Aggiorna solo se cambia il valore per evitare loop
+        if (formData.totale_netto !== nuovoNettoStr && (qta > 0 || unitListino > 0)) {
             setFormData(prev => ({
                 ...prev,
                 totale_netto: nuovoNettoStr,
@@ -85,9 +133,9 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
                 totale_lordo: totLordo.toFixed(2)
             }));
         }
-    }, [formData.quantita, formData.prezzo_unitario, formData.iva]);
+    }, [formData.quantita, formData.prezzo_unitario, formData.sconto, formData.iva]);
 
-    // --- FUNZIONE SCAN CORRECTA ---
+    // --- FUNZIONE SCAN ---
     const handleScan = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -97,10 +145,12 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
         fd.append('photo', file);
         
         try {
+            // 1. Upload Immagine
             const uploadRes = await fetch(`${API_URL}/api/upload`, { method: 'POST', body: fd });
             const uploadData = await uploadRes.json();
             const urlAllegato = uploadData.url || '';
 
+            // 2. Analisi AI
             const res = await fetch(`${API_URL}/api/haccp/scan-bolla`, { method: 'POST', body: fd });
             const result = await res.json();
 
@@ -114,19 +164,15 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
                     return;
                 }
 
-                // FIX QUI: Mappatura esplicita delle due date
+                // 3. Prepare Data for Staging
                 const merciDaRevisionare = prodottiTrovati.map(prod => ({
                     ristorante_id: user.id,
                     
-                    // 1. DATA FATTURA (Dall'AI)
-                    // Se l'AI ha trovato data_documento_iso usiamo quella, altrimenti stringa vuota
+                    // DATE
                     data_documento: d.data_documento_iso || '', 
-
-                    // 2. DATA INSERIMENTO (Oggi)
-                    // Usiamo la data odierna locale YYYY-MM-DD
-                    data_ricezione: new Date().toISOString().split('T')[0],
-
+                    data_ricezione: new Date().toISOString().split('T')[0], // Oggi
                     ora: new Date().toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'}),
+                    
                     fornitore: d.fornitore || 'Fornitore Sconosciuto',
                     riferimento_documento: d.numero_documento || '',
                     
@@ -184,26 +230,31 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
             const payload = {
                 ...formData,
                 prezzo_unitario: parseFloat(formData.prezzo_unitario) || 0,
+                sconto: parseFloat(formData.sconto) || 0,
                 totale_netto: parseFloat(formData.totale_netto) || 0,
                 totale_iva: parseFloat(formData.totale_iva) || 0,
                 totale_lordo: parseFloat(formData.totale_lordo) || 0,
-                prezzo: parseFloat(formData.totale_lordo) || 0,
                 ora: new Date(formData.data_ricezione).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'})
             };
 
             let url = formData.id 
-                ? `${API_URL}/api/magazzino/update-full/${formData.id}`
-                : `${API_URL}/api/haccp/merci/import`;
+                ? `${API_URL}/api/haccp/merci/${formData.id}` // PUT Update HACCP
+                : `${API_URL}/api/haccp/merci`; // POST Nuovo (Singolo)
             
-            const bodyData = formData.id ? payload : { merci: [payload] };
+            // Nota: Se è nuovo inserimento manuale singolo, usiamo la rotta singola o import array?
+            // Per coerenza con la logica "import", se è nuovo, lo incapsuliamo.
+            // MA se la rotta 'merci' singola esiste ed è buona, usiamola. 
+            // Nel tuo backend hai: router.post('/api/haccp/merci') e router.put('/api/haccp/merci/:id')
+            
             const method = formData.id ? 'PUT' : 'POST';
 
             const res = await fetch(url, {
                 method: method,
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(bodyData)
+                body: JSON.stringify(payload)
             });
             const jsonRes = await res.json();
+            
             if (jsonRes.success) {
                 alert("✅ Salvato!");
                 if (ricaricaDati) ricaricaDati(); 
@@ -267,9 +318,13 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
                 <div style={{background:'#fff', border:'1px solid #eee', padding:15, borderRadius:8, marginBottom:20}}>
                     <h4 style={{marginTop:0, fontSize:14, color:'#27ae60'}}>📦 Dati Prodotto (Manuale)</h4>
                     <div style={rowStyle}>
+                        <div style={{...colStyle, flex:0.5}}>
+                            <label style={labelStyle}>Cod. Articolo</label>
+                            <input type="text" style={{...inputStyle, background:'#f9f9f9'}} value={formData.codice_articolo} onChange={e => setFormData({ ...formData, codice_articolo: e.target.value })} placeholder="Opz." />
+                        </div>
                         <div style={{...colStyle, flex:2}}>
                             <label style={labelStyle}>Prodotto</label>
-                            <input type="text" required style={inputStyle} value={formData.prodotto} onChange={e => setFormData({ ...formData, prodotto: e.target.value })} />
+                            <input type="text" required style={{...inputStyle, fontWeight:'bold'}} value={formData.prodotto} onChange={e => setFormData({ ...formData, prodotto: e.target.value })} />
                         </div>
                         <div style={colStyle}>
                             <label style={labelStyle}>Lotto</label>
@@ -284,17 +339,25 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
                     <div style={rowStyle}>
                         <div style={colStyle}>
                             <label style={labelStyle}>Quantità</label>
-                            <input type="number" step="0.01" required style={inputStyle} value={formData.quantita} onChange={e => setFormData({ ...formData, quantita: e.target.value })} />
+                            <input type="number" step="0.01" required style={{...inputStyle, textAlign:'center', fontWeight:'bold'}} value={formData.quantita} onChange={e => setFormData({ ...formData, quantita: e.target.value })} />
                         </div>
                         <div style={colStyle}>
                             <label style={labelStyle}>Unità</label>
-                            <select style={inputStyle} value={formData.unita_misura} onChange={e => setFormData({ ...formData, unita_misura: e.target.value })}>
-                                <option value="Pz">Pezzi (Pz)</option><option value="Kg">Kg</option><option value="Lt">Litri</option><option value="Ct">Cartoni</option>
-                            </select>
+                            <input type="text" list="unita_list" style={{...inputStyle, textAlign:'center'}} value={formData.unita_misura} onChange={e => setFormData({ ...formData, unita_misura: e.target.value })} />
+                            <datalist id="unita_list">
+                                <option value="Pz" />
+                                <option value="Kg" />
+                                <option value="Lt" />
+                                <option value="Ct" />
+                            </datalist>
                         </div>
                         <div style={colStyle}>
-                            <label style={labelStyle}>€ Netto (Unitario)</label>
+                            <label style={labelStyle}>€ Netto (Unit)</label>
                             <input type="number" step="0.001" required style={inputStyle} value={formData.prezzo_unitario} onChange={e => setFormData({ ...formData, prezzo_unitario: e.target.value })} />
+                        </div>
+                        <div style={{...colStyle, maxWidth:80}}>
+                            <label style={labelStyle}>Sc.%</label>
+                            <input type="number" step="0.01" style={{...inputStyle, color:'red'}} value={formData.sconto} onChange={e => setFormData({ ...formData, sconto: e.target.value })} />
                         </div>
                         <div style={colStyle}>
                             <label style={labelStyle}>IVA %</label>
