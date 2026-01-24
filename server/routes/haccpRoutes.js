@@ -367,20 +367,118 @@ router.post('/api/haccp/merci/import', async (req, res) => {
 });
 
 // Update standard (solo campi HACCP)
+// AGGIORNAMENTO COMPLETO DELLA RIGA (Modifica Manuale)
 router.put('/api/haccp/merci/:id', async (req, res) => { 
     try { 
-        const { data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione, prezzo, prezzo_unitario, iva } = req.body; 
+        // 1. Recuperiamo tutti i dati dal frontend
+        const { 
+            data_ricezione, // Data Inserimento/Arrivo Merce
+            data_documento, // Data Fattura (NUOVO)
+            riferimento_documento, // Numero Fattura (NUOVO)
+            fornitore, 
+            prodotto, 
+            codice_articolo, // (NUOVO)
+            lotto, 
+            scadenza, 
+            temperatura, 
+            conforme, 
+            integro, 
+            note, 
+            operatore, 
+            quantita, 
+            unita_misura, // (NUOVO)
+            allegato_url, 
+            destinazione, 
+            // Prezzi e Totali
+            prezzo_unitario, // Listino
+            sconto, // (NUOVO)
+            iva // Aliquota %
+        } = req.body; 
+
+        // 2. Normalizzazione Numeri (Per evitare errori di calcolo)
+        const qta = parseFloat(quantita) || 0;
+        const przListino = parseFloat(prezzo_unitario) || 0;
+        const sc = parseFloat(sconto) || 0;
+        const aliIva = parseFloat(iva) || 0;
+
+        // 3. RICALCOLO DEI TOTALI (Logica identica all'Import)
+        // Prezzo unitario scontato
+        const prezzoNettoUnitario = przListino * (1 - (sc / 100));
+        
+        // Totali riga
+        const totaleNetto = qta * prezzoNettoUnitario;
+        const totaleIva = totaleNetto * (aliIva / 100);
+        const totaleLordo = totaleNetto + totaleIva;
+
+        // 4. ESECUZIONE UPDATE
+        // Nota: Aggiorniamo sia i campi descrittivi che quelli contabili calcolati
         await pool.query(
             `UPDATE haccp_merci SET 
-                data_ricezione=$1, fornitore=$2, prodotto=$3, lotto=$4, scadenza=$5, 
-                temperatura=$6, conforme=$7, integro=$8, note=$9, operatore=$10, 
-                quantita=$11, allegato_url=$12, destinazione=$13, prezzo=$14, 
-                prezzo_unitario=$15, iva=$16 
-            WHERE id=$17`, 
-            [data_ricezione, fornitore, prodotto, lotto, scadenza, temperatura, conforme, integro, note, operatore, quantita, allegato_url, destinazione, prezzo || 0, prezzo_unitario || 0, iva || 0, req.params.id]
+                data_ricezione=$1, 
+                data_documento=$2,
+                riferimento_documento=$3,
+                fornitore=$4, 
+                prodotto=$5, 
+                codice_articolo=$6,
+                lotto=$7, 
+                scadenza=$8, 
+                temperatura=$9, 
+                conforme=$10, 
+                integro=$11, 
+                note=$12, 
+                operatore=$13, 
+                quantita=$14, 
+                unita_misura=$15,
+                allegato_url=$16, 
+                destinazione=$17, 
+                
+                -- Sezione Contabile Ricalcolata
+                prezzo_unitario=$18, 
+                sconto=$19,
+                iva=$20,
+                prezzo_unitario_netto=$21,
+                totale_netto=$22,
+                totale_iva=$23,
+                totale_lordo=$24
+
+            WHERE id=$25`, 
+            [
+                data_ricezione, // $1
+                data_documento || data_ricezione, // $2 (Se manca data doc, usa data ricezione)
+                riferimento_documento || '', // $3
+                fornitore, // $4
+                prodotto, // $5
+                codice_articolo || '', // $6
+                lotto, // $7
+                scadenza || null, // $8
+                temperatura, // $9
+                conforme, // $10
+                integro, // $11
+                note, // $12
+                operatore, // $13
+                qta, // $14
+                unita_misura || '', // $15
+                allegato_url, // $16
+                destinazione, // $17
+                
+                // Valori Numerici
+                przListino, // $18
+                sc, // $19
+                aliIva, // $20
+                prezzoNettoUnitario, // $21
+                totaleNetto, // $22
+                totaleIva, // $23
+                totaleLordo, // $24
+                
+                req.params.id // $25 (ID della riga)
+            ]
         ); 
-        res.json({success:true}); 
-    } catch(e) { res.status(500).json({error:"Err"}); } 
+        
+        res.json({ success: true, message: "Riga aggiornata e ricalcolata" }); 
+    } catch(e) { 
+        console.error("Errore Update HACCP:", e);
+        res.status(500).json({ error: "Errore salvataggio: " + e.message }); 
+    } 
 });
 
 router.delete('/api/haccp/merci/:id', async (req, res) => { try { await pool.query("DELETE FROM haccp_merci WHERE id=$1", [req.params.id]); res.json({success:true}); } catch(e){ res.status(500).json({error:"Err"}); } });
@@ -716,6 +814,31 @@ router.get('/api/haccp/export/:tipo/:ristorante_id', async (req, res) => {
         res.setHeader('Content-Disposition', `attachment; filename="haccp_${tipo}.xlsx"`);
         res.send(buffer);
     } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/api/db-fix-haccp-columns-final', async (req, res) => {
+    try {
+        const client = await pool.connect();
+        try {
+            // Aggiungiamo TUTTE le colonne che potrebbero mancare in HACCP_MERCI
+            await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS codice_articolo TEXT DEFAULT ''");
+            await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS sconto NUMERIC(5,2) DEFAULT 0");
+            await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS data_documento DATE DEFAULT CURRENT_DATE");
+            await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS riferimento_documento TEXT DEFAULT ''");
+            
+            // Colonne Totali (se mancavano)
+            await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS prezzo_unitario_netto NUMERIC DEFAULT 0");
+            await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS totale_netto NUMERIC DEFAULT 0");
+            await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS totale_iva NUMERIC DEFAULT 0");
+            await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS totale_lordo NUMERIC DEFAULT 0");
+
+            res.send("✅ DB FIX COMPLETATO: Tabella haccp_merci allineata con codice_articolo e totali.");
+        } finally {
+            client.release();
+        }
+    } catch (e) {
+        res.status(500).send("Errore DB: " + e.message);
+    }
 });
 
 module.exports = router;
