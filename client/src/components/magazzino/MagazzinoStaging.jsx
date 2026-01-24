@@ -2,43 +2,53 @@
 import React, { useState, useEffect } from 'react';
 
 const MagazzinoStaging = ({ initialData, onConfirm, onCancel }) => {
-    // --- STATO INTESTAZIONE (Dati comuni a tutte le righe) ---
+    // Helper per ottenere la data di OGGI in formato YYYY-MM-DD (Fuso Italiano corretto)
+    const getTodayItaly = () => {
+        const d = new Date();
+        const offset = d.getTimezoneOffset() * 60000; // Correzione offset in millisecondi
+        return new Date(d.getTime() - offset).toISOString().split('T')[0];
+    };
+
+    // --- STATO INTESTAZIONE ---
     const [headerData, setHeaderData] = useState({
         fornitore: '',
         riferimento_documento: '',
-        data_documento: '',
-        data_ricezione: '',
+        data_documento: '', // Data scritta sulla FATTURA
+        data_ricezione: '', // Data di INSERIMENTO (Oggi)
         note: ''
     });
 
-    // --- STATO RIGHE (Prodotti) ---
     const [rows, setRows] = useState([]);
 
-    // --- INIT: Estrae i dati header dalla prima riga e popola la tabella ---
     useEffect(() => {
         if (initialData && initialData.length > 0) {
             const first = initialData[0];
             
-            // Popola Header con i dati della prima riga (l'AI li mette uguali per tutti)
+            // LOGICA DI ASSEGNAZIONE DATE CORRETTA:
+            // 1. data_documento = Quella letta dall'AI sul foglio (se c'è), altrimenti vuota.
+            // 2. data_ricezione = Sempre OGGI (data di carico a sistema), modificabile.
+            
             setHeaderData({
                 fornitore: first.fornitore || '',
                 riferimento_documento: first.riferimento_documento || '',
-                data_documento: first.data_documento ? first.data_documento.split('T')[0] : '', // Solo YYYY-MM-DD
-                data_ricezione: first.data_ricezione ? first.data_ricezione.split('T')[0] : new Date().toISOString().split('T')[0],
+                
+                // Se l'AI ha letto una data documento, la usiamo. Altrimenti vuota.
+                data_documento: first.data_documento ? first.data_documento.split('T')[0] : '', 
+                
+                // Questa è la data di "Carico Magazzino", di default mettiamo OGGI
+                data_ricezione: getTodayItaly(),
+                
                 note: first.note || ''
             });
 
-            // Aggiungi tempId univoco per gestione React
             setRows(initialData.map((item, idx) => ({ ...item, tempId: Date.now() + idx })));
         }
     }, [initialData]);
 
-    // --- GESTIONE MODIFICHE HEADER ---
     const handleHeaderChange = (field, value) => {
         setHeaderData(prev => ({ ...prev, [field]: value }));
     };
 
-    // --- GESTIONE MODIFICHE RIGHE ---
     const handleRowChange = (id, field, value) => {
         setRows(prev => prev.map(item => 
             item.tempId === id ? { ...item, [field]: value } : item
@@ -65,40 +75,32 @@ const MagazzinoStaging = ({ initialData, onConfirm, onCancel }) => {
         }]);
     };
 
-    // --- CONFERMA FINALE ---
     const handleConfirm = () => {
-        // Unisce i dati dell'Header modificati a OGNI riga prima di salvare
         const finalData = rows.map(row => ({
             ...row,
-            // Sovrascrive i dati riga con quelli dell'header globale
+            // Sovrascriviamo le righe con i dati dell'intestazione corretti
             fornitore: headerData.fornitore,
             riferimento_documento: headerData.riferimento_documento,
-            data_documento: headerData.data_documento,
-            data_ricezione: headerData.data_ricezione,
+            data_documento: headerData.data_documento, // Va nella colonna Data Doc
+            data_ricezione: headerData.data_ricezione, // Va nella colonna Data Inserimento/Ricezione
             note: headerData.note,
-            // Ricalcola totali per sicurezza (se modificati qta/prezzo)
-            // (Il backend lo rifà, ma per pulizia lo facciamo anche qui)
         }));
-
         onConfirm(finalData);
     };
 
-    // --- CALCOLO TOTALE DOCUMENTO (LIVE) ---
     const calculateTotal = () => {
         return rows.reduce((acc, item) => {
             const qta = parseFloat(item.quantita) || 0;
             const prz = parseFloat(item.prezzo_unitario) || 0;
             const sc = parseFloat(item.sconto) || 0;
             const iva = parseFloat(item.iva) || 0;
-            
             const nettoScontato = prz * (1 - sc/100);
             const totRiga = (qta * nettoScontato) * (1 + iva/100);
-            
             return acc + totRiga;
         }, 0).toFixed(2);
     };
 
-    // Stili CSS
+    // Stili
     const labelStyle = { display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#7f8c8d', marginBottom: '4px' };
     const inputHeaderStyle = { width: '100%', padding: '8px', border: '1px solid #bdc3c7', borderRadius: '4px', background: '#fff', fontSize:'14px' };
     const thStyle = { padding: '10px', textAlign: 'left', background:'#f1f2f6', borderBottom:'2px solid #ddd', fontSize:'12px', color:'#2c3e50', whiteSpace:'nowrap' };
@@ -108,7 +110,6 @@ const MagazzinoStaging = ({ initialData, onConfirm, onCancel }) => {
     return (
         <div style={{ background: 'white', padding: '25px', borderRadius: '15px', boxShadow: '0 5px 25px rgba(0,0,0,0.1)' }}>
             
-            {/* --- INTESTAZIONE GLOBALE DOCUMENTO --- */}
             <div style={{ marginBottom: 25, borderBottom: '1px solid #eee', paddingBottom: 20 }}>
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:15}}>
                     <div>
@@ -116,7 +117,7 @@ const MagazzinoStaging = ({ initialData, onConfirm, onCancel }) => {
                             🧐 Revisione Bolla AI
                         </h2>
                         <p style={{ margin:0, color:'#7f8c8d', fontSize:13 }}>
-                            Controlla l'intestazione e i prodotti prima di importare nel database.
+                            Verifica intestazione. <b>Data Documento</b> = Data sulla carta. <b>Data Inserimento</b> = Oggi.
                         </p>
                     </div>
                     <div style={{textAlign:'right'}}>
@@ -136,7 +137,7 @@ const MagazzinoStaging = ({ initialData, onConfirm, onCancel }) => {
                         />
                     </div>
                     <div style={{ flex: 1, minWidth: '120px' }}>
-                        <label style={labelStyle}>N° DOCUMENTO</label>
+                        <label style={labelStyle}>N° DOCUMENTO (FATTURA)</label>
                         <input 
                             type="text" 
                             value={headerData.riferimento_documento} 
@@ -145,28 +146,32 @@ const MagazzinoStaging = ({ initialData, onConfirm, onCancel }) => {
                             placeholder="Es. 1024/A"
                         />
                     </div>
-                    <div style={{ flex: 1, minWidth: '130px' }}>
-                        <label style={labelStyle}>DATA DOCUMENTO</label>
+                    
+                    {/* CAMPO 1: DATA DOCUMENTO (Dalla Carta) */}
+                    <div style={{ flex: 1, minWidth: '140px' }}>
+                        <label style={{...labelStyle, color:'#e67e22'}}>📅 DATA FATTURA</label>
                         <input 
                             type="date" 
                             value={headerData.data_documento} 
                             onChange={(e) => handleHeaderChange('data_documento', e.target.value)} 
-                            style={inputHeaderStyle} 
+                            style={{...inputHeaderStyle, borderBottom:'2px solid #e67e22'}} 
                         />
                     </div>
-                    <div style={{ flex: 1, minWidth: '130px' }}>
-                        <label style={labelStyle}>DATA RICEZIONE</label>
+
+                    {/* CAMPO 2: DATA INSERIMENTO (Oggi) */}
+                    <div style={{ flex: 1, minWidth: '140px' }}>
+                        <label style={{...labelStyle, color:'#27ae60'}}>📥 DATA INSERIMENTO</label>
                         <input 
                             type="date" 
                             value={headerData.data_ricezione} 
                             onChange={(e) => handleHeaderChange('data_ricezione', e.target.value)} 
-                            style={inputHeaderStyle} 
+                            style={{...inputHeaderStyle, borderBottom:'2px solid #27ae60'}} 
                         />
                     </div>
                 </div>
             </div>
 
-            {/* --- TABELLA PRODOTTI --- */}
+            {/* TABELLA */}
             <div style={{ overflowX: 'auto', maxHeight: '55vh', overflowY: 'auto', border:'1px solid #eee', borderRadius:8 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1200px' }}>
                     <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
@@ -187,90 +192,36 @@ const MagazzinoStaging = ({ initialData, onConfirm, onCancel }) => {
                         {rows.map(item => (
                             <tr key={item.tempId} style={{ background: '#fff' }}>
                                 <td style={{...tdStyle, textAlign: 'center'}}>
-                                    <button 
-                                        onClick={() => handleDeleteRow(item.tempId)} 
-                                        style={{ background: '#fff0f0', border: '1px solid #ffcccc', color: '#e74c3c', borderRadius:4, cursor: 'pointer', fontWeight:'bold', width:24, height:24, padding:0 }}
-                                        title="Elimina Riga"
-                                    >
-                                        ✕
-                                    </button>
+                                    <button onClick={() => handleDeleteRow(item.tempId)} style={{ background: '#fff0f0', border: '1px solid #ffcccc', color: '#e74c3c', borderRadius:4, cursor: 'pointer', fontWeight:'bold', width:24, height:24, padding:0 }}>✕</button>
                                 </td>
                                 <td style={tdStyle}>
-                                    <input 
-                                        type="text" 
-                                        value={item.codice_articolo || ''} 
-                                        onChange={(e) => handleRowChange(item.tempId, 'codice_articolo', e.target.value)} 
-                                        style={{...inputTableStyle, fontFamily:'monospace', fontSize:12}} 
-                                    />
+                                    <input type="text" value={item.codice_articolo || ''} onChange={(e) => handleRowChange(item.tempId, 'codice_articolo', e.target.value)} style={{...inputTableStyle, fontFamily:'monospace', fontSize:12}} />
                                 </td>
                                 <td style={tdStyle}>
-                                    <input 
-                                        type="text" 
-                                        value={item.prodotto} 
-                                        onChange={(e) => handleRowChange(item.tempId, 'prodotto', e.target.value)} 
-                                        style={{...inputTableStyle, fontWeight:'500'}} 
-                                    />
+                                    <input type="text" value={item.prodotto} onChange={(e) => handleRowChange(item.tempId, 'prodotto', e.target.value)} style={{...inputTableStyle, fontWeight:'500'}} />
                                 </td>
                                 <td style={tdStyle}>
-                                    <input 
-                                        type="number" step="0.01" 
-                                        value={item.quantita} 
-                                        onChange={(e) => handleRowChange(item.tempId, 'quantita', e.target.value)} 
-                                        style={{...inputTableStyle, textAlign:'center', fontWeight:'bold'}} 
-                                    />
+                                    <input type="number" step="0.01" value={item.quantita} onChange={(e) => handleRowChange(item.tempId, 'quantita', e.target.value)} style={{...inputTableStyle, textAlign:'center', fontWeight:'bold'}} />
                                 </td>
                                 <td style={tdStyle}>
-                                    <input 
-                                        type="text" 
-                                        value={item.unita_misura} 
-                                        onChange={(e) => handleRowChange(item.tempId, 'unita_misura', e.target.value)} 
-                                        style={{...inputTableStyle, textAlign:'center'}} 
-                                        placeholder="Pz/Kg"
-                                    />
+                                    <input type="text" value={item.unita_misura} onChange={(e) => handleRowChange(item.tempId, 'unita_misura', e.target.value)} style={{...inputTableStyle, textAlign:'center'}} />
                                 </td>
                                 <td style={tdStyle}>
-                                    <input 
-                                        type="number" step="0.001" 
-                                        value={item.prezzo_unitario} 
-                                        onChange={(e) => handleRowChange(item.tempId, 'prezzo_unitario', e.target.value)} 
-                                        style={inputTableStyle} 
-                                    />
+                                    <input type="number" step="0.001" value={item.prezzo_unitario} onChange={(e) => handleRowChange(item.tempId, 'prezzo_unitario', e.target.value)} style={inputTableStyle} />
                                 </td>
                                 <td style={tdStyle}>
-                                    <input 
-                                        type="number" step="0.01" 
-                                        value={item.sconto} 
-                                        onChange={(e) => handleRowChange(item.tempId, 'sconto', e.target.value)} 
-                                        style={{...inputTableStyle, color: item.sconto > 0 ? '#e74c3c' : '#ccc'}} 
-                                    />
+                                    <input type="number" step="0.01" value={item.sconto} onChange={(e) => handleRowChange(item.tempId, 'sconto', e.target.value)} style={{...inputTableStyle, color: item.sconto > 0 ? '#e74c3c' : '#ccc'}} />
                                 </td>
                                 <td style={tdStyle}>
-                                    <select 
-                                        value={item.iva} 
-                                        onChange={(e) => handleRowChange(item.tempId, 'iva', e.target.value)} 
-                                        style={inputTableStyle}
-                                    >
-                                        <option value="4">4%</option>
-                                        <option value="10">10%</option>
-                                        <option value="22">22%</option>
-                                        <option value="0">0%</option>
+                                    <select value={item.iva} onChange={(e) => handleRowChange(item.tempId, 'iva', e.target.value)} style={inputTableStyle}>
+                                        <option value="4">4%</option><option value="10">10%</option><option value="22">22%</option><option value="0">0%</option>
                                     </select>
                                 </td>
                                 <td style={tdStyle}>
-                                    <input 
-                                        type="date" 
-                                        value={item.scadenza ? item.scadenza.split('T')[0] : ''} 
-                                        onChange={(e) => handleRowChange(item.tempId, 'scadenza', e.target.value)} 
-                                        style={{...inputTableStyle, fontSize:12}} 
-                                    />
+                                    <input type="date" value={item.scadenza ? item.scadenza.split('T')[0] : ''} onChange={(e) => handleRowChange(item.tempId, 'scadenza', e.target.value)} style={{...inputTableStyle, fontSize:12}} />
                                 </td>
                                 <td style={tdStyle}>
-                                    <input 
-                                        type="text" 
-                                        value={item.lotto} 
-                                        onChange={(e) => handleRowChange(item.tempId, 'lotto', e.target.value)} 
-                                        style={inputTableStyle} 
-                                    />
+                                    <input type="text" value={item.lotto} onChange={(e) => handleRowChange(item.tempId, 'lotto', e.target.value)} style={inputTableStyle} />
                                 </td>
                             </tr>
                         ))}
@@ -284,18 +235,11 @@ const MagazzinoStaging = ({ initialData, onConfirm, onCancel }) => {
                 </button>
             </div>
 
-            {/* --- AZIONI --- */}
             <div style={{ marginTop: 30, display: 'flex', gap: 15, borderTop:'1px solid #eee', paddingTop:20 }}>
-                <button 
-                    onClick={onCancel} 
-                    style={{ flex: 1, padding: 15, background: '#95a5a6', color: 'white', border: 'none', borderRadius: 8, fontSize: '1rem', cursor: 'pointer', fontWeight:'bold' }}
-                >
+                <button onClick={onCancel} style={{ flex: 1, padding: 15, background: '#95a5a6', color: 'white', border: 'none', borderRadius: 8, fontSize: '1rem', cursor: 'pointer', fontWeight:'bold' }}>
                     ❌ ANNULLA TUTTO
                 </button>
-                <button 
-                    onClick={handleConfirm} 
-                    style={{ flex: 3, padding: 15, background: 'linear-gradient(135deg, #27ae60 0%, #2ecc71 100%)', color: 'white', border: 'none', borderRadius: 8, fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', boxShadow:'0 4px 15px rgba(46, 204, 113, 0.4)' }}
-                >
+                <button onClick={handleConfirm} style={{ flex: 3, padding: 15, background: 'linear-gradient(135deg, #27ae60 0%, #2ecc71 100%)', color: 'white', border: 'none', borderRadius: 8, fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', boxShadow:'0 4px 15px rgba(46, 204, 113, 0.4)' }}>
                     ✅ CONFERMA E IMPORTA ({rows.length} Righe)
                 </button>
             </div>
