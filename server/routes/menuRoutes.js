@@ -3,7 +3,8 @@ const router = express.Router();
 const pool = require('../config/db');
 const { uploadFile } = require('../config/storage');
 const xlsx = require('xlsx');
-const { analyzeImageWithGemini } = require('../utils/ai');
+// IMPORTIAMO LA NUOVA FUNZIONE PER IL TESTO (Centralizzata)
+const { analyzeImageWithGemini, generateTextWithGemini } = require('../utils/ai'); 
 
 
 // Get Menu (Public)
@@ -284,7 +285,7 @@ router.post('/api/prodotti/import-massivo', async (req, res) => {
     }
 });
 
-// --- NUOVA ROTTA: TRADUZIONE MASSIVA CON GEMINI ---
+// --- NUOVA ROTTA: TRADUZIONE MASSIVA CON GEMINI (CENTRALIZZATA) ---
 router.post('/api/menu/translate-all', async (req, res) => {
     const { ristorante_id } = req.body;
     const client = await pool.connect();
@@ -296,14 +297,14 @@ router.post('/api/menu/translate-all', async (req, res) => {
 
         if (prodotti.rows.length === 0) return res.status(400).json({ error: "Menu vuoto, nulla da tradurre." });
 
-        // 2. Prepara il payload per l'AI (minimizza i token inviando solo ciò che serve)
+        // 2. Prepara il payload per l'AI
         const dataToTranslate = {
             categories: categorie.rows.map(c => ({ id: c.id, nome: c.nome, descrizione: c.descrizione })),
             products: prodotti.rows.map(p => ({ 
                 id: p.id, 
                 nome: p.nome, 
                 descrizione: p.descrizione,
-                // Includiamo anche le varianti se sono testo libero, altrimenti saltiamo
+                // Includiamo anche le varianti se sono testo libero
                 varianti_nomi: p.varianti ? (typeof p.varianti === 'string' ? JSON.parse(p.varianti) : p.varianti).aggiunte?.map(a => a.nome) : []
             }))
         };
@@ -315,49 +316,33 @@ router.post('/api/menu/translate-all', async (req, res) => {
             en (Inglese), fr (Francese), de (Tedesco), pl (Polacco), pt (Portoghese), ru (Russo), es (Spagnolo).
             
             REGOLE:
-            1. Mantieni rigorosamente la struttura JSON. Le chiavi devono essere gli ID originali.
-            2. Non tradurre nomi propri intraducibili (es. "Pizza Margherita").
-            3. Usa un linguaggio gastronomico invitante.
+            1. Restituisci SOLO JSON valido.
+            2. Mantieni gli ID come chiavi.
+            3. Non tradurre nomi propri intraducibili (es. "Pizza Margherita").
             
-            INPUT DA TRADURRE:
+            INPUT:
             ${JSON.stringify(dataToTranslate)}
 
-            OUTPUT RICHIESTO (JSON PURO):
+            OUTPUT FORMAT (JSON):
             {
-                "categories": {
-                    "ID_CATEGORIA": { "en": {"nome": "...", "descrizione": "..."}, "fr": {...}, ... }
-                },
-                "products": {
-                    "ID_PRODOTTO": { "en": {"nome": "...", "descrizione": "..."}, "fr": {...}, ... }
-                }
+                "categories": { "ID": { "en": {"nome": "...", "descrizione": "..."}, ... } },
+                "products": { "ID": { "en": {"nome": "...", "descrizione": "..."}, ... } }
             }
         `;
 
-        // Chiamata AI (Usa la tua funzione esistente o chiamala qui direttamente)
-        // Nota: Assicurati che analyzeImageWithGemini supporti anche solo testo, o usa model.generateContent(prompt)
-        const { GoogleGenerativeAI } = require("@google/generative-ai");
-        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" }); // Usa il modello Pro per contesti lunghi
+        // 4. CHIAMATA CENTRALIZZATA (Ora userà gemini-3-pro-preview definito in ai.js)
+        const translations = await generateTextWithGemini(prompt);
 
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text();
-        
-        // Pulizia JSON (Gemini a volte mette backticks)
-        const jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        const translations = JSON.parse(jsonStr);
-
-        // 4. Salvataggio nel DB (Bulk Update)
+        // 5. Salvataggio nel DB (Bulk Update)
         await client.query('BEGIN');
 
         // Aggiorna Categorie
-        for (const [id, trads] of Object.entries(translations.categories)) {
+        for (const [id, trads] of Object.entries(translations.categories || {})) {
             await client.query("UPDATE categorie SET traduzioni = $1 WHERE id = $2", [JSON.stringify(trads), id]);
         }
 
         // Aggiorna Prodotti
-        for (const [id, trads] of Object.entries(translations.products)) {
-            // Recupera le traduzioni esistenti per non sovrascrivere tutto se non serve, oppure sovrascrivi
+        for (const [id, trads] of Object.entries(translations.products || {})) {
             await client.query("UPDATE prodotti SET traduzioni = $1 WHERE id = $2", [JSON.stringify(trads), id]);
         }
 

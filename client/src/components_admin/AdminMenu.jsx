@@ -76,10 +76,8 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const [isScanningMenu, setIsScanningMenu] = useState(false);
   const menuScanRef = useRef(null);
   
-  const [traduzioniInput, setTraduzioniInput] = useState({ 
-    en: { nome: '', descrizione: '' },
-    de: { nome: '', descrizione: '' }
-  });
+  // Non gestiamo più input manuali per le traduzioni, usiamo l'AI
+  const [traduzioniInput, setTraduzioniInput] = useState({});
 
   const [editId, setEditId] = useState(null); 
   const [uploading, setUploading] = useState(false);
@@ -168,11 +166,11 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
           categoria: cat, 
           ristorante_id: user.id, 
           varianti: JSON.stringify(variantiFinali),
-          allergeni: JSON.stringify(allergeniFinali)
+          allergeni: JSON.stringify(allergeniFinali),
+          // Passiamo le traduzioni esistenti (se ci sono nel DB), ma non le modifichiamo manualmente qui
+          traduzioni: traduzioniInput 
       };
       delete payload.varianti_str; delete payload.ingredienti_base;
-
-      payload.traduzioni = traduzioniInput; 
 
       try {
           const method = editId ? 'PUT' : 'POST';
@@ -182,7 +180,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
           alert(editId ? "✅ Piatto aggiornato!" : "✅ Piatto creato!");
           
           setNuovoPiatto({ nome:'', prezzo:'', categoria:cat, sottocategoria: '', descrizione:'', immagine_url:'', varianti_str: '', ingredienti_base: '', allergeni: [], unita_misura: '', qta_minima: 1 }); 
-          setTraduzioniInput({ en: { nome: '', descrizione: '' }, de: { nome: '', descrizione: '' } }); 
+          setTraduzioniInput({}); 
           
           setEditId(null); ricaricaDati(); 
       } catch(err) { alert("❌ Errore: " + err.message); }
@@ -265,11 +263,8 @@ const handleMenuScan = async (e) => {
           varianti_str: (variantiObj.aggiunte || []).map(v => `${v.nome}:${v.prezzo}`).join(', ') 
       }); 
       
-      const tr = piatto.traduzioni || {};
-      setTraduzioniInput({
-          en: { nome: tr.en?.nome || '', descrizione: tr.en?.descrizione || '' },
-          de: { nome: tr.de?.nome || '', descrizione: tr.de?.descrizione || '' }
-      });
+      // Manteniamo le traduzioni nel state ma non le mostriamo in UI per editing manuale
+      setTraduzioniInput(piatto.traduzioni || {});
 
       window.scrollTo({ top: 0, behavior: 'smooth' }); 
   };
@@ -277,7 +272,7 @@ const handleMenuScan = async (e) => {
   const annullaModifica = () => { 
       setEditId(null); 
       setNuovoPiatto({ nome:'', prezzo:'', categoria:categorie.length > 0 ? categorie[0].nome : '', sottocategoria: '', descrizione:'', immagine_url:'', varianti_str: '', ingredienti_base: '', allergeni: [], unita_misura: '', qta_minima: 1 }); 
-      setTraduzioniInput({ en: { nome: '', descrizione: '' }, de: { nome: '', descrizione: '' } }); 
+      setTraduzioniInput({}); 
   };
 
   const onDragEnd = async (result) => {
@@ -449,15 +444,6 @@ const handleMenuScan = async (e) => {
                           <div>
                               <label style={labelStyle}>Descrizione</label>
                               <textarea placeholder="Descrivi il piatto..." value={nuovoPiatto.descrizione} onChange={e => setNuovoPiatto({...nuovoPiatto, descrizione: e.target.value})} style={{...inputStyle, minHeight:'80px', resize:'vertical'}}/>
-                          </div>
-
-                          <div style={{background:'#fdfefe', border:'1px solid #e1f5fe', padding:'10px', borderRadius:'8px'}}>
-                                <label style={{...labelStyle, color:'#0277bd', marginBottom:'10px'}}>🌍 Traduzioni (Opzionale)</label>
-                                <div style={{marginBottom:'10px'}}>
-                                    <div style={{fontSize:'12px', fontWeight:'bold', marginBottom:'5px', color:'#555'}}>🇬🇧 Inglese</div>
-                                    <input placeholder="Name EN" value={traduzioniInput.en.nome} onChange={e=>setTraduzioniInput({...traduzioniInput, en: {...traduzioniInput.en, nome: e.target.value}})} style={{...inputStyle, marginBottom:'5px', fontSize:'13px'}} />
-                                    <textarea placeholder="Description EN" value={traduzioniInput.en.descrizione} onChange={e=>setTraduzioniInput({...traduzioniInput, en: {...traduzioniInput.en, descrizione: e.target.value}})} style={{...inputStyle, minHeight:'50px', fontSize:'13px'}} />
-                                </div>
                           </div>
 
                           <div>

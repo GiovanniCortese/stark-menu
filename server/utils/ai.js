@@ -1,58 +1,60 @@
 // PERCORSO: server/utils/ai.js
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-/* CONFIGURAZIONE MODELLI 2026
-   Basata sui log aggiornati:
-   - gemini-1.5-pro è deprecato/rinominato.
-   - Il nuovo standard è "gemini-3-pro-preview" o "gemini-2.0-pro-exp".
+/* CONFIGURAZIONE MODELLI
+   Lasciamo gemini-3-pro-preview come PRIMA SCELTA assoluta.
 */
 const MODELS_TO_TRY = [
-    "gemini-3-pro-preview",    // <--- IL NUOVO STANDARD (dal tuo log)
-    "gemini-2.0-pro-exp",      // <--- FALLBACK STABILE
-    "gemini-1.5-pro-latest",   // Tentativo legacy
-    "gemini-pro"               // Ultima spiaggia (modello base sempre attivo)
+    "gemini-3-pro-preview",    // <--- IL TUO PREFERITO (Funziona benissimo)
+    "gemini-2.0-pro-exp",      // Fallback
+    "gemini-1.5-pro",
+    "gemini-pro"
 ];
 
-async function analyzeImageWithGemini(buffer, mimeType, promptText) {
-    if (!process.env.GEMINI_API_KEY) {
-        throw new Error("Manca GEMINI_API_KEY nel file .env");
-    }
-
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+// Funzione Helper interna per provare i modelli in cascata
+async function tryGeminiModels(api_key, promptParts, jsonMode = true) {
+    if (!api_key) throw new Error("Manca GEMINI_API_KEY nel file .env");
+    
+    const genAI = new GoogleGenerativeAI(api_key);
     let lastError = null;
 
-    // TENTA I MODELLI UNO PER UNO
     for (const modelName of MODELS_TO_TRY) {
         try {
-            // console.log(`Tentativo con modello: ${modelName}`); // Debug
-            
+            const config = jsonMode ? { responseMimeType: "application/json" } : {};
             const model = genAI.getGenerativeModel({ 
                 model: modelName,
-                generationConfig: { responseMimeType: "application/json" }
+                generationConfig: config
             });
 
-            const imagePart = {
-                inlineData: {
-                    data: buffer.toString("base64"),
-                    mimeType: mimeType
-                }
-            };
-
-            const result = await model.generateContent([promptText, imagePart]);
+            const result = await model.generateContent(promptParts);
             const responseText = result.response.text();
             
-            return JSON.parse(responseText);
+            // Se jsonMode è attivo, parsiamo qui per essere sicuri che sia valido
+            return jsonMode ? JSON.parse(responseText) : responseText;
 
         } catch (e) {
-            // Se il modello non esiste (404) o è sovraccarico, passa al prossimo
             console.warn(`⚠️ Modello ${modelName} fallito (${e.message}). Provo il prossimo...`);
             lastError = e;
             continue; 
         }
     }
-
-    // Se arrivi qui, tutti i modelli hanno fallito.
-    throw new Error(`Tutti i modelli AI hanno restituito errore. Ultimo tentativo: ${lastError?.message}`);
+    throw new Error(`Tutti i modelli AI hanno fallito. Ultimo errore: ${lastError?.message}`);
 }
 
-module.exports = { analyzeImageWithGemini };
+// 1. Analisi Immagini (Menu cartacei, Bolle)
+async function analyzeImageWithGemini(buffer, mimeType, promptText) {
+    const imagePart = {
+        inlineData: {
+            data: buffer.toString("base64"),
+            mimeType: mimeType
+        }
+    };
+    return await tryGeminiModels(process.env.GEMINI_API_KEY, [promptText, imagePart], true);
+}
+
+// 2. Generazione Testo (Per TRADUZIONI Menu) - NUOVA FUNZIONE
+async function generateTextWithGemini(promptText) {
+    return await tryGeminiModels(process.env.GEMINI_API_KEY, [promptText], true);
+}
+
+module.exports = { analyzeImageWithGemini, generateTextWithGemini };
