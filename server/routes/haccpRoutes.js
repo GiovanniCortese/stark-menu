@@ -67,7 +67,7 @@ router.post('/api/magazzino/delete-bulk', async (req, res) => {
 // HELPER: GESTIONE CENTRALE MAGAZZINO (Update o Insert)
 // =================================================================================
 async function gestisciMagazzino(client, data) {
-    const { ristorante_id, prodotto, quantita, prezzo_unitario, iva, fornitore, unita_misura, lotto, data_bolla } = data;
+    const { ristorante_id, prodotto, quantita, prezzo_unitario, iva, fornitore, unita_misura, lotto, data_bolla, numero_bolla, codice_articolo, sconto } = data;
     
     // Normalizzazione numeri
     const qta = parseFloat(quantita) || 0;
@@ -79,27 +79,30 @@ async function gestisciMagazzino(client, data) {
     const valoreIva = valoreNetto * (aliquotaIva / 100);
     const valoreLordo = valoreNetto + valoreIva;
 
+    // Calcoli
+    const prezzoListino = parseFloat(prezzo_unitario) || 0;
+    const sc = parseFloat(sconto) || 0;
+    // Prezzo netto reale (scontato)
+    const prezzoNetto = prezzoListino * (1 - (sc / 100));
+
     // 1. Cerca se esiste in Magazzino (Case Insensitive)
-    const check = await client.query(
-        `SELECT id, giacenza, prezzo_medio FROM magazzino_prodotti 
-         WHERE ristorante_id = $1 AND LOWER(nome) = LOWER($2)`,
+const check = await client.query(
+        `SELECT id, giacenza, prezzo_medio FROM magazzino_prodotti WHERE ristorante_id = $1 AND LOWER(nome) = LOWER($2)`,
         [ristorante_id, prodotto.trim()]
     );
 
-    let magazzinoId = null;
+let magazzinoId = null;
 
     if (check.rows.length > 0) {
-        // --- ESISTE: AGGIORNA (MEDIA PONDERATA) ---
+        // UPDATE
         const existing = check.rows[0];
         magazzinoId = existing.id;
-
         const oldGiacenza = parseFloat(existing.giacenza) || 0;
         const oldPrezzo = parseFloat(existing.prezzo_medio) || 0;
+        
         let newPrezzoMedio = oldPrezzo;
-
-        // Formula media ponderata
         if ((oldGiacenza + qta) > 0) {
-            newPrezzoMedio = ((oldGiacenza * oldPrezzo) + (qta * prezzoUnit)) / (oldGiacenza + qta);
+            newPrezzoMedio = ((oldGiacenza * oldPrezzo) + (qta * prezzoNetto)) / (oldGiacenza + qta);
         }
 
         await client.query(
@@ -107,32 +110,31 @@ async function gestisciMagazzino(client, data) {
                 giacenza = giacenza + $1,
                 prezzo_ultimo = $2,
                 prezzo_medio = $3,
-                valore_totale_netto = valore_totale_netto + $4,
-                valore_totale_iva = valore_totale_iva + $5,
-                valore_totale_lordo = valore_totale_lordo + $6,
-                lotto = COALESCE($7, lotto),
-                data_bolla = COALESCE($8, data_bolla),
+                sconto = $4,
+                codice_articolo = COALESCE(NULLIF($5, ''), codice_articolo),
+                data_bolla = $6,
+                numero_bolla = $7,
+                lotto = COALESCE(NULLIF($8, ''), lotto),
                 updated_at = NOW()
              WHERE id = $9`,
-            [qta, prezzoUnit, newPrezzoMedio, valoreNetto, valoreIva, valoreLordo, lotto, data_bolla, magazzinoId]
+            [qta, prezzoNetto, newPrezzoMedio, sc, codice_articolo, data_bolla, numero_bolla, lotto, magazzinoId]
         );
     } else {
-        // --- NUOVO: CREA ---
+        // INSERT
         const resInsert = await client.query(
             `INSERT INTO magazzino_prodotti 
             (ristorante_id, nome, marca, unita_misura, giacenza, scorta_minima, 
-             prezzo_ultimo, prezzo_medio, aliquota_iva, 
-             valore_totale_netto, valore_totale_iva, valore_totale_lordo, lotto, data_bolla)
+             prezzo_ultimo, prezzo_medio, aliquota_iva, codice_articolo, sconto,
+             data_bolla, numero_bolla, lotto)
             VALUES ($1, $2, $3, $4, $5, 5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
             [
                 ristorante_id, prodotto.trim(), fornitore || '', unita_misura || 'Pz', 
-                qta, prezzoUnit, prezzoUnit, aliquotaIva,
-                valoreNetto, valoreIva, valoreLordo, lotto, data_bolla
+                qta, prezzoNetto, prezzoNetto, aliquotaIva, codice_articolo || '', sc,
+                data_bolla, numero_bolla, lotto
             ]
         );
         magazzinoId = resInsert.rows[0].id;
     }
-
     return magazzinoId;
 }
 
@@ -245,49 +247,65 @@ router.post('/api/haccp/merci/import', async (req, res) => {
 
         await client.query('BEGIN');
         let inserted = 0;
-        let haccpLogs = 0;
         
         for (const m of merci) {
-            // 1. GESTIONE MAGAZZINO (MASTER)
+            // Normalizza valori numerici per evitare errori DB
+            const sconto = parseFloat(m.sconto) || 0;
+            const qta = parseFloat(m.quantita) || 0;
+            const przUnit = parseFloat(m.prezzo_unitario) || 0;
+            const iva = parseFloat(m.iva) || 0;
+            const dataDoc = m.data_documento || m.data_ricezione; // Data fattura
+            const numDoc = m.riferimento_documento || ''; // Numero fattura
+
+            // 1. GESTIONE MAGAZZINO (MASTER - Aggiorna Giacenze e Prezzi)
+            // Qui passiamo ANCHE i dati della bolla (numero e data) per averli anche nella scheda prodotto
             const magazzinoId = await gestisciMagazzino(client, {
                 ristorante_id: m.ristorante_id,
                 prodotto: m.prodotto,
-                quantita: m.quantita,
-                prezzo_unitario: m.prezzo_unitario,
-                iva: m.iva,
+                quantita: qta,
+                prezzo_unitario: przUnit,
+                iva: iva,
                 fornitore: m.fornitore,
                 unita_misura: m.unita_misura,
                 lotto: m.lotto,
-                data_bolla: m.data_ricezione
+                data_bolla: dataDoc,        // <--- IMPORTANTE: Data Fattura
+                numero_bolla: numDoc,       // <--- IMPORTANTE: Numero Fattura
+                codice_articolo: m.codice_articolo, // <--- IMPORTANTE
+                sconto: sconto
             });
 
-            // 2. GESTIONE HACCP (CONDITIONAL)
+            // 2. GESTIONE HACCP (STORICO - La lista che vedi a video)
+            // Questa è la tabella che popola la "Lista" nel frontend. Deve avere TUTTO.
             if (m.is_haccp === true || m.is_haccp === 'true') {
-                // Check duplicati HACCP (evita doppio inserimento se clicchi 2 volte)
+                
+                // Evitiamo duplicati identici (stessa fattura, stesso prodotto, stesso lotto)
                 const checkHaccp = await client.query(`
                     SELECT id FROM haccp_merci 
                     WHERE ristorante_id = $1 
                     AND magazzino_id = $2
-                    AND data_ricezione = $3 
+                    AND riferimento_documento = $3 
                     AND lotto = $4
-                `, [m.ristorante_id, magazzinoId, m.data_ricezione, m.lotto || '']);
+                `, [m.ristorante_id, magazzinoId, numDoc, m.lotto || '']);
 
                 if (checkHaccp.rows.length === 0) {
                     await client.query(
                         `INSERT INTO haccp_merci (
-                            ristorante_id, magazzino_id, data_ricezione, fornitore, prodotto, 
-                            quantita, prezzo_unitario, iva, 
-                            lotto, scadenza, operatore, note, conforme, integro, destinazione,
-                            ora, is_haccp, allegato_url
-                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, true, true, $13, $14, true, $15)`,
+                            ristorante_id, magazzino_id, 
+                            data_ricezione, data_documento, riferimento_documento,
+                            fornitore, prodotto, codice_articolo,
+                            quantita, unita_misura, prezzo_unitario, sconto, iva, 
+                            lotto, scadenza, operatore, note, 
+                            conforme, integro, destinazione, ora, is_haccp, allegato_url
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, true, true, $18, $19, true, $20)`,
                         [
-                            m.ristorante_id, magazzinoId, m.data_ricezione, m.fornitore, m.prodotto,
-                            m.quantita, m.prezzo_unitario || 0, m.iva || 0,
+                            m.ristorante_id, magazzinoId, 
+                            m.data_ricezione, dataDoc, numDoc, // Date e Riferimenti corretti
+                            m.fornitore, m.prodotto, m.codice_articolo || '',
+                            qta, m.unita_misura, przUnit, sconto, iva,
                             m.lotto || '', m.scadenza || null, m.operatore || 'SCAN', m.note || '', 
                             m.destinazione || '', m.ora, m.allegato_url || ''
                         ]
                     );
-                    haccpLogs++;
                 }
             }
             inserted++;
@@ -296,7 +314,7 @@ router.post('/api/haccp/merci/import', async (req, res) => {
         await client.query('COMMIT');
         res.json({ 
             success: true, 
-            message: `Magazzino: ${inserted} articoli elaborati. HACCP: ${haccpLogs} righe registrate.` 
+            message: `Carico completato. ${inserted} righe aggiornate in Magazzino e Storico.` 
         });
 
     } catch (e) {

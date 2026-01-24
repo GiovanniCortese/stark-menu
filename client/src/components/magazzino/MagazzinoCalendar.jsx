@@ -1,6 +1,7 @@
+// client/src/components_haccp/MagazzinoCalendar.jsx
 import React, { useState } from 'react';
 
-const MagazzinoCalendar = ({ stats }) => {
+const MagazzinoCalendar = ({ stats, onDateClick }) => {
     const [currentMonth, setCurrentMonth] = useState(new Date());
 
     // Sicurezza: Se stats o stats.storico sono null, usiamo array vuoto
@@ -25,33 +26,51 @@ const MagazzinoCalendar = ({ stats }) => {
             // Formato data YYYY-MM-DD per confronto
             const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
             
-            // Filtro sicuro
+            // Filtro sicuro (cerca per data documento o data ricezione)
             const movimentiGiorno = storico.filter(r => {
-                // Supporta sia data_ricezione che data_documento
                 const dataRif = r.data_documento || r.data_ricezione;
                 return dataRif && dataRif.startsWith(dateStr);
             });
 
-            // Calcolo totale sicuro
+            // Calcolo totale sicuro (con gestione sconto)
             const totaleGiorno = movimentiGiorno.reduce((acc, curr) => {
-                // Se abbiamo già il totale calcolato dal backend usiamo quello, altrimenti calcoliamo
                 let importo = parseFloat(curr.totale_lordo);
-                if (isNaN(importo)) {
-                    // Fallback calcolo manuale
+                
+                // Fallback se il totale lordo manca o è zero
+                if (isNaN(importo) || importo === 0) {
                     const qta = parseFloat(curr.quantita) || 0;
                     const prz = parseFloat(curr.prezzo_unitario) || 0;
                     const iva = parseFloat(curr.iva) || 0;
-                    const netto = qta * prz;
-                    importo = netto + (netto * (iva/100));
+                    const sc = parseFloat(curr.sconto) || 0; // Gestione sconto
+                    
+                    // Calcolo: (Prezzo - Sconto) * Qta * (1 + IVA)
+                    const netto = qta * (prz * (1 - sc/100));
+                    importo = netto * (1 + iva/100);
                 }
                 return acc + (importo || 0);
             }, 0);
 
+            const hasData = movimentiGiorno.length > 0;
+
             days.push(
-                <div key={d} style={{height:100, background:'white', border:'1px solid #eee', padding:5, position:'relative'}}>
-                    <div style={{fontWeight:'bold', marginBottom:5}}>{d}</div>
+                <div 
+                    key={d} 
+                    onClick={() => hasData && onDateClick && onDateClick(dateStr)} // CLICK QUI
+                    style={{
+                        height:100, 
+                        background: hasData ? '#f0faff' : 'white', // Colore diverso se ci sono dati
+                        border:'1px solid #eee', 
+                        padding:5, 
+                        position:'relative',
+                        cursor: hasData ? 'pointer' : 'default', // Cursore mano
+                        transition: '0.2s'
+                    }}
+                    onMouseEnter={e => { if(hasData) e.currentTarget.style.background = '#e1f5fe'; }}
+                    onMouseLeave={e => { if(hasData) e.currentTarget.style.background = '#f0faff'; }}
+                >
+                    <div style={{fontWeight:'bold', marginBottom:5, color: hasData ? '#2980b9' : '#333'}}>{d}</div>
                     
-                    {movimentiGiorno.length > 0 && (
+                    {hasData && (
                         <>
                             <div style={{fontSize:11, color:'#7f8c8d'}}>{movimentiGiorno.length} Movimenti</div>
                             <div style={{

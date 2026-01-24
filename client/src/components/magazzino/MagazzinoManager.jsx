@@ -12,6 +12,9 @@ const formatDateISO = (date) => date.toISOString().split('T')[0];
 const MagazzinoManager = ({ user, API_URL }) => {
     const [tab, setTab] = useState('lista'); // 'dashboard', 'calendario', 'lista', 'carico'
     
+    // STATO PER FILTRARE LA LISTA TRAMITE CALENDARIO (NUOVO)
+    const [filtroData, setFiltroData] = useState(null); 
+
     // STATO SDOPPIATO: 
     // - storico: contiene le bolle/fatture (haccp_merci) -> Per la TABELLA
     // - magazzino: contiene le giacenze attuali (magazzino_prodotti) -> Per futuri controlli stock
@@ -70,6 +73,14 @@ const MagazzinoManager = ({ user, API_URL }) => {
             .then(data => setAssets(Array.isArray(data) ? data : []))
             .catch(console.error);
     };
+
+    // --- NUOVA LOGICA: CLICK DAL CALENDARIO ---
+    const onSelectDataCalendario = (dataIso) => {
+        setFiltroData(dataIso); // Imposta il filtro (es. "2024-06-04")
+        setTab('lista');        // Porta l'utente alla lista filtrata
+    };
+
+    const resetFiltro = () => setFiltroData(null);
 
     // Gestione Avvio Modifica
     const gestisciModifica = (record) => {
@@ -144,7 +155,12 @@ const MagazzinoManager = ({ user, API_URL }) => {
                 </div>
                 <div style={{display:'flex', gap:10, flexWrap:'wrap'}}>
                     {['dashboard','calendario','lista','carico'].map(t => (
-                        <button key={t} onClick={() => { setTab(t); if(t!=='carico') setRecordDaModificare(null); }} style={{
+                        <button key={t} onClick={() => { 
+                            setTab(t); 
+                            // Se clicco manualmente "lista", resetto il filtro data
+                            if(t === 'lista') resetFiltro(); 
+                            if(t!=='carico') setRecordDaModificare(null); 
+                        }} style={{
                             padding:'8px 15px', borderRadius:20, cursor:'pointer', border:'1px solid #ccc',
                             background: tab===t ? '#34495e' : 'white', color: tab===t ? 'white' : '#333', textTransform:'capitalize', fontWeight: tab===t?'bold':'normal'
                         }}>{t === 'carico' ? '+ Nuovo Carico' : t}</button>
@@ -155,7 +171,12 @@ const MagazzinoManager = ({ user, API_URL }) => {
             {/* CONTENT */}
             {tab === 'dashboard' && <MagazzinoDashboard stats={stats} />}
             
-            {tab === 'calendario' && <MagazzinoCalendar stats={stats} />}
+            {tab === 'calendario' && (
+                <MagazzinoCalendar 
+                    stats={stats} 
+                    onDateClick={onSelectDataCalendario} // Passo la funzione click
+                />
+            )}
 
             {tab === 'carico' && (
                 <MagazzinoUpload 
@@ -170,16 +191,19 @@ const MagazzinoManager = ({ user, API_URL }) => {
 
             {tab === 'lista' && (
                 <MagazzinoList 
-                    storico={stats.storico}  // ORA QUESTO È CORRETTO (Prende haccp_merci)
+                    storico={stats.storico}
                     ricaricaDati={ricaricaDati}
                     API_URL={API_URL}
                     handleFileAction={handleFileAction}
-                    onEdit={gestisciModifica} // Era 'onEdit' nel MagazzinoList, non avviaModifica
+                    onEdit={gestisciModifica}
                     openDownloadModal={() => setShowDownloadModal(true)}
+                    // Passo il filtro data e il reset al componente figlio
+                    filtroDataEsterno={filtroData}
+                    resetFiltroEsterno={resetFiltro}
                 />
             )}
 
-            {/* MODALI (Download & Preview) RIMASTI INVARIATI */}
+            {/* MODALI (Download & Preview) */}
             {showDownloadModal && (
                 <div style={{position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000}}>
                     <div style={{background: 'white', padding: '20px', borderRadius: '10px', width: '350px', textAlign: 'center'}}>

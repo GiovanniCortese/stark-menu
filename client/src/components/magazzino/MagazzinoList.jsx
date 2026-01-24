@@ -1,18 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
-const MagazzinoList = ({ storico, ricaricaDati, API_URL, onEdit }) => {
+const MagazzinoList = ({ storico, ricaricaDati, API_URL, onEdit, filtroDataEsterno, resetFiltroEsterno }) => {
     const [filtro, setFiltro] = useState("");
     const [selectedIds, setSelectedIds] = useState([]); // ID selezionati per cancellazione
     const [sortConfig, setSortConfig] = useState({ key: 'data_ricezione', direction: 'desc' });
+
+    // --- EFFETTO: SE CLICCO IL CALENDARIO, AGGIORNO IL FILTRO ---
+    useEffect(() => {
+        if (filtroDataEsterno) {
+            setFiltro(filtroDataEsterno);
+        }
+    }, [filtroDataEsterno]);
 
     // --- CALCOLI AL VOLO PER VISUALIZZAZIONE ---
     const enrichData = (item) => {
         const qta = parseFloat(item.quantita) || 0;
         const unitNetto = parseFloat(item.prezzo_unitario) || 0;
         const ivaPerc = parseFloat(item.iva) || 0;
+        const sc = parseFloat(item.sconto) || 0;
         
         // Se i campi esistono nel DB usiamo quelli, altrimenti calcoliamo
-        const totNetto = item.totale_netto ? parseFloat(item.totale_netto) : (qta * unitNetto);
+        // Nota: se c'è sconto, il netto unitario reale è più basso del listino
+        const prezzoScontato = unitNetto * (1 - sc/100);
+
+        const totNetto = item.totale_netto ? parseFloat(item.totale_netto) : (qta * prezzoScontato);
         const totIva = item.totale_iva ? parseFloat(item.totale_iva) : (totNetto * (ivaPerc / 100));
         const totLordo = item.totale_lordo ? parseFloat(item.totale_lordo) : (totNetto + totIva);
 
@@ -41,7 +52,10 @@ const MagazzinoList = ({ storico, ricaricaDati, API_URL, onEdit }) => {
         item.prodotto?.toLowerCase().includes(filtro.toLowerCase()) ||
         item.fornitore?.toLowerCase().includes(filtro.toLowerCase()) ||
         item.riferimento_documento?.toLowerCase().includes(filtro.toLowerCase()) ||
-        item.codice_articolo?.toLowerCase().includes(filtro.toLowerCase()) // Cerca anche per codice
+        item.codice_articolo?.toLowerCase().includes(filtro.toLowerCase()) ||
+        // Cerca anche nella data (utile per il calendario)
+        (item.data_documento && item.data_documento.includes(filtro)) ||
+        (item.data_ricezione && item.data_ricezione.includes(filtro))
     );
 
     // --- GESTIONE SELEZIONE CHECKBOX ---
@@ -85,6 +99,12 @@ const MagazzinoList = ({ storico, ricaricaDati, API_URL, onEdit }) => {
         } catch (e) { alert("Errore cancellazione multipla"); }
     };
 
+    // Funzione per pulire il filtro
+    const clearFilter = () => {
+        setFiltro("");
+        if(resetFiltroEsterno) resetFiltroEsterno();
+    };
+
     // STILI CSS RAPIDI
     const thStyle = { padding: '12px 8px', textAlign: 'left', borderBottom: '2px solid #ddd', background: '#f8f9fa', fontSize: '13px', whiteSpace: 'nowrap', cursor: 'pointer' };
     const tdStyle = { padding: '10px 8px', borderBottom: '1px solid #eee', fontSize: '13px', verticalAlign: 'middle' };
@@ -94,13 +114,23 @@ const MagazzinoList = ({ storico, ricaricaDati, API_URL, onEdit }) => {
             
             {/* BARRA SUPERIORE */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
-                <input 
-                    type="text" 
-                    placeholder="🔍 Cerca prodotto, codice, fornitore, n. fattura..." 
-                    value={filtro}
-                    onChange={e => setFiltro(e.target.value)}
-                    style={{ padding: '10px', width: '350px', borderRadius: 5, border: '1px solid #ccc' }}
-                />
+                <div style={{position:'relative', display:'flex', alignItems:'center'}}>
+                    <input 
+                        type="text" 
+                        placeholder="🔍 Cerca prodotto, data, fornitore..." 
+                        value={filtro}
+                        onChange={e => setFiltro(e.target.value)}
+                        style={{ padding: '10px', width: '350px', borderRadius: 5, border: '1px solid #ccc', paddingRight: 30 }}
+                    />
+                    {filtro && (
+                        <button 
+                            onClick={clearFilter}
+                            style={{position:'absolute', right:5, background:'transparent', border:'none', cursor:'pointer', color:'#999', fontSize:16}}
+                        >
+                            ✕
+                        </button>
+                    )}
+                </div>
                 
                 {selectedIds.length > 0 && (
                     <button 
