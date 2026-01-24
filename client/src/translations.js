@@ -1,51 +1,77 @@
 // client/src/translations.js
+
+export const flags = {
+    it: "🇮🇹", en: "🇬🇧", fr: "🇫🇷", de: "🇩🇪", 
+    es: "🇪🇸", pt: "🇵🇹", pl: "🇵🇱", ru: "🇷🇺"
+};
+
 export const dictionary = {
     it: {
-        ingredients: "Ingredienti",
-        allergens: "Allergeni",
-        add: "AGGIUNGI",
-        modify: "MODIFICA",
-        total: "Totale",
-        cart: "Carrello",
-        empty_cart: "Il carrello è vuoto",
-        see_order: "VEDI ORDINE",
-        confirm: "CONFERMA E INVIA",
-        back: "Torna al Menu",
-        frozen: "Prodotto Surgelato/Abbattuto",
-        course_1: "1ª PORTATA",
-        course_2: "2ª PORTATA",
-        course_3: "3ª PORTATA",
-        course_4: "DESSERT",
-        others: "Altri Piatti"
+        ingredients: "Ingredienti", allergens: "Allergeni", add: "AGGIUNGI", modify: "MODIFICA",
+        total: "Totale", cart: "Carrello", empty_cart: "Il carrello è vuoto", see_order: "VEDI ORDINE",
+        confirm: "CONFERMA E INVIA", back: "Torna al Menu", frozen: "Prodotto Surgelato/Abbattuto",
+        others: "Altri Piatti", summary: "Riepilogo Ordine"
     },
     en: {
-        ingredients: "Ingredients",
-        allergens: "Allergens",
-        add: "ADD",
-        modify: "EDIT",
-        total: "Total",
-        cart: "Cart",
-        empty_cart: "Cart is empty",
-        see_order: "VIEW ORDER",
-        confirm: "CONFIRM ORDER",
-        back: "Back to Menu",
-        frozen: "Frozen Product",
-        course_1: "STARTERS / 1ST COURSE",
-        course_2: "MAIN COURSE",
-        course_3: "SECOND COURSE",
-        course_4: "DESSERT",
-        others: "Other Dishes"
+        ingredients: "Ingredients", allergens: "Allergens", add: "ADD", modify: "EDIT",
+        total: "Total", cart: "Cart", empty_cart: "Cart is empty", see_order: "VIEW ORDER",
+        confirm: "CONFIRM ORDER", back: "Back to Menu", frozen: "Frozen Product",
+        others: "Other Dishes", summary: "Order Summary"
+    },
+    fr: {
+        ingredients: "Ingrédients", allergens: "Allergènes", add: "AJOUTER", modify: "MODIFIER",
+        total: "Total", cart: "Panier", empty_cart: "Le panier est vide", see_order: "VOIR COMMANDE",
+        confirm: "CONFIRMER", back: "Retour au menu", frozen: "Produit Surgelé",
+        others: "Autres Plats", summary: "Résumé de la commande"
+    },
+    de: {
+        ingredients: "Zutaten", allergens: "Allergene", add: "HINZUFÜGEN", modify: "ÄNDERN",
+        total: "Gesamt", cart: "Warenkorb", empty_cart: "Warenkorb ist leer", see_order: "BESTELLUNG ANSEHEN",
+        confirm: "BESTÄTIGEN", back: "Zurück zum Menü", frozen: "Tiefkühlprodukt",
+        others: "Andere Gerichte", summary: "Bestellübersicht"
+    },
+    es: {
+        ingredients: "Ingredientes", allergens: "Alérgenos", add: "AÑADIR", modify: "MODIFICAR",
+        total: "Total", cart: "Carrito", empty_cart: "El carrito está vacío", see_order: "VER PEDIDO",
+        confirm: "CONFIRMAR", back: "Volver al menú", frozen: "Producto Congelado",
+        others: "Otros Platos", summary: "Resumen del pedido"
+    },
+    pt: {
+        ingredients: "Ingredientes", allergens: "Alergénios", add: "ADICIONAR", modify: "MODIFICAR",
+        total: "Total", cart: "Carrinho", empty_cart: "O carrinho está vazio", see_order: "VER PEDIDO",
+        confirm: "CONFIRMAR", back: "Voltar ao menu", frozen: "Produto Congelado",
+        others: "Outros Pratos", summary: "Resumo do pedido"
+    },
+    pl: {
+        ingredients: "Składniki", allergens: "Alergeny", add: "DODAJ", modify: "ZMIEŃ",
+        total: "Suma", cart: "Koszyk", empty_cart: "Koszyk jest pusty", see_order: "ZOBACZ ZAMÓWIENIE",
+        confirm: "POTWIERDŹ", back: "Powrót do menu", frozen: "Produkt Mrożony",
+        others: "Inne Dania", summary: "Podsumowanie zamówienia"
+    },
+    ru: {
+        ingredients: "Ингредиенты", allergens: "Аллергены", add: "ДОБАВИТЬ", modify: "ИЗМЕНИТЬ",
+        total: "Итого", cart: "Корзина", empty_cart: "Корзина пуста", see_order: "ПОСМОТРЕТЬ ЗАКАЗ",
+        confirm: "ПОДТВЕРДИТЬ", back: "Вернуться в меню", frozen: "Замороженный продукт",
+        others: "Другие блюда", summary: "Сводка заказа"
     }
 };
 
 // Funzione Helper per ottenere il testo dinamico (DB)
 export const getContent = (item, field, lang) => {
     if (!item) return "";
-    if (lang === 'it') return item[field]; // Default
+    if (lang === 'it') return item[field]; // Default Italiano
     
     // Controlla traduzione DB
-    if (item.traduzioni && item.traduzioni[lang] && item.traduzioni[lang][field]) {
-        return item.traduzioni[lang][field];
+    if (item.traduzioni) {
+        // Gestisce sia il formato stringa JSON che oggetto
+        let trads = item.traduzioni;
+        if (typeof trads === 'string') {
+            try { trads = JSON.parse(trads); } catch(e) { return item[field]; }
+        }
+        
+        if (trads[lang] && trads[lang][field]) {
+            return trads[lang][field];
+        }
     }
     
     return item[field]; // Fallback italiano

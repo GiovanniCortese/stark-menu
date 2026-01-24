@@ -1,7 +1,7 @@
-// client/src/Menu.jsx - FIX CLICK CARD FOTO & LOGICA QUANTITÀ
+// client/src/Menu.jsx - FIX CLICK CARD FOTO & LOGICA QUANTITÀ & MULTILINGUA
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'; 
-import { dictionary, getContent } from './translations';
+import { dictionary, getContent, flags } from './translations'; // Aggiunto import flags
 
 function Menu() {
   const [menu, setMenu] = useState([]);
@@ -13,6 +13,8 @@ function Menu() {
   const navigate = useNavigate();
   const [lang, setLang] = useState('it'); 
   const t = dictionary[lang] || dictionary['it']; 
+
+  const [showLangMenu, setShowLangMenu] = useState(false); // Nuovo stato per il menu lingua
 
   useEffect(() => {
     window.googleTranslateElementInit = () => {
@@ -36,16 +38,17 @@ function Menu() {
 
   const cambiaLingua = (selectedLang) => {
       setLang(selectedLang); 
+      // Sincronizza anche Google Translate se presente (opzionale/fallback)
       const changeGoogle = () => {
           const googleCombo = document.querySelector('.goog-te-combo');
           if (googleCombo) {
               googleCombo.value = selectedLang;
               googleCombo.dispatchEvent(new Event('change'));
           } else {
-              setTimeout(changeGoogle, 500); 
+              // Non insistere troppo se non c'è, usiamo il nostro sistema DB
           }
       };
-      changeGoogle();
+      // changeGoogle(); // Decommenta se usi ANCHE Google Translate widget nascosto
   };
 
   const [urlFileAttivo, setUrlFileAttivo] = useState("");
@@ -308,10 +311,45 @@ function Menu() {
               {!style.logo && ( <h1 style={{ margin: 0, color: '#fff', fontSize:'26px', fontWeight:'800', textShadow: '0 2px 4px rgba(0,0,0,0.8)', textAlign: 'center', lineHeight: '1.2' }}>{ristorante}</h1> )}
               <div className="notranslate" style={{ background: tavoloBg, color: tavoloText, padding: '6px 18px', borderRadius: '50px', fontSize: '14px', fontWeight: 'bold', boxShadow: '0 3px 10px rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.3)' }}>📍 Tavolo {numeroTavolo}</div>
               
-              <div className="notranslate" style={{display:'flex', gap:'10px', justifyContent:'center', marginTop:'10px'}}>
-                <button onClick={()=>cambiaLingua('it')} style={{opacity: lang==='it'?1:0.5, border:'none', background:'none', fontSize:'24px', cursor:'pointer', padding:0}}>🇮🇹</button>
-                <button onClick={()=>cambiaLingua('en')} style={{opacity: lang==='en'?1:0.5, border:'none', background:'none', fontSize:'24px', cursor:'pointer', padding:0}}>🇬🇧</button>
-            </div>
+              {/* --- NUOVO SELETTORE LINGUA MULTILINGUA --- */}
+              <div className="notranslate" style={{ position: 'relative', marginTop: '10px', zIndex: 200 }}>
+                  {/* Bandiera Attiva (Cliccabile) */}
+                  <button 
+                      onClick={() => setShowLangMenu(!showLangMenu)} 
+                      style={{ 
+                          background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.4)', 
+                          borderRadius: '50%', width: '45px', height: '45px', fontSize: '24px', 
+                          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          boxShadow: '0 4px 10px rgba(0,0,0,0.2)', transition: 'transform 0.2s'
+                      }}
+                  >
+                      {dictionary[lang] ? (flags[lang] || "🇮🇹") : "🇮🇹"}
+                  </button>
+
+                  {/* Menu a discesa (Appare al click) */}
+                  {showLangMenu && (
+                      <div style={{
+                          position: 'absolute', top: '55px', left: '50%', transform: 'translateX(-50%)',
+                          background: 'white', borderRadius: '10px', padding: '10px',
+                          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px',
+                          boxShadow: '0 5px 20px rgba(0,0,0,0.3)', minWidth: '120px'
+                      }}>
+                          {Object.keys(dictionary).map((l) => (
+                              <button 
+                                  key={l}
+                                  onClick={() => { cambiaLingua(l); setShowLangMenu(false); }}
+                                  style={{
+                                      background: lang === l ? '#e3f2fd' : 'transparent',
+                                      border: lang === l ? '1px solid #2196f3' : '1px solid #eee',
+                                      borderRadius: '5px', padding: '5px', fontSize: '20px', cursor: 'pointer'
+                                  }}
+                              >
+                                  {flags[l]}
+                              </button>
+                          ))}
+                      </div>
+                  )}
+              </div>
           </div>
       </div>
       )}
@@ -321,7 +359,12 @@ function Menu() {
       {categorieUniche.map(catNome => (
         <div key={catNome} id={`cat-${catNome}`} className="accordion-item" style={{ marginBottom: '2px', borderRadius: '5px', overflow: 'hidden', width: '100%' }}>
           <div onClick={() => toggleAccordion(catNome)} style={{ background: activeCategory === catNome ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.1)', color: titleColor, padding: '15px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: activeCategory === catNome ? `1px solid ${priceColor}` : 'none' }}>
-            <h2 style={{ margin: 0, fontSize: '18px', color: titleColor, width: '100%' }}>{catNome}</h2>
+            {/* TRADUZIONE CATEGORIA: Cerca una categoria con questo nome per trovare ID e traduzione */}
+            {(() => {
+                const sampleCat = menu.find(p => (p.categoria_nome || p.categoria) === catNome);
+                const catNomeDisplay = sampleCat ? getContent(sampleCat, 'categoria_nome', lang) : catNome;
+                return <h2 style={{ margin: 0, fontSize: '18px', color: titleColor, width: '100%' }}>{catNomeDisplay || catNome}</h2>
+            })()}
             <span style={{ color: titleColor }}>{activeCategory === catNome ? '▼' : '▶'}</span>
           </div>
 
@@ -330,7 +373,7 @@ function Menu() {
                 
               {(() => {
                   const sampleProd = menu.find(p => (p.categoria_nome || p.categoria) === catNome);
-                  const catDesc = sampleProd ? sampleProd.categoria_descrizione : "";
+                  const catDesc = sampleProd ? getContent(sampleProd, 'categoria_descrizione', lang) : "";
                   if (catDesc) {
                       return <div style={{padding:'15px', fontStyle:'italic', color: style.text, opacity:0.8, fontSize:'14px', borderBottom:`1px solid ${style.card_border || '#eee'}`, background:'rgba(255,255,255,0.05)'}}>{catDesc}</div>;
                   }

@@ -1,4 +1,4 @@
-// client/src/components_admin/AdminMenu.jsx - FIXED SCAN & PDF INPUT
+// client/src/components_admin/AdminMenu.jsx - FIXED SCAN, PDF & AI TRANSLATE
 import { useState, useRef } from 'react'; 
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import ProductRow from './ProductRow';
@@ -84,6 +84,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const [editId, setEditId] = useState(null); 
   const [uploading, setUploading] = useState(false);
   const [importing, setImporting] = useState(false); 
+  const [translating, setTranslating] = useState(false); // NUOVO STATO TRADUZIONE
 
   if (!config || !categorie || !menu) {
       return <div style={{padding:'40px', textAlign:'center', color:'#666'}}>🔄 Caricamento Menu...</div>;
@@ -118,6 +119,31 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       try {
           await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ ordini_abilitati: nuovoStatoCucina }) }); 
       } catch (error) { alert("Errore connessione."); setConfig({...config, ordini_abilitati: !nuovoStatoCucina}); }
+  };
+
+  // --- NUOVA FUNZIONE TRADUZIONE MASSIVA ---
+  const handleTranslateAll = async () => {
+        if(!confirm("🤖 TRADUZIONE AI MASSIVA\n\nQuesta operazione invierà tutto il menu a Gemini Pro per tradurlo in 7 lingue (Inglese, Francese, Tedesco, Spagnolo, Portoghese, Polacco, Russo).\n\nL'operazione potrebbe richiedere fino a 60 secondi.\nVuoi procedere?")) return;
+
+        setTranslating(true);
+        try {
+            const res = await fetch(`${API_URL}/api/menu/translate-all`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ristorante_id: user.id })
+            });
+            const data = await res.json();
+            if(data.success) {
+                alert("✅ Menu tradotto con successo in tutte le lingue!");
+                if(ricaricaDati) ricaricaDati(); 
+            } else {
+                alert("Errore durante la traduzione: " + data.error);
+            }
+        } catch(e) {
+            alert("Errore di connessione: " + e.message);
+        } finally {
+            setTranslating(false);
+        }
   };
 
   const handleSalvaPiatto = async (e) => { 
@@ -179,7 +205,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
     } catch(err) { alert("Errore Connessione"); } finally { setImporting(false); }
   };
 
-  // --- FUNZIONE SCANSIONE MENU (AI) AGGIORNATA v2 ---
+  // --- FUNZIONE SCANSIONE MENU (AI) ---
 const handleMenuScan = async (e) => {
     const file = e.target.files[0];
     if(!file) return;
@@ -207,7 +233,7 @@ const handleMenuScan = async (e) => {
         const dataImport = await resImport.json();
         if (!resImport.ok) throw new Error(dataImport.error || "Errore salvataggio");
 
-        // 3. MESSAGGIO PERSONALIZZATO (Qui sta la modifica)
+        // 3. MESSAGGIO
         alert(`✅ Scansione completata!\n\n🆕 ${dataImport.added} piatti aggiunti\n🔄 ${dataImport.updated} piatti aggiornati`);
         
         if(ricaricaDati) ricaricaDati(); 
@@ -281,16 +307,18 @@ const handleMenuScan = async (e) => {
     <div style={containerStyle}>
         
         {/* OVERLAY LOADING EXCEL/SCAN */}
-        {(importing || isScanningMenu) && (
+        {(importing || isScanningMenu || translating) && (
             <div style={{
                 position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(255,255,255,0.9)', 
                 zIndex:9999, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'
             }}>
-                <div style={{fontSize:'50px'}}>🤖</div>
-                <h2 style={{color:'#3498db'}}>
-                    {isScanningMenu ? "Analisi Menu con AI..." : "Sto elaborando il file..."}
+                <div style={{fontSize:'50px'}}>
+                    {translating ? "🌍" : "🤖"}
+                </div>
+                <h2 style={{color: translating ? '#16a085' : '#3498db'}}>
+                    {translating ? "Traduzione Intelligente in corso..." : (isScanningMenu ? "Analisi Menu con AI..." : "Sto elaborando il file...")}
                 </h2>
-                <p>Potrebbe richiedere fino a 5 Minuti.</p>
+                <p>{translating ? "Gemini sta traducendo tutto il menu in 7 lingue." : "Potrebbe richiedere fino a 5 Minuti."}</p>
             </div>
         )}
 
@@ -307,6 +335,7 @@ const handleMenuScan = async (e) => {
             )}
         </div>
 
+        {/* --- PANNEL IMPORT/EXPORT --- */}
         <div style={{...cardStyle, display:'flex', justifyContent:'space-between', alignItems:'center', padding:'15px 25px', background:'#f8f9fa', flexWrap:'wrap', gap:'15px'}}>
             <div style={{display:'flex', alignItems:'center', gap:'15px'}}>
                 <span style={{fontSize:'24px'}}>📊</span>
@@ -322,7 +351,6 @@ const handleMenuScan = async (e) => {
                     <input type="file" accept=".xlsx, .xls" onChange={handleImportExcel} style={{position:'absolute', inset:0, opacity:0, cursor:'pointer'}} />
                 </div>
                 
-                {/* --- BOTTONE AI SCAN --- */}
                 <div style={{position:'relative'}}>
                     <button 
                         onClick={() => menuScanRef.current.click()} 
@@ -333,7 +361,7 @@ const handleMenuScan = async (e) => {
                     <input 
                         type="file" 
                         ref={menuScanRef}
-                        accept="image/*,application/pdf" // Accetta anche PDF
+                        accept="image/*,application/pdf"
                         onChange={handleMenuScan} 
                         style={{ display: 'none' }} 
                     />      
@@ -341,11 +369,30 @@ const handleMenuScan = async (e) => {
             </div>
         </div>
 
-        {/* ... (IL RESTO DEL CODICE RIMANE INVARIATO: FORM DI MODIFICA, LISTA PRODOTTI, ECC) ... */}
-        {/* Assicurati di copiare il resto del codice originale qui sotto, 
-            ho incluso solo la parte superiore modificata per brevità ma il file deve essere completo. 
-            Se copi tutto, incolla il resto della logica form/drag&drop qui sotto. */}
-            
+        {/* --- PANNEL TRADUZIONE AI --- */}
+        <div style={{...cardStyle, display:'flex', justifyContent:'space-between', alignItems:'center', padding:'15px 25px', background:'#e8f8f5', border:'1px solid #1abc9c', flexWrap:'wrap', gap:'15px'}}>
+            <div style={{display:'flex', alignItems:'center', gap:'15px'}}>
+                <span style={{fontSize:'24px'}}>🌍</span>
+                <div>
+                    <h4 style={{margin:0, color:'#16a085'}}>Traduzione Automatica AI</h4>
+                    <p style={{margin:0, fontSize:'12px', color:'#7f8c8d'}}>Genera traduzioni in 7 lingue (EN, FR, DE, ES, PT, PL, RU)</p>
+                </div>
+            </div>
+            <button 
+                onClick={handleTranslateAll} 
+                disabled={translating}
+                style={{
+                    background: translating ? '#95a5a6' : '#16a085', 
+                    color:'white', padding:'10px 20px', borderRadius:'6px', 
+                    border:'none', cursor: translating ? 'wait' : 'pointer', 
+                    fontWeight:'bold', display:'flex', alignItems:'center', gap:'10px',
+                    boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                }}
+            >
+                {translating ? "⏳ Traduzione in corso..." : "🤖 TRADUCI TUTTO ORA"}
+            </button>
+        </div>
+
         <div style={{opacity: isAbbonamentoAttivo ? 1 : 0.5, pointerEvents: isAbbonamentoAttivo ? 'auto' : 'none'}}>
             <div style={{...cardStyle, borderLeft: editId ? '5px solid #3498db' : '5px solid #2ecc71'}}>
                   <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px', flexWrap:'wrap', gap:'10px'}}>
@@ -440,7 +487,6 @@ const handleMenuScan = async (e) => {
                               <label style={labelStyle}>⚠️ Allergeni</label>
                               <div style={{display:'flex', flexWrap:'wrap', gap:'8px'}}>
                                   {LISTA_ALLERGENI.map(all => {
-                                      // FIX: uso l'helper per assicurarmi che allergeni sia un array
                                       const currentAllergeni = parseAllergeniSicuro(nuovoPiatto.allergeni);
                                       const isSelected = currentAllergeni.includes(all);
                                       return (

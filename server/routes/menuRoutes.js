@@ -284,4 +284,93 @@ router.post('/api/prodotti/import-massivo', async (req, res) => {
     }
 });
 
+// --- NUOVA ROTTA: TRADUZIONE MASSIVA CON GEMINI ---
+router.post('/api/menu/translate-all', async (req, res) => {
+    const { ristorante_id } = req.body;
+    const client = await pool.connect();
+    
+    try {
+        // 1. Recupera TUTTO il menu (Prodotti + Categorie)
+        const prodotti = await client.query("SELECT * FROM prodotti WHERE ristorante_id = $1", [ristorante_id]);
+        const categorie = await client.query("SELECT * FROM categorie WHERE ristorante_id = $1", [ristorante_id]);
+
+        if (prodotti.rows.length === 0) return res.status(400).json({ error: "Menu vuoto, nulla da tradurre." });
+
+        // 2. Prepara il payload per l'AI (minimizza i token inviando solo ciò che serve)
+        const dataToTranslate = {
+            categories: categorie.rows.map(c => ({ id: c.id, nome: c.nome, descrizione: c.descrizione })),
+            products: prodotti.rows.map(p => ({ 
+                id: p.id, 
+                nome: p.nome, 
+                descrizione: p.descrizione,
+                // Includiamo anche le varianti se sono testo libero, altrimenti saltiamo
+                varianti_nomi: p.varianti ? (typeof p.varianti === 'string' ? JSON.parse(p.varianti) : p.varianti).aggiunte?.map(a => a.nome) : []
+            }))
+        };
+
+        // 3. Prompt Ottimizzato per Gemini
+        const prompt = `
+            Sei un traduttore esperto di menu gastronomici. 
+            Traduci il seguente JSON in queste lingue: 
+            en (Inglese), fr (Francese), de (Tedesco), pl (Polacco), pt (Portoghese), ru (Russo), es (Spagnolo).
+            
+            REGOLE:
+            1. Mantieni rigorosamente la struttura JSON. Le chiavi devono essere gli ID originali.
+            2. Non tradurre nomi propri intraducibili (es. "Pizza Margherita").
+            3. Usa un linguaggio gastronomico invitante.
+            
+            INPUT DA TRADURRE:
+            ${JSON.stringify(dataToTranslate)}
+
+            OUTPUT RICHIESTO (JSON PURO):
+            {
+                "categories": {
+                    "ID_CATEGORIA": { "en": {"nome": "...", "descrizione": "..."}, "fr": {...}, ... }
+                },
+                "products": {
+                    "ID_PRODOTTO": { "en": {"nome": "...", "descrizione": "..."}, "fr": {...}, ... }
+                }
+            }
+        `;
+
+        // Chiamata AI (Usa la tua funzione esistente o chiamala qui direttamente)
+        // Nota: Assicurati che analyzeImageWithGemini supporti anche solo testo, o usa model.generateContent(prompt)
+        const { GoogleGenerativeAI } = require("@google/generative-ai");
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" }); // Usa il modello Pro per contesti lunghi
+
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text();
+        
+        // Pulizia JSON (Gemini a volte mette backticks)
+        const jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        const translations = JSON.parse(jsonStr);
+
+        // 4. Salvataggio nel DB (Bulk Update)
+        await client.query('BEGIN');
+
+        // Aggiorna Categorie
+        for (const [id, trads] of Object.entries(translations.categories)) {
+            await client.query("UPDATE categorie SET traduzioni = $1 WHERE id = $2", [JSON.stringify(trads), id]);
+        }
+
+        // Aggiorna Prodotti
+        for (const [id, trads] of Object.entries(translations.products)) {
+            // Recupera le traduzioni esistenti per non sovrascrivere tutto se non serve, oppure sovrascrivi
+            await client.query("UPDATE prodotti SET traduzioni = $1 WHERE id = $2", [JSON.stringify(trads), id]);
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true, message: "Traduzione completata con successo!" });
+
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error("Errore Traduzione:", e);
+        res.status(500).json({ error: "Errore AI: " + e.message });
+    } finally {
+        client.release();
+    }
+});
+
 module.exports = router;
