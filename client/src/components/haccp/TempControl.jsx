@@ -6,34 +6,31 @@ const TempControl = ({
   getTodayLog, 
   tempInput, 
   setTempInput, 
-  registraTemperatura, 
+  registraTemperatura, // Questa funzione in Haccp.jsx dovrà gestire il parametro extra 'customDate'
   handleLogPhoto, 
   abilitaNuovaMisurazione,
   logs,
   openDownloadModal 
 }) => {
   
-  // --- STATI LOCALI PER GESTIONE VISTA ---
-  const [viewMode, setViewMode] = useState('cards'); // 'cards' o 'table'
+  const [viewMode, setViewMode] = useState('cards'); 
   const [currentMonthDate, setCurrentMonthDate] = useState(new Date());
 
-  // --- HANDLER: DA TABELLA A CARD ---
   const handleEditFromTable = (asset, dateStr, existingLog) => {
-      // 1. Prepariamo l'input temporaneo con i dati cliccati
+      // Imposta data personalizzata (con orario fittizio di metà giornata per sicurezza)
+      const targetDate = new Date(dateStr);
+      targetDate.setHours(12, 0, 0, 0); 
+      
       setTempInput(prev => ({
           ...prev,
           [asset.id]: {
               val: existingLog ? existingLog.valore : '',
-              // Se è un inserimento retroattivo, salviamo la data specifica nello stato temporaneo
-              customDate: dateStr, 
+              customDate: targetDate.toISOString(), // IMPORTANTE: Passiamo la data ISO completa
               photo: existingLog ? existingLog.foto_prova_url : ''
           }
       }));
 
-      // 2. Switchiamo alla vista 'cards' per far vedere il form
       setViewMode('cards');
-
-      // 3. Scrolliamo all'elemento specifico dopo il render
       setTimeout(() => {
            const el = document.getElementById(`asset-card-${asset.id}`);
            if(el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -42,11 +39,7 @@ const TempControl = ({
 
   return (
     <div className="no-print">
-      
-      {/* --- TOOLBAR SUPERIORE --- */}
       <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems:'center', flexWrap: 'wrap', gap: 10 }}>
-          
-          {/* Switch Vista */}
           <div style={{display:'flex', gap:10, background: '#fff', padding: 5, borderRadius: 25, boxShadow: '0 2px 5px rgba(0,0,0,0.05)'}}>
                <button 
                   onClick={() => setViewMode('cards')} 
@@ -77,9 +70,7 @@ const TempControl = ({
           </button>
       </div>
 
-      {/* --- CONTENUTO CONDIZIONALE --- */}
       {viewMode === 'table' ? (
-          /* VISTA TABELLA (Nuovo Componente) */
           <TempRegisterTable 
               assets={assetsToDisplay}
               logs={logs}
@@ -89,17 +80,13 @@ const TempControl = ({
               openDownloadModal={openDownloadModal}
           />
       ) : (
-          /* VISTA CARDS (Codice Originale Potenziato) */
           <div className="temp-grid">
             {assetsToDisplay.map(asset => {
                 const todayLog = getTodayLog(asset.id);
                 const isInputActive = !!tempInput[asset.id];
                 const currentData = tempInput[asset.id] || {};
-                
-                // Controllo se stiamo modificando una data passata
                 const isRetroactiveEdit = !!currentData.customDate; 
                 
-                // CASO 1: MACCHINA SPENTA
                 if(asset.stato === 'spento') {
                     return (
                         <div key={asset.id} id={`asset-card-${asset.id}`} className="temp-card spento">
@@ -110,8 +97,6 @@ const TempControl = ({
                     );
                 }
 
-                // CASO 2: GIÀ REGISTRATO (MOSTRA RIEPILOGO VERDE)
-                // Nota: Se stiamo facendo una modifica retroattiva, forziamo la visualizzazione della card attiva
                 if (todayLog && !isInputActive && !isRetroactiveEdit) {
                     const timeStr = new Date(todayLog.data_ora).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'});
                     const logsDiOggi = logs.filter(l => l.asset_id === asset.id && new Date(l.data_ora).toDateString() === new Date().toDateString());
@@ -131,7 +116,6 @@ const TempControl = ({
                     );
                 }
                 
-                // CASO 3: DA REGISTRARE (CARD BIANCA CON INPUT)
                 return (
                     <div key={asset.id} id={`asset-card-${asset.id}`} className="temp-card active" style={isRetroactiveEdit ? {border: '2px solid #f39c12', background: '#fffcf5'} : {}}>
                          <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:15}}>
@@ -144,14 +128,12 @@ const TempControl = ({
                               </span>
                          </div>
 
-                         {/* Avviso se modifica retroattiva */}
                          {isRetroactiveEdit && (
                             <div style={{marginBottom: 10, padding: 5, background: '#f39c12', color: 'white', fontSize: 12, borderRadius: 4, textAlign: 'center', fontWeight: 'bold'}}>
                                 📅 Modifica del: {new Date(currentData.customDate).toLocaleDateString('it-IT')}
                             </div>
                          )}
                          
-                         {/* AREA INPUT + BOTTONI (Responsive) */}
                          <div className="temp-card-input-area">
                             <input 
                                 type="number" 
@@ -174,9 +156,9 @@ const TempControl = ({
                             </div>
                          </div>
 
-                         {isInputActive && (getTodayLog(asset.id) || isRetroactiveEdit) && (
+                         {isInputActive && (
                              <button onClick={()=>{const n={...tempInput}; delete n[asset.id]; setTempInput(n);}} className="btn-cancel-edit">
-                                 Annulla Modifica
+                                 Annulla
                              </button>
                          )}
                     </div>
