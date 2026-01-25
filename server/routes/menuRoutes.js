@@ -409,4 +409,40 @@ router.post('/api/menu/translate-all', async (req, res) => {
     }
 });
 
+// --- DISATTIVA LINGUA (RIMUOVE TRADUZIONI DAL DB) ---
+router.post('/api/menu/remove-language', async (req, res) => {
+    const { ristorante_id, lang } = req.body;
+
+    // Controllo di sicurezza
+    if (!ristorante_id || !lang) return res.status(400).json({ error: "Dati mancanti" });
+    if (lang === 'it') return res.status(400).json({ error: "Non puoi disattivare la lingua principale." });
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // 1. Rimuove la chiave della lingua dalle CATEGORIE
+        await client.query(
+            `UPDATE categorie SET traduzioni = traduzioni - $1 WHERE ristorante_id = $2`, 
+            [lang, ristorante_id]
+        );
+
+        // 2. Rimuove la chiave della lingua dai PRODOTTI
+        await client.query(
+            `UPDATE prodotti SET traduzioni = traduzioni - $1 WHERE ristorante_id = $2`, 
+            [lang, ristorante_id]
+        );
+
+        await client.query('COMMIT');
+        res.json({ success: true, message: `Lingua disattivata.` });
+
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error("Errore Rimozione Lingua:", e);
+        res.status(500).json({ error: "Errore DB: " + e.message });
+    } finally {
+        client.release();
+    }
+});
+
 module.exports = router;

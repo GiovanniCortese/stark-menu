@@ -1,4 +1,4 @@
-// client/src/components_admin/AdminMenu.jsx - FIXED SUB-CATEGORY ORDERING
+// client/src/components_admin/AdminMenu.jsx - FIXED SUB-CATEGORY ORDERING & NEW LANG MANAGEMENT
 import { useState, useRef } from 'react'; 
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import ProductRow from './ProductRow';
@@ -86,7 +86,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   const menuScanRef = useRef(null);
   
   const [traduzioniInput, setTraduzioniInput] = useState({});
-  const [selectedLangs, setSelectedLangs] = useState(['en']);
+  // RIMOSSO: const [selectedLangs, setSelectedLangs] = useState(['en']); (Non serve più)
 
   const [editId, setEditId] = useState(null); 
   const [uploading, setUploading] = useState(false);
@@ -128,29 +128,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       } catch (error) { alert("Errore connessione."); setConfig({...config, ordini_abilitati: !nuovoStatoCucina}); }
   };
 
-  const handleTranslateAll = async () => {
-        if (selectedLangs.length === 0) return alert("Seleziona almeno una lingua!");
-        if(!confirm(`🤖 TRADUZIONE AI MASSIVA\n\nStai per tradurre il menu in: ${selectedLangs.map(l => l.toUpperCase()).join(', ')}.\n\nVuoi procedere?`)) return;
-
-        setTranslating(true);
-        try {
-            const res = await fetch(`${API_URL}/api/menu/translate-all`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ristorante_id: user.id, languages: selectedLangs })
-            });
-            const data = await res.json();
-            if(data.success) {
-                alert(`✅ ${data.message}`);
-                if(ricaricaDati) ricaricaDati(); 
-            } else { alert("Errore durante la traduzione: " + data.error); }
-        } catch(e) { alert("Errore di connessione: " + e.message); } finally { setTranslating(false); }
-  };
-
-  const toggleLang = (code) => {
-      if (selectedLangs.includes(code)) setSelectedLangs(selectedLangs.filter(l => l !== code));
-      else setSelectedLangs([...selectedLangs, code]);
-  };
+  // RIMOSSO: handleTranslateAll e toggleLang perché sostituiti dalla logica inline nel render
 
   const handleSalvaPiatto = async (e) => { 
       e.preventDefault(); 
@@ -307,7 +285,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
     });
   };
 
-  // --- NUOVA FUNZIONE: SPOSTA SOTTOCATEGORIA INTERA ---
+  // --- FUNZIONE: SPOSTA SOTTOCATEGORIA INTERA ---
   const spostaSottocategoria = async (catNome, subKey, direzione) => {
       // 1. Trova tutti i prodotti di questa Categoria
       const prodottiCat = menu.filter(p => p.categoria === catNome);
@@ -321,7 +299,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       }, {});
 
       // 3. Ordina i gruppi in base alla posizione minima del PRIMO prodotto del gruppo
-      // Questo ci dà l'ordine attuale visuale
       let groupKeys = Object.keys(groups).sort((a,b) => {
           const minPosA = Math.min(...groups[a].map(p => p.posizione || 0));
           const minPosB = Math.min(...groups[b].map(p => p.posizione || 0));
@@ -340,12 +317,10 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       [groupKeys[idx], groupKeys[nuovoIdx]] = [groupKeys[nuovoIdx], groupKeys[idx]];
 
       // 6. Ricostruisci la lista prodotti PIATTA riassegnando le posizioni
-      // Si riassegnano le posizioni sequenziali (0, 1, 2...) rispettando il nuovo ordine dei gruppi
       let nuoviProdottiDaSalvare = [];
       let globalCounter = 0;
 
       groupKeys.forEach(key => {
-          // Mantieni l'ordine interno dei prodotti nel gruppo
           const prods = groups[key].sort((a,b) => (a.posizione||0) - (b.posizione||0)); 
           prods.forEach(p => {
               nuoviProdottiDaSalvare.push({
@@ -409,15 +384,104 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             </div>
         </div>
 
-        {/* --- PANNEL TRADUZIONE AI --- */}
-        <div style={{...cardStyle, padding:'20px', background:'#e8f8f5', border:'1px solid #1abc9c', gap:'15px'}}>
-            <div style={{display:'flex', alignItems:'center', gap:'15px', marginBottom:'15px'}}><span style={{fontSize:'24px'}}>🌍</span><div><h4 style={{margin:0, color:'#16a085'}}>Traduzione Automatica AI</h4><p style={{margin:0, fontSize:'12px', color:'#7f8c8d'}}>Scegli le lingue e lascia fare a Gemini!</p></div></div>
-            <div style={{display:'flex', flexWrap:'wrap', gap:'10px', marginBottom:'20px'}}>
-                {Object.entries(LANGUAGES_MAP).map(([code, label]) => (
-                    <div key={code} onClick={() => toggleLang(code)} style={{padding:'8px 15px', borderRadius:'20px', cursor:'pointer', fontSize:'13px', fontWeight:'bold', background: selectedLangs.includes(code) ? '#16a085' : 'white', color: selectedLangs.includes(code) ? 'white' : '#7f8c8d', border: selectedLangs.includes(code) ? '1px solid #16a085' : '1px solid #bdc3c7', transition: 'all 0.2s', userSelect:'none'}}>{label}</div>
-                ))}
+        {/* --- PANNEL GESTIONE LINGUE (NUOVO LAYOUT) --- */}
+        <div style={{...cardStyle, padding:'25px', background:'#e8f8f5', border:'1px solid #1abc9c'}}>
+            <div style={{display:'flex', alignItems:'center', gap:'15px', marginBottom:'20px'}}>
+                <span style={{fontSize:'28px'}}>🌍</span>
+                <div>
+                    <h4 style={{margin:0, color:'#16a085', fontSize:'18px'}}>Gestione Lingue Internazionali</h4>
+                    <p style={{margin:0, fontSize:'13px', color:'#7f8c8d'}}>Attiva o disattiva le lingue del tuo menu digitale.</p>
+                </div>
             </div>
-            <button onClick={handleTranslateAll} disabled={translating} style={{background: translating ? '#95a5a6' : '#16a085', color:'white', padding:'12px 25px', borderRadius:'6px', border:'none', cursor: translating ? 'wait' : 'pointer', fontWeight:'bold', display:'flex', alignItems:'center', gap:'10px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', width:'100%', justifyContent:'center'}}>{translating ? "⏳ Traduzione in corso..." : "🤖 TRADUCI LINGUE SELEZIONATE"}</button>
+
+            <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(220px, 1fr))', gap:'15px'}}>
+                {Object.entries(LANGUAGES_MAP).map(([code, label]) => {
+                    // 1. Verifichiamo se la lingua è ATTIVA analizzando il menu locale
+                    let isAttiva = false;
+                    if (menu) {
+                        for (let p of menu) {
+                             try {
+                                 const t = typeof p.traduzioni === 'string' ? JSON.parse(p.traduzioni) : (p.traduzioni || {});
+                                 if (t[code]) { isAttiva = true; break; }
+                             } catch(e){}
+                        }
+                    }
+
+                    return (
+                        <div key={code} style={{
+                            background:'white', 
+                            borderRadius:'12px', 
+                            padding:'15px', 
+                            border: isAttiva ? '2px solid #2ecc71' : '1px solid #ddd',
+                            boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
+                            display:'flex', flexDirection:'column', justifyContent:'space-between', gap:'10px'
+                        }}>
+                            <div style={{display:'flex', alignItems:'center', justifyContent:'space-between'}}>
+                                <span style={{fontWeight:'bold', color:'#2c3e50', fontSize:'15px'}}>{label}</span>
+                                {isAttiva ? <span style={{fontSize:'10px', background:'#2ecc71', color:'white', padding:'3px 8px', borderRadius:'10px', fontWeight:'bold'}}>ATTIVA</span> 
+                                          : <span style={{fontSize:'10px', background:'#bdc3c7', color:'white', padding:'3px 8px', borderRadius:'10px', fontWeight:'bold'}}>OFF</span>}
+                            </div>
+                            
+                            <div style={{display:'flex', gap:'5px', marginTop:'5px'}}>
+                                {/* PULSANTE DISATTIVA */}
+                                {isAttiva && (
+                                    <button 
+                                        onClick={async () => {
+                                            if(!confirm(`Vuoi disattivare il ${label}?\nLa bandiera verrà rimossa dal menu.`)) return;
+                                            try {
+                                                const res = await fetch(`${API_URL}/api/menu/remove-language`, {
+                                                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                                                    body: JSON.stringify({ ristorante_id: user.id, lang: code })
+                                                });
+                                                if(res.ok) { alert("Lingua disattivata!"); ricaricaDati(); }
+                                            } catch(e) { alert("Errore"); }
+                                        }}
+                                        style={{flex:1, background:'#fff', border:'1px solid #e74c3c', color:'#e74c3c', borderRadius:'6px', padding:'8px', fontSize:'12px', fontWeight:'bold', cursor:'pointer'}}
+                                    >
+                                        Disattiva
+                                    </button>
+                                )}
+
+                                {/* PULSANTE ATTIVA / AGGIORNA */}
+                                <button 
+                                    onClick={async () => {
+                                        const action = isAttiva ? "Aggiornare" : "Attivare";
+                                        if(!confirm(`Vuoi ${action} la traduzione in ${label} con l'AI?\nPotrebbe richiedere qualche minuto.`)) return;
+                                        
+                                        setTranslating(true);
+                                        try {
+                                            const res = await fetch(`${API_URL}/api/menu/translate-all`, {
+                                                method: 'POST', headers: {'Content-Type': 'application/json'},
+                                                body: JSON.stringify({ ristorante_id: user.id, languages: [code] }) // Traduce solo QUESTA lingua
+                                            });
+                                            const data = await res.json();
+                                            if(data.success) { alert(`✅ ${label} Attivato!`); ricaricaDati(); }
+                                            else { alert("Errore AI: " + data.error); }
+                                        } catch(e) { alert("Errore rete"); } finally { setTranslating(false); }
+                                    }}
+                                    disabled={translating}
+                                    style={{
+                                        flex:1, 
+                                        background: isAttiva ? '#3498db' : '#2ecc71', 
+                                        border:'none', 
+                                        color:'white', 
+                                        borderRadius:'6px', 
+                                        padding:'8px', 
+                                        fontSize:'12px', 
+                                        fontWeight:'bold', 
+                                        cursor: translating ? 'wait' : 'pointer',
+                                        opacity: translating ? 0.7 : 1
+                                    }}
+                                >
+                                    {translating ? "⏳..." : (isAttiva ? "🔄 Aggiorna" : "✨ Attiva")}
+                                </button>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+            
+            {translating && <div style={{marginTop:'15px', textAlign:'center', color:'#16a085', fontSize:'13px', fontWeight:'bold'}}>🤖 L'Intelligenza Artificiale sta traducendo il menu... attendi...</div>}
         </div>
 
         <div style={{opacity: isAbbonamentoAttivo ? 1 : 0.5, pointerEvents: isAbbonamentoAttivo ? 'auto' : 'none'}}>
