@@ -88,15 +88,17 @@ exports.exportGeneric = async (req, res) => {
         const ristRes = await pool.query("SELECT nome, dati_fiscali FROM ristoranti WHERE id = $1", [ristorante_id]);
         const aziendaInfo = ristRes.rows[0];
 
-        // 1. GESTIONE SPECIALE: MATRICE TEMPERATURE (CALENDARIO)
+// 1. GESTIONE SPECIALE: MATRICE TEMPERATURE (LAYOUT FOTO)
         if (tipo === 'temperature_matrix') {
             const assetsRes = await pool.query("SELECT id, nome FROM haccp_assets WHERE ristorante_id = $1 AND tipo IN ('frigo','cella','vetrina','congelatore','abbattitore') ORDER BY nome", [ristorante_id]);
             const assets = assetsRes.rows;
 
+            // Recupera Logs
             let sqlLogs = `SELECT l.data_ora, l.asset_id, l.valore, l.operatore FROM haccp_logs l WHERE l.ristorante_id = $1 AND l.data_ora >= $2 AND l.data_ora <= $3`;
             const logsRes = await pool.query(sqlLogs, [ristorante_id, start, end]);
             const logs = logsRes.rows;
 
+            // Genera giorni mese
             const days = [];
             let curr = new Date(start);
             const endDate = new Date(end);
@@ -105,59 +107,120 @@ exports.exportGeneric = async (req, res) => {
                 curr.setDate(curr.getDate() + 1);
             }
 
-            const tableHeaders = ["Data", ...assets.map(a => a.nome)];
+            // Headers Tabella (Giorno + Nomi Asset)
+            const tableHeaders = ["GIORNO", ...assets.map(a => a.nome.toUpperCase())];
+            
+            // Righe Tabella
             const tableRows = days.map(day => {
-                const rowData = [new Date(day).toLocaleDateString('it-IT')];
+                const dayNum = new Date(day).getDate(); // Solo il numero del giorno (1, 2, 3...)
+                const rowData = [String(dayNum)];
                 assets.forEach(asset => {
                     const log = logs.find(l => {
                         const logDate = new Date(l.data_ora).toISOString().split('T')[0];
                         return logDate === day && l.asset_id === asset.id;
                     });
-                    rowData.push(log ? `${log.valore}°\n(${log.operatore})` : "-");
+                    // Se c'è il valore lo mostro, altrimenti cella vuota
+                    rowData.push(log ? `${log.valore}°` : "");
                 });
                 return rowData;
             });
 
             if (format === 'pdf') {
-                const doc = new PDFDocument({ margin: 20, size: 'A4', layout: 'landscape' });
-                // BUFFER MODE (FIX CRASH)
+                const doc = new PDFDocument({ margin: 30, size: 'A4', layout: 'landscape' });
                 let buffers = [];
                 doc.on('data', buffers.push.bind(buffers));
                 doc.on('end', () => {
                     let pdfData = Buffer.concat(buffers);
                     res.setHeader('Content-Type', 'application/pdf');
-                    res.setHeader('Content-Disposition', `attachment; filename="registro_temperature_mensile.pdf"`);
+                    res.setHeader('Content-Disposition', `attachment; filename="registro_temperature_ufficiale.pdf"`);
                     res.send(pdfData);
                 });
-                
-                doc.fontSize(16).text(aziendaInfo.nome, { align: 'center' });
-                doc.fontSize(10).text(aziendaInfo.dati_fiscali || "", { align: 'center' });
-                doc.moveDown();
-                doc.fontSize(14).text(`REGISTRO TEMPERATURE - ${rangeName}`, { align: 'center' });
-                doc.moveDown();
 
+                // --- INTESTAZIONE IDENTICA ALLA FOTO ---
+                // Box Header
+                doc.rect(30, 30, 780, 40).stroke(); // Box esterno header
+                doc.moveTo(250, 30).lineTo(250, 70).stroke(); // Separatore 1
+                doc.moveTo(680, 30).lineTo(680, 70).stroke(); // Separatore 2
+                
+                // Testi Header
+                doc.font("Helvetica-Bold").fontSize(12).text(aziendaInfo.nome.toUpperCase(), 40, 45, { width: 200, align: 'center' });
+                doc.fontSize(10).text("SCHEDA DI ATTUAZIONE DEL\nPIANO DI AUTOCONTROLLO", 250, 40, { width: 430, align: 'center' });
+                doc.fontSize(10).text("Rev 00", 680, 45, { width: 100, align: 'center' });
+
+                doc.moveDown(3);
+                
+                // Titolo Sezione
+                doc.fontSize(14).text("DOTAZIONI FRIGORIFERE", { align: 'center' });
+                doc.moveDown(0.5);
+
+                // Info Mese/Anno/Locale
+                const meseRif = new Date(start).toLocaleString('it-IT', { month: 'long' }).toUpperCase();
+                const annoRif = new Date(start).getFullYear();
+                
+                doc.fontSize(10).text(`MESE: ${meseRif}          ANNO: ${annoRif}          LOCALE: CUCINA/LABORATORIO`, { align: 'left' });
+                doc.moveDown(0.5);
+
+                // TABELLA
                 await doc.table({ headers: tableHeaders, rows: tableRows }, { 
-                    width: 750, 
-                    prepareHeader: () => doc.font("Helvetica-Bold").fontSize(9), 
-                    prepareRow: () => doc.font("Helvetica").fontSize(7).padding(2) 
+                    width: 780, 
+                    x: 30,
+                    divider: { header: { disabled: false, width: 1, opacity: 1 }, horizontal: { disabled: false, width: 0.5, opacity: 0.5 } },
+                    prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8), 
+                    prepareRow: (row, indexColumn, indexRow, rectRow, rectCell) => {
+                        // Bordi verticali per simulare la griglia della foto
+                        doc.rect(rectCell.x, rectCell.y, rectCell.width, rectCell.height).strokeColor('#999').stroke();
+                        return doc.font("Helvetica").fontSize(9).fillColor('black');
+                    }
                 });
+
+                // --- PIÈ DI PAGINA IDENTICO ALLA FOTO ---
+                doc.moveDown(1);
+                doc.font("Helvetica-Bold").fontSize(9).text("Condizioni:", { underline: true });
+                doc.font("Helvetica").fontSize(8)
+                   .text("Assenza di promiscuità e di merce non protetta")
+                   .text("Assenza segni di sporco visibile, macchie, untuosità al tatto sulle parti a contatto e non con gli alimenti,")
+                   .text("Assenza di odori sgradevoli o anomali,")
+                   .text("Assenza di prodotti con caratteristiche organolettiche (odore, colore, consistenza) anomali.");
+                
+                doc.moveDown(0.5);
+                doc.font("Helvetica-Bold").text("C: Conforme ai limiti sopra indicati");
+                doc.text("NC: Non conforme ai limiti sopra indicati");
+                
+                doc.moveDown(1);
+                doc.text("Firma RHACCP: ........................................................................................");
+                
                 doc.end();
+
             } else {
-                // EXCEL MATRICE
+                // EXCEL (Layout simile)
                 const wb = xlsx.utils.book_new();
                 const sheetData = [
-                    [aziendaInfo.nome],
-                    [aziendaInfo.dati_fiscali || ""],
-                    [`REGISTRO TEMPERATURE - ${rangeName}`],
+                    [aziendaInfo.nome, "", "SCHEDA DI ATTUAZIONE PIANO AUTOCONTROLLO", "", "", "Rev 00"],
+                    ["DOTAZIONI FRIGORIFERE"],
+                    [`MESE: ${new Date(start).toLocaleString('it-IT',{month:'long'})}`, `ANNO: ${new Date(start).getFullYear()}`],
                     [""],
                     tableHeaders,
-                    ...tableRows
+                    ...tableRows,
+                    [""],
+                    ["Condizioni:"],
+                    ["Assenza di promiscuità e di merce non protetta"],
+                    ["Assenza segni di sporco visibile, macchie, untuosità"],
+                    ["Assenza di odori sgradevoli o anomali"],
+                    [""],
+                    ["Firma RHACCP: __________________________"]
                 ];
+                
                 const ws = xlsx.utils.aoa_to_sheet(sheetData);
-                ws['!cols'] = [{ wch: 12 }, ...assets.map(() => ({ wch: 20 }))];
-                xlsx.utils.book_append_sheet(wb, ws, "Registro Mensile");
+                
+                // Merge Header Excel (Simulazione)
+                ws['!merges'] = [
+                    { s: {r:0, c:2}, e: {r:0, c:4} }, // Titolo centrale
+                    { s: {r:1, c:0}, e: {r:1, c:6} }  // Dotazioni Frigorifere
+                ];
+
+                xlsx.utils.book_append_sheet(wb, ws, "Registro");
                 const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
-                res.setHeader('Content-Disposition', `attachment; filename="registro_temperature_mensile.xlsx"`);
+                res.setHeader('Content-Disposition', `attachment; filename="registro_temperature.xlsx"`);
                 res.send(buffer);
             }
             return;
