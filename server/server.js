@@ -37,84 +37,72 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.get('/:slug', async (req, res, next) => {
     const slug = req.params.slug;
 
-    // 1. Ignora file statici o API
-    // Se contiene un punto (es. style.css) o inizia con api, passa oltre.
+    // Ignora file statici (immagini, js, css)
     if (slug.startsWith('api') || slug.includes('.')) return next();
 
-    console.log(`🔍 SEO CHECK per slug: "${slug}"`);
+    // PERCORSI POSSIBILI (Li proviamo tutti)
+    const possiblePaths = [
+        path.join(__dirname, '..', 'client', 'dist', 'index.html'), // Standard
+        path.join(__dirname, '..', 'client', 'index.html'),         // No build
+        path.join(__dirname, 'client', 'dist', 'index.html'),        // Server nella root
+        path.join(__dirname, 'dist', 'index.html'),                  // Dist nella root
+        path.join(process.cwd(), 'client', 'dist', 'index.html')     // Basato sulla cartella di avvio
+    ];
 
-    // 2. Determina il percorso di index.html
-    let filePath = path.join(__dirname, '..', 'client', 'dist', 'index.html');
-    if (!fs.existsSync(filePath)) {
-        filePath = path.join(__dirname, '..', 'client', 'index.html');
+    let filePath = null;
+    
+    // Cerca il primo percorso che esiste
+    for (const p of possiblePaths) {
+        if (fs.existsSync(p)) {
+            filePath = p;
+            break;
+        }
     }
 
-    if (!fs.existsSync(filePath)) {
-        console.error("❌ ERRORE CRITICO: index.html non trovato!");
-        return next(); 
+    // --- DEBUG: SE NON TROVA IL FILE, STAMPA L'ERRORE A VIDEO ---
+    if (!filePath) {
+        console.error("❌ ERRORE: Nessun index.html trovato.");
+        return res.send(`
+            <h1>ERRORE CONFIGURAZIONE SERVER</h1>
+            <p>Il server non riesce a trovare il file index.html.</p>
+            <p>Ho cercato in questi percorsi:</p>
+            <ul>${possiblePaths.map(p => `<li>${p}</li>`).join('')}</ul>
+            <p>Cartella attuale (__dirname): ${__dirname}</p>
+        `);
     }
-
-    // Dati di Default (Fallback)
-    let title = "Cosa e Dove Mangiare | Menu Digitale";
-    let desc = "Scopri i migliori menu digitali e ordina online.";
-    let image = `${DOMAIN}/logo-default.png`; 
 
     try {
-        // 3. Recupera Dati Ristorante dal DB
+        // Recupera Dati DB
         const result = await pool.query('SELECT nome, style FROM ristoranti WHERE slug = $1', [slug]);
+        
+        let title = "Cosa e Dove Mangiare";
+        let desc = "Menu Digitale";
+        let image = "https://www.cosaedovemangiare.it/logo-default.png"; 
 
         if (result.rows.length > 0) {
             const r = result.rows[0];
             const style = typeof r.style === 'string' ? JSON.parse(r.style) : (r.style || {});
-            
             title = `${r.nome} | Menu Digitale`;
-            desc = `Sfoglia il menu di ${r.nome} e ordina le tue specialità!`;
+            desc = `Sfoglia il menu di ${r.nome}`;
             
-            // --- FIX URL IMMAGINI PER FACEBOOK ---
-            // Facebook richiede URL assoluti (https://...). 
-            // Se nel DB l'url è relativo (es: /uploads/foto.png), aggiungiamo il dominio.
+            // Fix Immagini Relative
             let rawImg = style.logo_url || style.cover_url;
             if (rawImg) {
-                if (rawImg.startsWith('http')) {
-                    image = rawImg;
-                } else {
-                    // Rimuovi eventuale slash iniziale doppio per sicurezza
-                    image = `${DOMAIN}${rawImg.startsWith('/') ? '' : '/'}${rawImg}`;
-                }
+                image = rawImg.startsWith('http') ? rawImg : `https://www.cosaedovemangiare.it${rawImg.startsWith('/')?'':'/'}${rawImg}`;
             }
-            
-            console.log(`✅ Ristorante trovato: "${title}" - IMG: ${image}`);
-        } else {
-            console.log(`⚠️ Ristorante non trovato per slug: ${slug}, uso dati default.`);
         }
 
-        // 4. Leggi e Sostituisci (SINCRONO per evitare race conditions)
+        // Leggi e Sostituisci
         let htmlData = fs.readFileSync(filePath, 'utf8');
-
-        // Sostituzione globale
         htmlData = htmlData
             .replace(/__META_TITLE__/g, title)
             .replace(/__META_DESCRIPTION__/g, desc)
             .replace(/__META_IMAGE__/g, image);
 
-        // Invia risposta definitiva
-        res.status(200).send(htmlData);
+        res.send(htmlData);
 
     } catch (e) {
-        console.error("❌ Errore SEO Injection:", e);
-        
-        // 5. EMERGENZA: Se c'è un errore nel DB, NON mandare il file rotto.
-        // Manda comunque l'HTML ma con i tag di default puliti.
-        try {
-            let htmlData = fs.readFileSync(filePath, 'utf8');
-            htmlData = htmlData
-                .replace(/__META_TITLE__/g, "Cosa e Dove Mangiare")
-                .replace(/__META_DESCRIPTION__/g, "Menu Digitale")
-                .replace(/__META_IMAGE__/g, `${DOMAIN}/logo-default.png`);
-            res.status(200).send(htmlData);
-        } catch (err2) {
-            next(); // Se fallisce anche la lettura file, passa al gestore standard
-        }
+        res.send(`<h1>ERRORE DB/CODICE</h1><p>${e.message}</p>`);
     }
 });
 // ===========================================================================
