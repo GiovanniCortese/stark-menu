@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 
 const TempRegisterTable = ({ assets, logs, currentDate, setCurrentDate, onEditLog, openDownloadModal }) => {
+    
     // 1. Genera i giorni del mese corrente
     const getDaysInMonth = (date) => {
         const year = date.getFullYear();
@@ -36,33 +37,35 @@ const TempRegisterTable = ({ assets, logs, currentDate, setCurrentDate, onEditLo
     };
 
     return (
-        <div className="temp-register-container" style={{ background: 'white', padding: 20, borderRadius: 10, marginTop: 20 }}>
+        <div className="temp-register-container" style={{ background: 'white', padding: 20, borderRadius: 10, marginTop: 20, boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
             
             {/* INTESTAZIONE E CONTROLLI */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap:'wrap', gap:10 }}>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                    <button onClick={() => changeMonth(-1)} style={{ border: 'none', background: '#eee', borderRadius: 5, cursor: 'pointer', padding: '5px 10px' }}>◀</button>
-                    <h3 style={{ margin: 0, textTransform: 'uppercase', minWidth: 150, textAlign: 'center' }}>
+                    <button onClick={() => changeMonth(-1)} style={{ border: 'none', background: '#eee', borderRadius: 5, cursor: 'pointer', padding: '5px 10px', fontWeight:'bold' }}>◀</button>
+                    <h3 style={{ margin: 0, textTransform: 'uppercase', minWidth: 180, textAlign: 'center', color:'#2c3e50' }}>
                         {currentDate.toLocaleString('it-IT', { month: 'long', year: 'numeric' })}
                     </h3>
-                    <button onClick={() => changeMonth(1)} style={{ border: 'none', background: '#eee', borderRadius: 5, cursor: 'pointer', padding: '5px 10px' }}>▶</button>
+                    <button onClick={() => changeMonth(1)} style={{ border: 'none', background: '#eee', borderRadius: 5, cursor: 'pointer', padding: '5px 10px', fontWeight:'bold' }}>▶</button>
                 </div>
                 
-                <button onClick={() => openDownloadModal('temperature_matrix')} style={{ background: '#27ae60', color: 'white', border: 'none', padding: '10px 20px', borderRadius: 5, fontWeight: 'bold', cursor: 'pointer' }}>
+                <button onClick={() => openDownloadModal('temperature_matrix')} style={{ background: '#27ae60', color: 'white', border: 'none', padding: '10px 20px', borderRadius: 5, fontWeight: 'bold', cursor: 'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.1)' }}>
                     ⬇ Scarica Registro Mensile
                 </button>
             </div>
 
-            {/* TABELLA MATRICE */}
-            <div style={{ overflowX: 'auto' }}>
+            {/* TABELLA MATRICE SCORREVOLE */}
+            <div style={{ overflowX: 'auto', border: '1px solid #ddd', borderRadius: 8 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: '800px' }}>
                     <thead>
-                        <tr style={{ background: '#2c3e50', color: 'white' }}>
-                            <th style={{ padding: 10, textAlign: 'left', position: 'sticky', left: 0, background: '#2c3e50', zIndex: 2 }}>GIORNO</th>
+                        <tr style={{ background: '#34495e', color: 'white' }}>
+                            <th style={{ padding: '12px 8px', textAlign: 'center', position: 'sticky', left: 0, background: '#34495e', zIndex: 2, width: 60, borderRight:'1px solid #555' }}>GIORNO</th>
                             {activeAssets.map(asset => (
-                                <th key={asset.id} style={{ padding: 10, borderLeft: '1px solid #34495e', minWidth: 100, textAlign: 'center' }}>
+                                <th key={asset.id} style={{ padding: '10px 5px', borderLeft: '1px solid #46627f', minWidth: 100, textAlign: 'center' }}>
                                     {asset.nome}
-                                    <div style={{ fontSize: 9, fontWeight: 'normal', opacity: 0.8 }}>({asset.range_min}° / {asset.range_max}°)</div>
+                                    <div style={{ fontSize: 9, fontWeight: 'normal', opacity: 0.8, marginTop:2 }}>
+                                        ({asset.range_min}° / {asset.range_max}°)
+                                    </div>
                                 </th>
                             ))}
                         </tr>
@@ -71,15 +74,22 @@ const TempRegisterTable = ({ assets, logs, currentDate, setCurrentDate, onEditLo
                         {days.map(dayStr => {
                             const dateObj = new Date(dayStr);
                             const isToday = dayStr === new Date().toISOString().split('T')[0];
+                            const giornoNum = dateObj.getDate();
                             const giornoSettimana = dateObj.toLocaleDateString('it-IT', { weekday: 'short' });
                             const isWeekend = giornoSettimana === 'dom' || giornoSettimana === 'sab';
 
                             return (
                                 <tr key={dayStr} style={{ borderBottom: '1px solid #eee', background: isToday ? '#e8f8f5' : (isWeekend ? '#f9f9f9' : 'white') }}>
                                     
-                                    {/* COLONNA DATA */}
-                                    <td style={{ padding: '8px 10px', fontWeight: 'bold', color: '#555', position: 'sticky', left: 0, background: isToday ? '#e8f8f5' : (isWeekend ? '#f9f9f9' : 'white'), borderRight: '2px solid #ddd' }}>
-                                        {dateObj.getDate()} <span style={{ fontSize: 10, textTransform: 'uppercase', color: '#999' }}>{giornoSettimana}</span>
+                                    {/* COLONNA DATA (STICKY) */}
+                                    <td style={{ 
+                                        padding: '8px 5px', fontWeight: 'bold', color: '#555', textAlign:'center',
+                                        position: 'sticky', left: 0, 
+                                        background: isToday ? '#e8f8f5' : (isWeekend ? '#f9f9f9' : 'white'), 
+                                        borderRight: '2px solid #ddd', zIndex:1
+                                    }}>
+                                        <div style={{fontSize:14}}>{giornoNum}</div>
+                                        <div style={{ fontSize: 9, textTransform: 'uppercase', color: '#999' }}>{giornoSettimana}</div>
                                     </td>
 
                                     {/* COLONNE FRIGORIFERI */}
@@ -96,8 +106,8 @@ const TempRegisterTable = ({ assets, logs, currentDate, setCurrentDate, onEditLo
                                                         }}>
                                                             {log.valore === 'OFF' ? 'OFF' : `${log.valore}°`}
                                                         </span>
-                                                        <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
-                                                            <span style={{ fontSize: 9, color: '#7f8c8d' }}>{log.operatore?.substring(0, 8)}</span>
+                                                        <div style={{ display: 'flex', gap: 5, alignItems: 'center', marginTop:2 }}>
+                                                            {log.operatore && <span style={{ fontSize: 9, color: '#7f8c8d' }}>{log.operatore.substring(0, 8)}</span>}
                                                             <button 
                                                                 onClick={() => onEditLog(asset, dayStr, log)} 
                                                                 style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 12, padding: 0 }} 
@@ -113,10 +123,11 @@ const TempRegisterTable = ({ assets, logs, currentDate, setCurrentDate, onEditLo
                                                         style={{ 
                                                             border: '1px dashed #ccc', background: 'transparent', 
                                                             color: '#ccc', borderRadius: 4, width: '100%', padding: '5px',
-                                                            cursor: 'pointer', fontSize: 12
+                                                            cursor: 'pointer', fontSize: 10
                                                         }}
+                                                        title="Inserisci dato mancante"
                                                     >
-                                                        + Ins
+                                                        +
                                                     </button>
                                                 )}
                                             </td>

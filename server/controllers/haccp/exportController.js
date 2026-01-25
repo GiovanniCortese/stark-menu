@@ -44,12 +44,10 @@ exports.exportGeneric = async (req, res) => {
     try {
         const { tipo, ristorante_id } = req.params;
         const { start, end, rangeName, format } = req.query; 
-        
-        // Recupero Info Ristorante
         const ristRes = await pool.query("SELECT nome, dati_fiscali FROM ristoranti WHERE id = $1", [ristorante_id]);
         const aziendaInfo = ristRes.rows[0];
 
-        // --- NUOVA LOGICA: MATRICE TEMPERATURE (Vista Calendario) ---
+        // --- NUOVA LOGICA: MATRICE TEMPERATURE (TABELLA MESE) ---
         if (tipo === 'temperature_matrix') {
             // 1. Recupera Assets (Colonne) - Solo macchine attive
             const assetsRes = await pool.query("SELECT id, nome FROM haccp_assets WHERE ristorante_id = $1 AND tipo IN ('frigo','cella','vetrina','congelatore','abbattitore') ORDER BY nome", [ristorante_id]);
@@ -95,7 +93,7 @@ exports.exportGeneric = async (req, res) => {
             const titoloReport = "REGISTRO TEMPERATURE (MENSILE)";
 
             if (format === 'pdf') {
-                const doc = new PDFDocument({ margin: 20, size: 'A4', layout: 'landscape' });
+                const doc = new PDFDocument({ margin: 20, size: 'A4', layout: 'landscape' }); // LAYOUT ORIZZONTALE
                 res.setHeader('Content-Type', 'application/pdf');
                 res.setHeader('Content-Disposition', `attachment; filename="registro_temperature_mensile.pdf"`);
                 doc.pipe(res);
@@ -128,7 +126,7 @@ exports.exportGeneric = async (req, res) => {
             return; // STOP QUI per la matrice
         }
 
-        // --- LOGICA STANDARD (Liste Sequenziali) ---
+        // --- LOGICA STANDARD (Liste Sequenziali Vecchie) ---
         let headers = [], rows = [], sheetName = "Export", titoloReport = "REPORT";
         
         if (tipo === 'temperature') {
@@ -140,7 +138,6 @@ exports.exportGeneric = async (req, res) => {
             sql += ` ORDER BY l.data_ora ASC`; 
             const r = await pool.query(sql, params);
             rows = r.rows.map(row => { const d = new Date(row.data_ora); return [d.toLocaleDateString('it-IT'), d.toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'}), row.asset, `${row.valore}°C`, row.conformita ? "OK" : "NO", row.azione_correttiva, row.operatore]; });
-        
         } else if (tipo === 'merci') { 
             sheetName = "Registro Acquisti"; titoloReport = "CONTABILITÀ MAGAZZINO & ACQUISTI";
             headers = ["Data", "Fornitore", "Prodotto", "Qta", "Unitario €", "Imponibile €", "IVA %", "Totale IVA €", "Totale Lordo €", "Lotto/Doc", "HACCP?"];
