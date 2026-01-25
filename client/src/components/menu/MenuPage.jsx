@@ -96,8 +96,9 @@ export default function MenuPage() {
         const pageTitle = `${data.ristorante} | Menu Digitale`;
         const pageDesc =
           "Sfoglia il nostro menu, ordina comodamente dal tavolo e scopri le nostre specialità!";
-        const pageImage = data.style.logo_url || data.style.cover_url || "";
-        updateMetaTags(pageTitle, pageImage, pageDesc);
+        const pageImage = data?.style?.cover || data?.style?.logo || "https://www.cosaedovemangiare.it/default-share.jpg";
+updateMetaTags(pageTitle, pageImage, pageDesc, window.location.href);
+
 
         // Lingue disponibili
         const foundLangs = new Set(["it"]);
