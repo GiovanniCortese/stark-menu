@@ -79,8 +79,23 @@ router.post('/api/prodotti', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); } 
 });
 
-router.put('/api/prodotti/riordina', async (req, res) => { const { prodotti } = req.body; try { for (const prod of prodotti) { if (prod.categoria) await pool.query('UPDATE prodotti SET posizione = $1, categoria = $2 WHERE id = $3', [prod.posizione, prod.categoria, prod.id]); else await pool.query('UPDATE prodotti SET posizione = $1 WHERE id = $2', [prod.posizione, prod.id]); } res.json({ success: true }); } catch (err) { res.status(500).json({ error: err.message }); } });
-
+router.put('/api/prodotti/riordina', async (req, res) => { 
+    const { prodotti } = req.body; 
+    try { 
+        for (const prod of prodotti) { 
+            if (prod.categoria) {
+                // FIX: Aggiorniamo anche la sottocategoria
+                await pool.query(
+                    'UPDATE prodotti SET posizione = $1, categoria = $2, sottocategoria = $3 WHERE id = $4', 
+                    [prod.posizione, prod.categoria, prod.sottocategoria || '', prod.id]
+                );
+            } else {
+                await pool.query('UPDATE prodotti SET posizione = $1 WHERE id = $2', [prod.posizione, prod.id]); 
+            }
+        } 
+        res.json({ success: true }); 
+    } catch (err) { res.status(500).json({ error: err.message }); } 
+});
 router.put('/api/prodotti/:id', async (req, res) => { 
     try { 
         const { nome, prezzo, categoria, sottocategoria, descrizione, immagine_url, varianti, allergeni, traduzioni, unita_misura, qta_minima } = req.body; 
