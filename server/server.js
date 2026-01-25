@@ -5,6 +5,9 @@ const cors = require('cors');
 const http = require('http'); // MODIFICA 1: Importa HTTP
 const { Server } = require("socket.io"); // MODIFICA 2: Importa Socket.io
 
+const path = require('path');
+const fs = require('fs');
+
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -80,6 +83,76 @@ app.use((err, req, res, next) => {
     if (!res.headersSent) {
         res.status(500).json({ error: "Errore Server V50: " + err.message });
     }
+});
+
+// =========================================================
+// GESTIONE FRONTEND + SEO INJECTION (JARVIS SYSTEM)
+// =========================================================
+
+// 1. Definisci dove si trova la build del frontend
+const buildPath = path.join(__dirname, 'frontend_build');
+
+// 2. Servi i file statici (JS, CSS, Immagini) direttamente
+// Express cercherà qui i file. Se trova "assets/style.css", lo manda subito.
+app.use(express.static(buildPath));
+
+// 3. Rotta "Jolly" per i Ristoranti (SEO Injection)
+// Intercetta tutto ciò che NON è una rotta API (perché le API sono definite sopra)
+app.get('/:slug', async (req, res, next) => {
+    const { slug } = req.params;
+
+    // Ignora file con estensione (es. robots.txt, favicon.ico) se non gestiti sopra
+    if (slug.includes('.')) return next();
+
+    try {
+        // A. Cerca i dati nel DB
+        const result = await pool.query(
+            'SELECT nome, cover_url, logo_url, info_footer, descrizione FROM ristoranti WHERE slug = $1', 
+            [slug]
+        );
+
+        // B. Leggi il file index.html "grezzo" dalla cartella build
+        const indexPath = path.join(buildPath, 'index.html');
+        
+        fs.readFile(indexPath, 'utf8', (err, htmlData) => {
+            if (err) {
+                console.error('Errore lettura index.html:', err);
+                return res.status(500).send('Errore Caricamento Frontend');
+            }
+
+            // C. Se il ristorante NON esiste, manda l'HTML originale (React gestirà il 404)
+            if (result.rows.length === 0) {
+                return res.send(htmlData);
+            }
+
+            const data = result.rows[0];
+            const titolo = `${data.nome} | Menu Digitale`;
+            const desc = `Sfoglia il menu digitale di ${data.nome} e ordina online.`;
+            const immagine = data.cover_url || data.logo_url || 'https://www.cosaedovemangiare.com/default-cover.jpg';
+            const url = `https://www.cosaedovemangiare.com/${slug}`;
+
+            // D. INIEZIONE CHIRURGICA (Sostituisce i placeholder della tua build)
+            let injectedHtml = htmlData
+                .replace(/__META_TITLE__/g, titolo)
+                .replace(/__META_DESCRIPTION__/g, desc)
+                .replace(/__META_IMAGE__/g, immagine)
+                .replace(/__META_URL__/g, url);
+                
+            // E. Manda al browser/bot il file HTML modificato
+            res.send(injectedHtml);
+        });
+
+    } catch (e) {
+        console.error("Errore SEO:", e);
+        // In caso di errore DB, manda comunque il sito (senza SEO ottimizzato ma funzionante)
+        res.sendFile(path.join(buildPath, 'index.html'));
+    }
+});
+
+// 4. Fallback per tutte le altre rotte (React Router)
+// Se l'utente va su / o su /login, manda index.html normale
+app.get('*', (req, res) => {
+    res.sendFile(path.join(buildPath, 'index.html'));
 });
 
 // --- AVVIO (Usa server.listen invece di app.listen) ---
