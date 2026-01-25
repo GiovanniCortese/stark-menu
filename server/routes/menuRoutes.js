@@ -284,11 +284,21 @@ router.post('/api/menu/translate-all', async (req, res) => {
 
         // 2. Prepara il payload con TUTTI i campi necessari (Categorie, Descrizioni, Prodotti, Sottocategorie, Ingredienti, Varianti)
         const dataToTranslate = {
-            categories: categorie.rows.map(c => ({ 
-                id: c.id, 
-                nome: c.nome, 
-                descrizione: c.descrizione 
-            })),
+            categories: categorie.rows.map(c => {
+                // Estrai varianti di default della categoria
+                let catVars = [];
+                try {
+                    const parsed = typeof c.varianti_default === 'string' ? JSON.parse(c.varianti_default) : c.varianti_default;
+                    if(Array.isArray(parsed)) catVars = parsed.map(v => v.nome);
+                } catch(e){}
+
+                return { 
+                    id: c.id, 
+                    nome: c.nome, 
+                    descrizione: c.descrizione,
+                    varianti: catVars // Includiamo varianti categoria (aggiunte)
+                };
+            }),
             products: prodotti.rows.map(p => {
                 let ingredientiBase = [];
                 let variantiNomi = [];
@@ -303,8 +313,8 @@ router.post('/api/menu/translate-all', async (req, res) => {
                     nome: p.nome, 
                     descrizione: p.descrizione,
                     sottocategoria: p.sottocategoria, // INCLUDE SOTTOCATEGORIA
-                    ingredienti: ingredientiBase, // INCLUDE INGREDIENTI
-                    varianti: variantiNomi        // INCLUDE VARIANTI
+                    ingredienti_base: ingredientiBase, // INCLUDE INGREDIENTI (BASE)
+                    varianti: variantiNomi        // INCLUDE VARIANTI (AGGIUNTE PRODOTTO)
                 };
             })
         };
@@ -321,9 +331,9 @@ router.post('/api/menu/translate-all', async (req, res) => {
                 REGOLE FONDAMENTALI:
                 1. Restituisci SOLO un oggetto JSON valido. Nessun markdown o testo extra.
                 2. Mantieni gli ID originali come chiavi dell'oggetto.
-                3. CATEGORIE: Traduci "nome" e "descrizione".
+                3. CATEGORIE: Traduci "nome", "descrizione" e l'array "varianti" (aggiunte comuni).
                 4. PRODOTTI: Traduci "nome", "descrizione", "sottocategoria".
-                5. Traduci anche gli array "ingredienti" (ingredienti base) e "varianti" (aggiunte possibili).
+                5. IMPORTANTE: Traduci "ingredienti_base" (lista ingredienti del piatto) e "varianti" (aggiunte specifiche).
                 6. Non tradurre nomi propri intraducibili (es. "Pizza Margherita", "Coca Cola", "Prosecco").
                 
                 INPUT:
@@ -332,10 +342,10 @@ router.post('/api/menu/translate-all', async (req, res) => {
                 OUTPUT FORMAT (JSON):
                 {
                     "categories": { 
-                        "ID_CAT": { "nome": "...", "descrizione": "..." } 
+                        "ID_CAT": { "nome": "...", "descrizione": "...", "varianti": ["..."] } 
                     },
                     "products": { 
-                        "ID_PROD": { "nome": "...", "descrizione": "...", "sottocategoria": "...", "ingredienti": ["..."], "varianti": ["..."] } 
+                        "ID_PROD": { "nome": "...", "descrizione": "...", "sottocategoria": "...", "ingredienti_base": ["..."], "varianti": ["..."] } 
                     }
                 }
             `;

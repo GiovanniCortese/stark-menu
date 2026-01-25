@@ -330,7 +330,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                 <h2 style={{color: translating ? '#16a085' : '#3498db'}}>
                     {translating ? "Traduzione Intelligente in corso..." : (isScanningMenu ? "Analisi Menu con AI..." : "Sto elaborando il file...")}
                 </h2>
-                <p>{translating ? "JARVIS sta traducendo il menu (una lingua alla volta)." : "Potrebbe richiedere fino a 5 Minuti."}</p>
+                <p>{translating ? "JARVIS sta traducendo il menu, potrebbe richiedere fino a 5 Minuti." : "Potrebbe richiedere fino a 5 Minuti."}</p>
             </div>
         )}
 

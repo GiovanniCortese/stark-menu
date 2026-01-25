@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - SMART LANGUAGES & NO GOOGLE
+// client/src/Menu.jsx - NO GOOGLE - FULL AI TRANSLATION (BASE + EXTRAS)
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'; 
 import { dictionary, getContent, flags } from './translations'; 
@@ -15,9 +15,12 @@ function Menu() {
   const t = dictionary[lang] || dictionary['it']; 
 
   const [showLangMenu, setShowLangMenu] = useState(false);
-  
-  // STATO PER LE LINGUE DISPONIBILI (Calcolato dai dati DB)
   const [availableLangs, setAvailableLangs] = useState(['it']); 
+
+  const cambiaLingua = (selectedLang) => {
+      setLang(selectedLang); 
+      setShowLangMenu(false);
+  };
 
   const [urlFileAttivo, setUrlFileAttivo] = useState("");
   const [titoloFile, setTitoloFile] = useState("");
@@ -98,9 +101,7 @@ function Menu() {
           setCanOrder(data.ordini_abilitati && data.kitchen_active);
           setActiveCategory(null); 
           
-          // --- CALCOLO LINGUE DISPONIBILI ---
-          // Scansioniamo i prodotti per trovare quali lingue sono state tradotte
-          const foundLangs = new Set(['it']); // Italiano sempre presente
+          const foundLangs = new Set(['it']);
           if (data.menu && data.menu.length > 0) {
               data.menu.forEach(p => {
                   if (p.traduzioni) {
@@ -114,11 +115,6 @@ function Menu() {
       })
       .catch(err => { console.error("Errore Menu:", err); setError(true); });
   }, [currentSlug]);
-
-  const cambiaLingua = (selectedLang) => {
-      setLang(selectedLang); 
-      setShowLangMenu(false);
-  };
 
   const apriModale = (piatto) => { 
       if(!piatto) return;
@@ -222,7 +218,6 @@ function Menu() {
   
   const categorieUniche = [...new Set(menu.map(p => p.categoria_nome || p.categoria))];
   
-  // --- SCROLL AUTOMATICO ---
   const toggleAccordion = (catNome) => { 
       if (activeCategory === catNome) { 
           setActiveCategory(null); 
@@ -243,16 +238,41 @@ function Menu() {
   if (selectedPiatto) {
       const vSafe = getSafeVariants(selectedPiatto);
       const allergeniSafe = getSafeAllergeni(selectedPiatto);
-      const baseList = vSafe.base;
-      const addList = vSafe.aggiunte.length > 0 ? vSafe.aggiunte : (selectedPiatto.categoria_varianti || []);
       
-      // Calcolo extra unitario
+      // 1. INGREDIENTI BASE (Tradotti se disponibili)
+      let baseList = vSafe.base;
+      let trads = selectedPiatto.traduzioni;
+      if (typeof trads === 'string') { try { trads = JSON.parse(trads); } catch(e){} }
+      
+      if (trads && trads[lang] && trads[lang].ingredienti_base && Array.isArray(trads[lang].ingredienti_base)) {
+          baseList = trads[lang].ingredienti_base;
+      }
+
+      // 2. AGGIUNTE/EXTRA (Tradotti se disponibili)
+      // Capire se arrivano dal prodotto o dalla categoria
+      const useProductVariants = vSafe.aggiunte.length > 0;
+      let rawAddList = useProductVariants ? vSafe.aggiunte : (selectedPiatto.categoria_varianti || []);
+
+      // Recuperare le traduzioni delle varianti
+      let translatedNames = [];
+      if (useProductVariants) {
+          // Dal prodotto
+           if (trads && trads[lang] && trads[lang].varianti) translatedNames = trads[lang].varianti;
+      } else {
+          // Dalla categoria (default)
+          let catTrads = selectedPiatto.categoria_traduzioni;
+          if (typeof catTrads === 'string') { try { catTrads = JSON.parse(catTrads); } catch(e){} }
+          if (catTrads && catTrads[lang] && catTrads[lang].varianti) translatedNames = catTrads[lang].varianti;
+      }
+
+      // Creare la lista finale delle aggiunte, sostituendo il nome se c'è traduzione (per indice)
+      const addList = rawAddList.map((item, idx) => ({
+          ...item,
+          nome: translatedNames[idx] || item.nome
+      }));
+      
       const extraPrezzoUnitario = (tempVarianti?.aggiunte || []).reduce((acc, item) => acc + item.prezzo, 0);
-      
-      // Prezzo Base
       const prezzoBaseUnitario = Number(selectedPiatto.prezzo);
-      
-      // FIX CALCOLO TOTALE: (Base + Extra) * Quantità
       const prezzoTotalePiatto = (prezzoBaseUnitario + extraPrezzoUnitario) * qtyModal;
       
       modalData = {
@@ -260,11 +280,11 @@ function Menu() {
           desc: getContent(selectedPiatto, 'descrizione', lang),
           minimo: selectedPiatto.qta_minima ? parseFloat(selectedPiatto.qta_minima) : 1,
           allergeni: allergeniSafe,
-          baseList,
-          addList,
+          baseList, 
+          addList,  // Questa lista ora ha i nomi tradotti
           prezzoTotale: prezzoTotalePiatto,
           prezzoBase: prezzoBaseUnitario,
-          extraSingle: extraPrezzoUnitario // Salviamo il costo extra singolo per passarlo al carrello
+          extraSingle: extraPrezzoUnitario
       };
   }
 
@@ -296,7 +316,6 @@ function Menu() {
               {!style.logo && ( <h1 style={{ margin: 0, color: '#fff', fontSize:'26px', fontWeight:'800', textShadow: '0 2px 4px rgba(0,0,0,0.8)', textAlign: 'center', lineHeight: '1.2' }}>{ristorante}</h1> )}
               <div className="notranslate" style={{ background: tavoloBg, color: tavoloText, padding: '6px 18px', borderRadius: '50px', fontSize: '14px', fontWeight: 'bold', boxShadow: '0 3px 10px rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.3)' }}>📍 Tavolo {numeroTavolo}</div>
               
-              {/* --- SELETTORE LINGUA DINAMICO --- */}
               <div className="notranslate" style={{ position: 'relative', marginTop: '10px', zIndex: 2000 }}>
                   <button 
                       onClick={() => setShowLangMenu(!showLangMenu)} 
@@ -310,7 +329,6 @@ function Menu() {
                       {dictionary[lang] ? (flags[lang] || "🇮🇹") : "🇮🇹"}
                   </button>
 
-                  {/* Menu a discesa solo con lingue DISPONIBILI */}
                   {showLangMenu && (
                       <div style={{
                           position: 'absolute', top: '55px', left: '50%', transform: 'translateX(-50%)',
@@ -344,7 +362,6 @@ function Menu() {
         <div key={catNome} id={`cat-${catNome}`} className="accordion-item" style={{ marginBottom: '2px', borderRadius: '5px', overflow: 'hidden', width: '100%' }}>
           <div onClick={() => toggleAccordion(catNome)} style={{ background: activeCategory === catNome ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.1)', color: titleColor, padding: '15px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: activeCategory === catNome ? `1px solid ${priceColor}` : 'none' }}>
             
-            {/* TRADUZIONE CATEGORIA */}
             {(() => {
                 const sampleCat = menu.find(p => (p.categoria_nome || p.categoria) === catNome);
                 let objForTrans = null;
@@ -387,13 +404,10 @@ function Menu() {
               {(() => {
                 const piattiCat = menu.filter(p => (p.categoria_nome || p.categoria) === catNome);
                 const sottoCats = piattiCat.reduce((acc, p) => {
-                  
-                  // TRADUZIONE SOTTOCATEGORIA
                   let sc = "Generale";
                   if (p.sottocategoria && p.sottocategoria.trim().length > 0) {
                       sc = getContent(p, 'sottocategoria', lang) || p.sottocategoria;
                   }
-                  
                   if (!acc[sc]) acc[sc] = [];
                   acc[sc].push(p); return acc;
                 }, {});
@@ -417,13 +431,13 @@ function Menu() {
                           const baseList = vSafe.base;
                           const addList = vSafe.aggiunte.length > 0 ? vSafe.aggiunte : (prodotto.categoria_varianti || []);
                           
-                          // --- TRADUZIONE INGREDIENTI (Varianti Base) ---
+                          // --- TRADUZIONE INGREDIENTI (BASE) IN CARD ---
                           let ingStr = "";
                           let trads = prodotto.traduzioni;
                           if (typeof trads === 'string') { try { trads = JSON.parse(trads); } catch(e){} }
                           
-                          if (trads && trads[lang] && trads[lang].ingredienti && Array.isArray(trads[lang].ingredienti) && trads[lang].ingredienti.length > 0) {
-                              ingStr = trads[lang].ingredienti.join(', ');
+                          if (trads && trads[lang] && trads[lang].ingredienti_base && Array.isArray(trads[lang].ingredienti_base) && trads[lang].ingredienti_base.length > 0) {
+                              ingStr = trads[lang].ingredienti_base.join(', ');
                           } else {
                               ingStr = baseList.join(', ');
                           }
@@ -454,7 +468,7 @@ function Menu() {
                                     padding: '10px', 
                                     width: '100%', 
                                     boxSizing: 'border-box', 
-                                    cursor: hasImage ? 'pointer' : 'default', // Cursore solo se c'è immagine
+                                    cursor: hasImage ? 'pointer' : 'default',
                                     backgroundColor: cardBg, 
                                     borderBottom: `1px solid ${cardBorder}` 
                                 }}
@@ -474,7 +488,22 @@ function Menu() {
                                 
                                 {addList.length > 0 && (
                                     <p style={{fontSize:'10px', color:'#2980b9', marginTop:'2px', lineHeight:'1.1'}}>
-                                        <span style={{fontWeight:'bold'}}>✨ Extra:</span> {addList.map(a => a.nome).join(', ')}
+                                        <span style={{fontWeight:'bold'}}>✨ Extra:</span> {
+                                            // FIX: Traduzione visuale degli extra in card
+                                            (() => {
+                                                let translatedNames = [];
+                                                // Logica duplicata dalla modale per coerenza
+                                                const useProductVariants = vSafe.aggiunte.length > 0;
+                                                if (useProductVariants) {
+                                                   if (trads && trads[lang] && trads[lang].varianti) translatedNames = trads[lang].varianti;
+                                                } else {
+                                                   let catTrads = prodotto.categoria_traduzioni;
+                                                   if (typeof catTrads === 'string') { try { catTrads = JSON.parse(catTrads); } catch(e){} }
+                                                   if (catTrads && catTrads[lang] && catTrads[lang].varianti) translatedNames = catTrads[lang].varianti;
+                                                }
+                                                return addList.map((a, i) => translatedNames[i] || a.nome).join(', ');
+                                            })()
+                                        }
                                     </p>
                                 )}
                                 
@@ -511,7 +540,6 @@ function Menu() {
                                 <button className="notranslate" 
                                     onClick={(e) => { 
                                         e.stopPropagation(); 
-                                        // LOGICA + e /hg: Se hasUnit (quindi anche /hg), apri modale per quantità. Altrimenti aggiungi.
                                         if(hasUnit) {
                                             apriModale(prodotto); 
                                         } else {
@@ -534,25 +562,6 @@ function Menu() {
           )}
         </div>
       ))}
-      </div>
-
-      <div className="notranslate" style={{ textAlign: style.allineamento_footer || 'center', padding: '20px 20px 60px 20px', opacity: 0.9 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px', marginBottom: '25px' }}>
-            {style.url_menu_giorno && ( <button onClick={() => { setUrlFileAttivo(style.url_menu_giorno); setTitoloFile("Menù del Giorno 🥗"); setShowFileModal(true); }} style={footerBtnStyle}><span>🥗</span> MENÙ DEL GIORNO</button> )}
-            {style.url_menu_pdf && ( <button onClick={() => { setUrlFileAttivo(style.url_menu_pdf); setTitoloFile("Menù Completo 📄"); setShowFileModal(true); }} style={footerBtnStyle}><span>📄</span> MENÙ PDF</button> )}
-            {style.url_allergeni && ( <button onClick={() => { setUrlFileAttivo(style.url_allergeni); setTitoloFile("Lista Allergeni ⚠️"); setShowFileModal(true); }} style={{ ...footerBtnStyle, opacity: 0.8 }}><span>⚠️</span> LISTA ALLERGENI</button> )}
-        </div>
-        {style.info_footer && ( <p style={{ whiteSpace: 'pre-line', marginBottom: '15px', color: style.colore_footer_text || style.text, fontSize: `${style.dimensione_footer || 12}px` }}>{style.info_footer}</p> )}
-        <div style={{ marginTop: 15, fontSize: 10, color: style.colore_footer_text || style.text, opacity: 0.8 }}>
-    <a 
-        href="https://www.cosaedovemangiare.it" 
-        target="_blank" 
-        rel="noopener noreferrer" 
-        style={{ color: 'inherit', textDecoration: 'none', fontWeight: 'bold' }}
-    >
-        Powered by COSAEDOVEMANGIARE.IT
-    </a>
-</div>
       </div>
 
       {showFileModal && urlFileAttivo && (
@@ -677,9 +686,9 @@ function Menu() {
                             <div style={{marginBottom:'20px'}}>
                                 <h4 className="notranslate" style={{margin:'0 0 10px 0', color:'#333'}}>{t?.ingredients || "Ingredienti"} (Togli)</h4>
                                 <div style={{display:'flex', flexWrap:'wrap', gap:'10px'}}>
-                                    {modalData.baseList.map(ing => { 
+                                    {modalData.baseList.map((ing, idx) => { 
                                         const isRemoved = tempVarianti.rimozioni.includes(ing); 
-                                        return ( <div key={ing} onClick={() => { const newRimozioni = isRemoved ? tempVarianti.rimozioni.filter(i => i !== ing) : [...tempVarianti.rimozioni, ing]; setTempVarianti({...tempVarianti, rimozioni: newRimozioni}); }} style={{ padding:'8px 12px', borderRadius:'20px', fontSize:'0.9rem', cursor:'pointer', background: isRemoved ? '#ffebee' : '#e8f5e9', color: isRemoved ? '#c62828' : '#2e7d32', border: isRemoved ? '1px solid #ef9a9a' : '1px solid #a5d6a7', textDecoration: isRemoved ? 'line-through' : 'none' }}>{isRemoved ? `No ${ing}` : ing}</div> ) 
+                                        return ( <div key={idx} onClick={() => { const newRimozioni = isRemoved ? tempVarianti.rimozioni.filter(i => i !== ing) : [...tempVarianti.rimozioni, ing]; setTempVarianti({...tempVarianti, rimozioni: newRimozioni}); }} style={{ padding:'8px 12px', borderRadius:'20px', fontSize:'0.9rem', cursor:'pointer', background: isRemoved ? '#ffebee' : '#e8f5e9', color: isRemoved ? '#c62828' : '#2e7d32', border: isRemoved ? '1px solid #ef9a9a' : '1px solid #a5d6a7', textDecoration: isRemoved ? 'line-through' : 'none' }}>{isRemoved ? `No ${ing}` : ing}</div> ) 
                                     })}
                                 </div>
                             </div> 
@@ -689,13 +698,15 @@ function Menu() {
                             <div style={{paddingBottom:'20px'}}>
                                 <h4 className="notranslate" style={{margin:'0 0 10px 0', color:'#333'}}>Extra 😋</h4>
                                 {modalData.addList.map((extra, idx) => { 
-                                    const isAdded = tempVarianti.aggiunte.some(a => a.nome === extra.nome); 
+                                    // Match by name or index logic inside component
+                                    const extraName = extra.nome; // Already translated in modalData
+                                    const isAdded = tempVarianti.aggiunte.some(a => a.nome === extraName); 
                                     return ( 
-                                        <div key={idx} onClick={() => { const newAggiunte = isAdded ? tempVarianti.aggiunte.filter(a => a.nome !== extra.nome) : [...tempVarianti.aggiunte, extra]; setTempVarianti({...tempVarianti, aggiunte: newAggiunte}); }} 
+                                        <div key={idx} onClick={() => { const newAggiunte = isAdded ? tempVarianti.aggiunte.filter(a => a.nome !== extraName) : [...tempVarianti.aggiunte, extra]; setTempVarianti({...tempVarianti, aggiunte: newAggiunte}); }} 
                                             style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'15px', marginBottom:'8px', borderRadius:'10px', cursor:'pointer', background: isAdded ? '#e3f2fd' : 'white', border: isAdded ? '2px solid #2196f3' : '1px solid #eee', boxShadow:'0 2px 5px rgba(0,0,0,0.02)' }}>
                                             <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
                                                 <div style={{width:'20px', height:'20px', borderRadius:'50%', border: isAdded ? '5px solid #2196f3' : '2px solid #ccc', background:'white'}}></div>
-                                                <span style={{fontWeight: isAdded ? 'bold' : '500', fontSize:'15px'}}>{extra.nome}</span>
+                                                <span style={{fontWeight: isAdded ? 'bold' : '500', fontSize:'15px'}}>{extraName}</span>
                                             </div>
                                             <span className="notranslate" style={{fontWeight:'bold', color: priceColor}}>+{extra.prezzo.toFixed(2)}€</span>
                                         </div> 
@@ -794,10 +805,26 @@ function Menu() {
                                     <div key={item.tempId} style={{background:'rgba(255,255,255,0.1)', borderRadius:10, padding:15, marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                                         <div style={{flex: 1}}>
                                             <div style={{fontWeight:'bold', fontSize:'1.1rem', color: titleColor}}>
-                                                {item.nome} {qtaLabel && <span style={{color: priceColor, fontSize:'0.9rem'}}>({qtaLabel})</span>}
+                                                {/* FIX TRADUZIONE NOME NEL CARRELLO */}
+                                                {getContent(item, 'nome', lang)} {qtaLabel && <span style={{color: priceColor, fontSize:'0.9rem'}}>({qtaLabel})</span>}
                                             </div>
-                                            {item.descrizione && ( <div style={{fontSize:'12px', color:'#ccc', fontStyle:'italic', marginTop:'4px', lineHeight:'1.2'}}>{item.descrizione}</div> )}
-                                            {v.base && v.base.length > 0 && ( <div style={{fontSize:'11px', color:'#999', marginTop:'4px'}}><span className="notranslate">🧂 {t?.ingredients || "Ingredienti"}:</span> {v.base.join(', ')}</div> )}
+                                            
+                                            {/* FIX TRADUZIONE INGREDIENTI NEL CARRELLO */}
+                                            {v.base && v.base.length > 0 && ( 
+                                                <div style={{fontSize:'11px', color:'#999', marginTop:'4px'}}>
+                                                    <span className="notranslate">🧂 {t?.ingredients || "Ingredienti"}:</span> {
+                                                        (() => {
+                                                            let ingStr = v.base.join(', ');
+                                                            let trads = item.traduzioni;
+                                                            if (typeof trads === 'string') try { trads = JSON.parse(trads); } catch(e){}
+                                                            if (trads && trads[lang] && trads[lang].ingredienti_base) {
+                                                                ingStr = trads[lang].ingredienti_base.join(', ');
+                                                            }
+                                                            return ingStr;
+                                                        })()
+                                                    }
+                                                </div> 
+                                            )}
                                             
                                             {/* USIAMO allergeniItem (ARRAY SICURO) INVECE DI item.allergeni */}
                                             {allergeniItem.length > 0 && ( 
