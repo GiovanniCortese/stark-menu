@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - NO GOOGLE TRANSLATE - PURE AI
+// client/src/Menu.jsx - SMART LANGUAGES & NO GOOGLE
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'; 
 import { dictionary, getContent, flags } from './translations'; 
@@ -15,14 +15,9 @@ function Menu() {
   const t = dictionary[lang] || dictionary['it']; 
 
   const [showLangMenu, setShowLangMenu] = useState(false);
-
-  // --- GOOGLE TRANSLATE RIMOSSO DEFINITIVAMENTE ---
-
-  const cambiaLingua = (selectedLang) => {
-      setLang(selectedLang); 
-      setShowLangMenu(false);
-      // Nessuna chiamata a Google qui. Solo React puro.
-  };
+  
+  // STATO PER LE LINGUE DISPONIBILI (Calcolato dai dati DB)
+  const [availableLangs, setAvailableLangs] = useState(['it']); 
 
   const [urlFileAttivo, setUrlFileAttivo] = useState("");
   const [titoloFile, setTitoloFile] = useState("");
@@ -102,9 +97,28 @@ function Menu() {
           if(data.subscription_active === false) setIsSuspended(true);
           setCanOrder(data.ordini_abilitati && data.kitchen_active);
           setActiveCategory(null); 
+          
+          // --- CALCOLO LINGUE DISPONIBILI ---
+          // Scansioniamo i prodotti per trovare quali lingue sono state tradotte
+          const foundLangs = new Set(['it']); // Italiano sempre presente
+          if (data.menu && data.menu.length > 0) {
+              data.menu.forEach(p => {
+                  if (p.traduzioni) {
+                      let trads = p.traduzioni;
+                      if (typeof trads === 'string') try { trads = JSON.parse(trads); } catch(e){}
+                      Object.keys(trads).forEach(k => foundLangs.add(k));
+                  }
+              });
+          }
+          setAvailableLangs(Array.from(foundLangs));
       })
       .catch(err => { console.error("Errore Menu:", err); setError(true); });
   }, [currentSlug]);
+
+  const cambiaLingua = (selectedLang) => {
+      setLang(selectedLang); 
+      setShowLangMenu(false);
+  };
 
   const apriModale = (piatto) => { 
       if(!piatto) return;
@@ -262,7 +276,6 @@ function Menu() {
       <style>{`:root { color-scheme: light; } * { box-sizing: border-box; margin: 0; padding: 0; } body, html { background-color: ${bg} !important; color: ${text} !important; overflow-x: hidden; width: 100%; top: 0 !important; }`}</style>
       
       {!showCheckout && (
-      // --- HEADER CON Z-INDEX ALTO PER MENU LINGUA ---
       <div style={{ width: '100%', minHeight: '260px', backgroundImage: style.cover ? `url(${style.cover})` : 'none', backgroundColor: '#333', backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', padding: '30px 20px', overflow: 'visible' }}>
           <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0.1))', zIndex: 1 }}></div>
           
@@ -283,9 +296,8 @@ function Menu() {
               {!style.logo && ( <h1 style={{ margin: 0, color: '#fff', fontSize:'26px', fontWeight:'800', textShadow: '0 2px 4px rgba(0,0,0,0.8)', textAlign: 'center', lineHeight: '1.2' }}>{ristorante}</h1> )}
               <div className="notranslate" style={{ background: tavoloBg, color: tavoloText, padding: '6px 18px', borderRadius: '50px', fontSize: '14px', fontWeight: 'bold', boxShadow: '0 3px 10px rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.3)' }}>📍 Tavolo {numeroTavolo}</div>
               
-              {/* --- SELETTORE LINGUA MULTILINGUA (React Puro) --- */}
+              {/* --- SELETTORE LINGUA DINAMICO --- */}
               <div className="notranslate" style={{ position: 'relative', marginTop: '10px', zIndex: 2000 }}>
-                  {/* Bandiera Attiva */}
                   <button 
                       onClick={() => setShowLangMenu(!showLangMenu)} 
                       style={{ 
@@ -298,7 +310,7 @@ function Menu() {
                       {dictionary[lang] ? (flags[lang] || "🇮🇹") : "🇮🇹"}
                   </button>
 
-                  {/* Menu a discesa */}
+                  {/* Menu a discesa solo con lingue DISPONIBILI */}
                   {showLangMenu && (
                       <div style={{
                           position: 'absolute', top: '55px', left: '50%', transform: 'translateX(-50%)',
@@ -306,7 +318,7 @@ function Menu() {
                           display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px',
                           boxShadow: '0 5px 20px rgba(0,0,0,0.3)', minWidth: '120px'
                       }}>
-                          {Object.keys(dictionary).map((l) => (
+                          {availableLangs.map((l) => (
                               <button 
                                   key={l}
                                   onClick={() => cambiaLingua(l)}
@@ -337,7 +349,6 @@ function Menu() {
                 const sampleCat = menu.find(p => (p.categoria_nome || p.categoria) === catNome);
                 let objForTrans = null;
                 if (sampleCat) {
-                    // Mappa categoria_traduzioni in traduzioni per getContent
                     objForTrans = {
                         categoria_nome: sampleCat.categoria_nome,
                         traduzioni: typeof sampleCat.categoria_traduzioni === 'string' 
@@ -376,7 +387,13 @@ function Menu() {
               {(() => {
                 const piattiCat = menu.filter(p => (p.categoria_nome || p.categoria) === catNome);
                 const sottoCats = piattiCat.reduce((acc, p) => {
-                  const sc = (p.sottocategoria && p.sottocategoria.trim().length > 0) ? p.sottocategoria : "Generale";
+                  
+                  // TRADUZIONE SOTTOCATEGORIA
+                  let sc = "Generale";
+                  if (p.sottocategoria && p.sottocategoria.trim().length > 0) {
+                      sc = getContent(p, 'sottocategoria', lang) || p.sottocategoria;
+                  }
+                  
                   if (!acc[sc]) acc[sc] = [];
                   acc[sc].push(p); return acc;
                 }, {});
@@ -402,14 +419,12 @@ function Menu() {
                           
                           // --- TRADUZIONE INGREDIENTI (Varianti Base) ---
                           let ingStr = "";
-                          // Controllo se ci sono ingredienti tradotti
                           let trads = prodotto.traduzioni;
                           if (typeof trads === 'string') { try { trads = JSON.parse(trads); } catch(e){} }
                           
                           if (trads && trads[lang] && trads[lang].ingredienti && Array.isArray(trads[lang].ingredienti) && trads[lang].ingredienti.length > 0) {
                               ingStr = trads[lang].ingredienti.join(', ');
                           } else {
-                              // Fallback italiano
                               ingStr = baseList.join(', ');
                           }
 

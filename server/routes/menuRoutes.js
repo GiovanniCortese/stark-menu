@@ -268,10 +268,9 @@ router.post('/api/prodotti/import-massivo', async (req, res) => {
     }
 });
 
-// --- NUOVA ROTTA: TRADUZIONE MULTILINGUA SEQUENZIALE E ROBUSTA ---
+// --- NUOVA ROTTA: TRADUZIONE MULTILINGUA COMPLETA (CATEGORIE, SOTTOCATEGORIE, INGREDIENTI) ---
 router.post('/api/menu/translate-all', async (req, res) => {
     const { ristorante_id, languages } = req.body;
-    // Se non vengono fornite lingue, di default traduciamo in Inglese.
     const targetLangs = (languages && Array.isArray(languages) && languages.length > 0) ? languages : ['en'];
     
     const client = await pool.connect();
@@ -283,11 +282,14 @@ router.post('/api/menu/translate-all', async (req, res) => {
 
         if (prodotti.rows.length === 0) return res.status(400).json({ error: "Menu vuoto." });
 
-        // 2. Prepara il payload base (Dati Originali in Italiano)
+        // 2. Prepara il payload con TUTTI i campi necessari (Categorie, Descrizioni, Prodotti, Sottocategorie, Ingredienti, Varianti)
         const dataToTranslate = {
-            categories: categorie.rows.map(c => ({ id: c.id, nome: c.nome, descrizione: c.descrizione })),
+            categories: categorie.rows.map(c => ({ 
+                id: c.id, 
+                nome: c.nome, 
+                descrizione: c.descrizione 
+            })),
             products: prodotti.rows.map(p => {
-                // Estrai ingredienti base e varianti
                 let ingredientiBase = [];
                 let variantiNomi = [];
                 try {
@@ -300,15 +302,16 @@ router.post('/api/menu/translate-all', async (req, res) => {
                     id: p.id, 
                     nome: p.nome, 
                     descrizione: p.descrizione,
-                    ingredienti: ingredientiBase, // Invia array ingredienti
-                    varianti: variantiNomi        // Invia array varianti
+                    sottocategoria: p.sottocategoria, // INCLUDE SOTTOCATEGORIA
+                    ingredienti: ingredientiBase, // INCLUDE INGREDIENTI
+                    varianti: variantiNomi        // INCLUDE VARIANTI
                 };
             })
         };
 
         const completedLanguages = [];
 
-        // 3. CICLO SULLE LINGUE (Sequenziale per evitare timeout)
+        // 3. CICLO SULLE LINGUE (Sequenziale)
         for (const lang of targetLangs) {
             
             const prompt = `
@@ -318,37 +321,38 @@ router.post('/api/menu/translate-all', async (req, res) => {
                 REGOLE FONDAMENTALI:
                 1. Restituisci SOLO un oggetto JSON valido. Nessun markdown o testo extra.
                 2. Mantieni gli ID originali come chiavi dell'oggetto.
-                3. Traduci i campi "nome" e "descrizione".
-                4. Traduci anche l'array "ingredienti" (ingredienti base) e "varianti" (aggiunte possibili).
-                5. Non tradurre nomi propri intraducibili (es. "Pizza Margherita", "Coca Cola", "Prosecco").
+                3. CATEGORIE: Traduci "nome" e "descrizione".
+                4. PRODOTTI: Traduci "nome", "descrizione", "sottocategoria".
+                5. Traduci anche gli array "ingredienti" (ingredienti base) e "varianti" (aggiunte possibili).
+                6. Non tradurre nomi propri intraducibili (es. "Pizza Margherita", "Coca Cola", "Prosecco").
                 
                 INPUT:
                 ${JSON.stringify(dataToTranslate)}
 
                 OUTPUT FORMAT (JSON):
                 {
-                    "categories": { "ID_CAT": { "nome": "...", "descrizione": "..." } },
-                    "products": { "ID_PROD": { "nome": "...", "descrizione": "...", "ingredienti": ["..."], "varianti": ["..."] } }
+                    "categories": { 
+                        "ID_CAT": { "nome": "...", "descrizione": "..." } 
+                    },
+                    "products": { 
+                        "ID_PROD": { "nome": "...", "descrizione": "...", "sottocategoria": "...", "ingredienti": ["..."], "varianti": ["..."] } 
+                    }
                 }
             `;
 
-            // Chiamata AI (Usa il modello definito in ai.js)
+            // Chiamata AI
             const translationResult = await generateTextWithGemini(prompt);
 
-            // 4. Salvataggio nel DB (Merge con dati esistenti)
             await client.query('BEGIN');
 
             // --- Aggiornamento Categorie ---
             if (translationResult.categories) {
                 for (const [id, t] of Object.entries(translationResult.categories)) {
-                    // Recuperiamo traduzioni correnti per non sovrascrivere altre lingue
                     const currentRes = await client.query("SELECT traduzioni FROM categorie WHERE id = $1", [id]);
                     let currentTrads = currentRes.rows[0]?.traduzioni || {};
                     if (typeof currentTrads === 'string') currentTrads = JSON.parse(currentTrads);
                     
-                    // Aggiungiamo/Aggiorniamo solo la lingua corrente
                     currentTrads[lang] = t;
-                    
                     await client.query("UPDATE categorie SET traduzioni = $1 WHERE id = $2", [JSON.stringify(currentTrads), id]);
                 }
             }
@@ -361,7 +365,6 @@ router.post('/api/menu/translate-all', async (req, res) => {
                     if (typeof currentTrads === 'string') currentTrads = JSON.parse(currentTrads);
                     
                     currentTrads[lang] = t;
-                    
                     await client.query("UPDATE prodotti SET traduzioni = $1 WHERE id = $2", [JSON.stringify(currentTrads), id]);
                 }
             }
@@ -370,7 +373,7 @@ router.post('/api/menu/translate-all', async (req, res) => {
             completedLanguages.push(lang.toUpperCase());
         }
 
-        res.json({ success: true, message: `Traduzione completata per: ${completedLanguages.join(', ')}` });
+        res.json({ success: true, message: `Traduzione completata: ${completedLanguages.join(', ')}` });
 
     } catch (e) {
         await client.query('ROLLBACK');
