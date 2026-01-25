@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE JARVIS V50 (ULTIMATE SEO FIX)
+// server/server.js - VERSIONE JARVIS V51 (SEO & FACEBOOK FIX)
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -10,6 +10,7 @@ const pool = require('./config/db');
 
 const app = express();
 const port = process.env.PORT || 3000;
+const DOMAIN = "https://www.cosaedovemangiare.it"; // Dominio base per fix immagini
 
 // --- SOCKET.IO ---
 const server = http.createServer(app); 
@@ -19,8 +20,8 @@ app.set('io', io);
 
 // --- MIDDLEWARE ---
 app.use((req, res, next) => {
-    // Logga solo le richieste importanti (no immagini/css)
-    if (!req.url.match(/\.(js|css|png|jpg|ico|svg|woff2)$/)) {
+    // Logga solo le richieste importanti (ignora immagini/css/js nel log)
+    if (!req.url.match(/\.(js|css|png|jpg|jpeg|ico|svg|woff2|ttf|map)$/)) {
         console.log(`📡 [${req.method}] ${req.url}`);
     }
     next();
@@ -31,37 +32,36 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // ===========================================================================
-//  SEO INJECTION (PRIORITÀ MASSIMA - PRIMA DI TUTTO IL RESTO)
+//  SEO INJECTION V2 (FIX PER FACEBOOK/WHATSAPP)
 // ===========================================================================
 app.get('/:slug', async (req, res, next) => {
     const slug = req.params.slug;
 
-    // 1. Ignora file statici o API (se la richiesta ha un'estensione tipo .js o inizia con api)
+    // 1. Ignora file statici o API
+    // Se contiene un punto (es. style.css) o inizia con api, passa oltre.
     if (slug.startsWith('api') || slug.includes('.')) return next();
 
     console.log(`🔍 SEO CHECK per slug: "${slug}"`);
 
+    // 2. Determina il percorso di index.html
+    let filePath = path.join(__dirname, '..', 'client', 'dist', 'index.html');
+    if (!fs.existsSync(filePath)) {
+        filePath = path.join(__dirname, '..', 'client', 'index.html');
+    }
+
+    if (!fs.existsSync(filePath)) {
+        console.error("❌ ERRORE CRITICO: index.html non trovato!");
+        return next(); 
+    }
+
+    // Dati di Default (Fallback)
+    let title = "Cosa e Dove Mangiare | Menu Digitale";
+    let desc = "Scopri i migliori menu digitali e ordina online.";
+    let image = `${DOMAIN}/logo-default.png`; 
+
     try {
-        // 2. CERCA IL FILE INDEX.HTML (Prova 2 percorsi: dist e root)
-        let filePath = path.join(__dirname, '..', 'client', 'dist', 'index.html');
-        if (!fs.existsSync(filePath)) {
-            // Fallback: se non c'è la build, prova la cartella sorgente (locale)
-            filePath = path.join(__dirname, '..', 'client', 'index.html');
-        }
-
-        // Se non lo trova nemmeno lì, errore critico
-        if (!fs.existsSync(filePath)) {
-            console.error("❌ ERRORE CRITICO: index.html non trovato in nessun percorso!");
-            console.error("   Cercato in:", path.join(__dirname, '..', 'client', 'dist', 'index.html'));
-            return next(); 
-        }
-
-        // 3. Recupera Dati Ristorante
+        // 3. Recupera Dati Ristorante dal DB
         const result = await pool.query('SELECT nome, style FROM ristoranti WHERE slug = $1', [slug]);
-        
-        let title = "JARVIS Menu";
-        let desc = "Menu Digitale";
-        let image = "https://www.cosaedovemangiare.it/logo-default.png"; // Logo default
 
         if (result.rows.length > 0) {
             const r = result.rows[0];
@@ -69,32 +69,52 @@ app.get('/:slug', async (req, res, next) => {
             
             title = `${r.nome} | Menu Digitale`;
             desc = `Sfoglia il menu di ${r.nome} e ordina le tue specialità!`;
-            image = style.logo_url || style.cover_url || image;
-            console.log(`✅ Ristorante trovato: ${title}`);
+            
+            // --- FIX URL IMMAGINI PER FACEBOOK ---
+            // Facebook richiede URL assoluti (https://...). 
+            // Se nel DB l'url è relativo (es: /uploads/foto.png), aggiungiamo il dominio.
+            let rawImg = style.logo_url || style.cover_url;
+            if (rawImg) {
+                if (rawImg.startsWith('http')) {
+                    image = rawImg;
+                } else {
+                    // Rimuovi eventuale slash iniziale doppio per sicurezza
+                    image = `${DOMAIN}${rawImg.startsWith('/') ? '' : '/'}${rawImg}`;
+                }
+            }
+            
+            console.log(`✅ Ristorante trovato: "${title}" - IMG: ${image}`);
         } else {
-            console.log(`⚠️ Ristorante non trovato per slug: ${slug}, uso default.`);
+            console.log(`⚠️ Ristorante non trovato per slug: ${slug}, uso dati default.`);
         }
 
-        // 4. Leggi e Sostituisci
-        fs.readFile(filePath, 'utf8', (err, htmlData) => {
-            if (err) {
-                console.error("❌ Errore lettura file:", err);
-                return next();
-            }
+        // 4. Leggi e Sostituisci (SINCRONO per evitare race conditions)
+        let htmlData = fs.readFileSync(filePath, 'utf8');
 
-            // SOSTITUZIONE DEI SEGNAPOSTO
-            const finalHtml = htmlData
-                .replace(/__META_TITLE__/g, title)
-                .replace(/__META_DESCRIPTION__/g, desc)
-                .replace(/__META_IMAGE__/g, image);
+        // Sostituzione globale
+        htmlData = htmlData
+            .replace(/__META_TITLE__/g, title)
+            .replace(/__META_DESCRIPTION__/g, desc)
+            .replace(/__META_IMAGE__/g, image);
 
-            // IMPORTANTE: Manda risposta 200 esplicita
-            res.status(200).send(finalHtml);
-        });
+        // Invia risposta definitiva
+        res.status(200).send(htmlData);
 
     } catch (e) {
-        console.error("❌ Eccezione SEO:", e);
-        next();
+        console.error("❌ Errore SEO Injection:", e);
+        
+        // 5. EMERGENZA: Se c'è un errore nel DB, NON mandare il file rotto.
+        // Manda comunque l'HTML ma con i tag di default puliti.
+        try {
+            let htmlData = fs.readFileSync(filePath, 'utf8');
+            htmlData = htmlData
+                .replace(/__META_TITLE__/g, "Cosa e Dove Mangiare")
+                .replace(/__META_DESCRIPTION__/g, "Menu Digitale")
+                .replace(/__META_IMAGE__/g, `${DOMAIN}/logo-default.png`);
+            res.status(200).send(htmlData);
+        } catch (err2) {
+            next(); // Se fallisce anche la lettura file, passa al gestore standard
+        }
     }
 });
 // ===========================================================================
@@ -107,13 +127,11 @@ app.use('/', require('./routes/haccpRoutes'));
 app.use('/', require('./routes/adminRoutes'));
 
 // --- SERVIRE FILE STATICI (FALLBACK) ---
-// Serve sia la root che la dist per sicurezza
 app.use(express.static(path.join(__dirname, '..', 'client', 'dist')));
 app.use(express.static(path.join(__dirname, '..', 'client')));
 
 // --- FALLBACK FINALE (PER REACT ROUTER) ---
 app.get('*', (req, res) => {
-    // Tenta di servire l'index.html dalla build, altrimenti dal source
     let index = path.join(__dirname, '..', 'client', 'dist', 'index.html');
     if (!fs.existsSync(index)) index = path.join(__dirname, '..', 'client', 'index.html');
     
@@ -126,6 +144,6 @@ app.get('*', (req, res) => {
 
 // --- AVVIO SERVER ---
 server.listen(port, () => {
-    console.log(`✅ JARVIS SERVER V50 ONLINE su porta ${port}`);
+    console.log(`✅ JARVIS SERVER V51 ONLINE su porta ${port}`);
     console.log(`📂 Cartella server corrente: ${__dirname}`);
 });
