@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - NO GOOGLE - FULL AI TRANSLATION (BASE + EXTRAS)
+// client/src/Menu.jsx - FIXED CRASH VARIANTI CATEGORIA
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'; 
 import { dictionary, getContent, flags } from './translations'; 
@@ -69,6 +69,16 @@ function Menu() {
       try {
           if (Array.isArray(prodotto.allergeni)) return prodotto.allergeni;
           if (typeof prodotto.allergeni === 'string') return JSON.parse(prodotto.allergeni);
+          return [];
+      } catch (e) { return []; }
+  };
+
+  // --- FIX CRASH: Helper per parsare le varianti di categoria ---
+  const getSafeCatVariants = (valore) => {
+      if (!valore) return [];
+      try {
+          if (Array.isArray(valore)) return valore;
+          if (typeof valore === 'string') return JSON.parse(valore);
           return [];
       } catch (e) { return []; }
   };
@@ -231,22 +241,7 @@ function Menu() {
           }, 100);
       }
   };
-
-  // --- MODIFICA SCROLL SOTTOCATEGORIE ---
-  const toggleSubAccordion = (subName) => {
-      if (activeSubCategory === subName) {
-          setActiveSubCategory(null);
-      } else {
-          setActiveSubCategory(subName);
-          setTimeout(() => {
-              const safeId = `sub-${subName.replace(/[^a-zA-Z0-9]/g, '')}`;
-              const elem = document.getElementById(safeId);
-              if(elem) {
-                  elem.scrollIntoView({ behavior: 'smooth', block: 'start' }); 
-              }
-          }, 100);
-      }
-  };
+  const toggleSubAccordion = (subName) => setActiveSubCategory(activeSubCategory === subName ? null : subName);
 
   // --- PREPARAZIONE DATI MODALE & CALCOLO PREZZI ---
   let modalData = null;
@@ -264,9 +259,10 @@ function Menu() {
       }
 
       // 2. AGGIUNTE/EXTRA (Tradotti se disponibili)
-      // Capire se arrivano dal prodotto o dalla categoria
+      // FIX CRASH: Usiamo la funzione sicura anche qui
       const useProductVariants = vSafe.aggiunte.length > 0;
-      let rawAddList = useProductVariants ? vSafe.aggiunte : (selectedPiatto.categoria_varianti || []);
+      const safeCatVars = getSafeCatVariants(selectedPiatto.categoria_varianti); // <--- FIX
+      let rawAddList = useProductVariants ? vSafe.aggiunte : safeCatVars;
 
       // Recuperare le traduzioni delle varianti
       let translatedNames = [];
@@ -296,7 +292,7 @@ function Menu() {
           minimo: selectedPiatto.qta_minima ? parseFloat(selectedPiatto.qta_minima) : 1,
           allergeni: allergeniSafe,
           baseList, 
-          addList,  // Questa lista ora ha i nomi tradotti
+          addList,  
           prezzoTotale: prezzoTotalePiatto,
           prezzoBase: prezzoBaseUnitario,
           extraSingle: extraPrezzoUnitario
@@ -377,12 +373,10 @@ function Menu() {
         <div key={catNome} id={`cat-${catNome}`} className="accordion-item" style={{ marginBottom: '2px', borderRadius: '5px', overflow: 'hidden', width: '100%' }}>
           <div onClick={() => toggleAccordion(catNome)} style={{ background: activeCategory === catNome ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.1)', color: titleColor, padding: '15px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: activeCategory === catNome ? `1px solid ${priceColor}` : 'none' }}>
             
-            {/* FIX: TRADUZIONE CATEGORIE */}
             {(() => {
                 const sampleCat = menu.find(p => (p.categoria_nome || p.categoria) === catNome);
                 let catNomeDisplay = catNome;
                 if (sampleCat) {
-                    // Mappiamo categoria_nome in "nome" per getContent
                     const objForTrans = {
                         nome: sampleCat.categoria_nome,
                         traduzioni: typeof sampleCat.categoria_traduzioni === 'string' 
@@ -450,7 +444,10 @@ function Menu() {
                           const vSafe = getSafeVariants(prodotto);
                           const allergeniSafe = getSafeAllergeni(prodotto);
                           const baseList = vSafe.base;
-                          const addList = vSafe.aggiunte.length > 0 ? vSafe.aggiunte : (prodotto.categoria_varianti || []);
+                          
+                          // --- FIX CRASH: Parsing sicuro anche qui ---
+                          const safeCatVars = getSafeCatVariants(prodotto.categoria_varianti);
+                          const addList = vSafe.aggiunte.length > 0 ? vSafe.aggiunte : safeCatVars;
                           
                           // --- TRADUZIONE INGREDIENTI (BASE) IN CARD ---
                           let ingStr = "";
@@ -522,7 +519,7 @@ function Menu() {
                                                    if (typeof catTrads === 'string') { try { catTrads = JSON.parse(catTrads); } catch(e){} }
                                                    if (catTrads && catTrads[lang] && catTrads[lang].varianti) translatedNames = catTrads[lang].varianti;
                                                 }
-                                                return addList.map((a, i) => translatedNames[i] || a.nome).join(', ');
+                                                return addList.map((a, i) => translatedNames[i] || (a && a.nome ? a.nome : "")).join(', ');
                                             })()
                                         }
                                     </p>
@@ -531,7 +528,7 @@ function Menu() {
                                 {allergeniSafe.length > 0 && (
                                   <div style={{ marginTop: '2px', display: 'flex', flexDirection: 'column', gap: '1px' }}>
                                     {allergeniSafe.filter(a => !a.includes("❄️") && !a.includes("Surgelato")).length > 0 && ( <div className="notranslate" style={{ fontSize: '10px', color: '#e74c3c', fontWeight: 'bold', textTransform: 'uppercase' }}>⚠️ {t?.allergens || "Allergeni"}: {allergeniSafe.filter(a => !a.includes("❄️") && !a.includes("Surgelato")).join(', ')}</div> )}
-                                    {allergeniSafe.some(a => a.includes("❄️")) || a.includes("Surgelato") && ( <div className="notranslate" style={{ fontSize: '10px', color: '#3498db', fontWeight: 'bold', textTransform: 'uppercase' }}>❄️ {t?.frozen || "Surgelato"}</div> )}
+                                    {allergeniSafe.some(a => a.includes("❄️") || a.includes("Surgelato")) && ( <div className="notranslate" style={{ fontSize: '10px', color: '#3498db', fontWeight: 'bold', textTransform: 'uppercase' }}>❄️ {t?.frozen || "Surgelato"}</div> )}
                                   </div>
                                 )}
 
