@@ -1,7 +1,7 @@
-// client/src/Menu.jsx - FIX CLICK CARD FOTO & LOGICA QUANTITÀ & MULTILINGUA
+// client/src/Menu.jsx - FIX DROPDOWN LINGUA & TRADUZIONE CATEGORIE
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'; 
-import { dictionary, getContent, flags } from './translations'; // Aggiunto import flags
+import { dictionary, getContent, flags } from './translations'; 
 
 function Menu() {
   const [menu, setMenu] = useState([]);
@@ -14,14 +14,14 @@ function Menu() {
   const [lang, setLang] = useState('it'); 
   const t = dictionary[lang] || dictionary['it']; 
 
-  const [showLangMenu, setShowLangMenu] = useState(false); // Nuovo stato per il menu lingua
+  const [showLangMenu, setShowLangMenu] = useState(false);
 
   useEffect(() => {
     window.googleTranslateElementInit = () => {
       if (window.google && window.google.translate) {
           new window.google.translate.TranslateElement({
             pageLanguage: 'it',
-            includedLanguages: 'it,en', 
+            includedLanguages: 'it,en,fr,de,es,pt,pl,ru', 
             autoDisplay: false,
             layout: window.google.translate.TranslateElement.InlineLayout.HORIZONTAL
           }, 'google_translate_element');
@@ -38,17 +38,16 @@ function Menu() {
 
   const cambiaLingua = (selectedLang) => {
       setLang(selectedLang); 
-      // Sincronizza anche Google Translate se presente (opzionale/fallback)
       const changeGoogle = () => {
           const googleCombo = document.querySelector('.goog-te-combo');
           if (googleCombo) {
               googleCombo.value = selectedLang;
               googleCombo.dispatchEvent(new Event('change'));
           } else {
-              // Non insistere troppo se non c'è, usiamo il nostro sistema DB
+              setTimeout(changeGoogle, 500); 
           }
       };
-      // changeGoogle(); // Decommenta se usi ANCHE Google Translate widget nascosto
+      changeGoogle(); 
   };
 
   const [urlFileAttivo, setUrlFileAttivo] = useState("");
@@ -288,10 +287,11 @@ function Menu() {
     <div style={{minHeight:'100vh', background: bg, color: text, fontFamily: font, paddingBottom:80}}>
       <style>{`:root { color-scheme: light; } * { box-sizing: border-box; margin: 0; padding: 0; } body, html { background-color: ${bg} !important; color: ${text} !important; overflow-x: hidden; width: 100%; top: 0 !important; }`}</style>
       
-      <div id="google_translate_element"></div>
+      <div id="google_translate_element" style={{ display: 'none' }}></div>
 
       {!showCheckout && (
-      <div style={{ width: '100%', minHeight: '260px', backgroundImage: style.cover ? `url(${style.cover})` : 'none', backgroundColor: '#333', backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', padding: '30px 20px', overflow: 'hidden' }}>
+      // --- FIX HEADER OVERFLOW VISIBLE (così il menu lingua può uscire) ---
+      <div style={{ width: '100%', minHeight: '260px', backgroundImage: style.cover ? `url(${style.cover})` : 'none', backgroundColor: '#333', backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', padding: '30px 20px', overflow: 'visible' }}>
           <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0.1))', zIndex: 1 }}></div>
           
           <div className="notranslate" style={{position:'absolute', top:'20px', right:'20px', zIndex: 100}}>
@@ -311,8 +311,8 @@ function Menu() {
               {!style.logo && ( <h1 style={{ margin: 0, color: '#fff', fontSize:'26px', fontWeight:'800', textShadow: '0 2px 4px rgba(0,0,0,0.8)', textAlign: 'center', lineHeight: '1.2' }}>{ristorante}</h1> )}
               <div className="notranslate" style={{ background: tavoloBg, color: tavoloText, padding: '6px 18px', borderRadius: '50px', fontSize: '14px', fontWeight: 'bold', boxShadow: '0 3px 10px rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.3)' }}>📍 Tavolo {numeroTavolo}</div>
               
-              {/* --- NUOVO SELETTORE LINGUA MULTILINGUA --- */}
-              <div className="notranslate" style={{ position: 'relative', marginTop: '10px', zIndex: 200 }}>
+              {/* --- NUOVO SELETTORE LINGUA MULTILINGUA (Z-INDEX ALTO) --- */}
+              <div className="notranslate" style={{ position: 'relative', marginTop: '10px', zIndex: 2000 }}>
                   {/* Bandiera Attiva (Cliccabile) */}
                   <button 
                       onClick={() => setShowLangMenu(!showLangMenu)} 
@@ -359,12 +359,30 @@ function Menu() {
       {categorieUniche.map(catNome => (
         <div key={catNome} id={`cat-${catNome}`} className="accordion-item" style={{ marginBottom: '2px', borderRadius: '5px', overflow: 'hidden', width: '100%' }}>
           <div onClick={() => toggleAccordion(catNome)} style={{ background: activeCategory === catNome ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.1)', color: titleColor, padding: '15px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: activeCategory === catNome ? `1px solid ${priceColor}` : 'none' }}>
-            {/* TRADUZIONE CATEGORIA: Cerca una categoria con questo nome per trovare ID e traduzione */}
+            
+            {/* --- FIX TRADUZIONE CATEGORIA --- */}
+            {/* Creiamo un oggetto "sintetico" che la funzione getContent sappia leggere */}
             {(() => {
                 const sampleCat = menu.find(p => (p.categoria_nome || p.categoria) === catNome);
-                const catNomeDisplay = sampleCat ? getContent(sampleCat, 'categoria_nome', lang) : catNome;
+                
+                // Se abbiamo trovato il prodotto campione, costruiamo l'oggetto categoria corretto per getContent
+                let objForTrans = null;
+                if (sampleCat) {
+                    objForTrans = {
+                        categoria_nome: sampleCat.categoria_nome,
+                        // Mappiamo 'categoria_traduzioni' in 'traduzioni' così getContent lo trova
+                        traduzioni: typeof sampleCat.categoria_traduzioni === 'string' 
+                            ? JSON.parse(sampleCat.categoria_traduzioni || '{}') 
+                            : (sampleCat.categoria_traduzioni || {})
+                    };
+                }
+
+                // Usiamo getContent sull'oggetto sintetico
+                const catNomeDisplay = objForTrans ? getContent(objForTrans, 'categoria_nome', lang) : catNome;
+                
                 return <h2 style={{ margin: 0, fontSize: '18px', color: titleColor, width: '100%' }}>{catNomeDisplay || catNome}</h2>
             })()}
+            
             <span style={{ color: titleColor }}>{activeCategory === catNome ? '▼' : '▶'}</span>
           </div>
 
@@ -373,7 +391,20 @@ function Menu() {
                 
               {(() => {
                   const sampleProd = menu.find(p => (p.categoria_nome || p.categoria) === catNome);
-                  const catDesc = sampleProd ? getContent(sampleProd, 'categoria_descrizione', lang) : "";
+                  
+                  // Stesso trucco per la descrizione della categoria
+                  let objForTrans = null;
+                  if (sampleProd) {
+                      objForTrans = {
+                          categoria_descrizione: sampleProd.categoria_descrizione,
+                          traduzioni: typeof sampleProd.categoria_traduzioni === 'string' 
+                              ? JSON.parse(sampleProd.categoria_traduzioni || '{}') 
+                              : (sampleProd.categoria_traduzioni || {})
+                      };
+                  }
+
+                  const catDesc = objForTrans ? getContent(objForTrans, 'categoria_descrizione', lang) : "";
+                  
                   if (catDesc) {
                       return <div style={{padding:'15px', fontStyle:'italic', color: style.text, opacity:0.8, fontSize:'14px', borderBottom:`1px solid ${style.card_border || '#eee'}`, background:'rgba(255,255,255,0.05)'}}>{catDesc}</div>;
                   }
