@@ -231,7 +231,22 @@ function Menu() {
           }, 100);
       }
   };
-  const toggleSubAccordion = (subName) => setActiveSubCategory(activeSubCategory === subName ? null : subName);
+
+  // --- MODIFICA SCROLL SOTTOCATEGORIE ---
+  const toggleSubAccordion = (subName) => {
+      if (activeSubCategory === subName) {
+          setActiveSubCategory(null);
+      } else {
+          setActiveSubCategory(subName);
+          setTimeout(() => {
+              const safeId = `sub-${subName.replace(/[^a-zA-Z0-9]/g, '')}`;
+              const elem = document.getElementById(safeId);
+              if(elem) {
+                  elem.scrollIntoView({ behavior: 'smooth', block: 'start' }); 
+              }
+          }, 100);
+      }
+  };
 
   // --- PREPARAZIONE DATI MODALE & CALCOLO PREZZI ---
   let modalData = null;
@@ -362,19 +377,21 @@ function Menu() {
         <div key={catNome} id={`cat-${catNome}`} className="accordion-item" style={{ marginBottom: '2px', borderRadius: '5px', overflow: 'hidden', width: '100%' }}>
           <div onClick={() => toggleAccordion(catNome)} style={{ background: activeCategory === catNome ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.1)', color: titleColor, padding: '15px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: activeCategory === catNome ? `1px solid ${priceColor}` : 'none' }}>
             
+            {/* FIX: TRADUZIONE CATEGORIE */}
             {(() => {
                 const sampleCat = menu.find(p => (p.categoria_nome || p.categoria) === catNome);
-                let objForTrans = null;
+                let catNomeDisplay = catNome;
                 if (sampleCat) {
-                    objForTrans = {
-                        categoria_nome: sampleCat.categoria_nome,
+                    // Mappiamo categoria_nome in "nome" per getContent
+                    const objForTrans = {
+                        nome: sampleCat.categoria_nome,
                         traduzioni: typeof sampleCat.categoria_traduzioni === 'string' 
                             ? JSON.parse(sampleCat.categoria_traduzioni || '{}') 
                             : (sampleCat.categoria_traduzioni || {})
                     };
+                    catNomeDisplay = getContent(objForTrans, 'nome', lang) || catNome;
                 }
-                const catNomeDisplay = objForTrans ? getContent(objForTrans, 'categoria_nome', lang) : catNome;
-                return <h2 style={{ margin: 0, fontSize: '18px', color: titleColor, width: '100%' }}>{catNomeDisplay || catNome}</h2>
+                return <h2 style={{ margin: 0, fontSize: '18px', color: titleColor, width: '100%' }}>{catNomeDisplay}</h2>
             })()}
             
             <span style={{ color: titleColor }}>{activeCategory === catNome ? '▼' : '▶'}</span>
@@ -385,16 +402,16 @@ function Menu() {
                 
               {(() => {
                   const sampleProd = menu.find(p => (p.categoria_nome || p.categoria) === catNome);
-                  let objForTrans = null;
+                  let catDesc = "";
                   if (sampleProd) {
-                      objForTrans = {
-                          categoria_descrizione: sampleProd.categoria_descrizione,
+                      const objForTrans = {
+                          descrizione: sampleProd.categoria_descrizione,
                           traduzioni: typeof sampleProd.categoria_traduzioni === 'string' 
                               ? JSON.parse(sampleProd.categoria_traduzioni || '{}') 
                               : (sampleProd.categoria_traduzioni || {})
                       };
+                      catDesc = getContent(objForTrans, 'descrizione', lang);
                   }
-                  const catDesc = objForTrans ? getContent(objForTrans, 'categoria_descrizione', lang) : "";
                   
                   if (catDesc) {
                       return <div style={{padding:'15px', fontStyle:'italic', color: style.text, opacity:0.8, fontSize:'14px', borderBottom:`1px solid ${style.card_border || '#eee'}`, background:'rgba(255,255,255,0.05)'}}>{catDesc}</div>;
@@ -417,7 +434,11 @@ function Menu() {
                 return subKeys.map(scKey => (
                   <div key={scKey} style={{ width: '100%' }}>
                     {!isSingleGroup && (
-                      <div onClick={() => toggleSubAccordion(scKey)} style={{ background: 'rgba(255,255,255,0.05)', borderLeft: `4px solid ${priceColor}`, padding: '10px', margin: '1px 0', width: '100%', boxSizing: 'border-box', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div 
+                        id={`sub-${scKey.replace(/[^a-zA-Z0-9]/g, '')}`} 
+                        onClick={() => toggleSubAccordion(scKey)} 
+                        style={{ background: 'rgba(255,255,255,0.05)', borderLeft: `4px solid ${priceColor}`, padding: '10px', margin: '1px 0', width: '100%', boxSizing: 'border-box', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                      >
                         <h3 className="notranslate" style={{ margin: 0, fontSize: '16px', color: titleColor, textTransform: 'uppercase' }}>{scKey === "Generale" ? (t?.others || "Altri Piatti") : scKey}</h3>
                         <span style={{ color: titleColor, fontWeight: 'bold' }}>{activeSubCategory === scKey ? '▼' : '▶'}</span>
                       </div>
@@ -510,7 +531,7 @@ function Menu() {
                                 {allergeniSafe.length > 0 && (
                                   <div style={{ marginTop: '2px', display: 'flex', flexDirection: 'column', gap: '1px' }}>
                                     {allergeniSafe.filter(a => !a.includes("❄️") && !a.includes("Surgelato")).length > 0 && ( <div className="notranslate" style={{ fontSize: '10px', color: '#e74c3c', fontWeight: 'bold', textTransform: 'uppercase' }}>⚠️ {t?.allergens || "Allergeni"}: {allergeniSafe.filter(a => !a.includes("❄️") && !a.includes("Surgelato")).join(', ')}</div> )}
-                                    {allergeniSafe.some(a => a.includes("❄️") || a.includes("Surgelato")) && ( <div className="notranslate" style={{ fontSize: '10px', color: '#3498db', fontWeight: 'bold', textTransform: 'uppercase' }}>❄️ {t?.frozen || "Surgelato"}</div> )}
+                                    {allergeniSafe.some(a => a.includes("❄️")) || a.includes("Surgelato") && ( <div className="notranslate" style={{ fontSize: '10px', color: '#3498db', fontWeight: 'bold', textTransform: 'uppercase' }}>❄️ {t?.frozen || "Surgelato"}</div> )}
                                   </div>
                                 )}
 
