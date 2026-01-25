@@ -1,3 +1,4 @@
+// server/routes/menuRoutes.js
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
@@ -271,7 +272,6 @@ router.post('/api/prodotti/import-massivo', async (req, res) => {
 router.post('/api/menu/translate-all', async (req, res) => {
     const { ristorante_id, languages } = req.body;
     // Se non vengono fornite lingue, di default traduciamo in Inglese.
-    // Il frontend dovrebbe però sempre inviare l'array scelto.
     const targetLangs = (languages && Array.isArray(languages) && languages.length > 0) ? languages : ['en'];
     
     const client = await pool.connect();
@@ -286,13 +286,24 @@ router.post('/api/menu/translate-all', async (req, res) => {
         // 2. Prepara il payload base (Dati Originali in Italiano)
         const dataToTranslate = {
             categories: categorie.rows.map(c => ({ id: c.id, nome: c.nome, descrizione: c.descrizione })),
-            products: prodotti.rows.map(p => ({ 
-                id: p.id, 
-                nome: p.nome, 
-                descrizione: p.descrizione,
-                // Includiamo anche i nomi delle varianti se presenti
-                varianti_nomi: p.varianti ? (typeof p.varianti === 'string' ? JSON.parse(p.varianti) : p.varianti).aggiunte?.map(a => a.nome) : []
-            }))
+            products: prodotti.rows.map(p => {
+                // Estrai ingredienti base e varianti
+                let ingredientiBase = [];
+                let variantiNomi = [];
+                try {
+                    const vars = typeof p.varianti === 'string' ? JSON.parse(p.varianti) : p.varianti;
+                    if (vars && Array.isArray(vars.base)) ingredientiBase = vars.base;
+                    if (vars && Array.isArray(vars.aggiunte)) variantiNomi = vars.aggiunte.map(v => v.nome);
+                } catch(e) {}
+
+                return { 
+                    id: p.id, 
+                    nome: p.nome, 
+                    descrizione: p.descrizione,
+                    ingredienti: ingredientiBase, // Invia array ingredienti
+                    varianti: variantiNomi        // Invia array varianti
+                };
+            })
         };
 
         const completedLanguages = [];
@@ -308,7 +319,8 @@ router.post('/api/menu/translate-all', async (req, res) => {
                 1. Restituisci SOLO un oggetto JSON valido. Nessun markdown o testo extra.
                 2. Mantieni gli ID originali come chiavi dell'oggetto.
                 3. Traduci i campi "nome" e "descrizione".
-                4. Non tradurre nomi propri intraducibili (es. "Pizza Margherita", "Coca Cola", "Prosecco").
+                4. Traduci anche l'array "ingredienti" (ingredienti base) e "varianti" (aggiunte possibili).
+                5. Non tradurre nomi propri intraducibili (es. "Pizza Margherita", "Coca Cola", "Prosecco").
                 
                 INPUT:
                 ${JSON.stringify(dataToTranslate)}
@@ -316,7 +328,7 @@ router.post('/api/menu/translate-all', async (req, res) => {
                 OUTPUT FORMAT (JSON):
                 {
                     "categories": { "ID_CAT": { "nome": "...", "descrizione": "..." } },
-                    "products": { "ID_PROD": { "nome": "...", "descrizione": "..." } }
+                    "products": { "ID_PROD": { "nome": "...", "descrizione": "...", "ingredienti": ["..."], "varianti": ["..."] } }
                 }
             `;
 
