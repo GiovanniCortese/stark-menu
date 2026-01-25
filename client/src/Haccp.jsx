@@ -100,14 +100,21 @@ function Haccp() {
       }
   }, [isAuthorized, info, tab, currentDate]);
 
-  const ricaricaDati = () => {
+ const ricaricaDati = () => {
       if(!info?.id) return;
       fetch(`${API_URL}/api/haccp/assets/${info.id}`).then(r=>r.json()).then(setAssets);
-      // IMPORTANTE: logs senza filtri temporali stretti per popolare la tabella mensile se necessario
-      // Oppure il backend di default manda gli ultimi 7gg. 
-      // Se vuoi vedere tutto il mese nella tabella, dovresti chiamare con range.
-      // Per semplicità qui chiamiamo standard, ma TempControl potrebbe richiedere fetch specifici.
-      fetch(`${API_URL}/api/haccp/logs/${info.id}`).then(r=>r.json()).then(setLogs);
+      
+      // --- MODIFICA QUI ---
+      // Scarichiamo 45 giorni invece di 7 per coprire tutto il mese corrente e parte del precedente
+      // Questo risolve il problema che "non vedevi" il dato salvato il 7 Gennaio
+      const start = new Date(); 
+      start.setDate(start.getDate() - 45); 
+      const startIso = start.toISOString();
+      const endIso = new Date().toISOString();
+
+      fetch(`${API_URL}/api/haccp/logs/${info.id}?start=${startIso}&end=${endIso}`)
+        .then(r=>r.json())
+        .then(setLogs);
       
       fetch(`${API_URL}/api/haccp/merci/${info.id}?mode=haccp`).then(r=>r.json()).then(setMerci);
       fetch(`${API_URL}/api/utenti?mode=staff&ristorante_id=${info.id}&t=${new Date().getTime()}`)

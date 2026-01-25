@@ -88,7 +88,7 @@ exports.exportGeneric = async (req, res) => {
         const ristRes = await pool.query("SELECT nome, dati_fiscali FROM ristoranti WHERE id = $1", [ristorante_id]);
         const aziendaInfo = ristRes.rows[0];
 
-// 1. GESTIONE SPECIALE: MATRICE TEMPERATURE (VERSIONE VERTICALE PERFETTA)
+// 1. GESTIONE SPECIALE: MATRICE TEMPERATURE (LAYOUT CORRETTO)
         if (tipo === 'temperature_matrix') {
             const assetsRes = await pool.query("SELECT id, nome FROM haccp_assets WHERE ristorante_id = $1 AND tipo IN ('frigo','cella','vetrina','congelatore','abbattitore') ORDER BY nome", [ristorante_id]);
             const assets = assetsRes.rows;
@@ -97,18 +97,20 @@ exports.exportGeneric = async (req, res) => {
             const logsRes = await pool.query(sqlLogs, [ristorante_id, start, end]);
             const logs = logsRes.rows;
 
+            // FIX DATA: Impostiamo l'ora a mezzogiorno (12:00) per evitare che il fuso orario ci porti al giorno prima
             const days = [];
             let curr = new Date(start);
-            const endDate = new Date(end);
+            curr.setHours(12, 0, 0, 0); // <--- FIX CRUCIALE
             
-            // FIX DATE: Iteriamo aggiungendo giorni in modo sicuro
+            const endDate = new Date(end);
+            endDate.setHours(12, 0, 0, 0); // <--- FIX CRUCIALE
+
             while (curr <= endDate) {
                 days.push(curr.toISOString().split('T')[0]);
                 curr.setDate(curr.getDate() + 1);
             }
 
-            // Headers
-            // Tronchiamo i nomi dei frigo se sono troppi lunghi per farli stare in verticale
+            // Headers Tabella (Centrati)
             const tableHeaders = ["GIORNO", ...assets.map(a => a.nome.substring(0, 15).toUpperCase())];
             
             const tableRows = days.map(day => {
@@ -125,7 +127,6 @@ exports.exportGeneric = async (req, res) => {
             });
 
             if (format === 'pdf') {
-                // MODIFICA 1: Layout PORTRAIT (Verticale) e margini stretti
                 const doc = new PDFDocument({ margin: 20, size: 'A4', layout: 'portrait' });
                 
                 let buffers = [];
@@ -137,118 +138,103 @@ exports.exportGeneric = async (req, res) => {
                     res.send(pdfData);
                 });
 
-                // --- MISURE PER VERTICALE ---
-                const pageWidth = 595.28; // A4 width points
+                // MISURE
+                const pageWidth = 595.28; 
                 const margin = 20;
                 const contentWidth = pageWidth - (margin * 2);
                 
-                // Intestazione Coordinate
                 const headerY = 20;
-                const headerH = 50; // Altezza box header
+                const headerH = 50; 
                 
-                // Divisori verticali Header (proporzioni foto)
                 const xDiv1 = margin + (contentWidth * 0.30); 
                 const xDiv2 = margin + (contentWidth * 0.85);
 
                 doc.lineWidth(0.5);
 
-                // --- DISEGNO HEADER ---
-                doc.rect(margin, headerY, contentWidth, headerH).stroke(); // Box Esterno
-                doc.moveTo(xDiv1, headerY).lineTo(xDiv1, headerY + headerH).stroke(); // Linea vert 1
-                doc.moveTo(xDiv2, headerY).lineTo(xDiv2, headerY + headerH).stroke(); // Linea vert 2
+                // HEADER DISEGNATO
+                doc.rect(margin, headerY, contentWidth, headerH).stroke(); 
+                doc.moveTo(xDiv1, headerY).lineTo(xDiv1, headerY + headerH).stroke(); 
+                doc.moveTo(xDiv2, headerY).lineTo(xDiv2, headerY + headerH).stroke(); 
 
-                // TESTI HEADER
-                // 1. Nome Azienda (Sinistra)
+                // TESTI HEADER (CENTRATI MEGLIO)
                 doc.font("Helvetica-Bold").fontSize(11)
                    .text(aziendaInfo.nome.toUpperCase(), margin + 5, headerY + 20, { width: (xDiv1 - margin) - 10, align: 'center' });
                 
-                // 2. Titolo (Centro)
                 doc.fontSize(10)
                    .text("SCHEDA DI ATTUAZIONE DEL", xDiv1, headerY + 12, { width: (xDiv2 - xDiv1), align: 'center' })
                    .text("PIANO DI AUTOCONTROLLO", xDiv1, headerY + 25, { width: (xDiv2 - xDiv1), align: 'center' });
 
-                // 3. Rev (Destra)
                 doc.fontSize(9).text("Rev 00", xDiv2, headerY + 20, { width: (margin + contentWidth - xDiv2), align: 'center' });
 
                 doc.moveDown(4.5);
 
-                // Sottotitolo
-                doc.font("Helvetica-Bold").fontSize(12).text("DOTAZIONI FRIGORIFERE", { align: 'center' });
+                // SOTTOTITOLO CENTRALE
+                doc.font("Helvetica-Bold").fontSize(12).text("DOTAZIONI FRIGORIFERE", margin, doc.y, { width: contentWidth, align: 'center' });
                 doc.moveDown(0.5);
 
-                // --- FIX DATA DICEMBRE/GENNAIO ---
-                // Usiamo la stringa 'start' (YYYY-MM-DD) direttamente per evitare il fuso orario
-                // Esempio start: "2026-01-01"
+                // INFO MESE / ANNO / LOCALE (Con parsing sicuro della data start)
                 const partiData = start.split('-'); // [2026, 01, 01]
                 const annoStr = partiData[0];
-                const meseIndex = parseInt(partiData[1]) - 1; // 0 = Gennaio
+                const meseIndex = parseInt(partiData[1]) - 1; 
                 const mesi = ["GENNAIO","FEBBRAIO","MARZO","APRILE","MAGGIO","GIUGNO","LUGLIO","AGOSTO","SETTEMBRE","OTTOBRE","NOVEMBRE","DICEMBRE"];
                 const nomeMese = mesi[meseIndex];
 
                 doc.font("Helvetica").fontSize(10);
                 const infoY = doc.y;
                 
-                // Riga Mese / Anno / Locale (allineata come in foto)
                 doc.text(`MESE: ...........................`, margin, infoY);
-                doc.font("Helvetica-Bold").text(`${nomeMese}`, margin + 35, infoY); // Sovrascrivo i puntini col mese
+                doc.font("Helvetica-Bold").text(`${nomeMese}`, margin + 35, infoY);
                 
                 doc.font("Helvetica").text(`ANNO: ...........................`, margin + 180, infoY);
                 doc.font("Helvetica-Bold").text(`${annoStr}`, margin + 215, infoY);
 
                 doc.font("Helvetica").text(`LOCALE: ......................................................`, margin + 320, infoY);
-                doc.text(`CUCINA`, margin + 370, infoY); // Default
+                doc.text(`CUCINA`, margin + 370, infoY);
 
                 doc.moveDown(0.5);
 
-                // --- TABELLA VERTICALE ---
-                // Calcolo larghezza colonne dinamico per farle stare tutte
+                // TABELLA (COLONNE CENTRATE)
                 const colGiornoWidth = 30;
                 const remainingWidth = contentWidth - colGiornoWidth;
                 const colAssetWidth = remainingWidth / assets.length;
 
-                // Opzioni Tabella
                 const tableOptions = {
                     width: contentWidth,
                     x: margin,
                     divider: { header: { disabled: false, width: 0.5, opacity: 1 }, horizontal: { disabled: false, width: 0.5, opacity: 0.5 } },
-                    columnsSize: [colGiornoWidth, ...assets.map(() => colAssetWidth)], // Forza larghezza colonne
-                    prepareHeader: () => doc.font("Helvetica-Bold").fontSize(6), // Font piccolo per far stare i nomi
+                    columnsSize: [colGiornoWidth, ...assets.map(() => colAssetWidth)], 
+                    prepareHeader: () => doc.font("Helvetica-Bold").fontSize(6), 
                     prepareRow: (row, indexColumn, indexRow, rectRow, rectCell) => {
-                        // Disegna la griglia su ogni cella
                         doc.rect(rectCell.x, rectCell.y, rectCell.width, rectCell.height).strokeColor('#888').stroke();
-                        return doc.font("Helvetica").fontSize(8).fillColor('black'); // Font numeri più grande
-                    }
+                        return doc.font("Helvetica").fontSize(8).fillColor('black');
+                    },
+                    align: 'center' // <--- CENTRA TUTTO IL CONTENUTO DELLE CELLE
                 };
 
                 await doc.table({ headers: tableHeaders, rows: tableRows }, tableOptions);
 
-                // --- PIÈ DI PAGINA ---
-                doc.moveDown(0.5); // Meno spazio per far stare tutto in una pagina
-
+                // PIÈ DI PAGINA
+                doc.moveDown(0.5); 
                 doc.font("Helvetica-Bold").fontSize(8).text("Condizioni:", { underline: true });
-                doc.font("Helvetica").fontSize(7).lineGap(1) // Font molto piccolo e compatto
+                doc.font("Helvetica").fontSize(7).lineGap(1) 
                    .text("Assenza di promiscuità e di merce non protetta")
                    .text("Assenza segni di sporco visibile, macchie, untuosità al tatto sulle parti a contatto e non con gli alimenti,")
                    .text("Assenza di odori sgradevoli o anomali,")
                    .text("Assenza di prodotti con caratteristiche organolettiche (odore, colore, consistenza) anomali.");
                 
                 doc.moveDown(0.5);
-                
                 doc.font("Helvetica-Bold").text("C: Conforme ai limiti sopra indicati    NC: Non conforme ai limiti sopra indicati");
                 
                 doc.moveDown(1.5);
-                
-                // Firma con linea
                 doc.font("Helvetica-Bold").fontSize(9).text("Firma RHACCP:", margin, doc.y);
-                // Disegna linea firma puntinata
                 const firmaX = margin + 80;
-                const firmaY = doc.y - 2; // Allinea col testo
+                const firmaY = doc.y - 2; 
                 doc.fontSize(9).text("........................................................................................................................", firmaX, firmaY);
                 
                 doc.end();
 
             } else {
-                // EXCEL (Invariato o adattato se serve)
+                // EXCEL
                 const wb = xlsx.utils.book_new();
                 const sheetData = [
                     [aziendaInfo.nome, "SCHEDA DI ATTUAZIONE PIANO AUTOCONTROLLO", "", "Rev 00"],
