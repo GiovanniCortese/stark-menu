@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE JARVIS V56 (NO-CACHE & FORCE REPLACE)
+// server/server.js - VERSIONE JARVIS V57 (TOTAL OVERRIDE)
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -12,7 +12,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 const DOMAIN = "https://www.cosaedovemangiare.it";
 
-// PERCORSO FISSO (Trovato dai tuoi log precedenti)
+// Percorso confermato dai log precedenti
 const INDEX_PATH = path.join(__dirname, '..', 'client', 'index.html');
 
 // --- SOCKET.IO ---
@@ -21,51 +21,35 @@ const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST", "P
 io.on('connection', (s) => { s.on('join_room', (r) => { s.join(String(r)); }); });
 app.set('io', io);
 
-// --- MIDDLEWARE ---
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // ===========================================================================
-//  1. GESTIONE FILE STATICI (CON ECCEZIONE)
-//  Diciamo a Express: "Servi pure le immagini e i CSS, 
-//  MA SE QUALCUNO CHIEDE index.html, FERMATI. Ci penso io."
+//  🛑 ZONA SEO (PRIORITÀ ASSOLUTA - PRIMA DEI FILE STATICI)
 // ===========================================================================
-app.use(express.static(path.join(__dirname, '..', 'client'), {
-    index: false // <--- QUESTA È LA CHIAVE. Disabilita l'invio automatico dell'index.
-}));
+app.use(async (req, res, next) => {
+    // 1. IDENTIFICAZIONE: È una richiesta per una pagina web?
+    // Se l'URL contiene un'estensione (es. .js, .css, .png, .ico), NON è una pagina. Lascia passare.
+    // Escludiamo anche le chiamate API.
+    const isFile = req.url.match(/\.[0-9a-z]+$/i);
+    const isApi = req.url.startsWith('/api') || req.url.startsWith('/socket.io');
 
-// ===========================================================================
-//  2. PAGINA DI TEST (Per capire se funziona senza Facebook)
-//  Vai su: https://iltuosito.com/debug-test
-// ===========================================================================
-app.get('/debug-test', (req, res) => {
-    if (fs.existsSync(INDEX_PATH)) {
-        res.send(`<h1>TUTTO OK</h1><p>Il file index.html esiste in: ${INDEX_PATH}</p>`);
-    } else {
-        res.send(`<h1>ERRORE</h1><p>Non trovo il file in: ${INDEX_PATH}</p>`);
+    if (isFile || isApi) {
+        return next(); // Passa la palla al gestore dei file statici o API
     }
-});
 
-// ===========================================================================
-//  3. IL MOTORE SEO (Gestore Unico)
-//  Tutto ciò che non è un file statico finisce qui.
-// ===========================================================================
-app.get('*', async (req, res) => {
-    
-    // Ignora richieste di file mancanti (es. icone o font rotti)
-    if (req.url.includes('.')) return res.status(404).send('Not found');
+    // --- SE SIAMO QUI, È UNA PAGINA (es. /pizzeria-stark o /debug-test) ---
+    const slug = req.path.substring(1); // Rimuove lo slash iniziale
+    console.log(`🛡️ INTERCEPTOR SEO attivo per: /${slug}`);
 
-    const slug = req.path.substring(1); // es. "pizzeria-stark"
-    console.log(`🤖 RICHIESTA PAGINA: /${slug}`);
-
-    // Valori di Default
+    // Dati Default
     let title = "Cosa e Dove Mangiare";
-    let desc = "Menu Digitale";
+    let desc = "Menu Digitale e Ordini Online";
     let image = `${DOMAIN}/logo-default.png`; 
 
-    // Recupero Dati DB
-    if (slug && slug.length > 0) {
+    // 2. Cerca nel DB (Solo se c'è uno slug valido)
+    if (slug && slug.length > 0 && slug !== 'debug-test') {
         try {
             const result = await pool.query('SELECT nome, style FROM ristoranti WHERE slug = $1', [slug]);
             if (result.rows.length > 0) {
@@ -73,45 +57,56 @@ app.get('*', async (req, res) => {
                 const style = typeof r.style === 'string' ? JSON.parse(r.style) : (r.style || {});
                 
                 title = `${r.nome} | Menu Digitale`;
-                desc = `Menu online di ${r.nome}`;
+                desc = `Sfoglia il menu di ${r.nome} e ordina le tue specialità!`;
                 
-                // Fix Immagine
+                // Fix URL Immagine
                 let rawImg = style.logo_url || style.cover_url;
                 if (rawImg) {
                     image = rawImg.startsWith('http') ? rawImg : `${DOMAIN}${rawImg.startsWith('/') ? '' : '/'}${rawImg}`;
                 }
-                console.log(`✅ DB OK: Titolo="${title}"`);
+                console.log(`✅ RISTORANTE TROVATO: ${title}`);
             }
         } catch (e) {
-            console.error("⚠️ Errore DB:", e.message);
+            console.error("⚠️ DB Error:", e.message);
         }
     }
 
-    // LETTURA E SOSTITUZIONE MANUALE
-    try {
-        if (!fs.existsSync(INDEX_PATH)) {
-            return res.status(500).send("Errore Critico: index.html sparito.");
+    // 3. CARICAMENTO E INIEZIONE (Manuale)
+    // Non usiamo sendFile, usiamo readFile + send per forzare il codice 200
+    if (fs.existsSync(INDEX_PATH)) {
+        try {
+            let htmlData = fs.readFileSync(INDEX_PATH, 'utf8');
+
+            // Sostituzione
+            htmlData = htmlData
+                .replace(/__META_TITLE__/g, title)
+                .replace(/__META_DESCRIPTION__/g, desc)
+                .replace(/__META_IMAGE__/g, image);
+
+            // IMPORTANTE: Header per disabilitare cache strane di Facebook
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            
+            // Debug visivo se richiesto
+            if (req.path === '/debug-test') {
+                return res.send(`<h1>DEBUG OK</h1><p>Se leggi questo, il server Node ha intercettato la richiesta.</p>`);
+            }
+
+            return res.status(200).send(htmlData); // STOP QUI. Non fa next().
+
+        } catch (err) {
+            console.error("❌ Errore lettura index:", err);
+            return next();
         }
-
-        let htmlData = fs.readFileSync(INDEX_PATH, 'utf8');
-
-        // SOSTITUZIONE AGGRESSIVA
-        htmlData = htmlData.replace(/__META_TITLE__/g, title);
-        htmlData = htmlData.replace(/__META_DESCRIPTION__/g, desc);
-        htmlData = htmlData.replace(/__META_IMAGE__/g, image);
-
-        // HEADER ANTI-CACHE (Per dire a Facebook di non memorizzare errori)
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-        res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        
-        // INVIA RISPOSTA 200 (Importante per evitare errore 206)
-        res.status(200).send(htmlData);
-
-    } catch (error) {
-        console.error("❌ ERRORE RENDERING:", error);
-        res.status(500).send("Errore interno server");
+    } else {
+        console.error("❌ ERRORE CRITICO: Index non trovato in " + INDEX_PATH);
+        return res.status(500).send("Errore configurazione server: Index mancante.");
     }
 });
+// ===========================================================================
+
+// --- FILE STATICI (Vengono serviti SOLO se il blocco sopra ha fatto next) ---
+app.use(express.static(path.join(__dirname, '..', 'client')));
 
 // --- API ROUTES ---
 app.use('/', require('./routes/authRoutes'));
@@ -120,8 +115,13 @@ app.use('/', require('./routes/orderRoutes'));
 app.use('/', require('./routes/haccpRoutes'));
 app.use('/', require('./routes/adminRoutes'));
 
+// --- FALLBACK FINALE ---
+// Se qualcuno chiede una pagina che non esiste e il blocco SEO ha fallito
+app.get('*', (req, res) => {
+    res.status(404).send("Pagina non trovata o Errore Server");
+});
+
 // --- AVVIO SERVER ---
 server.listen(port, () => {
-    console.log(`🚀 JARVIS V56 ONLINE su porta ${port}`);
-    console.log(`📂 Index Path: ${INDEX_PATH}`);
+    console.log(`🚀 JARVIS V57 ONLINE su porta ${port}`);
 });
