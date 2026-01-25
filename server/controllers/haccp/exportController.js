@@ -1,3 +1,4 @@
+// server/controllers/haccp/exportController.js
 const pool = require('../../config/db');
 const PDFDocument = require('pdfkit-table');
 const xlsx = require('xlsx');
@@ -34,7 +35,6 @@ exports.exportLabels = async (req, res) => {
         
         if (format === 'pdf') {
             const doc = new PDFDocument({ margin: 20, size: 'A4', layout: 'landscape' });
-            // FIX CRASH: Buffer Mode
             let buffers = [];
             doc.on('data', buffers.push.bind(buffers));
             doc.on('end', () => {
@@ -58,7 +58,6 @@ exports.exportLabels = async (req, res) => {
             });
             doc.end();
         } else {
-            // EXCEL (Tua logica originale)
             const wb = xlsx.utils.book_new();
             const rowAzienda = [azienda.dati_fiscali || azienda.nome];
             const rowPeriodo = [`Periodo: ${rangeName || 'Tutto lo storico'}`];
@@ -66,11 +65,8 @@ exports.exportLabels = async (req, res) => {
             const rowEmpty = [""];
             const finalData = [rowAzienda, rowPeriodo, rowTitolo, rowEmpty, headers, ...rows];
             const ws = xlsx.utils.aoa_to_sheet(finalData);
-            
-            // Merge Header
             if(!ws['!merges']) ws['!merges'] = [];
             ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } });
-            
             xlsx.utils.book_append_sheet(wb, ws, "Produzione");
             const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
             res.setHeader('Content-Disposition', `attachment; filename="produzione.xlsx"`);
@@ -88,7 +84,7 @@ exports.exportGeneric = async (req, res) => {
         const ristRes = await pool.query("SELECT nome, dati_fiscali FROM ristoranti WHERE id = $1", [ristorante_id]);
         const aziendaInfo = ristRes.rows[0];
 
-// 1. GESTIONE SPECIALE: MATRICE TEMPERATURE (LAYOUT CORRETTO)
+        // 1. GESTIONE SPECIALE: MATRICE TEMPERATURE (LAYOUT VERTICALE & FIX DATA)
         if (tipo === 'temperature_matrix') {
             const assetsRes = await pool.query("SELECT id, nome FROM haccp_assets WHERE ristorante_id = $1 AND tipo IN ('frigo','cella','vetrina','congelatore','abbattitore') ORDER BY nome", [ristorante_id]);
             const assets = assetsRes.rows;
@@ -97,20 +93,22 @@ exports.exportGeneric = async (req, res) => {
             const logsRes = await pool.query(sqlLogs, [ristorante_id, start, end]);
             const logs = logsRes.rows;
 
-            // FIX DATA: Impostiamo l'ora a mezzogiorno (12:00) per evitare che il fuso orario ci porti al giorno prima
             const days = [];
+            // FIX DATE: Impostiamo l'ora a mezzogiorno (12:00) per evitare problemi di fuso orario (UTC vs IT)
+            // Questo risolve il problema del giorno "31" che appare prima dell'1.
             let curr = new Date(start);
-            curr.setHours(12, 0, 0, 0); // <--- FIX CRUCIALE
+            curr.setHours(12, 0, 0, 0); 
             
             const endDate = new Date(end);
-            endDate.setHours(12, 0, 0, 0); // <--- FIX CRUCIALE
+            endDate.setHours(12, 0, 0, 0);
 
             while (curr <= endDate) {
                 days.push(curr.toISOString().split('T')[0]);
                 curr.setDate(curr.getDate() + 1);
             }
 
-            // Headers Tabella (Centrati)
+            // Headers Tabella (Nomi Asset Centrati)
+            // Tronchiamo i nomi per farli stare
             const tableHeaders = ["GIORNO", ...assets.map(a => a.nome.substring(0, 15).toUpperCase())];
             
             const tableRows = days.map(day => {
@@ -127,6 +125,7 @@ exports.exportGeneric = async (req, res) => {
             });
 
             if (format === 'pdf') {
+                // Layout PORTRAIT (Verticale) per stare in A4
                 const doc = new PDFDocument({ margin: 20, size: 'A4', layout: 'portrait' });
                 
                 let buffers = [];
@@ -134,11 +133,11 @@ exports.exportGeneric = async (req, res) => {
                 doc.on('end', () => {
                     let pdfData = Buffer.concat(buffers);
                     res.setHeader('Content-Type', 'application/pdf');
-                    res.setHeader('Content-Disposition', `attachment; filename="registro_temperature.pdf"`);
+                    res.setHeader('Content-Disposition', `attachment; filename="registro_temperature_ufficiale.pdf"`);
                     res.send(pdfData);
                 });
 
-                // MISURE
+                // --- DISEGNO HEADER UFFICIALE (Simile Foto) ---
                 const pageWidth = 595.28; 
                 const margin = 20;
                 const contentWidth = pageWidth - (margin * 2);
@@ -151,14 +150,14 @@ exports.exportGeneric = async (req, res) => {
 
                 doc.lineWidth(0.5);
 
-                // HEADER DISEGNATO
+                // Box Esterno
                 doc.rect(margin, headerY, contentWidth, headerH).stroke(); 
                 doc.moveTo(xDiv1, headerY).lineTo(xDiv1, headerY + headerH).stroke(); 
                 doc.moveTo(xDiv2, headerY).lineTo(xDiv2, headerY + headerH).stroke(); 
 
-                // TESTI HEADER (CENTRATI MEGLIO)
-                doc.font("Helvetica-Bold").fontSize(11)
-                   .text(aziendaInfo.nome.toUpperCase(), margin + 5, headerY + 20, { width: (xDiv1 - margin) - 10, align: 'center' });
+                // TESTI HEADER (MODIFICA: Titolo Dashboard "HACCP CONTROL" al posto dell'Azienda)
+                doc.font("Helvetica-Bold").fontSize(12)
+                   .text("HACCP CONTROL", margin + 5, headerY + 20, { width: (xDiv1 - margin) - 10, align: 'center' });
                 
                 doc.fontSize(10)
                    .text("SCHEDA DI ATTUAZIONE DEL", xDiv1, headerY + 12, { width: (xDiv2 - xDiv1), align: 'center' })
@@ -168,12 +167,12 @@ exports.exportGeneric = async (req, res) => {
 
                 doc.moveDown(4.5);
 
-                // SOTTOTITOLO CENTRALE
-                doc.font("Helvetica-Bold").fontSize(12).text("DOTAZIONI FRIGORIFERE", margin, doc.y, { width: contentWidth, align: 'center' });
+                // Sottotitolo
+                doc.font("Helvetica-Bold").fontSize(12).text("DOTAZIONI FRIGORIFERE", { align: 'center' });
                 doc.moveDown(0.5);
 
-                // INFO MESE / ANNO / LOCALE (Con parsing sicuro della data start)
-                const partiData = start.split('-'); // [2026, 01, 01]
+                // Info Mese (Parsing della data start per mostrare Mese/Anno corretti)
+                const partiData = start.split('-'); // [YYYY, MM, DD]
                 const annoStr = partiData[0];
                 const meseIndex = parseInt(partiData[1]) - 1; 
                 const mesi = ["GENNAIO","FEBBRAIO","MARZO","APRILE","MAGGIO","GIUGNO","LUGLIO","AGOSTO","SETTEMBRE","OTTOBRE","NOVEMBRE","DICEMBRE"];
@@ -193,7 +192,8 @@ exports.exportGeneric = async (req, res) => {
 
                 doc.moveDown(0.5);
 
-                // TABELLA (COLONNE CENTRATE)
+                // --- TABELLA VERTICALE (CENTRATA) ---
+                // Calcolo larghezza colonne dinamico
                 const colGiornoWidth = 30;
                 const remainingWidth = contentWidth - colGiornoWidth;
                 const colAssetWidth = remainingWidth / assets.length;
@@ -208,12 +208,12 @@ exports.exportGeneric = async (req, res) => {
                         doc.rect(rectCell.x, rectCell.y, rectCell.width, rectCell.height).strokeColor('#888').stroke();
                         return doc.font("Helvetica").fontSize(8).fillColor('black');
                     },
-                    align: 'center' // <--- CENTRA TUTTO IL CONTENUTO DELLE CELLE
+                    align: 'center' // <--- CENTRATURA GLOBALE (Intestazioni e Dati)
                 };
 
                 await doc.table({ headers: tableHeaders, rows: tableRows }, tableOptions);
 
-                // PIÈ DI PAGINA
+                // PIÈ DI PAGINA (Condizioni Legali)
                 doc.moveDown(0.5); 
                 doc.font("Helvetica-Bold").fontSize(8).text("Condizioni:", { underline: true });
                 doc.font("Helvetica").fontSize(7).lineGap(1) 
@@ -237,7 +237,7 @@ exports.exportGeneric = async (req, res) => {
                 // EXCEL
                 const wb = xlsx.utils.book_new();
                 const sheetData = [
-                    [aziendaInfo.nome, "SCHEDA DI ATTUAZIONE PIANO AUTOCONTROLLO", "", "Rev 00"],
+                    ["HACCP CONTROL", "SCHEDA DI ATTUAZIONE PIANO AUTOCONTROLLO", "", "Rev 00"],
                     ["DOTAZIONI FRIGORIFERE"],
                     [`MESE: ${new Date(start).toLocaleString('it-IT',{month:'long'})}`, `ANNO: ${new Date(start).getFullYear()}`],
                     [""],
@@ -253,7 +253,7 @@ exports.exportGeneric = async (req, res) => {
             return;
         }
 
-        // 2. GESTIONE STANDARD (Tua logica originale integrata)
+        // 2. GESTIONE STANDARD (Liste semplici)
         let headers = [], rows = [], sheetName = "Export", titoloReport = "REPORT";
         
         if (tipo === 'temperature') {
@@ -271,7 +271,6 @@ exports.exportGeneric = async (req, res) => {
             });
 
         } else if (tipo === 'merci') { 
-            // TUA LOGICA ORIGINALE PER LE MERCI (CON CALCOLI PRECISI)
             sheetName = "Registro Acquisti";
             titoloReport = "CONTABILITÀ MAGAZZINO & ACQUISTI";
             headers = ["Data", "Fornitore", "Prodotto", "Qta", "Unitario €", "Imponibile €", "IVA %", "Totale IVA €", "Totale Lordo €", "Num. Doc", "Note"];
@@ -306,7 +305,6 @@ exports.exportGeneric = async (req, res) => {
             });
 
         } else if (tipo === 'assets') { 
-            // TUA LOGICA ORIGINALE ASSETS
             sheetName = "Lista Macchine";
             titoloReport = "LISTA MACCHINE E ATTREZZATURE";
             headers = ["Stato", "Nome", "Tipo", "Marca", "Matricola", "Range"];
@@ -314,7 +312,6 @@ exports.exportGeneric = async (req, res) => {
             rows = r.rows.map(row => [String(row.stato ? row.stato.toUpperCase() : "ATTIVO"), String(row.nome || ''), String(row.tipo || ''), String(row.marca || ''), String(row.serial_number || '-'), `${row.range_min}°C / ${row.range_max}°C`]);
 
         } else if (tipo === 'pulizie') {
-            // TUA LOGICA ORIGINALE PULIZIE
             sheetName = "Registro Pulizie";
             titoloReport = "REGISTRO PULIZIE E SANIFICAZIONI";
             headers = ["Data", "Ora", "Area/Attrezzatura", "Detergente", "Operatore", "Esito"];
@@ -328,7 +325,6 @@ exports.exportGeneric = async (req, res) => {
 
         if (format === 'pdf') {
             const doc = new PDFDocument({ margin: 30, size: 'A4' });
-            // FIX CRASH: Buffer Mode
             let buffers = [];
             doc.on('data', buffers.push.bind(buffers));
             doc.on('end', () => {
@@ -354,7 +350,7 @@ exports.exportGeneric = async (req, res) => {
             return; 
         }
 
-        // EXCEL STANDARD (Tua logica)
+        // EXCEL STANDARD
         const wb = xlsx.utils.book_new();
         const rowAzienda = [aziendaInfo.dati_fiscali || aziendaInfo.nome];
         const rowPeriodo = [`Periodo: ${rangeName || 'Tutto lo storico'}`];
