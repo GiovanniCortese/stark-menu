@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - FIXED CRASH VARIANTI CATEGORIA
+// client/src/Menu.jsx - FIXED CRASH VARIANTI & ORDINAMENTO MANUALE
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'; 
 import { dictionary, getContent, flags } from './translations'; 
@@ -241,7 +241,20 @@ function Menu() {
           }, 100);
       }
   };
-  const toggleSubAccordion = (subName) => setActiveSubCategory(activeSubCategory === subName ? null : subName);
+  const toggleSubAccordion = (subName) => {
+      if (activeSubCategory === subName) {
+          setActiveSubCategory(null);
+      } else {
+          setActiveSubCategory(subName);
+          setTimeout(() => {
+              const safeId = `sub-${subName.replace(/[^a-zA-Z0-9]/g, '')}`;
+              const elem = document.getElementById(safeId);
+              if(elem) {
+                  elem.scrollIntoView({ behavior: 'smooth', block: 'start' }); 
+              }
+          }, 100);
+      }
+  };
 
   // --- PREPARAZIONE DATI MODALE & CALCOLO PREZZI ---
   let modalData = null;
@@ -422,7 +435,19 @@ function Menu() {
                   if (!acc[sc]) acc[sc] = [];
                   acc[sc].push(p); return acc;
                 }, {});
-                const subKeys = Object.keys(sottoCats).sort();
+                
+                // --- MODIFICA 1: LOGICA ORDINAMENTO SOTTOCATEGORIE ---
+                // Non usiamo più il .sort() alfabetico semplice.
+                const subKeys = Object.keys(sottoCats);
+                
+                // Ordiniamo le chiavi basandoci sulla posizione minima dei prodotti contenuti nel gruppo
+                // Questo rispetta l'ordine manuale impostato nel pannello Admin
+                subKeys.sort((a,b) => {
+                    const minA = Math.min(...sottoCats[a].map(p => p.posizione || 0));
+                    const minB = Math.min(...sottoCats[b].map(p => p.posizione || 0));
+                    return minA - minB;
+                });
+
                 const isSingleGroup = subKeys.length === 1 && subKeys[0] === "Generale";
 
                 return subKeys.map(scKey => (

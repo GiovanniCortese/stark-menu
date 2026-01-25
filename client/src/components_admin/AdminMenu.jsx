@@ -1,4 +1,4 @@
-// client/src/components_admin/AdminMenu.jsx - FIXED SCAN, PDF & AI TRANSLATE
+// client/src/components_admin/AdminMenu.jsx - FIXED SUB-CATEGORY ORDERING
 import { useState, useRef } from 'react'; 
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import ProductRow from './ProductRow';
@@ -166,16 +166,14 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       const ingredientiBaseArr = nuovoPiatto.ingredienti_base ? nuovoPiatto.ingredienti_base.split(',').map(i => i.trim()).filter(Boolean) : [];
       const variantiFinali = { base: ingredientiBaseArr, aggiunte: variantiJson };
       const cat = nuovoPiatto.categoria || (categorie.length > 0 ? categorie[0].nome : "");
-      
-      // FIX: Recupera la sottocategoria dal form
-      const subCat = nuovoPiatto.sottocategoria || "";
+      const subCat = nuovoPiatto.sottocategoria || ""; 
       
       const allergeniFinali = Array.isArray(nuovoPiatto.allergeni) ? nuovoPiatto.allergeni : [];
 
       const payload = { 
           ...nuovoPiatto, 
           categoria: cat, 
-          sottocategoria: subCat, // FIX: Invia la sottocategoria al server
+          sottocategoria: subCat, 
           ristorante_id: user.id, 
           varianti: JSON.stringify(variantiFinali),
           allergeni: JSON.stringify(allergeniFinali),
@@ -260,11 +258,9 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       setTraduzioniInput({}); 
   };
 
-  // --- FIX LOGICA DRAG AND DROP (CAT + SUB-CAT) ---
   const onDragEnd = async (result) => {
     if (!result.destination) return;
 
-    // 1. Parsiamo l'ID di destinazione: "Categoria::Sottocategoria"
     const [destCat, destSub] = result.destination.droppableId.split("::");
     const piattoId = parseInt(result.draggableId);
 
@@ -272,39 +268,31 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
     const piattoSpostato = nuovoMenu.find(p => p.id === piattoId);
     if (!piattoSpostato) return;
 
-    // 2. Rimuoviamo il piatto dalla lista temporanea per reinserirlo
     nuovoMenu = nuovoMenu.filter(p => p.id !== piattoId);
 
-    // 3. Aggiorniamo Categoria e Sottocategoria nel piatto
     const piattoAggiornato = { 
         ...piattoSpostato, 
         categoria: destCat, 
         sottocategoria: destSub === "Generale" ? "" : destSub 
     };
 
-    // 4. Calcoliamo la nuova lista di prodotti per quella specifica sottocategoria di destinazione
     const prodottiDestinazione = nuovoMenu
         .filter(p => p.categoria === destCat && (p.sottocategoria || "Generale") === destSub)
         .sort((a,b) => (a.posizione||0) - (b.posizione||0)); 
     
-    // 5. Inseriamo nella posizione corretta
     prodottiDestinazione.splice(result.destination.index, 0, piattoAggiornato);
 
-    // 6. Ricostruiamo il menu (per UI immediata)
     const altriPiatti = nuovoMenu.filter(p => !(p.categoria === destCat && (p.sottocategoria || "Generale") === destSub));
     
-    // 7. Prepariamo il payload per il riordino solo di quel gruppo
     const piattiDestinazioneFinali = prodottiDestinazione.map((p, idx) => ({ 
         id: p.id, 
         posizione: idx,
         categoria: p.categoria,
-        sottocategoria: p.sottocategoria // Backend deve supportare questo update
+        sottocategoria: p.sottocategoria 
     }));
 
-    // Aggiorna stato locale
     setMenu([...altriPiatti, ...piattiDestinazioneFinali]);
 
-    // 8. Chiamata Backend (Assicurati che il backend supporti l'update di 'sottocategoria')
     await fetch(`${API_URL}/api/prodotti/riordina`, { 
         method: 'PUT', 
         headers:{'Content-Type':'application/json'}, 
@@ -317,6 +305,72 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             })) 
         }) 
     });
+  };
+
+  // --- NUOVA FUNZIONE: SPOSTA SOTTOCATEGORIA INTERA ---
+  const spostaSottocategoria = async (catNome, subKey, direzione) => {
+      // 1. Trova tutti i prodotti di questa Categoria
+      const prodottiCat = menu.filter(p => p.categoria === catNome);
+      
+      // 2. Raggruppa per sottocategoria
+      const groups = prodottiCat.reduce((acc, p) => {
+          const s = p.sottocategoria || "Generale";
+          if (!acc[s]) acc[s] = [];
+          acc[s].push(p);
+          return acc;
+      }, {});
+
+      // 3. Ordina i gruppi in base alla posizione minima del PRIMO prodotto del gruppo
+      // Questo ci dà l'ordine attuale visuale
+      let groupKeys = Object.keys(groups).sort((a,b) => {
+          const minPosA = Math.min(...groups[a].map(p => p.posizione || 0));
+          const minPosB = Math.min(...groups[b].map(p => p.posizione || 0));
+          return minPosA - minPosB;
+      });
+
+      // 4. Trova indice da spostare
+      const idx = groupKeys.indexOf(subKey);
+      if (idx === -1) return;
+      
+      // 5. Calcola nuovo indice e scambia
+      const nuovoIdx = idx + direzione;
+      if (nuovoIdx < 0 || nuovoIdx >= groupKeys.length) return; // Fuori limiti
+
+      // Swap nell'array delle chiavi
+      [groupKeys[idx], groupKeys[nuovoIdx]] = [groupKeys[nuovoIdx], groupKeys[idx]];
+
+      // 6. Ricostruisci la lista prodotti PIATTA riassegnando le posizioni
+      // Si riassegnano le posizioni sequenziali (0, 1, 2...) rispettando il nuovo ordine dei gruppi
+      let nuoviProdottiDaSalvare = [];
+      let globalCounter = 0;
+
+      groupKeys.forEach(key => {
+          // Mantieni l'ordine interno dei prodotti nel gruppo
+          const prods = groups[key].sort((a,b) => (a.posizione||0) - (b.posizione||0)); 
+          prods.forEach(p => {
+              nuoviProdottiDaSalvare.push({
+                  ...p,
+                  posizione: globalCounter++ // Nuova posizione sequenziale
+              });
+          });
+      });
+
+      // 7. Aggiorna Stato Locale + Backend
+      const altriProdotti = menu.filter(p => p.categoria !== catNome);
+      setMenu([...altriProdotti, ...nuoviProdottiDaSalvare]);
+
+      await fetch(`${API_URL}/api/prodotti/riordina`, { 
+          method: 'PUT', 
+          headers:{'Content-Type':'application/json'}, 
+          body: JSON.stringify({ 
+              prodotti: nuoviProdottiDaSalvare.map(p => ({ 
+                  id: p.id, 
+                  posizione: p.posizione, 
+                  categoria: p.categoria, 
+                  sottocategoria: p.sottocategoria 
+              })) 
+          }) 
+      });
   };
 
   const containerStyle = { width: '100%', margin: '0 auto', fontFamily: "'Inter', sans-serif", color: '#333', boxSizing: 'border-box' };
@@ -388,7 +442,6 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                                   </select>
                               </div>
                               
-                              {/* --- FIX 1: CAMPO SOTTOCATEGORIA REINSERITO --- */}
                               <div style={{flex:1, minWidth:'140px'}}>
                                   <label style={labelStyle}>Sottocategoria</label>
                                   <input 
@@ -455,13 +508,9 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                   </form>
             </div>
 
-            {/* --- FIX 2 & 3: LISTA RAGGRUPPATA PER SOTTOCATEGORIE + DRAG AVANZATO --- */}
             <DragDropContext onDragEnd={onDragEnd}>
                 {categorie && categorie.map(cat => {
-                    // Filtra i piatti di questa categoria
                     const piattiCat = menu.filter(p => p.categoria === cat.nome);
-                    
-                    // Raggruppa per Sottocategoria
                     const groups = piattiCat.reduce((acc, p) => {
                         const sub = p.sottocategoria || "Generale";
                         if (!acc[sub]) acc[sub] = [];
@@ -469,14 +518,14 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                         return acc;
                     }, {});
 
-                    // Ordina le chiavi (Generale sempre prima)
+                    // ORDINA I GRUPPI in base alla posizione del PRIMO prodotto (ordine visuale)
                     const sortedKeys = Object.keys(groups).sort((a,b) => {
-                        if (a === "Generale") return -1;
-                        if (b === "Generale") return 1;
-                        return a.localeCompare(b);
+                        const minPosA = Math.min(...groups[a].map(p => p.posizione || 0));
+                        const minPosB = Math.min(...groups[b].map(p => p.posizione || 0));
+                        return minPosA - minPosB;
                     });
 
-                    // Se non ci sono piatti, mostra almeno un droppable vuoto per "Generale"
+                    // Se non ci sono gruppi, forza "Generale" per permettere drop
                     if (sortedKeys.length === 0) sortedKeys.push("Generale");
 
                     return (
@@ -488,18 +537,37 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                             
                             {sortedKeys.map(subKey => {
                                 const products = groups[subKey] || [];
-                                // Ordina per posizione
+                                // Ordina prodotti internamente
                                 products.sort((a, b) => (a.posizione || 0) - (b.posizione || 0));
 
                                 return (
                                     <div key={subKey} style={{marginBottom: '15px', marginLeft: '10px'}}>
                                         {subKey !== "Generale" && (
-                                            <h4 style={{fontSize:'14px', color:'#7f8c8d', margin:'0 0 10px 0', textTransform:'uppercase', letterSpacing:'1px'}}>
-                                                ↳ {subKey}
-                                            </h4>
+                                            <div style={{display:'flex', alignItems:'center', gap:'10px', marginBottom:'10px'}}>
+                                                <h4 style={{fontSize:'14px', color:'#7f8c8d', margin:0, textTransform:'uppercase', letterSpacing:'1px'}}>
+                                                    ↳ {subKey}
+                                                </h4>
+                                                
+                                                {/* PULSANTI SPOSTA SOTTOCATEGORIA */}
+                                                <div style={{display:'flex', gap:'2px'}}>
+                                                    <button 
+                                                        onClick={() => spostaSottocategoria(cat.nome, subKey, -1)} 
+                                                        style={{fontSize:'10px', padding:'2px 6px', cursor:'pointer', border:'1px solid #ddd', background:'white', borderRadius:'4px'}}
+                                                        title="Sposta su"
+                                                    >
+                                                        ⬆️
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => spostaSottocategoria(cat.nome, subKey, 1)} 
+                                                        style={{fontSize:'10px', padding:'2px 6px', cursor:'pointer', border:'1px solid #ddd', background:'white', borderRadius:'4px'}}
+                                                        title="Sposta giù"
+                                                    >
+                                                        ⬇️
+                                                    </button>
+                                                </div>
+                                            </div>
                                         )}
 
-                                        {/* ID COMPOSTO: "NomeCategoria::NomeSottocategoria" */}
                                         <Droppable droppableId={`${cat.nome}::${subKey}`}>
                                             {(provided) => (
                                                 <div 
