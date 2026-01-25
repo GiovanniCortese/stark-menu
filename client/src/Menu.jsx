@@ -1,4 +1,4 @@
-// client/src/Menu.jsx - FIXED CRASH VARIANTI & ORDINAMENTO MANUALE
+// client/src/Menu.jsx - MERGED: SMART LANG + FIX CRASH + MANUAL SORT
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'; 
 import { dictionary, getContent, flags } from './translations'; 
@@ -16,11 +16,6 @@ function Menu() {
 
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [availableLangs, setAvailableLangs] = useState(['it']); 
-
-  const cambiaLingua = (selectedLang) => {
-      setLang(selectedLang); 
-      setShowLangMenu(false);
-  };
 
   const [urlFileAttivo, setUrlFileAttivo] = useState("");
   const [titoloFile, setTitoloFile] = useState("");
@@ -73,7 +68,7 @@ function Menu() {
       } catch (e) { return []; }
   };
 
-  // --- FIX CRASH: Helper per parsare le varianti di categoria ---
+  // --- [FIX IMPORTATO DA FILE 2] Helper per parsare le varianti di categoria ---
   const getSafeCatVariants = (valore) => {
       if (!valore) return [];
       try {
@@ -111,7 +106,8 @@ function Menu() {
           setCanOrder(data.ordini_abilitati && data.kitchen_active);
           setActiveCategory(null); 
           
-          const foundLangs = new Set(['it']);
+          // --- CALCOLO LINGUE DISPONIBILI (Da File 1 - Smart Languages) ---
+          const foundLangs = new Set(['it']); 
           if (data.menu && data.menu.length > 0) {
               data.menu.forEach(p => {
                   if (p.traduzioni) {
@@ -125,6 +121,11 @@ function Menu() {
       })
       .catch(err => { console.error("Errore Menu:", err); setError(true); });
   }, [currentSlug]);
+
+  const cambiaLingua = (selectedLang) => {
+      setLang(selectedLang); 
+      setShowLangMenu(false);
+  };
 
   const apriModale = (piatto) => { 
       if(!piatto) return;
@@ -228,6 +229,7 @@ function Menu() {
   
   const categorieUniche = [...new Set(menu.map(p => p.categoria_nome || p.categoria))];
   
+  // --- SCROLL AUTOMATICO (Aggiornato con logica File 2) ---
   const toggleAccordion = (catNome) => { 
       if (activeCategory === catNome) { 
           setActiveCategory(null); 
@@ -246,6 +248,7 @@ function Menu() {
           setActiveSubCategory(null);
       } else {
           setActiveSubCategory(subName);
+          // [FIX UX DA FILE 2] Scroll automatico anche per sottocategorie
           setTimeout(() => {
               const safeId = `sub-${subName.replace(/[^a-zA-Z0-9]/g, '')}`;
               const elem = document.getElementById(safeId);
@@ -271,10 +274,10 @@ function Menu() {
           baseList = trads[lang].ingredienti_base;
       }
 
-      // 2. AGGIUNTE/EXTRA (Tradotti se disponibili)
-      // FIX CRASH: Usiamo la funzione sicura anche qui
+      // 2. AGGIUNTE/EXTRA
+      // [FIX CRASH DA FILE 2] Usiamo getSafeCatVariants invece di accesso diretto
       const useProductVariants = vSafe.aggiunte.length > 0;
-      const safeCatVars = getSafeCatVariants(selectedPiatto.categoria_varianti); // <--- FIX
+      const safeCatVars = getSafeCatVariants(selectedPiatto.categoria_varianti); 
       let rawAddList = useProductVariants ? vSafe.aggiunte : safeCatVars;
 
       // Recuperare le traduzioni delle varianti
@@ -436,12 +439,9 @@ function Menu() {
                   acc[sc].push(p); return acc;
                 }, {});
                 
-                // --- MODIFICA 1: LOGICA ORDINAMENTO SOTTOCATEGORIE ---
-                // Non usiamo più il .sort() alfabetico semplice.
+                // --- [MODIFICA DA FILE 2]: LOGICA ORDINAMENTO MANUALE ---
                 const subKeys = Object.keys(sottoCats);
-                
                 // Ordiniamo le chiavi basandoci sulla posizione minima dei prodotti contenuti nel gruppo
-                // Questo rispetta l'ordine manuale impostato nel pannello Admin
                 subKeys.sort((a,b) => {
                     const minA = Math.min(...sottoCats[a].map(p => p.posizione || 0));
                     const minB = Math.min(...sottoCats[b].map(p => p.posizione || 0));
@@ -470,7 +470,7 @@ function Menu() {
                           const allergeniSafe = getSafeAllergeni(prodotto);
                           const baseList = vSafe.base;
                           
-                          // --- FIX CRASH: Parsing sicuro anche qui ---
+                          // --- [FIX CRASH DA FILE 2]: Parsing sicuro anche qui ---
                           const safeCatVars = getSafeCatVariants(prodotto.categoria_varianti);
                           const addList = vSafe.aggiunte.length > 0 ? vSafe.aggiunte : safeCatVars;
                           
@@ -532,7 +532,7 @@ function Menu() {
                                 {addList.length > 0 && (
                                     <p style={{fontSize:'10px', color:'#2980b9', marginTop:'2px', lineHeight:'1.1'}}>
                                         <span style={{fontWeight:'bold'}}>✨ Extra:</span> {
-                                            // FIX: Traduzione visuale degli extra in card
+                                            // [FIX DA FILE 2]: Traduzione visuale degli extra in card
                                             (() => {
                                                 let translatedNames = [];
                                                 // Logica duplicata dalla modale per coerenza
@@ -605,6 +605,27 @@ function Menu() {
           )}
         </div>
       ))}
+      </div>
+
+      <div className="notranslate" style={{ textAlign: style.allineamento_footer || 'center', padding: '20px 20px 60px 20px', opacity: 0.9 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px', marginBottom: '25px' }}>
+            {style.url_menu_giorno && ( <button onClick={() => { setUrlFileAttivo(style.url_menu_giorno); setTitoloFile("Menù del Giorno 🥗"); setShowFileModal(true); }} style={footerBtnStyle}><span>🥗</span> MENÙ DEL GIORNO</button> )}
+            {style.url_menu_pdf && ( <button onClick={() => { setUrlFileAttivo(style.url_menu_pdf); setTitoloFile("Menù Completo 📄"); setShowFileModal(true); }} style={footerBtnStyle}><span>📄</span> MENÙ PDF</button> )}
+            {style.url_allergeni && ( <button onClick={() => { setUrlFileAttivo(style.url_allergeni); setTitoloFile("Lista Allergeni ⚠️"); setShowFileModal(true); }} style={{ ...footerBtnStyle, opacity: 0.8 }}><span>⚠️</span> LISTA ALLERGENI</button> )}
+        </div>
+        {style.info_footer && ( <p style={{ whiteSpace: 'pre-line', marginBottom: '15px', color: style.colore_footer_text || style.text, fontSize: `${style.dimensione_footer || 12}px` }}>{style.info_footer}</p> )}
+        
+        {/* [MANTENUTO DA FILE 1] Link Powered By */}
+        <div style={{ marginTop: 15, fontSize: 10, color: style.colore_footer_text || style.text, opacity: 0.8 }}>
+            <a 
+                href="https://www.cosaedovemangiare.it" 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                style={{ color: 'inherit', textDecoration: 'none', fontWeight: 'bold' }}
+            >
+                Powered by COSAEDOVEMANGIARE.IT
+            </a>
+        </div>
       </div>
 
       {showFileModal && urlFileAttivo && (
@@ -838,7 +859,7 @@ function Menu() {
                               <h3 className="notranslate" style={{ margin:'0 0 10px 0', color: coloriPortata[index] || '#ccc', borderBottom:`2px solid ${coloriPortata[index] || '#ccc'}`, display:'inline-block', paddingRight:20 }}>{nomePortata[courseNum] || `PORTATA ${courseNum}`}</h3>
                               {itemsCucina.filter(i => i.course === courseNum).map(item => {
                                   const v = typeof item.varianti === 'string' ? JSON.parse(item.varianti || '{}') : (item.varianti || {});
-                                  // --- FIX CRASH: SAFE ALLERGENI ---
+                                  // --- [FIX CRASH DA FILE 2]: SAFE ALLERGENI ---
                                   const allergeniItem = getSafeAllergeni(item);
 
                                   const qtaLabel = item.qty > 1 ? `x ${item.qty} ${item.unita_misura || ''}` : '';
@@ -848,11 +869,11 @@ function Menu() {
                                     <div key={item.tempId} style={{background:'rgba(255,255,255,0.1)', borderRadius:10, padding:15, marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                                         <div style={{flex: 1}}>
                                             <div style={{fontWeight:'bold', fontSize:'1.1rem', color: titleColor}}>
-                                                {/* FIX TRADUZIONE NOME NEL CARRELLO */}
+                                                {/* [FIX TRADUZIONE NOME NEL CARRELLO DA FILE 2] */}
                                                 {getContent(item, 'nome', lang)} {qtaLabel && <span style={{color: priceColor, fontSize:'0.9rem'}}>({qtaLabel})</span>}
                                             </div>
                                             
-                                            {/* FIX TRADUZIONE INGREDIENTI NEL CARRELLO */}
+                                            {/* [FIX TRADUZIONE INGREDIENTI NEL CARRELLO DA FILE 2] */}
                                             {v.base && v.base.length > 0 && ( 
                                                 <div style={{fontSize:'11px', color:'#999', marginTop:'4px'}}>
                                                     <span className="notranslate">🧂 {t?.ingredients || "Ingredienti"}:</span> {
