@@ -14,6 +14,7 @@ import CleaningManager from './components/haccp/CleaningManager';
 function Haccp() {
   const { slug, scanId } = useParams();
   const navigate = useNavigate();
+  // const API_URL = "http://localhost:3000"; // Scommenta per locale
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
   // --- STATO GLOBALE ---
@@ -30,9 +31,8 @@ function Haccp() {
   const [logs, setLogs] = useState([]); 
   const [merci, setMerci] = useState([]); 
   
-  // Dati Calendario (Unificati)
+  // Dati Calendario
   const [calendarData, setCalendarData] = useState({ logs: [], merci: [], pulizie: [], labels: [] });
-  const [calendarLogs, setCalendarLogs] = useState([]); // Legacy fallback
   
   const [tab, setTab] = useState('temperature'); 
   const [staffList, setStaffList] = useState([]);
@@ -46,9 +46,6 @@ function Haccp() {
   const [tempInput, setTempInput] = useState({}); 
   const [uploadingLog, setUploadingLog] = useState(null); 
   
-  // Stati Merci (Form gestito internamente da MerciManager se mode="haccp", ma manteniamo stati se servono props)
-  const [uploadingMerci, setUploadingMerci] = useState(false);
-
   // Stati Asset / Modali
   const [showAssetModal, setShowAssetModal] = useState(false);
   const [editingAsset, setEditingAsset] = useState(null); 
@@ -71,7 +68,7 @@ function Haccp() {
   const [globalPreview, setGlobalPreview] = useState(null); 
   const [isDownloading, setIsDownloading] = useState(false);
 
-  // Stati Etichette (Produzione)
+  // Stati Etichette
   const today = new Date();
   today.setDate(today.getDate() + 3);
   const [labelData, setLabelData] = useState({ 
@@ -106,8 +103,12 @@ function Haccp() {
   const ricaricaDati = () => {
       if(!info?.id) return;
       fetch(`${API_URL}/api/haccp/assets/${info.id}`).then(r=>r.json()).then(setAssets);
+      // IMPORTANTE: logs senza filtri temporali stretti per popolare la tabella mensile se necessario
+      // Oppure il backend di default manda gli ultimi 7gg. 
+      // Se vuoi vedere tutto il mese nella tabella, dovresti chiamare con range.
+      // Per semplicità qui chiamiamo standard, ma TempControl potrebbe richiedere fetch specifici.
       fetch(`${API_URL}/api/haccp/logs/${info.id}`).then(r=>r.json()).then(setLogs);
-      // Carichiamo merci HACCP per averle disponibili (es. per etichette)
+      
       fetch(`${API_URL}/api/haccp/merci/${info.id}?mode=haccp`).then(r=>r.json()).then(setMerci);
       fetch(`${API_URL}/api/utenti?mode=staff&ristorante_id=${info.id}&t=${new Date().getTime()}`)
         .then(r=>r.json())
@@ -129,14 +130,12 @@ function Haccp() {
              fetch(`${API_URL}/api/haccp/labels/storico/${info.id}?start=${start}&end=${end}`)
           ]);
 
-          const logsData = await resLogs.json();
           setCalendarData({
-              logs: logsData,
+              logs: await resLogs.json(),
               merci: await resMerci.json(),
               pulizie: await resPulizie.json(),
               labels: await resLabels.json()
           });
-          setCalendarLogs(logsData); 
 
       } catch (e) { console.error("Err Cal", e); }
   };
@@ -207,15 +206,24 @@ function Haccp() {
   
   const handleLogPhoto = async (e, assetId) => { const f = e.target.files[0]; if(!f) return; setUploadingLog(assetId); try { const url = await uploadFile(f); setTempInput(prev => ({...prev, [assetId]: { ...(prev[assetId] || {}), photo: url }})); } finally { setUploadingLog(null); } };
   
+  // --- FIX 1: REGISTRAZIONE TEMPERATURA (Gestione Date Retroattive) ---
   const registraTemperatura = async (asset, isSpento = false) => { 
       let val = 'OFF', conforme = true, azione = ""; 
+      
+      // Recuperiamo l'input corrente per questo asset
+      const currentInput = tempInput[asset.id] || {};
+      
+      // FIX IMPORTANTE: Se c'è una data custom (da tabella), usiamo quella. Altrimenti null (backend usa NOW)
+      const dataOraEffettiva = currentInput.customDate || null;
+
       if (!isSpento) { 
-          const currentInput = tempInput[asset.id] || {}; 
           val = parseFloat(currentInput.val); 
           if(isNaN(val) && currentInput.val !== '0') return alert("Inserisci un numero valido"); 
+          
           const realMin = Math.min(parseFloat(asset.range_min), parseFloat(asset.range_max)); 
           const realMax = Math.max(parseFloat(asset.range_min), parseFloat(asset.range_max)); 
           conforme = val >= realMin && val <= realMax; 
+          
           if(!conforme) { 
               azione = prompt(`⚠️ ATTENZIONE: Temp ${val}°C fuori range.\nDescrivi azione correttiva:`, ""); 
               if(!azione) return alert("Azione correttiva obbligatoria!"); 
@@ -224,15 +232,24 @@ function Haccp() {
       } else { 
           val = "OFF"; conforme = true; azione = "Macchinario spento/inutilizzato in data odierna"; 
       } 
+      
       await fetch(`${API_URL}/api/haccp/logs`, { 
           method: 'POST', 
           headers:{'Content-Type':'application/json'}, 
           body: JSON.stringify({ 
-              ristorante_id: info.id, asset_id: asset.id, operatore: 'Staff', tipo_log: 'temperatura', 
-              valore: val, conformita: conforme, azione_correttiva: azione, 
-              foto_prova_url: (tempInput[asset.id] || {}).photo || '' 
+              ristorante_id: info.id, 
+              asset_id: asset.id, 
+              operatore: 'Staff', 
+              tipo_log: 'temperatura', 
+              valore: val, 
+              conformita: conforme, 
+              azione_correttiva: azione, 
+              foto_prova_url: currentInput.photo || '',
+              data_ora: dataOraEffettiva // <--- INVIO DELLA DATA CORRETTA
           }) 
       }); 
+      
+      // Reset stato
       setTempInput(prev => { const n = {...prev}; delete n[asset.id]; return n; }); 
       ricaricaDati(); 
       if(scanId) navigate(`/haccp/${slug}`); 
@@ -240,20 +257,56 @@ function Haccp() {
   
   const abilitaNuovaMisurazione = (asset) => { const logEsistente = getTodayLog(asset.id); setTempInput(prev => ({ ...prev, [asset.id]: { val: logEsistente ? logEsistente.valore : '', photo: '' } })); };
 
-  // ASSETS
+  // --- ASSETS (CRUD + FIX DELETE) ---
   const apriModaleAsset = (asset = null) => { if(asset) { setEditingAsset(asset); setAssetForm({ ...asset }); } else { setEditingAsset(null); setAssetForm({ nome:'', tipo:'frigo', range_min:0, range_max:4, marca:'', modello:'', serial_number:'', foto_url:'', etichetta_url:'', stato:'attivo' }); } setShowAssetModal(true); };
+  
   const salvaAsset = async (e) => { e.preventDefault(); const endpoint = editingAsset ? `${API_URL}/api/haccp/assets/${editingAsset.id}` : `${API_URL}/api/haccp/assets`; const method = editingAsset ? 'PUT' : 'POST'; await fetch(endpoint, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...assetForm, ristorante_id: info.id }) }); setShowAssetModal(false); ricaricaDati(); };
+  
+  // FIX 2: FUNZIONE ELIMINA ASSET
+  const handleDeleteAsset = async (id) => {
+    if(!window.confirm("Sei sicuro di voler eliminare questa macchina? Verrà eliminato anche lo storico.")) return;
+    try {
+        await fetch(`${API_URL}/api/haccp/assets/${id}`, { method: 'DELETE' });
+        ricaricaDati();
+    } catch (e) { console.error("Errore delete asset", e); alert("Errore durante l'eliminazione"); }
+  };
+
   const handleAssetPhoto = async (e) => { const f = e.target.files[0]; if(!f) return; setUploadingAsset(true); try { const url = await uploadFile(f); setAssetForm(prev => ({...prev, foto_url: url})); } finally { setUploadingAsset(false); } };
   const handleAssetLabel = async (e) => { const f = e.target.files[0]; if(!f) return; setUploadingLabel(true); try { const url = await uploadFile(f); setAssetForm(prev => ({...prev, etichetta_url: url})); } finally { setUploadingLabel(false); } };
   
-  // STAFF
+  // --- STAFF ---
   const openStaffDocs = async (user) => { setSelectedStaff(user); const r = await fetch(`${API_URL}/api/staff/docs/${user.id}`); setStaffDocs(await r.json()); };
   const uploadStaffDoc = async (e) => { const f = e.target.files[0]; if(!f) return; const url = await uploadFile(f); await fetch(`${API_URL}/api/staff/docs`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ utente_id: selectedStaff.id, tipo_doc: newDoc.tipo, nome_file: f.name, url }) }); const r = await fetch(`${API_URL}/api/staff/docs/${selectedStaff.id}`); setStaffDocs(await r.json()); setNewDoc({...newDoc, url: ''}); };
   const deleteDoc = async (id) => { if(!confirm("Eliminare documento?")) return; await fetch(`${API_URL}/api/staff/docs/${id}`, {method:'DELETE'}); const r = await fetch(`${API_URL}/api/staff/docs/${selectedStaff.id}`); setStaffDocs(await r.json()); };
 
-  // DOWNLOAD & PRINT
+  // --- DOWNLOAD & PRINT (FIX EXPORT MATRICE) ---
   const openDownloadModal = (type) => { setDownloadType(type); setShowDownloadModal(true); setSelectedMonth(''); };
-  const executeDownload = (range) => { let start = new Date(), end = new Date(), rangeName = "Tutto"; if(range === 'week') { start.setDate(end.getDate() - 7); rangeName="Ultima Settimana"; } else if(range === 'month') { start.setMonth(end.getMonth() - 1); rangeName="Ultimo Mese"; } else if (range === 'custom-month') { if(!selectedMonth) return alert("Seleziona un mese!"); const [y, m] = selectedMonth.split('-'); start = new Date(y, m - 1, 1); end = new Date(y, m, 0, 23, 59, 59); rangeName = `Mese di ${start.toLocaleString('it-IT', { month: 'long', year: 'numeric' })}`; } else if(range === 'all') { start = new Date('2020-01-01'); rangeName="Storico Completo"; } const query = `?start=${start.toISOString()}&end=${end.toISOString()}&rangeName=${rangeName}&format=${downloadFormat}`; window.open(`${API_URL}/api/haccp/export/${downloadType}/${info.id}${query}`, '_blank'); setShowDownloadModal(false); };
+  
+  const executeDownload = (range) => { 
+      let start = new Date(), end = new Date(), rangeName = "Tutto"; 
+      
+      if(range === 'week') { 
+          start.setDate(end.getDate() - 7); rangeName="Ultima Settimana"; 
+      } else if(range === 'month') { 
+          start.setMonth(end.getMonth() - 1); rangeName="Ultimo Mese"; 
+      } else if (range === 'custom-month') { 
+          if(!selectedMonth) return alert("Seleziona un mese!"); 
+          const [y, m] = selectedMonth.split('-'); 
+          start = new Date(y, m - 1, 1); 
+          end = new Date(y, m, 0, 23, 59, 59); 
+          rangeName = `Mese di ${start.toLocaleString('it-IT', { month: 'long', year: 'numeric' })}`; 
+      } else if(range === 'all') { 
+          start = new Date('2020-01-01'); rangeName="Storico Completo"; 
+      } 
+      
+      // Costruiamo la query string
+      const query = `?start=${start.toISOString()}&end=${end.toISOString()}&rangeName=${rangeName}&format=${downloadFormat}`;
+      
+      // Chiamata all'API
+      // Nota: Se downloadType è "temperature_matrix", il backend saprà cosa fare.
+      window.open(`${API_URL}/api/haccp/export/${downloadType}/${info.id}${query}`, '_blank'); 
+      setShowDownloadModal(false); 
+  };
   
   const handleLabelTypeChange = (e) => { const type = e.target.value; let days = 3; if (type === 'negativo') days = 180; if (type === 'sottovuoto') days = 10; const newDate = new Date(); newDate.setDate(newDate.getDate() + days); setLabelData({ ...labelData, tipo: type, giorni_scadenza: days, scadenza_manuale: newDate.toISOString().split('T')[0] }); };
   const handlePrintLabel = async (e) => { e.preventDefault(); const scadenza = labelData.scadenza_manuale ? new Date(labelData.scadenza_manuale) : new Date(); if(!labelData.scadenza_manuale) scadenza.setDate(scadenza.getDate() + parseInt(labelData.giorni_scadenza)); const res = await fetch(`${API_URL}/api/haccp/labels`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ristorante_id: info.id, prodotto: labelData.prodotto, data_scadenza: scadenza, operatore: labelData.operatore || 'Chef', tipo_conservazione: labelData.tipo }) }); const data = await res.json(); if(data.success) { setLastLabel(data.label); setPrintMode('label'); setTimeout(() => { window.print(); setPrintMode(null); }, 500); } };
@@ -262,57 +315,26 @@ function Haccp() {
   const printOnlyQR = () => { setPrintMode('qr'); setTimeout(() => { window.print(); setPrintMode(null); }, 500); };
 
   // --- RENDER 1: CARICAMENTO ---
-  if(!info) {
-      return (
-          <div style={{minHeight:'100vh', background:'#2c3e50', display:'flex', justifyContent:'center', alignItems:'center', flexDirection:'column', color:'white'}}>
-              <div style={{fontSize:'3rem', marginBottom:'15px'}}>🛡️</div>
-              <h2 style={{fontWeight:'400'}}>Caricamento Sistema HACCP...</h2>
-          </div>
-      );
-  }
+  if(!info) return <div style={{padding:20}}>Caricamento...</div>;
 
   // --- RENDER 2: LOGIN ---
   if(!isAuthorized) {
       return (
         <div style={{minHeight:'100vh', background:'#2c3e50', display:'flex', justifyContent:'center', alignItems:'center'}}>
-            <div style={{background:'white', padding:'40px', borderRadius:'15px', textAlign:'center', width:'90%', maxWidth:'400px', boxShadow:'0 15px 35px rgba(0,0,0,0.2)'}}>
-                <div style={{fontSize:'4rem', marginBottom:'10px'}}>🛡️</div>
-                <h2 style={{margin:'0 0 5px 0', color:'#2c3e50', fontSize:'1.8rem'}}>Accesso HACCP</h2>
-                <p style={{color:'#7f8c8d', margin:'0 0 30px 0', fontSize:'1rem'}}>{info.ristorante}</p>
-                
+            <div style={{background:'white', padding:'40px', borderRadius:'15px', textAlign:'center', width:'90%', maxWidth:'400px'}}>
+                <h2 style={{color:'#2c3e50'}}>Accesso HACCP</h2>
+                <p>{info.ristorante}</p>
                 <form onSubmit={handleLogin} style={{display:'flex', flexDirection:'column', gap:'15px'}}>
-                    <input 
-                        type="password" 
-                        placeholder="Password Reparto" 
-                        value={password} 
-                        onChange={e=>setPassword(e.target.value)} 
-                        style={{
-                            padding:'15px', borderRadius:'10px', border:'2px solid #ecf0f1', 
-                            fontSize:'16px', outline:'none', background:'#f8f9fa',
-                            color: '#2c3e50', textAlign: 'center', width: '100%', boxSizing: 'border-box'
-                        }}
-                    />
-                    
-                    {loginError && (
-                        <div style={{background:'#fadbd8', color:'#c0392b', padding:'10px', borderRadius:'8px', fontSize:'0.9rem', fontWeight:'bold'}}>
-                            ⚠️ {loginError}
-                        </div>
-                    )}
-                    
-                    <button disabled={loadingLogin} style={{
-                        padding:'16px', background:'#2c3e50', color:'white', border:'none', 
-                        borderRadius:'10px', fontSize:'16px', fontWeight:'bold', cursor:'pointer', 
-                        opacity: loadingLogin ? 0.7 : 1, boxShadow: '0 4px 6px rgba(44, 62, 80, 0.2)'
-                    }}>
-                        {loadingLogin ? "Verifica..." : "ENTRA NEL SISTEMA"}
-                    </button>
+                    <input type="password" placeholder="Password Reparto" value={password} onChange={e=>setPassword(e.target.value)} style={{padding:'15px', borderRadius:'10px', border:'1px solid #ccc'}} />
+                    {loginError && <div style={{color:'red'}}>{loginError}</div>}
+                    <button style={{padding:'15px', background:'#2c3e50', color:'white', border:'none', borderRadius:'10px', fontWeight:'bold', cursor:'pointer'}}>{loadingLogin ? "..." : "ENTRA"}</button>
                 </form>
             </div>
         </div>
       );
   }
 
-  const assetsToDisplay = scanId ? assets.filter(a => a.id.toString() === scanId) : assets.filter(a=>['frigo','cella','vetrina'].includes(a.tipo));
+  const assetsToDisplay = scanId ? assets.filter(a => a.id.toString() === scanId) : assets.filter(a=>['frigo','cella','vetrina','congelatore','abbattitore'].includes(a.tipo));
 
   // --- RENDER 3: APPLICAZIONE ---
   return (
@@ -343,17 +365,15 @@ function Haccp() {
           {tab === 'temperature' && (
               <TempControl 
                 assetsToDisplay={assetsToDisplay} getTodayLog={getTodayLog} tempInput={tempInput} setTempInput={setTempInput}
-                registraTemperatura={registraTemperatura} handleLogPhoto={handleLogPhoto} abilitaNuovaMisurazione={abilitaNuovaMisurazione} logs={logs} openDownloadModal={openDownloadModal}
+                registraTemperatura={registraTemperatura} handleLogPhoto={handleLogPhoto} abilitaNuovaMisurazione={abilitaNuovaMisurazione} 
+                logs={logs} // Importante: passiamo logs completo per la tabella
+                openDownloadModal={openDownloadModal}
               />
           )}
 
           {tab === 'merci' && !scanId && (
             <MerciManager 
-               ristoranteId={info.id} 
-               mode="haccp" 
-               title="Ricevimento Materie Prime" 
-               API_URL={API_URL} 
-               openDownloadModal={openDownloadModal}
+               ristoranteId={info.id} mode="haccp" title="Ricevimento Materie Prime" API_URL={API_URL} openDownloadModal={openDownloadModal}
             />
           )}
           
@@ -376,7 +396,17 @@ function Haccp() {
           )}
           
           {tab === 'staff' && !scanId && (<StaffManager staffList={staffList} selectedStaff={selectedStaff} openStaffDocs={openStaffDocs} setSelectedStaff={setSelectedStaff} newDoc={newDoc} setNewDoc={setNewDoc} uploadStaffDoc={uploadStaffDoc} uploadFile={uploadFile} staffDocs={staffDocs} deleteDoc={deleteDoc} API_URL={API_URL} handleFileAction={(url)=>openGlobalPreview(url,"Doc_Staff")} />)}
-          {tab === 'setup' && !scanId && (<AssetSetup assets={assets} apriModaleAsset={apriModaleAsset} setShowQRModal={setShowQRModal} handleFileAction={(url)=>openGlobalPreview(url, "Foto_Asset")} openDownloadModal={openDownloadModal} handlePrintQR={handlePrintQR} />)}
+          
+          {/* FIX: PASSATA LA PROP onDeleteAsset */}
+          {tab === 'setup' && !scanId && (
+            <AssetSetup 
+                assets={assets} apriModaleAsset={apriModaleAsset} setShowQRModal={setShowQRModal} 
+                handleFileAction={(url)=>openGlobalPreview(url, "Foto_Asset")} openDownloadModal={openDownloadModal} 
+                handlePrintQR={handlePrintQR} 
+                onDeleteAsset={handleDeleteAsset} 
+            />
+          )}
+          
           {tab === 'etichette' && !scanId && (<LabelGenerator labelData={labelData} setLabelData={setLabelData} handleLabelTypeChange={handleLabelTypeChange} handlePrintLabel={handlePrintLabel} lastLabel={lastLabel} info={info} API_URL={API_URL} staffList={staffList} handleReprint={handleReprint} openDownloadModal={openDownloadModal} merciList={merci} />)}
       </div>
 
