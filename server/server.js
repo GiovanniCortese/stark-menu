@@ -1,12 +1,12 @@
-// server/server.js - VERSIONE JARVIS V50 (WEBSOCKET ENABLED + SEO FIX) 噫
+// server/server.js - VERSIONE JARVIS V50 (SEO FIX PERCORSO CLIENT) 噫
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const http = require('http'); 
 const { Server } = require("socket.io"); 
-const fs = require('fs');     // [NUOVO] Per leggere il file HTML
-const path = require('path'); // [NUOVO] Per gestire i percorsi
-const pool = require('./config/db'); // [NUOVO] Per i dati SEO dal DB
+const fs = require('fs');     
+const path = require('path'); 
+const pool = require('./config/db'); 
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -40,7 +40,6 @@ app.set('io', io);
 
 // --- 0. LOGGER ---
 app.use((req, res, next) => {
-    // Ignora log per file statici per pulizia console
     if (!req.url.match(/\.(js|css|png|jpg|ico|svg|json)$/)) {
         console.log(`藤 [${new Date().toLocaleTimeString('it-IT')}] ${req.method} ${req.url}`);
     }
@@ -64,7 +63,6 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // ===========================================================================
 //  SEO & SOCIAL PREVIEW INJECTION (SERVER SIDE)
-//  Questa sezione intercetta i link (es. /pizzeria-da-mario) e inietta i Meta Tag
 // ===========================================================================
 app.get('/:slug', async (req, res, next) => {
     const slug = req.params.slug;
@@ -73,25 +71,26 @@ app.get('/:slug', async (req, res, next) => {
     if (slug.startsWith('api') || slug.includes('.')) return next();
 
     try {
+        console.log(`🔍 SEO Injection richiesta per: ${slug}`);
+
         // 1. Cerchiamo i dati del ristorante nel DB per il SEO
         const result = await pool.query('SELECT nome, style FROM ristoranti WHERE slug = $1', [slug]);
         
-        // 2. Percorso del file index.html (Come da tua indicazione)
-        // Usiamo path.resolve per uscire dalla cartella 'server' (..) e entrare in 'client'
-        const filePath = path.resolve(__dirname, '../client/index.html'); 
+        // 2. DEFINIZIONE PERCORSO FILE INDEX.HTML (BASE ALLA TUA FOTO)
+        // Puntiamo direttamente alla cartella client sorgente
+        const filePath = path.resolve(__dirname, '../client/index.html');
 
         // 3. Leggiamo l'HTML
         fs.readFile(filePath, 'utf8', (err, htmlData) => {
             if (err) {
-                console.error('⚠️ Index.html non trovato nel percorso:', filePath);
-                // In caso di errore, lascia che Express gestisca la rotta normalmente (o 404)
-                return next();
+                console.error('⚠️ ERRORE LETTURA INDEX.HTML:', err.message);
+                return next(); // Se fallisce, passa al fallback standard
             }
 
             // Dati SEO di Default
             let title = "JARVIS Menu";
             let desc = "Menu Digitale Intelligente";
-            let image = "https://www.cosaedovemangiare.it/logo-default.png"; // Immagine fallback
+            let image = "https://www.cosaedovemangiare.it/logo-default.png"; 
 
             // Se il ristorante esiste, usiamo i suoi dati
             if (result.rows.length > 0) {
@@ -99,18 +98,19 @@ app.get('/:slug', async (req, res, next) => {
                 const style = typeof r.style === 'string' ? JSON.parse(r.style) : (r.style || {});
                 
                 title = `${r.nome} | Menu Digitale`;
-                desc = `Scopri il menu di ${r.nome}, ordina comodamente dal tavolo!`;
-                // Usa Logo -> Cover -> Default
+                desc = `Sfoglia il menu di ${r.nome}, ordina comodamente dal tavolo!`;
+                // Priorità: Logo -> Cover -> Default
                 image = style.logo_url || style.cover_url || image;
             }
 
-            // 4. INIEZIONE: Sostituiamo i segnalibri presenti in index.html
+            // 4. INIEZIONE: Sostituiamo i segnalibri
             htmlData = htmlData
                 .replace(/__META_TITLE__/g, title)
                 .replace(/__META_DESCRIPTION__/g, desc)
                 .replace(/__META_IMAGE__/g, image);
 
             // 5. Inviamo la pagina HTML manipolata
+            console.log("✅ SEO Injection completata con successo!");
             res.send(htmlData);
         });
 
@@ -136,8 +136,19 @@ app.use('/', haccpRoutes);
 app.use('/', adminRoutes);
 
 // --- FALLBACK STATIC FILES ---
-// Serve per servire i file statici (js, css) se non gestiti da Nginx/Vite in dev
+// Serve la cartella client (root) visto che non hai la build dist
 app.use(express.static(path.join(__dirname, '../client')));
+
+// Fallback per React Router (SPA)
+app.get('*', (req, res) => {
+    // Punta direttamente a client/index.html
+    const indexPath = path.join(__dirname, '../client/index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.status(404).send("Errore: index.html non trovato nella cartella client.");
+    }
+});
 
 // --- 5. GESTIONE ERRORI ---
 app.use((err, req, res, next) => {
@@ -149,5 +160,5 @@ app.use((err, req, res, next) => {
 
 // --- AVVIO ---
 server.listen(port, () => {
-    console.log(`噫 JARVIS SERVER V50 (WEBSOCKET + SEO ACTIVE) su porta ${port}`);
+    console.log(`噫 JARVIS SERVER V50 (WEBSOCKET + SEO) su porta ${port}`);
 });
