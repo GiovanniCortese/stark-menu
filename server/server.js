@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE JARVIS V51 (SEO & FACEBOOK FIX)
+// server/server.js - VERSIONE DIAGNOSTICA (TROVA IL FILE PERSO)
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -10,7 +10,6 @@ const pool = require('./config/db');
 
 const app = express();
 const port = process.env.PORT || 3000;
-const DOMAIN = "https://www.cosaedovemangiare.it"; // Dominio base per fix immagini
 
 // --- SOCKET.IO ---
 const server = http.createServer(app); 
@@ -19,60 +18,62 @@ io.on('connection', (s) => { s.on('join_room', (r) => { s.join(String(r)); }); }
 app.set('io', io);
 
 // --- MIDDLEWARE ---
-app.use((req, res, next) => {
-    // Logga solo le richieste importanti (ignora immagini/css/js nel log)
-    if (!req.url.match(/\.(js|css|png|jpg|jpeg|ico|svg|woff2|ttf|map)$/)) {
-        console.log(`📡 [${req.method}] ${req.url}`);
-    }
-    next();
-});
-
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // ===========================================================================
-//  SEO INJECTION V2 (FIX PER FACEBOOK/WHATSAPP)
+//  🔍 DIAGNOSTICA AVVIO - CERCHIAMO INDEX.HTML
 // ===========================================================================
+console.log("\n--- 🔍 AVVIO DIAGNOSTICA FILE SYSTEM ---");
+console.log("Cartella corrente (__dirname):", __dirname);
+console.log("Cartella di lavoro (cwd):", process.cwd());
+
+// Funzione per cercare index.html ricorsivamente (limitata a 3 livelli)
+function findIndexHtml(dir, depth = 0) {
+    if (depth > 3) return null;
+    try {
+        const files = fs.readdirSync(dir);
+        for (const file of files) {
+            const fullPath = path.join(dir, file);
+            const stat = fs.statSync(fullPath);
+            
+            if (stat.isDirectory() && file !== 'node_modules' && file !== '.git') {
+                const found = findIndexHtml(fullPath, depth + 1);
+                if (found) return found;
+            } else if (file === 'index.html') {
+                return fullPath;
+            }
+        }
+    } catch (e) { return null; }
+    return null;
+}
+
+// Cerchiamo il file partendo dalla cartella superiore
+const FOUND_INDEX_PATH = findIndexHtml(path.join(__dirname, '..'));
+
+if (FOUND_INDEX_PATH) {
+    console.log("✅ FILE TROVATO IN:", FOUND_INDEX_PATH);
+} else {
+    console.log("❌ ERRORE GRAVE: index.html NON TROVATO nel server!");
+}
+console.log("----------------------------------------\n");
+// ===========================================================================
+
+// --- SEO INJECTION ---
 app.get('/:slug', async (req, res, next) => {
     const slug = req.params.slug;
 
-    // Ignora file statici (immagini, js, css)
+    // Ignora file con estensioni o api
     if (slug.startsWith('api') || slug.includes('.')) return next();
 
-    // PERCORSI POSSIBILI (Li proviamo tutti)
-    const possiblePaths = [
-        path.join(__dirname, '..', 'client', 'dist', 'index.html'), // Standard
-        path.join(__dirname, '..', 'client', 'index.html'),         // No build
-        path.join(__dirname, 'client', 'dist', 'index.html'),        // Server nella root
-        path.join(__dirname, 'dist', 'index.html'),                  // Dist nella root
-        path.join(process.cwd(), 'client', 'dist', 'index.html')     // Basato sulla cartella di avvio
-    ];
-
-    let filePath = null;
-    
-    // Cerca il primo percorso che esiste
-    for (const p of possiblePaths) {
-        if (fs.existsSync(p)) {
-            filePath = p;
-            break;
-        }
-    }
-
-    // --- DEBUG: SE NON TROVA IL FILE, STAMPA L'ERRORE A VIDEO ---
-    if (!filePath) {
-        console.error("❌ ERRORE: Nessun index.html trovato.");
-        return res.send(`
-            <h1>ERRORE CONFIGURAZIONE SERVER</h1>
-            <p>Il server non riesce a trovare il file index.html.</p>
-            <p>Ho cercato in questi percorsi:</p>
-            <ul>${possiblePaths.map(p => `<li>${p}</li>`).join('')}</ul>
-            <p>Cartella attuale (__dirname): ${__dirname}</p>
-        `);
+    // Se non abbiamo trovato il file all'avvio, è inutile provare
+    if (!FOUND_INDEX_PATH) {
+        console.error("❌ SEO SALTATO: File index.html perso.");
+        return next();
     }
 
     try {
-        // Recupera Dati DB
         const result = await pool.query('SELECT nome, style FROM ristoranti WHERE slug = $1', [slug]);
         
         let title = "Cosa e Dove Mangiare";
@@ -82,18 +83,19 @@ app.get('/:slug', async (req, res, next) => {
         if (result.rows.length > 0) {
             const r = result.rows[0];
             const style = typeof r.style === 'string' ? JSON.parse(r.style) : (r.style || {});
+            
             title = `${r.nome} | Menu Digitale`;
             desc = `Sfoglia il menu di ${r.nome}`;
-            
-            // Fix Immagini Relative
             let rawImg = style.logo_url || style.cover_url;
             if (rawImg) {
+                // Forza URL assoluto
                 image = rawImg.startsWith('http') ? rawImg : `https://www.cosaedovemangiare.it${rawImg.startsWith('/')?'':'/'}${rawImg}`;
             }
+            console.log(`✅ SEO OK per ${slug} -> Uso immagine: ${image}`);
         }
 
-        // Leggi e Sostituisci
-        let htmlData = fs.readFileSync(filePath, 'utf8');
+        // LETTURA DAL PERCORSO TROVATO DALLA DIAGNOSTICA
+        let htmlData = fs.readFileSync(FOUND_INDEX_PATH, 'utf8');
         htmlData = htmlData
             .replace(/__META_TITLE__/g, title)
             .replace(/__META_DESCRIPTION__/g, desc)
@@ -102,36 +104,36 @@ app.get('/:slug', async (req, res, next) => {
         res.send(htmlData);
 
     } catch (e) {
-        res.send(`<h1>ERRORE DB/CODICE</h1><p>${e.message}</p>`);
+        console.error("❌ Errore SEO:", e);
+        next();
     }
 });
-// ===========================================================================
 
-// --- ROTTE API ---
+// --- API ROUTES ---
 app.use('/', require('./routes/authRoutes'));
 app.use('/', require('./routes/menuRoutes'));
 app.use('/', require('./routes/orderRoutes'));
 app.use('/', require('./routes/haccpRoutes'));
 app.use('/', require('./routes/adminRoutes'));
 
-// --- SERVIRE FILE STATICI (FALLBACK) ---
-app.use(express.static(path.join(__dirname, '..', 'client', 'dist')));
-app.use(express.static(path.join(__dirname, '..', 'client')));
+// --- STATIC FILES ---
+// Usa il percorso trovato o fallback standard
+if (FOUND_INDEX_PATH) {
+    const staticDir = path.dirname(FOUND_INDEX_PATH);
+    app.use(express.static(staticDir));
+} else {
+    app.use(express.static(path.join(__dirname, '..', 'client', 'dist')));
+}
 
-// --- FALLBACK FINALE (PER REACT ROUTER) ---
+// --- FALLBACK FINALE ---
 app.get('*', (req, res) => {
-    let index = path.join(__dirname, '..', 'client', 'dist', 'index.html');
-    if (!fs.existsSync(index)) index = path.join(__dirname, '..', 'client', 'index.html');
-    
-    if (fs.existsSync(index)) {
-        res.sendFile(index);
+    if (FOUND_INDEX_PATH) {
+        res.sendFile(FOUND_INDEX_PATH);
     } else {
-        res.status(404).send("Errore: Impossibile trovare il file index.html del client.");
+        res.status(404).send("ERRORE CRITICO: Impossibile trovare index.html sul server.");
     }
 });
 
-// --- AVVIO SERVER ---
 server.listen(port, () => {
-    console.log(`✅ JARVIS SERVER V51 ONLINE su porta ${port}`);
-    console.log(`📂 Cartella server corrente: ${__dirname}`);
+    console.log(`✅ Server avviato sulla porta ${port}`);
 });
