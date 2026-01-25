@@ -13,14 +13,16 @@ const TempControl = ({
   openDownloadModal 
 }) => {
   
-  // Non serve più il viewMode, mostriamo tutto
+  // Gestiamo la data visualizzata nella tabella (default: mese corrente)
   const [currentMonthDate, setCurrentMonthDate] = useState(new Date());
 
+  // Funzione chiamata quando clicchi la "matita" nella tabella
   const handleEditFromTable = (asset, dateStr, existingLog) => {
-      // Imposta data personalizzata (es. cliccando sulla matita del giorno 5)
+      // Imposta data personalizzata (ore 12:00 per evitare cambi di giorno per fuso orario)
       const targetDate = new Date(dateStr);
       targetDate.setHours(12, 0, 0, 0); 
       
+      // Popola l'input della card in alto
       setTempInput(prev => ({
           ...prev,
           [asset.id]: {
@@ -30,24 +32,33 @@ const TempControl = ({
           }
       }));
 
-      // Scrolla in alto alle card per l'inserimento
+      // Effetto visivo: Scrolla in alto verso la card
       setTimeout(() => {
            const el = document.getElementById(`asset-card-${asset.id}`);
-           if(el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-           // Opzionale: dai un feedback visivo (border flash)
-           el.style.boxShadow = "0 0 15px #f1c40f";
-           setTimeout(() => el.style.boxShadow = "", 1000);
+           if(el) {
+               el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+               // Piccolo flash giallo per evidenziare dove modificare
+               el.style.transition = "box-shadow 0.3s";
+               el.style.boxShadow = "0 0 20px #f1c40f";
+               setTimeout(() => el.style.boxShadow = "0 2px 5px rgba(0,0,0,0.1)", 1500);
+           }
       }, 100);
   };
 
   return (
     <div className="no-print">
       
-      {/* 1. SEZIONE INSERIMENTO RAPIDO (OGGI) */}
-      <div style={{ marginBottom: 30 }}>
-          <h3 style={{color:'#2c3e50', borderBottom:'2px solid #ddd', paddingBottom:10}}>
-              🌡️ Rilevazione Odierna ({new Date().toLocaleDateString()})
-          </h3>
+      {/* --- SEZIONE 1: INSERIMENTO RAPIDO (OGGI) --- */}
+      <div style={{ marginBottom: 40 }}>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom:'2px solid #ddd', paddingBottom:10, marginBottom:20}}>
+            <h3 style={{color:'#2c3e50', margin:0}}>
+                🌡️ Rilevazione Odierna <span style={{fontWeight:'normal', fontSize:'0.8em'}}>({new Date().toLocaleDateString()})</span>
+            </h3>
+            {/* Pulsante PDF spostato qui per comodità generale, ma presente anche sotto */}
+            <button onClick={()=>openDownloadModal('temperature_matrix')} className="btn-download-report">
+                ⬇ Scarica Registro PDF
+            </button>
+          </div>
           
           <div className="temp-grid">
             {assetsToDisplay.map(asset => {
@@ -56,7 +67,11 @@ const TempControl = ({
                 const currentData = tempInput[asset.id] || {};
                 const isRetroactiveEdit = !!currentData.customDate; 
                 
-                // ... (Codice visualizzazione Card identico a prima) ...
+                // DATA DA MOSTRARE NEL BADGE (Oggi o Retroattiva)
+                const displayDateLabel = isRetroactiveEdit 
+                    ? new Date(currentData.customDate).toLocaleDateString('it-IT')
+                    : new Date().toLocaleDateString('it-IT');
+
                 if(asset.stato === 'spento') {
                     return (
                         <div key={asset.id} id={`asset-card-${asset.id}`} className="temp-card spento">
@@ -67,6 +82,7 @@ const TempControl = ({
                     );
                 }
 
+                // Se c'è già un log OGGI e non stiamo modificando -> Mostra Card "FATTO"
                 if (todayLog && !isInputActive && !isRetroactiveEdit) {
                     const timeStr = new Date(todayLog.data_ora).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'});
                     return (
@@ -83,21 +99,24 @@ const TempControl = ({
                     );
                 }
                 
+                // Card in modalità INSERIMENTO
                 return (
-                    <div key={asset.id} id={`asset-card-${asset.id}`} className="temp-card active" style={isRetroactiveEdit ? {border: '2px solid #f39c12', background: '#fffcf5'} : {}}>
+                    <div key={asset.id} id={`asset-card-${asset.id}`} className="temp-card active" 
+                         style={isRetroactiveEdit ? {border: '2px solid #f39c12', background: '#fffcf5', transform: 'scale(1.02)'} : {}}>
+                         
                          <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:15}}>
                               <div>
                                   <h3 style={{margin:0, fontSize:'16px'}}>{asset.nome}</h3>
                                   <span style={{fontSize:'11px', color:'#999'}}>{asset.marca}</span>
                               </div>
                               <span style={{background:'#eee', padding:'2px 6px', borderRadius:4, fontSize:10, whiteSpace:'nowrap'}}>
-                                  Min {asset.range_min}° / Max {asset.range_max}°
+                                  {asset.range_min}° / {asset.range_max}°
                               </span>
                          </div>
 
                          {isRetroactiveEdit && (
-                            <div style={{marginBottom: 10, padding: 5, background: '#f39c12', color: 'white', fontSize: 12, borderRadius: 4, textAlign: 'center', fontWeight: 'bold'}}>
-                                📅 Modifica del: {new Date(currentData.customDate).toLocaleDateString('it-IT')}
+                            <div style={{marginBottom: 10, padding: 5, background: '#f39c12', color: 'white', fontSize: 13, borderRadius: 4, textAlign: 'center', fontWeight: 'bold', boxShadow:'0 2px 5px rgba(0,0,0,0.1)'}}>
+                                📅 STAI MODIFICANDO IL: {displayDateLabel}
                             </div>
                          )}
                          
@@ -109,35 +128,41 @@ const TempControl = ({
                                 value={currentData.val || ''} 
                                 onChange={e=>setTempInput({...tempInput, [asset.id]: {...currentData, val: e.target.value}})} 
                                 className="temp-input"
+                                autoFocus={isRetroactiveEdit} // Focus automatico se vengo dalla tabella
                             />
+                            
                             <div className="temp-actions">
                                 <button onClick={()=>registraTemperatura(asset, true)} className="btn-action off">OFF</button>
+                                
                                 <label className={`btn-action photo ${currentData.photo ? 'has-photo' : ''}`}>
                                     <span>📷</span>
                                     <input type="file" accept="image/*" onChange={(e)=>handleLogPhoto(e, asset.id)} style={{display:'none'}} />
                                 </label>
+                                
                                 <button onClick={()=>registraTemperatura(asset, false)} className="btn-action save">SALVA</button>
                             </div>
                          </div>
-                         {isInputActive && <button onClick={()=>{const n={...tempInput}; delete n[asset.id]; setTempInput(n);}} className="btn-cancel-edit">Annulla</button>}
+
+                         {isInputActive && (
+                             <button onClick={()=>{const n={...tempInput}; delete n[asset.id]; setTempInput(n);}} className="btn-cancel-edit">
+                                 ANNULLA
+                             </button>
+                         )}
                     </div>
                 );
             })}
           </div>
       </div>
 
-      {/* 2. SEZIONE TABELLA MENSILE (SOTTO, COME RICHIESTO) */}
-      <div style={{marginTop: 40, paddingTop: 20, borderTop: '4px solid #34495e'}}>
-          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:15}}>
+      {/* --- SEZIONE 2: TABELLA MENSILE (SEMPRE VISIBILE SOTTO) --- */}
+      <div style={{marginTop: 50, paddingTop: 30, borderTop: '4px solid #34495e'}}>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:5}}>
               <div>
-                  <h3 style={{margin:0, color:'#34495e'}}>📅 Registro Mensile Temperature</h3>
-                  <p style={{margin:0, fontSize:12, color:'#666'}}>
-                      Usa la ✏️ nella tabella per inserire dati nei giorni passati.
+                  <h3 style={{margin:0, color:'#34495e'}}>📅 Registro Mensile</h3>
+                  <p style={{margin:0, fontSize:13, color:'#7f8c8d'}}>
+                      Clicca sulla matita <span style={{fontSize:16}}>✏️</span> nella tabella per inserire o correggere temperature passate.
                   </p>
               </div>
-              <button onClick={()=>openDownloadModal('temperature_matrix')} className="btn-download-report">
-                  ⬇ Scarica PDF Ufficiale
-              </button>
           </div>
 
           <TempRegisterTable 
