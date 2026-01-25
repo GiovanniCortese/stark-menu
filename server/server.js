@@ -150,6 +150,13 @@ app.get('/:slug', async (req, res, next) => {
     }
 });
 
+// --- FIX PER FACEBOOK/WHATSAPP (ROBOTS.TXT) ---
+app.get('/robots.txt', (req, res) => {
+    res.type('text/plain');
+    res.send("User-agent: *\nAllow: /");
+});
+// ----------------------------------------------
+
 // 4. Fallback per tutte le altre rotte (React Router)
 app.get('*', (req, res) => {
     res.sendFile(path.join(buildPath, 'index.html'));
