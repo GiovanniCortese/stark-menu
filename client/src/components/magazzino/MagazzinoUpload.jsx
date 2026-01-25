@@ -281,7 +281,7 @@ const MagazzinoUpload = ({ user, API_URL, onSuccess, onCancel, recordDaModificar
                 <div style={{ position:'fixed', inset:0, background:'rgba(255,255,255,0.9)', zIndex:9999, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
                     <div style={{fontSize:50, animation:'spin 2s linear infinite'}}>🤖</div>
                     <h3>Jarvis sta analizzando il documento...</h3>
-                    <p style={{color:'#666'}}>Lettura prodotti, ci possono volere fino a 5 minuti...</p>
+                    <p style={{color:'#666'}}>Lettura prodotti, potrebbe richiedere fino a 5 Minuti.</p>
                     <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
                 </div>
             )}
