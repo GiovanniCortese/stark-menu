@@ -40,46 +40,22 @@ export const getSafeCatVariants = (valore) => {
 };
 
 // Helper SEO / Social preview
-export const updateMetaTags = (title, image, description, url) => {
+export const updateMetaTags = (title, image, description) => {
   document.title = title;
 
-  const setMetaByName = (name, content) => {
+  const setMeta = (property, content) => {
     if (!content) return;
-    let el = document.querySelector(`meta[name="${name}"]`);
-    if (!el) {
-      el = document.createElement("meta");
-      el.setAttribute("name", name);
-      document.head.appendChild(el);
+    let element = document.querySelector(`meta[property="${property}"]`);
+    if (!element) {
+      element = document.createElement("meta");
+      element.setAttribute("property", property);
+      document.head.appendChild(element);
     }
-    el.setAttribute("content", content);
+    element.setAttribute("content", content);
   };
 
-  const setMetaByProp = (property, content) => {
-    if (!content) return;
-    let el = document.querySelector(`meta[property="${property}"]`);
-    if (!el) {
-      el = document.createElement("meta");
-      el.setAttribute("property", property);
-      document.head.appendChild(el);
-    }
-    el.setAttribute("content", content);
-  };
-
-  // Base SEO
-  setMetaByName("description", description);
-
-  // Open Graph
-  setMetaByProp("og:title", title);
-  setMetaByProp("og:description", description);
-  setMetaByProp("og:image", image);
-  setMetaByProp("og:url", url);
-  setMetaByProp("og:type", "website");
-  setMetaByProp("og:site_name", "cosaedovemangiare.it");
-
-  // Twitter
-  setMetaByName("twitter:card", "summary_large_image");
-  setMetaByName("twitter:title", title);
-  setMetaByName("twitter:description", description);
-  setMetaByName("twitter:image", image);
+  setMeta("og:title", title);
+  setMeta("og:description", description);
+  setMeta("og:image", image);
+  setMeta("og:type", "website");
 };
-

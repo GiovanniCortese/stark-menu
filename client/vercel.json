@@ -7,7 +7,9 @@
     }
   ],
   "rewrites": [
-    { "source": "/share/:slug", "destination": "/api/share/:slug" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ]
 }
