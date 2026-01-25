@@ -1,5 +1,9 @@
 // server/server.js - VERSIONE JARVIS V50 (WEBSOCKET ENABLED) 🚀
-require('dotenv').config();
+
+// MODIFICA: Caricamento robusto del file .env dalla sottocartella server/
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+
 const express = require('express');
 const cors = require('cors');
 const http = require('http'); // MODIFICA 1: Importa HTTP
