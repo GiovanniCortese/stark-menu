@@ -88,136 +88,177 @@ exports.exportGeneric = async (req, res) => {
         const ristRes = await pool.query("SELECT nome, dati_fiscali FROM ristoranti WHERE id = $1", [ristorante_id]);
         const aziendaInfo = ristRes.rows[0];
 
-// 1. GESTIONE SPECIALE: MATRICE TEMPERATURE (LAYOUT FOTO)
+// 1. GESTIONE SPECIALE: MATRICE TEMPERATURE (VERSIONE VERTICALE PERFETTA)
         if (tipo === 'temperature_matrix') {
             const assetsRes = await pool.query("SELECT id, nome FROM haccp_assets WHERE ristorante_id = $1 AND tipo IN ('frigo','cella','vetrina','congelatore','abbattitore') ORDER BY nome", [ristorante_id]);
             const assets = assetsRes.rows;
 
-            // Recupera Logs
             let sqlLogs = `SELECT l.data_ora, l.asset_id, l.valore, l.operatore FROM haccp_logs l WHERE l.ristorante_id = $1 AND l.data_ora >= $2 AND l.data_ora <= $3`;
             const logsRes = await pool.query(sqlLogs, [ristorante_id, start, end]);
             const logs = logsRes.rows;
 
-            // Genera giorni mese
             const days = [];
             let curr = new Date(start);
             const endDate = new Date(end);
+            
+            // FIX DATE: Iteriamo aggiungendo giorni in modo sicuro
             while (curr <= endDate) {
                 days.push(curr.toISOString().split('T')[0]);
                 curr.setDate(curr.getDate() + 1);
             }
 
-            // Headers Tabella (Giorno + Nomi Asset)
-            const tableHeaders = ["GIORNO", ...assets.map(a => a.nome.toUpperCase())];
+            // Headers
+            // Tronchiamo i nomi dei frigo se sono troppi lunghi per farli stare in verticale
+            const tableHeaders = ["GIORNO", ...assets.map(a => a.nome.substring(0, 15).toUpperCase())];
             
-            // Righe Tabella
             const tableRows = days.map(day => {
-                const dayNum = new Date(day).getDate(); // Solo il numero del giorno (1, 2, 3...)
+                const dayNum = new Date(day).getDate();
                 const rowData = [String(dayNum)];
                 assets.forEach(asset => {
                     const log = logs.find(l => {
                         const logDate = new Date(l.data_ora).toISOString().split('T')[0];
                         return logDate === day && l.asset_id === asset.id;
                     });
-                    // Se c'è il valore lo mostro, altrimenti cella vuota
-                    rowData.push(log ? `${log.valore}°` : "");
+                    rowData.push(log ? (log.valore === 'OFF' ? 'OFF' : `${log.valore}`) : "");
                 });
                 return rowData;
             });
 
             if (format === 'pdf') {
-                const doc = new PDFDocument({ margin: 30, size: 'A4', layout: 'landscape' });
+                // MODIFICA 1: Layout PORTRAIT (Verticale) e margini stretti
+                const doc = new PDFDocument({ margin: 20, size: 'A4', layout: 'portrait' });
+                
                 let buffers = [];
                 doc.on('data', buffers.push.bind(buffers));
                 doc.on('end', () => {
                     let pdfData = Buffer.concat(buffers);
                     res.setHeader('Content-Type', 'application/pdf');
-                    res.setHeader('Content-Disposition', `attachment; filename="registro_temperature_ufficiale.pdf"`);
+                    res.setHeader('Content-Disposition', `attachment; filename="registro_temperature.pdf"`);
                     res.send(pdfData);
                 });
 
-                // --- INTESTAZIONE IDENTICA ALLA FOTO ---
-                // Box Header
-                doc.rect(30, 30, 780, 40).stroke(); // Box esterno header
-                doc.moveTo(250, 30).lineTo(250, 70).stroke(); // Separatore 1
-                doc.moveTo(680, 30).lineTo(680, 70).stroke(); // Separatore 2
+                // --- MISURE PER VERTICALE ---
+                const pageWidth = 595.28; // A4 width points
+                const margin = 20;
+                const contentWidth = pageWidth - (margin * 2);
                 
-                // Testi Header
-                doc.font("Helvetica-Bold").fontSize(12).text(aziendaInfo.nome.toUpperCase(), 40, 45, { width: 200, align: 'center' });
-                doc.fontSize(10).text("SCHEDA DI ATTUAZIONE DEL\nPIANO DI AUTOCONTROLLO", 250, 40, { width: 430, align: 'center' });
-                doc.fontSize(10).text("Rev 00", 680, 45, { width: 100, align: 'center' });
+                // Intestazione Coordinate
+                const headerY = 20;
+                const headerH = 50; // Altezza box header
+                
+                // Divisori verticali Header (proporzioni foto)
+                const xDiv1 = margin + (contentWidth * 0.30); 
+                const xDiv2 = margin + (contentWidth * 0.85);
 
-                doc.moveDown(3);
+                doc.lineWidth(0.5);
+
+                // --- DISEGNO HEADER ---
+                doc.rect(margin, headerY, contentWidth, headerH).stroke(); // Box Esterno
+                doc.moveTo(xDiv1, headerY).lineTo(xDiv1, headerY + headerH).stroke(); // Linea vert 1
+                doc.moveTo(xDiv2, headerY).lineTo(xDiv2, headerY + headerH).stroke(); // Linea vert 2
+
+                // TESTI HEADER
+                // 1. Nome Azienda (Sinistra)
+                doc.font("Helvetica-Bold").fontSize(11)
+                   .text(aziendaInfo.nome.toUpperCase(), margin + 5, headerY + 20, { width: (xDiv1 - margin) - 10, align: 'center' });
                 
-                // Titolo Sezione
-                doc.fontSize(14).text("DOTAZIONI FRIGORIFERE", { align: 'center' });
+                // 2. Titolo (Centro)
+                doc.fontSize(10)
+                   .text("SCHEDA DI ATTUAZIONE DEL", xDiv1, headerY + 12, { width: (xDiv2 - xDiv1), align: 'center' })
+                   .text("PIANO DI AUTOCONTROLLO", xDiv1, headerY + 25, { width: (xDiv2 - xDiv1), align: 'center' });
+
+                // 3. Rev (Destra)
+                doc.fontSize(9).text("Rev 00", xDiv2, headerY + 20, { width: (margin + contentWidth - xDiv2), align: 'center' });
+
+                doc.moveDown(4.5);
+
+                // Sottotitolo
+                doc.font("Helvetica-Bold").fontSize(12).text("DOTAZIONI FRIGORIFERE", { align: 'center' });
                 doc.moveDown(0.5);
 
-                // Info Mese/Anno/Locale
-                const meseRif = new Date(start).toLocaleString('it-IT', { month: 'long' }).toUpperCase();
-                const annoRif = new Date(start).getFullYear();
+                // --- FIX DATA DICEMBRE/GENNAIO ---
+                // Usiamo la stringa 'start' (YYYY-MM-DD) direttamente per evitare il fuso orario
+                // Esempio start: "2026-01-01"
+                const partiData = start.split('-'); // [2026, 01, 01]
+                const annoStr = partiData[0];
+                const meseIndex = parseInt(partiData[1]) - 1; // 0 = Gennaio
+                const mesi = ["GENNAIO","FEBBRAIO","MARZO","APRILE","MAGGIO","GIUGNO","LUGLIO","AGOSTO","SETTEMBRE","OTTOBRE","NOVEMBRE","DICEMBRE"];
+                const nomeMese = mesi[meseIndex];
+
+                doc.font("Helvetica").fontSize(10);
+                const infoY = doc.y;
                 
-                doc.fontSize(10).text(`MESE: ${meseRif}          ANNO: ${annoRif}          LOCALE: CUCINA/LABORATORIO`, { align: 'left' });
+                // Riga Mese / Anno / Locale (allineata come in foto)
+                doc.text(`MESE: ...........................`, margin, infoY);
+                doc.font("Helvetica-Bold").text(`${nomeMese}`, margin + 35, infoY); // Sovrascrivo i puntini col mese
+                
+                doc.font("Helvetica").text(`ANNO: ...........................`, margin + 180, infoY);
+                doc.font("Helvetica-Bold").text(`${annoStr}`, margin + 215, infoY);
+
+                doc.font("Helvetica").text(`LOCALE: ......................................................`, margin + 320, infoY);
+                doc.text(`CUCINA`, margin + 370, infoY); // Default
+
                 doc.moveDown(0.5);
 
-                // TABELLA
-                await doc.table({ headers: tableHeaders, rows: tableRows }, { 
-                    width: 780, 
-                    x: 30,
-                    divider: { header: { disabled: false, width: 1, opacity: 1 }, horizontal: { disabled: false, width: 0.5, opacity: 0.5 } },
-                    prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8), 
+                // --- TABELLA VERTICALE ---
+                // Calcolo larghezza colonne dinamico per farle stare tutte
+                const colGiornoWidth = 30;
+                const remainingWidth = contentWidth - colGiornoWidth;
+                const colAssetWidth = remainingWidth / assets.length;
+
+                // Opzioni Tabella
+                const tableOptions = {
+                    width: contentWidth,
+                    x: margin,
+                    divider: { header: { disabled: false, width: 0.5, opacity: 1 }, horizontal: { disabled: false, width: 0.5, opacity: 0.5 } },
+                    columnsSize: [colGiornoWidth, ...assets.map(() => colAssetWidth)], // Forza larghezza colonne
+                    prepareHeader: () => doc.font("Helvetica-Bold").fontSize(6), // Font piccolo per far stare i nomi
                     prepareRow: (row, indexColumn, indexRow, rectRow, rectCell) => {
-                        // Bordi verticali per simulare la griglia della foto
-                        doc.rect(rectCell.x, rectCell.y, rectCell.width, rectCell.height).strokeColor('#999').stroke();
-                        return doc.font("Helvetica").fontSize(9).fillColor('black');
+                        // Disegna la griglia su ogni cella
+                        doc.rect(rectCell.x, rectCell.y, rectCell.width, rectCell.height).strokeColor('#888').stroke();
+                        return doc.font("Helvetica").fontSize(8).fillColor('black'); // Font numeri più grande
                     }
-                });
+                };
 
-                // --- PIÈ DI PAGINA IDENTICO ALLA FOTO ---
-                doc.moveDown(1);
-                doc.font("Helvetica-Bold").fontSize(9).text("Condizioni:", { underline: true });
-                doc.font("Helvetica").fontSize(8)
+                await doc.table({ headers: tableHeaders, rows: tableRows }, tableOptions);
+
+                // --- PIÈ DI PAGINA ---
+                doc.moveDown(0.5); // Meno spazio per far stare tutto in una pagina
+
+                doc.font("Helvetica-Bold").fontSize(8).text("Condizioni:", { underline: true });
+                doc.font("Helvetica").fontSize(7).lineGap(1) // Font molto piccolo e compatto
                    .text("Assenza di promiscuità e di merce non protetta")
                    .text("Assenza segni di sporco visibile, macchie, untuosità al tatto sulle parti a contatto e non con gli alimenti,")
                    .text("Assenza di odori sgradevoli o anomali,")
                    .text("Assenza di prodotti con caratteristiche organolettiche (odore, colore, consistenza) anomali.");
                 
                 doc.moveDown(0.5);
-                doc.font("Helvetica-Bold").text("C: Conforme ai limiti sopra indicati");
-                doc.text("NC: Non conforme ai limiti sopra indicati");
                 
-                doc.moveDown(1);
-                doc.text("Firma RHACCP: ........................................................................................");
+                doc.font("Helvetica-Bold").text("C: Conforme ai limiti sopra indicati    NC: Non conforme ai limiti sopra indicati");
+                
+                doc.moveDown(1.5);
+                
+                // Firma con linea
+                doc.font("Helvetica-Bold").fontSize(9).text("Firma RHACCP:", margin, doc.y);
+                // Disegna linea firma puntinata
+                const firmaX = margin + 80;
+                const firmaY = doc.y - 2; // Allinea col testo
+                doc.fontSize(9).text("........................................................................................................................", firmaX, firmaY);
                 
                 doc.end();
 
             } else {
-                // EXCEL (Layout simile)
+                // EXCEL (Invariato o adattato se serve)
                 const wb = xlsx.utils.book_new();
                 const sheetData = [
-                    [aziendaInfo.nome, "", "SCHEDA DI ATTUAZIONE PIANO AUTOCONTROLLO", "", "", "Rev 00"],
+                    [aziendaInfo.nome, "SCHEDA DI ATTUAZIONE PIANO AUTOCONTROLLO", "", "Rev 00"],
                     ["DOTAZIONI FRIGORIFERE"],
                     [`MESE: ${new Date(start).toLocaleString('it-IT',{month:'long'})}`, `ANNO: ${new Date(start).getFullYear()}`],
                     [""],
                     tableHeaders,
-                    ...tableRows,
-                    [""],
-                    ["Condizioni:"],
-                    ["Assenza di promiscuità e di merce non protetta"],
-                    ["Assenza segni di sporco visibile, macchie, untuosità"],
-                    ["Assenza di odori sgradevoli o anomali"],
-                    [""],
-                    ["Firma RHACCP: __________________________"]
+                    ...tableRows
                 ];
-                
                 const ws = xlsx.utils.aoa_to_sheet(sheetData);
-                
-                // Merge Header Excel (Simulazione)
-                ws['!merges'] = [
-                    { s: {r:0, c:2}, e: {r:0, c:4} }, // Titolo centrale
-                    { s: {r:1, c:0}, e: {r:1, c:6} }  // Dotazioni Frigorifere
-                ];
-
                 xlsx.utils.book_append_sheet(wb, ws, "Registro");
                 const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
                 res.setHeader('Content-Disposition', `attachment; filename="registro_temperature.xlsx"`);

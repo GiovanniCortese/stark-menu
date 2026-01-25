@@ -206,14 +206,11 @@ function Haccp() {
   
   const handleLogPhoto = async (e, assetId) => { const f = e.target.files[0]; if(!f) return; setUploadingLog(assetId); try { const url = await uploadFile(f); setTempInput(prev => ({...prev, [assetId]: { ...(prev[assetId] || {}), photo: url }})); } finally { setUploadingLog(null); } };
   
-  // --- FIX 1: REGISTRAZIONE TEMPERATURA (Gestione Date Retroattive) ---
+// --- FIX 1: REGISTRAZIONE TEMPERATURA (AGGIORNATA PER TABELLA) ---
   const registraTemperatura = async (asset, isSpento = false) => { 
       let val = 'OFF', conforme = true, azione = ""; 
       
-      // Recuperiamo l'input corrente per questo asset
       const currentInput = tempInput[asset.id] || {};
-      
-      // FIX IMPORTANTE: Se c'è una data custom (da tabella), usiamo quella. Altrimenti null (backend usa NOW)
       const dataOraEffettiva = currentInput.customDate || null;
 
       if (!isSpento) { 
@@ -233,28 +230,39 @@ function Haccp() {
           val = "OFF"; conforme = true; azione = "Macchinario spento/inutilizzato in data odierna"; 
       } 
       
-      await fetch(`${API_URL}/api/haccp/logs`, { 
-          method: 'POST', 
-          headers:{'Content-Type':'application/json'}, 
-          body: JSON.stringify({ 
-              ristorante_id: info.id, 
-              asset_id: asset.id, 
-              operatore: 'Staff', 
-              tipo_log: 'temperatura', 
-              valore: val, 
-              conformita: conforme, 
-              azione_correttiva: azione, 
-              foto_prova_url: currentInput.photo || '',
-              data_ora: dataOraEffettiva // <--- INVIO DELLA DATA CORRETTA
-          }) 
-      }); 
-      
-      // Reset stato
-      setTempInput(prev => { const n = {...prev}; delete n[asset.id]; return n; }); 
-      ricaricaDati(); 
-      if(scanId) navigate(`/haccp/${slug}`); 
+      try {
+          await fetch(`${API_URL}/api/haccp/logs`, { 
+              method: 'POST', 
+              headers:{'Content-Type':'application/json'}, 
+              body: JSON.stringify({ 
+                  ristorante_id: info.id, 
+                  asset_id: asset.id, 
+                  operatore: 'Staff', 
+                  tipo_log: 'temperatura', 
+                  valore: val, 
+                  conformita: conforme, 
+                  azione_correttiva: azione, 
+                  foto_prova_url: currentInput.photo || '',
+                  data_ora: dataOraEffettiva 
+              }) 
+          }); 
+
+          // 1. Rimuovi l'input dalla card (reset grafico)
+          setTempInput(prev => { const n = {...prev}; delete n[asset.id]; return n; }); 
+          
+          // 2. Ricarica TUTTI i dati per aggiornare sia le card che la tabella sotto
+          // Se la tabella non si aggiorna, l'utente pensa di non aver salvato
+          await ricaricaDati(); 
+          
+          // Feedback visivo opzionale
+          // alert("Salvato!"); // Se vuoi essere sicuro, scommenta questa riga
+          
+      } catch (error) {
+          alert("Errore di connessione: " + error.message);
+      }
   };
-  
+
+
   const abilitaNuovaMisurazione = (asset) => { const logEsistente = getTodayLog(asset.id); setTempInput(prev => ({ ...prev, [asset.id]: { val: logEsistente ? logEsistente.valore : '', photo: '' } })); };
 
   // --- ASSETS (CRUD + FIX DELETE) ---
