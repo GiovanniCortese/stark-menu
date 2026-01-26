@@ -84,7 +84,7 @@ exports.exportGeneric = async (req, res) => {
         const ristRes = await pool.query("SELECT nome, dati_fiscali FROM ristoranti WHERE id = $1", [ristorante_id]);
         const aziendaInfo = ristRes.rows[0];
 
-        // 1. GESTIONE SPECIALE: MATRICE TEMPERATURE (LAYOUT VERTICALE & FIX DATA)
+        // 1. GESTIONE SPECIALE: MATRICE TEMPERATURE (LAYOUT VERTICALE & FIX DATE)
         if (tipo === 'temperature_matrix') {
             const assetsRes = await pool.query("SELECT id, nome FROM haccp_assets WHERE ristorante_id = $1 AND tipo IN ('frigo','cella','vetrina','congelatore','abbattitore') ORDER BY nome", [ristorante_id]);
             const assets = assetsRes.rows;
@@ -93,22 +93,21 @@ exports.exportGeneric = async (req, res) => {
             const logsRes = await pool.query(sqlLogs, [ristorante_id, start, end]);
             const logs = logsRes.rows;
 
+            // FIX DATE 1: Parsing manuale per evitare il problema del fuso orario nel loop
+            const [yearS, monthS, dayS] = start.split('-').map(Number);
+            const [yearE, monthE, dayE] = end.split('-').map(Number);
+
             const days = [];
-            // FIX DATE: Impostiamo l'ora a mezzogiorno (12:00) per evitare problemi di fuso orario (UTC vs IT)
-            // Questo risolve il problema del giorno "31" che appare prima dell'1.
-            let curr = new Date(start);
-            curr.setHours(12, 0, 0, 0); 
-            
-            const endDate = new Date(end);
-            endDate.setHours(12, 0, 0, 0);
+            // Creiamo le date a MEZZOGIORNO (12:00) per evitare che 00:00 diventi 23:00 del giorno prima
+            let curr = new Date(yearS, monthS - 1, dayS, 12, 0, 0); 
+            const endDate = new Date(yearE, monthE - 1, dayE, 12, 0, 0);
 
             while (curr <= endDate) {
                 days.push(curr.toISOString().split('T')[0]);
                 curr.setDate(curr.getDate() + 1);
             }
 
-            // Headers Tabella (Nomi Asset Centrati)
-            // Tronchiamo i nomi per farli stare
+            // Headers Tabella (Centrati)
             const tableHeaders = ["GIORNO", ...assets.map(a => a.nome.substring(0, 15).toUpperCase())];
             
             const tableRows = days.map(day => {
@@ -125,7 +124,6 @@ exports.exportGeneric = async (req, res) => {
             });
 
             if (format === 'pdf') {
-                // Layout PORTRAIT (Verticale) per stare in A4
                 const doc = new PDFDocument({ margin: 20, size: 'A4', layout: 'portrait' });
                 
                 let buffers = [];
@@ -137,11 +135,10 @@ exports.exportGeneric = async (req, res) => {
                     res.send(pdfData);
                 });
 
-                // --- DISEGNO HEADER UFFICIALE (Simile Foto) ---
+                // --- HEADER DISEGNATO ---
                 const pageWidth = 595.28; 
                 const margin = 20;
                 const contentWidth = pageWidth - (margin * 2);
-                
                 const headerY = 20;
                 const headerH = 50; 
                 
@@ -150,33 +147,44 @@ exports.exportGeneric = async (req, res) => {
 
                 doc.lineWidth(0.5);
 
-                // Box Esterno
+                // Box
                 doc.rect(margin, headerY, contentWidth, headerH).stroke(); 
                 doc.moveTo(xDiv1, headerY).lineTo(xDiv1, headerY + headerH).stroke(); 
                 doc.moveTo(xDiv2, headerY).lineTo(xDiv2, headerY + headerH).stroke(); 
 
-                // TESTI HEADER (MODIFICA: Titolo Dashboard "HACCP CONTROL" al posto dell'Azienda)
-                doc.font("Helvetica-Bold").fontSize(12)
-                   .text("HACCP CONTROL", margin + 5, headerY + 20, { width: (xDiv1 - margin) - 10, align: 'center' });
+                // FIX 2: INTESTAZIONE DA DASHBOARD
+                // Usiamo "dati_fiscali" se presente, altrimenti il nome.
+                // Lo stringiamo o riduciamo il font se è lungo.
+                const intestazione = aziendaInfo.dati_fiscali || aziendaInfo.nome.toUpperCase();
                 
+                doc.font("Helvetica-Bold").fontSize(10);
+                doc.text(intestazione, margin + 5, headerY + 10, { 
+                    width: (xDiv1 - margin) - 10, 
+                    align: 'center',
+                    height: headerH - 20,
+                    ellipsis: true
+                });
+                
+                // Titolo Documento
                 doc.fontSize(10)
                    .text("SCHEDA DI ATTUAZIONE DEL", xDiv1, headerY + 12, { width: (xDiv2 - xDiv1), align: 'center' })
                    .text("PIANO DI AUTOCONTROLLO", xDiv1, headerY + 25, { width: (xDiv2 - xDiv1), align: 'center' });
 
+                // Rev
                 doc.fontSize(9).text("Rev 00", xDiv2, headerY + 20, { width: (margin + contentWidth - xDiv2), align: 'center' });
 
                 doc.moveDown(4.5);
 
-                // Sottotitolo
-                doc.font("Helvetica-Bold").fontSize(12).text("DOTAZIONI FRIGORIFERE", { align: 'center' });
+                // FIX 3: CENTRATURA TITOLO "DOTAZIONI FRIGORIFERE"
+                // Usiamo doc.y corrente ma specifichiamo width=contentWidth e align='center'
+                doc.font("Helvetica-Bold").fontSize(12);
+                doc.text("DOTAZIONI FRIGORIFERE", margin, doc.y, { width: contentWidth, align: 'center' });
                 doc.moveDown(0.5);
 
-                // Info Mese (Parsing della data start per mostrare Mese/Anno corretti)
-                const partiData = start.split('-'); // [YYYY, MM, DD]
-                const annoStr = partiData[0];
-                const meseIndex = parseInt(partiData[1]) - 1; 
+                // FIX 4: MESE E ANNO DALLE STRINGHE ORIGINALI (No conversione Date)
+                // "start" è tipo "2026-01-01". startM è già parsato sopra.
                 const mesi = ["GENNAIO","FEBBRAIO","MARZO","APRILE","MAGGIO","GIUGNO","LUGLIO","AGOSTO","SETTEMBRE","OTTOBRE","NOVEMBRE","DICEMBRE"];
-                const nomeMese = mesi[meseIndex];
+                const nomeMese = mesi[monthS - 1]; // monthS va da 1 a 12
 
                 doc.font("Helvetica").fontSize(10);
                 const infoY = doc.y;
@@ -185,7 +193,7 @@ exports.exportGeneric = async (req, res) => {
                 doc.font("Helvetica-Bold").text(`${nomeMese}`, margin + 35, infoY);
                 
                 doc.font("Helvetica").text(`ANNO: ...........................`, margin + 180, infoY);
-                doc.font("Helvetica-Bold").text(`${annoStr}`, margin + 215, infoY);
+                doc.font("Helvetica-Bold").text(`${yearS}`, margin + 215, infoY);
 
                 doc.font("Helvetica").text(`LOCALE: ......................................................`, margin + 320, infoY);
                 doc.text(`CUCINA`, margin + 370, infoY);
@@ -193,27 +201,34 @@ exports.exportGeneric = async (req, res) => {
                 doc.moveDown(0.5);
 
                 // --- TABELLA VERTICALE (CENTRATA) ---
-                // Calcolo larghezza colonne dinamico
+                // Calcolo larghezza colonne
                 const colGiornoWidth = 30;
                 const remainingWidth = contentWidth - colGiornoWidth;
                 const colAssetWidth = remainingWidth / assets.length;
+
+                // FIX 5: CENTRATURA CELLE
+                // Prepariamo la definizione colonne con align: 'center'
+                const colsConfig = [];
+                colsConfig.push({ width: colGiornoWidth, align: 'center' }); // Colonna giorno
+                assets.forEach(() => {
+                    colsConfig.push({ width: colAssetWidth, align: 'center' }); // Colonne asset
+                });
 
                 const tableOptions = {
                     width: contentWidth,
                     x: margin,
                     divider: { header: { disabled: false, width: 0.5, opacity: 1 }, horizontal: { disabled: false, width: 0.5, opacity: 0.5 } },
-                    columnsSize: [colGiornoWidth, ...assets.map(() => colAssetWidth)], 
+                    columns: colsConfig, // <--- APPICA CONFIGURAZIONE CENTRATURA
                     prepareHeader: () => doc.font("Helvetica-Bold").fontSize(6), 
                     prepareRow: (row, indexColumn, indexRow, rectRow, rectCell) => {
                         doc.rect(rectCell.x, rectCell.y, rectCell.width, rectCell.height).strokeColor('#888').stroke();
                         return doc.font("Helvetica").fontSize(8).fillColor('black');
-                    },
-                    align: 'center' // <--- CENTRATURA GLOBALE (Intestazioni e Dati)
+                    }
                 };
 
                 await doc.table({ headers: tableHeaders, rows: tableRows }, tableOptions);
 
-                // PIÈ DI PAGINA (Condizioni Legali)
+                // PIÈ DI PAGINA
                 doc.moveDown(0.5); 
                 doc.font("Helvetica-Bold").fontSize(8).text("Condizioni:", { underline: true });
                 doc.font("Helvetica").fontSize(7).lineGap(1) 
@@ -237,7 +252,7 @@ exports.exportGeneric = async (req, res) => {
                 // EXCEL
                 const wb = xlsx.utils.book_new();
                 const sheetData = [
-                    ["HACCP CONTROL", "SCHEDA DI ATTUAZIONE PIANO AUTOCONTROLLO", "", "Rev 00"],
+                    [aziendaInfo.nome, "SCHEDA DI ATTUAZIONE PIANO AUTOCONTROLLO", "", "Rev 00"],
                     ["DOTAZIONI FRIGORIFERE"],
                     [`MESE: ${new Date(start).toLocaleString('it-IT',{month:'long'})}`, `ANNO: ${new Date(start).getFullYear()}`],
                     [""],
