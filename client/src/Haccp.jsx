@@ -100,20 +100,19 @@ const [assetForm, setAssetForm] = useState({
       }
   }, [isAuthorized, info, tab, currentDate]);
 
-const ricaricaDati = () => {
+  const ricaricaDati = () => {
       if(!info?.id) return;
       fetch(`${API_URL}/api/haccp/assets/${info.id}`).then(r=>r.json()).then(setAssets);
       
-      // --- MODIFICA FIX ORARIO ---
-      const start = new Date(); 
-      start.setDate(start.getDate() - 45); 
-      const startIso = start.toISOString();
+      // --- MODIFICA 1: RANGE DATE ---
+      // Impostiamo l'inizio al 1° Gennaio dell'anno corrente per vedere tutto lo storico annuale
+      const start = new Date(new Date().getFullYear(), 0, 1); 
+      const startIso = start.toISOString().split('T')[0]; // Format YYYY-MM-DD
 
-      // FIX: Chiediamo i dati fino a "DOMANI" per evitare che il fuso orario (+1h) 
-      // faccia sembrare i dati "nel futuro" e li nasconda.
+      // Impostiamo la fine a un paio di giorni nel futuro per sicurezza timezone
       const end = new Date();
-      end.setDate(end.getDate() + 2); // +2 giorni per sicurezza totale sui fusi orari
-      const endIso = end.toISOString();
+      end.setDate(end.getDate() + 2); 
+      const endIso = end.toISOString().split('T')[0];
 
       fetch(`${API_URL}/api/haccp/logs/${info.id}?start=${startIso}&end=${endIso}`)
         .then(r=>r.json())
@@ -216,7 +215,7 @@ const ricaricaDati = () => {
   
   const handleLogPhoto = async (e, assetId) => { const f = e.target.files[0]; if(!f) return; setUploadingLog(assetId); try { const url = await uploadFile(f); setTempInput(prev => ({...prev, [assetId]: { ...(prev[assetId] || {}), photo: url }})); } finally { setUploadingLog(null); } };
   
-// --- FIX 1: REGISTRAZIONE TEMPERATURA (AGGIORNATA PER TABELLA) ---
+// --- FIX 2: REGISTRAZIONE TEMPERATURA (AGGIORNATA PER TIMEZONE) ---
  const registraTemperatura = async (asset, isSpento = false) => { 
       let val = 'OFF', conforme = true, azione = ""; 
       
@@ -247,10 +246,6 @@ const ricaricaDati = () => {
       } 
       
       try {
-          // LOGICA INTELLIGENTE: SE ESISTE GIÀ, FACCIAMO PUT (MODIFICA), ALTRIMENTI POST (CREA)
-          // Se stiamo facendo una modifica retroattiva (dal calendario/tabella), usiamo sempre POST o PUT specifico se avevamo l'ID,
-          // ma per la gestione odierna semplice:
-          
           let url = `${API_URL}/api/haccp/logs`;
           let method = 'POST';
 
@@ -259,6 +254,11 @@ const ricaricaDati = () => {
               url = `${API_URL}/api/haccp/logs/${logEsistente.id}`;
               method = 'PUT';
           }
+
+          // FIX: Inviamo sempre una data esplicita se dataOraEffettiva è null
+          // Usiamo new Date().toISOString() per dire al server l'istante esatto
+          // In questo modo il backend può convertirlo correttamente in orario italiano
+          const finalDate = dataOraEffettiva || new Date().toISOString();
 
           await fetch(url, { 
               method: method, 
@@ -272,7 +272,7 @@ const ricaricaDati = () => {
                   conformita: conforme, 
                   azione_correttiva: azione, 
                   foto_prova_url: currentInput.photo || '',
-                  data_ora: dataOraEffettiva // Se null, il backend mette NOW()
+                  data_ora: finalDate 
               }) 
           }); 
 
@@ -292,7 +292,7 @@ const ricaricaDati = () => {
   
   const salvaAsset = async (e) => { e.preventDefault(); const endpoint = editingAsset ? `${API_URL}/api/haccp/assets/${editingAsset.id}` : `${API_URL}/api/haccp/assets`; const method = editingAsset ? 'PUT' : 'POST'; await fetch(endpoint, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...assetForm, ristorante_id: info.id }) }); setShowAssetModal(false); ricaricaDati(); };
   
-  // FIX 2: FUNZIONE ELIMINA ASSET
+  // FUNZIONE ELIMINA ASSET
   const handleDeleteAsset = async (id) => {
     if(!window.confirm("Sei sicuro di voler eliminare questa macchina? Verrà eliminato anche lo storico.")) return;
     try {

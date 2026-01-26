@@ -34,9 +34,15 @@ exports.getLogs = async (req, res) => {
     try { 
         const { start, end } = req.query; 
         
-        // MODIFICA QUI: Selezioniamo i dati, ma filtriamo convertendo l'orario UTC in orario ROMA
+        // MODIFICA FIX: Restituiamo la data formattata esplicitamente per l'Italia nel SELECT.
+        // Questo forza il frontend a ricevere "2026-01-27 00:18:00" invece di UTC.
+        // Selezioniamo tutti i campi esplicitamente per sovrascrivere data_ora.
         let query = `
-            SELECT l.*, a.nome as nome_asset 
+            SELECT 
+                l.id, l.ristorante_id, l.asset_id, l.operatore, l.tipo_log, l.valore, 
+                l.conformita, l.azione_correttiva, l.foto_prova_url,
+                (l.data_ora AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Rome') as data_ora,
+                a.nome as nome_asset 
             FROM haccp_logs l 
             LEFT JOIN haccp_assets a ON l.asset_id = a.id 
             WHERE l.ristorante_id = $1
@@ -45,8 +51,7 @@ exports.getLogs = async (req, res) => {
         const params = [req.params.ristorante_id]; 
         
         if (start && end) { 
-            // FIX CRUCIALE: Convertiamo l'orario del DB in Europe/Rome PRIMA di confrontarlo con start/end
-            // Questo assicura che le 23:00 UTC (00:00 Italia) vengano contate come il giorno "nuovo"
+            // Filtro WHERE mantenendo la logica di conversione per essere precisi
             query += ` 
                 AND (l.data_ora AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Rome') >= $2::timestamp 
                 AND (l.data_ora AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Rome') <= $3::timestamp 
@@ -54,7 +59,7 @@ exports.getLogs = async (req, res) => {
             `; 
             params.push(start, end); 
         } else { 
-            query += ` AND l.data_ora >= NOW() - INTERVAL '7 days' ORDER BY l.data_ora DESC`; 
+            query += ` AND l.data_ora >= NOW() - INTERVAL '3 months' ORDER BY l.data_ora DESC`; 
         } 
         
         const r = await pool.query(query, params); 
@@ -69,6 +74,7 @@ exports.createLog = async (req, res) => {
     try { 
         const { ristorante_id, asset_id, operatore, tipo_log, valore, conformita, azione_correttiva, foto_prova_url, data_ora } = req.body; 
         
+        // Se data_ora c'è, la usiamo, altrimenti NOW()
         if (data_ora) {
             await pool.query("INSERT INTO haccp_logs (ristorante_id, asset_id, operatore, tipo_log, valore, conformita, azione_correttiva, foto_prova_url, data_ora) VALUES ($1,$2,$3,$4,$5,$6,$7,$8, $9)", [ristorante_id, asset_id, operatore, tipo_log, valore, conformita, azione_correttiva, foto_prova_url, data_ora]); 
         } else {
