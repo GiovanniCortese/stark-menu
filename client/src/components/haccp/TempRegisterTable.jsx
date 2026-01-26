@@ -9,12 +9,10 @@ const TempRegisterTable = ({ assets, logs, currentDate, setCurrentDate, onEditLo
         const days = new Date(year, month + 1, 0).getDate();
         return Array.from({ length: days }, (_, i) => {
             const d = new Date(year, month, i + 1);
-            // Fix fuso orario per confronto stringhe
             d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); 
             return d.toISOString().split('T')[0];
         });
     };
-
     const days = getDaysInMonth(currentDate);
 
     // 2. Filtra solo gli asset di tipo "macchina" (no aree pulizia)
@@ -23,7 +21,6 @@ const TempRegisterTable = ({ assets, logs, currentDate, setCurrentDate, onEditLo
     // 3. Helper per trovare il log di una cella specifica
     const findLog = (dateStr, assetId) => {
         return logs.find(l => {
-            // Confronto sicuro delle date (YYYY-MM-DD)
             const logDate = l.data_ora.split('T')[0]; 
             return logDate === dateStr && l.asset_id === assetId;
         });
@@ -39,7 +36,7 @@ const TempRegisterTable = ({ assets, logs, currentDate, setCurrentDate, onEditLo
     return (
         <div className="temp-register-container" style={{ background: 'white', padding: 20, borderRadius: 10, marginTop: 20, boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
             
-            {/* INTESTAZIONE E CONTROLLI */}
+            {/* INTESTAZIONE E CONTROLLI (SENZA PULSANTE DOWNLOAD) */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap:'wrap', gap:10 }}>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                     <button onClick={() => changeMonth(-1)} style={{ border: 'none', background: '#eee', borderRadius: 5, cursor: 'pointer', padding: '5px 10px', fontWeight:'bold' }}>◀</button>
@@ -49,9 +46,7 @@ const TempRegisterTable = ({ assets, logs, currentDate, setCurrentDate, onEditLo
                     <button onClick={() => changeMonth(1)} style={{ border: 'none', background: '#eee', borderRadius: 5, cursor: 'pointer', padding: '5px 10px', fontWeight:'bold' }}>▶</button>
                 </div>
                 
-                <button onClick={() => openDownloadModal('temperature_matrix')} style={{ background: '#27ae60', color: 'white', border: 'none', padding: '10px 20px', borderRadius: 5, fontWeight: 'bold', cursor: 'pointer', boxShadow:'0 2px 5px rgba(0,0,0,0.1)' }}>
-                    ⬇ Scarica Registro Mensile
-                </button>
+                {/* IL PULSANTE DOWNLOAD È STATO RIMOSSO DA QUI */}
             </div>
 
             {/* TABELLA MATRICE SCORREVOLE */}

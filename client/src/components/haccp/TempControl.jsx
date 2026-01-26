@@ -77,7 +77,7 @@ const TempControl = ({
                 🌡️ Rilevazione Odierna <span style={{fontWeight:'normal', fontSize:'0.8em'}}>({new Date().toLocaleDateString()})</span>
             </h3>
             <button onClick={()=>openDownloadModal('temperature_matrix')} className="btn-download-report">
-                ⬇ Scarica Registro PDF
+                ⬇ Scarica Registro
             </button>
           </div>
           
