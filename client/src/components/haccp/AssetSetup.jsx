@@ -23,12 +23,16 @@ const AssetSetup = ({ assets, apriModaleAsset, handlePrintQR, setPreviewImage, h
                 {assets.map(a => (
                     <div key={a.id} style={{background: 'white', padding:15, borderRadius:10, borderLeft: `4px solid ${a.stato === 'spento' ? '#e74c3c' : '#34495e'}`, boxShadow:'0 2px 5px rgba(0,0,0,0.1)'}}>
                         <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
-                            <div>
-                                <strong style={{fontSize:18}}>{a.nome}</strong> 
-                                <div style={{fontSize:12, color:'#666', marginTop:2}}>({a.tipo})</div>
-                            </div>
-                            {a.stato === 'spento' && <span style={{background:'#e74c3c', color:'white', padding:'2px 6px', borderRadius:4, fontSize:10}}>SPENTO</span>}
-                        </div>
+    <div>
+        <strong style={{fontSize:18}}>{a.nome}</strong> 
+        {/* AGGIUNTA: Mostra il locale se presente */}
+        <div style={{fontSize:14, color:'#2980b9', fontWeight:'bold'}}>
+            📍 {a.locale || 'N/D'}
+        </div>
+        <div style={{fontSize:12, color:'#666', marginTop:2}}>({a.tipo})</div>
+    </div>
+    {a.stato === 'spento' && <span style={{background:'#e74c3c', color:'white', padding:'2px 6px', borderRadius:4, fontSize:10}}>SPENTO</span>}
+</div>
                         
                         <div style={{marginTop:10, fontSize:13, color:'#555'}}>
                             <div>🌡️ Range: {a.range_min}° / {a.range_max}°</div>

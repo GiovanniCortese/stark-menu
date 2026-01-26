@@ -3,8 +3,27 @@ const { getItalyDateComponents } = require('../../utils/time');
 
 // 1. ASSETS
 exports.getAssets = async (req, res) => { try { const r = await pool.query("SELECT * FROM haccp_assets WHERE ristorante_id = $1 ORDER BY tipo, nome", [req.params.ristorante_id]); res.json(r.rows); } catch(e) { res.status(500).json({error:"Err"}); } };
-exports.createAsset = async (req, res) => { try { const { ristorante_id, nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url, stato } = req.body; await pool.query(`INSERT INTO haccp_assets (ristorante_id, nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url, stato) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, [ristorante_id, nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url, stato || 'attivo']); res.json({success:true}); } catch(e) { res.status(500).json({error:e.message}); } };
-exports.updateAsset = async (req, res) => { try { const { nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url, stato } = req.body; await pool.query(`UPDATE haccp_assets SET nome=$1, tipo=$2, range_min=$3, range_max=$4, marca=$5, modello=$6, serial_number=$7, foto_url=$8, etichetta_url=$9, stato=$10 WHERE id=$11`, [nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url, stato, req.params.id]); res.json({success:true}); } catch(e) { res.status(500).json({error:e.message}); } };
+exports.createAsset = async (req, res) => { 
+    try { 
+        const { ristorante_id, nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url, stato, locale } = req.body; // <--- AGGIUNTO locale
+        await pool.query(
+            `INSERT INTO haccp_assets (ristorante_id, nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url, stato, locale) 
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, 
+            [ristorante_id, nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url, stato || 'attivo', locale || 'Cucina'] // <--- AGGIUNTO parametro $12
+        ); 
+        res.json({success:true}); 
+    } catch(e) { res.status(500).json({error:e.message}); } 
+};
+exports.updateAsset = async (req, res) => { 
+    try { 
+        const { nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url, stato, locale } = req.body; 
+        await pool.query(
+            `UPDATE haccp_assets SET nome=$1, tipo=$2, range_min=$3, range_max=$4, marca=$5, modello=$6, serial_number=$7, foto_url=$8, etichetta_url=$9, stato=$10, locale=$11 WHERE id=$12`, 
+            [nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url, stato, locale, req.params.id]
+        ); 
+        res.json({success:true}); 
+    } catch(e) { res.status(500).json({error:e.message}); } 
+};
 exports.deleteAsset = async (req, res) => { try { await pool.query("DELETE FROM haccp_assets WHERE id=$1", [req.params.id]); res.json({success:true}); } catch(e){ res.status(500).json({error:"Err"}); } };
 
 // 2. LOGS (TEMPERATURE) - FIX DATE

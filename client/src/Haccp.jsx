@@ -49,11 +49,11 @@ function Haccp() {
   // Stati Asset / Modali
   const [showAssetModal, setShowAssetModal] = useState(false);
   const [editingAsset, setEditingAsset] = useState(null); 
-  const [assetForm, setAssetForm] = useState({ 
-      nome:'', tipo:'frigo', range_min:0, range_max:4, 
-      marca:'', modello:'', serial_number:'', 
-      foto_url:'', etichetta_url:'', stato: 'attivo' 
-  });
+const [assetForm, setAssetForm] = useState({ 
+    nome:'', tipo:'frigo', locale: 'Cucina', // <--- AGGIUNTO DEFAULT
+    range_min:0, range_max:4, marca:'', modello:'', serial_number:'', 
+    foto_url:'', etichetta_url:'', stato: 'attivo' 
+});
   const [uploadingAsset, setUploadingAsset] = useState(false); 
   const [uploadingLabel, setUploadingLabel] = useState(false); 
   const [showQRModal, setShowQRModal] = useState(null);
@@ -297,9 +297,15 @@ function Haccp() {
   // --- DOWNLOAD & PRINT (FIX EXPORT MATRICE) ---
   const openDownloadModal = (type) => { setDownloadType(type); setShowDownloadModal(true); setSelectedMonth(''); };
   
-  const executeDownload = (range) => { 
+const executeDownload = (range) => { 
       let start = new Date(), end = new Date(), rangeName = "Tutto"; 
       
+      // Funzione Helper per ottenere YYYY-MM-DD locale (evita problemi di fuso orario)
+      const toLocalISO = (d) => {
+          const offset = d.getTimezoneOffset() * 60000;
+          return new Date(d.getTime() - offset).toISOString().split('T')[0];
+      };
+
       if(range === 'week') { 
           start.setDate(end.getDate() - 7); rangeName="Ultima Settimana"; 
       } else if(range === 'month') { 
@@ -307,18 +313,15 @@ function Haccp() {
       } else if (range === 'custom-month') { 
           if(!selectedMonth) return alert("Seleziona un mese!"); 
           const [y, m] = selectedMonth.split('-'); 
-          start = new Date(y, m - 1, 1); 
-          end = new Date(y, m, 0, 23, 59, 59); 
+          start = new Date(y, m - 1, 1);     // Primo del mese
+          end = new Date(y, m, 0);           // Ultimo del mese (giorno 0 del mese successivo)
           rangeName = `Mese di ${start.toLocaleString('it-IT', { month: 'long', year: 'numeric' })}`; 
       } else if(range === 'all') { 
           start = new Date('2020-01-01'); rangeName="Storico Completo"; 
       } 
       
-      // Costruiamo la query string
-      const query = `?start=${start.toISOString()}&end=${end.toISOString()}&rangeName=${rangeName}&format=${downloadFormat}`;
-      
-      // Chiamata all'API
-      // Nota: Se downloadType è "temperature_matrix", il backend saprà cosa fare.
+      // USIAMO LE DATE LOCALI FIXATE
+      const query = `?start=${toLocalISO(start)}&end=${toLocalISO(end)}&rangeName=${rangeName}&format=${downloadFormat}`;
       window.open(`${API_URL}/api/haccp/export/${downloadType}/${info.id}${query}`, '_blank'); 
       setShowDownloadModal(false); 
   };
@@ -458,6 +461,16 @@ function Haccp() {
                 <h2 className="modal-title">{editingAsset ? '✏️ Modifica Macchina' : '✨ Nuova Macchina'}</h2>
                 <form onSubmit={salvaAsset} className="grid-form">
                     <div className="span-2"><label className="lbl">Nome Identificativo</label><input required value={assetForm.nome} onChange={e=>setAssetForm({...assetForm, nome:e.target.value})} className="input-std" placeholder="Es. Frigo Cucina" /></div>
+                    <div>
+    <label className="lbl">Ubicazione (Locale)</label>
+    <select value={assetForm.locale || ''} onChange={e=>setAssetForm({...assetForm, locale:e.target.value})} className="input-std">
+        <option value="Cucina">Cucina</option>
+        <option value="Bar">Bar</option>
+        <option value="Pizzeria">Pizzeria</option>
+        <option value="Magazzino">Magazzino</option>
+        <option value="Sala">Sala</option>
+    </select>
+</div>
                     <div><label className="lbl">Tipo</label><select value={assetForm.tipo} onChange={e=>setAssetForm({...assetForm, tipo:e.target.value})} className="input-std"><option value="frigo">Frigorifero</option><option value="cella">Cella</option><option value="vetrina">Vetrina</option><option value="congelatore">Congelatore</option><option value="abbattitore">Abbattitore</option><option value="altro">Altro</option></select></div>
                     <div><label className="lbl">Stato</label><select value={assetForm.stato} onChange={e=>setAssetForm({...assetForm, stato:e.target.value})} className="input-std"><option value="attivo">Attivo</option><option value="manutenzione">Manutenzione</option><option value="spento">Spento</option></select></div>
                     <div><label className="lbl">Min °C</label><input type="number" step="0.1" value={assetForm.range_min} onChange={e=>setAssetForm({...assetForm, range_min:e.target.value})} className="input-std" /></div>

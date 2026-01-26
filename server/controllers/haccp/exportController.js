@@ -24,12 +24,12 @@ exports.exportLabels = async (req, res) => {
         const titoloReport = "REGISTRO PRODUZIONE";
         const headers = ["Data Prod.", "Prodotto", "Ingredienti", "Tipo", "Lotto", "Scadenza", "Operatore"];
         const rows = r.rows.map(l => [
-            new Date(l.data_produzione).toLocaleDateString('it-IT'), 
+            new Date(l.data_produzione).toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' }), 
             String(l.prodotto || ''), 
             String(l.ingredienti || '').replace(/, /g, '\n'), 
             String(l.tipo_conservazione || ''), 
             String(l.lotto || ''), 
-            new Date(l.data_scadenza).toLocaleDateString('it-IT'), 
+            new Date(l.data_scadenza).toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' }), 
             String(l.operatore || '')
         ]);
         
@@ -86,9 +86,11 @@ exports.exportGeneric = async (req, res) => {
 
         // 1. GESTIONE SPECIALE: MATRICE TEMPERATURE (LAYOUT VERTICALE & FIX DATE)
         if (tipo === 'temperature_matrix') {
-            const assetsRes = await pool.query("SELECT id, nome FROM haccp_assets WHERE ristorante_id = $1 AND tipo IN ('frigo','cella','vetrina','congelatore','abbattitore') ORDER BY nome", [ristorante_id]);
+            // FIX LOCALE: Recuperiamo anche il campo 'locale' dagli assets
+            const assetsRes = await pool.query("SELECT id, nome, locale FROM haccp_assets WHERE ristorante_id = $1 AND tipo IN ('frigo','cella','vetrina','congelatore','abbattitore') ORDER BY nome", [ristorante_id]);
             const assets = assetsRes.rows;
 
+            // FIX TIMEZONE: Usiamo il database per filtrare ma poi la logica date la facciamo in JS
             let sqlLogs = `SELECT l.data_ora, l.asset_id, l.valore, l.operatore FROM haccp_logs l WHERE l.ristorante_id = $1 AND l.data_ora >= $2 AND l.data_ora <= $3`;
             const logsRes = await pool.query(sqlLogs, [ristorante_id, start, end]);
             const logs = logsRes.rows;
@@ -140,9 +142,9 @@ exports.exportGeneric = async (req, res) => {
                 const margin = 20;
                 const contentWidth = pageWidth - (margin * 2);
                 const headerY = 20;
-                const headerH = 50; 
+                const headerH = 65; // Aumentato per spazio dati fiscali
                 
-                const xDiv1 = margin + (contentWidth * 0.30); 
+                const xDiv1 = margin + (contentWidth * 0.35); // Allargata colonna sinistra
                 const xDiv2 = margin + (contentWidth * 0.85);
 
                 doc.lineWidth(0.5);
@@ -153,52 +155,60 @@ exports.exportGeneric = async (req, res) => {
                 doc.moveTo(xDiv2, headerY).lineTo(xDiv2, headerY + headerH).stroke(); 
 
                 // FIX 2: INTESTAZIONE DA DASHBOARD
-                // Usiamo "dati_fiscali" se presente, altrimenti il nome.
-                // Lo stringiamo o riduciamo il font se è lungo.
-                const intestazione = aziendaInfo.dati_fiscali || aziendaInfo.nome.toUpperCase();
-                
-                doc.font("Helvetica-Bold").fontSize(10);
-                doc.text(intestazione, margin + 5, headerY + 10, { 
+                // Usiamo Nome Azienda in Grassetto e Dati Fiscali sotto
+                const nomeAz = aziendaInfo.nome ? aziendaInfo.nome.toUpperCase() : "AZIENDA";
+                const datiFisc = aziendaInfo.dati_fiscali || "";
+
+                doc.font("Helvetica-Bold").fontSize(11);
+                doc.text(nomeAz, margin + 5, headerY + 10, { 
                     width: (xDiv1 - margin) - 10, 
                     align: 'center',
-                    height: headerH - 20,
+                    ellipsis: true
+                });
+                
+                doc.font("Helvetica").fontSize(8);
+                doc.text(datiFisc, margin + 5, headerY + 25, { 
+                    width: (xDiv1 - margin) - 10, 
+                    align: 'center',
+                    height: headerH - 30,
                     ellipsis: true
                 });
                 
                 // Titolo Documento
-                doc.fontSize(10)
-                   .text("SCHEDA DI ATTUAZIONE DEL", xDiv1, headerY + 12, { width: (xDiv2 - xDiv1), align: 'center' })
-                   .text("PIANO DI AUTOCONTROLLO", xDiv1, headerY + 25, { width: (xDiv2 - xDiv1), align: 'center' });
+                doc.font("Helvetica").fontSize(10);
+                doc.text("SCHEDA DI ATTUAZIONE DEL", xDiv1, headerY + 15, { width: (xDiv2 - xDiv1), align: 'center' });
+                doc.font("Helvetica-Bold").fontSize(12);
+                doc.text("PIANO DI AUTOCONTROLLO", xDiv1, headerY + 30, { width: (xDiv2 - xDiv1), align: 'center' });
 
                 // Rev
-                doc.fontSize(9).text("Rev 00", xDiv2, headerY + 20, { width: (margin + contentWidth - xDiv2), align: 'center' });
+                doc.font("Helvetica").fontSize(9);
+                doc.text("Rev 00", xDiv2, headerY + 25, { width: (margin + contentWidth - xDiv2), align: 'center' });
 
-                doc.moveDown(4.5);
+                doc.moveDown(5); // Spazio dopo header box
 
                 // FIX 3: CENTRATURA TITOLO "DOTAZIONI FRIGORIFERE"
-                // Usiamo doc.y corrente ma specifichiamo width=contentWidth e align='center'
                 doc.font("Helvetica-Bold").fontSize(12);
                 doc.text("DOTAZIONI FRIGORIFERE", margin, doc.y, { width: contentWidth, align: 'center' });
                 doc.moveDown(0.5);
 
-                // FIX 4: MESE E ANNO DALLE STRINGHE ORIGINALI (No conversione Date)
-                // "start" è tipo "2026-01-01". startM è già parsato sopra.
+                // FIX 4: MESE E ANNO DALLE STRINGHE ORIGINALI
                 const mesi = ["GENNAIO","FEBBRAIO","MARZO","APRILE","MAGGIO","GIUGNO","LUGLIO","AGOSTO","SETTEMBRE","OTTOBRE","NOVEMBRE","DICEMBRE"];
                 const nomeMese = mesi[monthS - 1]; // monthS va da 1 a 12
 
                 doc.font("Helvetica").fontSize(10);
                 const infoY = doc.y;
                 
-                doc.text(`MESE: ...........................`, margin, infoY);
-                doc.font("Helvetica-Bold").text(`${nomeMese}`, margin + 35, infoY);
+                doc.text(`MESE: ${nomeMese}`, margin, infoY);
+                doc.text(`ANNO: ${yearS}`, margin + 180, infoY);
+
+                // FIX LOCALE: Logica per determinare cosa scrivere
+                // Se tutti gli asset sono nello stesso locale, scrivilo. Se misti, scrivi "LOCALI VARI".
+                const localiUnici = [...new Set(assets.map(a => a.locale).filter(Boolean))];
+                const localeStr = localiUnici.length === 1 ? localiUnici[0].toUpperCase() : (localiUnici.length > 1 ? "LOCALI VARI" : "CUCINA");
                 
-                doc.font("Helvetica").text(`ANNO: ...........................`, margin + 180, infoY);
-                doc.font("Helvetica-Bold").text(`${yearS}`, margin + 215, infoY);
+                doc.text(`LOCALE: ${localeStr}`, margin + 300, infoY);
 
-                doc.font("Helvetica").text(`LOCALE: ......................................................`, margin + 320, infoY);
-                doc.text(`CUCINA`, margin + 370, infoY);
-
-                doc.moveDown(0.5);
+                doc.moveDown(1);
 
                 // --- TABELLA VERTICALE (CENTRATA) ---
                 // Calcolo larghezza colonne
@@ -207,7 +217,6 @@ exports.exportGeneric = async (req, res) => {
                 const colAssetWidth = remainingWidth / assets.length;
 
                 // FIX 5: CENTRATURA CELLE
-                // Prepariamo la definizione colonne con align: 'center'
                 const colsConfig = [];
                 colsConfig.push({ width: colGiornoWidth, align: 'center' }); // Colonna giorno
                 assets.forEach(() => {
@@ -218,8 +227,8 @@ exports.exportGeneric = async (req, res) => {
                     width: contentWidth,
                     x: margin,
                     divider: { header: { disabled: false, width: 0.5, opacity: 1 }, horizontal: { disabled: false, width: 0.5, opacity: 0.5 } },
-                    columns: colsConfig, // <--- APPICA CONFIGURAZIONE CENTRATURA
-                    prepareHeader: () => doc.font("Helvetica-Bold").fontSize(6), 
+                    columns: colsConfig,
+                    prepareHeader: () => doc.font("Helvetica-Bold").fontSize(7), 
                     prepareRow: (row, indexColumn, indexRow, rectRow, rectCell) => {
                         doc.rect(rectCell.x, rectCell.y, rectCell.width, rectCell.height).strokeColor('#888').stroke();
                         return doc.font("Helvetica").fontSize(8).fillColor('black');
@@ -282,7 +291,16 @@ exports.exportGeneric = async (req, res) => {
             const r = await pool.query(sql, params);
             rows = r.rows.map(row => { 
                 const d = new Date(row.data_ora); 
-                return [d.toLocaleDateString('it-IT'), d.toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'}), String(row.asset || ''), String(row.valore === 'OFF' ? 'SPENTO' : `${row.valore}°C`), row.conformita ? "OK" : "NO", String(row.azione_correttiva || ""), String(row.operatore || "")]; 
+                // Fix fuso orario italiano
+                return [
+                    d.toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' }), 
+                    d.toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit', timeZone: 'Europe/Rome'}), 
+                    String(row.asset || ''), 
+                    String(row.valore === 'OFF' ? 'SPENTO' : `${row.valore}°C`), 
+                    row.conformita ? "OK" : "NO", 
+                    String(row.azione_correttiva || ""), 
+                    String(row.operatore || "")
+                ]; 
             });
 
         } else if (tipo === 'merci') { 
@@ -305,7 +323,7 @@ exports.exportGeneric = async (req, res) => {
                 const totaleLordo = imponibile + ivaValore;
 
                 return [
-                    new Date(row.data_ricezione).toLocaleDateString('it-IT'),
+                    new Date(row.data_ricezione).toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' }),
                     String(row.fornitore || ''),
                     String(row.prodotto || ''),
                     String(qta),
@@ -322,9 +340,17 @@ exports.exportGeneric = async (req, res) => {
         } else if (tipo === 'assets') { 
             sheetName = "Lista Macchine";
             titoloReport = "LISTA MACCHINE E ATTREZZATURE";
-            headers = ["Stato", "Nome", "Tipo", "Marca", "Matricola", "Range"];
+            headers = ["Stato", "Nome", "Locale", "Tipo", "Marca", "Matricola", "Range"];
             const r = await pool.query(`SELECT * FROM haccp_assets WHERE ristorante_id = $1 ORDER BY nome ASC`, [ristorante_id]);
-            rows = r.rows.map(row => [String(row.stato ? row.stato.toUpperCase() : "ATTIVO"), String(row.nome || ''), String(row.tipo || ''), String(row.marca || ''), String(row.serial_number || '-'), `${row.range_min}°C / ${row.range_max}°C`]);
+            rows = r.rows.map(row => [
+                String(row.stato ? row.stato.toUpperCase() : "ATTIVO"), 
+                String(row.nome || ''), 
+                String(row.locale || ''), // Aggiunto export locale
+                String(row.tipo || ''), 
+                String(row.marca || ''), 
+                String(row.serial_number || '-'), 
+                `${row.range_min}°C / ${row.range_max}°C`
+            ]);
 
         } else if (tipo === 'pulizie') {
             sheetName = "Registro Pulizie";
@@ -335,7 +361,14 @@ exports.exportGeneric = async (req, res) => {
             if(start && end) { sql += ` AND data_ora >= $2 AND data_ora <= $3`; params.push(start, end); }
             sql += ` ORDER BY data_ora ASC`;
             const r = await pool.query(sql, params);
-            rows = r.rows.map(row => [new Date(row.data_ora).toLocaleDateString('it-IT'), new Date(row.data_ora).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'}), String(row.area || ''), String(row.prodotto || ''), String(row.operatore || ''), row.conformita ? "OK" : "NON CONFORME"]);
+            rows = r.rows.map(row => [
+                new Date(row.data_ora).toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' }), 
+                new Date(row.data_ora).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit', timeZone: 'Europe/Rome'}), 
+                String(row.area || ''), 
+                String(row.prodotto || ''), 
+                String(row.operatore || ''), 
+                row.conformita ? "OK" : "NON CONFORME"
+            ]);
         }
 
         if (format === 'pdf') {

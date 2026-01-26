@@ -116,13 +116,16 @@ const TempControl = ({
                          )}
                          
                          <div className="temp-card-input-area">
-                            <input 
-                                type="number" step="0.1" placeholder="°C" 
-                                value={currentData.val || ''} 
-                                onChange={e=>setTempInput({...tempInput, [asset.id]: {...currentData, val: e.target.value}})} 
-                                className="temp-input"
-                                autoFocus={isRetroactiveEdit} 
-                            />
+                           <input 
+    type="number" 
+    inputMode="decimal" // <--- AGGIUNGI QUESTO: Forza la tastiera completa con numeri e simboli
+    step="any"          // <--- MODIFICA QUESTO: Meglio di 0.1 per accettare tutto
+    placeholder="°C" 
+    value={currentData.val || ''} 
+    onChange={e => setTempInput({...tempInput, [asset.id]: {...currentData, val: e.target.value}})} 
+    className="temp-input"
+    autoFocus={isRetroactiveEdit} 
+/>
                             <div className="temp-actions">
                                 <button onClick={()=>registraTemperatura(asset, true)} className="btn-action off">OFF</button>
                                 <label className={`btn-action photo ${currentData.photo ? 'has-photo' : ''}`}>

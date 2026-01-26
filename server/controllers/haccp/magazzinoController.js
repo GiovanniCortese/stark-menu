@@ -68,6 +68,7 @@ exports.dbFixMagazzinoFull = async (req, res) => {
             await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS totale_lordo NUMERIC DEFAULT 0");
             await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS codice_articolo TEXT DEFAULT ''");
             await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS sconto NUMERIC(5,2) DEFAULT 0");
+            await client.query("ALTER TABLE haccp_assets ADD COLUMN IF NOT EXISTS locale TEXT DEFAULT 'Cucina'"); // <--- AGGIUNGI QUESTA RIGA
             res.send("✅ DB AGGIORNATO: Colonne Fattura e Totali create!");
         } finally { client.release(); }
     } catch (e) { res.status(500).send("Errore DB Fix: " + e.message); }
