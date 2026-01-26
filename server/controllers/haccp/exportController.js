@@ -50,8 +50,14 @@ exports.exportLabels = async (req, res) => {
             doc.fontSize(14).text(`${titoloReport}: ${rangeName || 'Completo'}`, { align: 'center' });
             doc.moveDown();
             
+            // --- MODIFICA CENTRATURA TABELLA ---
+            const tableWidth = 750;
+            const pageWidth = doc.page.width; 
+            const tableX = (pageWidth - tableWidth) / 2;
+
             await doc.table({ headers, rows }, { 
-                width: 750, 
+                width: tableWidth, 
+                x: tableX, // Centra la tabella orizzontalmente
                 columnsSize: [70, 100, 250, 60, 100, 70, 80], 
                 prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8), 
                 prepareRow: () => doc.font("Helvetica").fontSize(8) 
@@ -126,8 +132,7 @@ exports.exportGeneric = async (req, res) => {
             });
 
             if (format === 'pdf') {
-                // Landscape per mantenere la matrice temperature su UNA SOLA PAGINA (come il modello)
-                const doc = new PDFDocument({ margin: 20, size: 'A4', layout: 'landscape' });
+                const doc = new PDFDocument({ margin: 20, size: 'A4', layout: 'portrait' });
                 
                 let buffers = [];
                 doc.on('data', buffers.push.bind(buffers));
@@ -139,10 +144,9 @@ exports.exportGeneric = async (req, res) => {
                 });
 
                 // --- HEADER DISEGNATO ---
-                // Usiamo le misure reali della pagina (A4 landscape)
-                const pageWidth = doc.page.width;
-                const margin = doc.page.margins.left;
-                const contentWidth = pageWidth - doc.page.margins.left - doc.page.margins.right;
+                const pageWidth = 595.28; 
+                const margin = 20;
+                const contentWidth = pageWidth - (margin * 2);
                 const headerY = 20;
                 const headerH = 65; // Aumentato per spazio dati fiscali
                 
@@ -213,41 +217,27 @@ exports.exportGeneric = async (req, res) => {
                 doc.moveDown(1);
 
                 // --- TABELLA VERTICALE (CENTRATA) ---
-                // Obiettivo: centrare SOLO la tabella (come in app), senza spostare altro.
+                // Calcolo larghezza colonne
                 const colGiornoWidth = 30;
-                const safeAssetsCount = Math.max(assets.length, 0);
+                const remainingWidth = contentWidth - colGiornoWidth;
+                const colAssetWidth = remainingWidth / assets.length;
 
-                // Larghezza "desiderata" per colonna frigo: se la tabella entra, la centriamo.
-                // Se non entra, ripieghiamo sull'adattamento a tutta larghezza.
-                const desiredAssetColWidth = 75;
-                let colAssetWidth = safeAssetsCount > 0 ? desiredAssetColWidth : 0;
-                let tableWidth = colGiornoWidth + (colAssetWidth * safeAssetsCount);
-
-                // Se non entra, adattiamo per stare dentro contentWidth (nessuna pagina extra)
-                if (safeAssetsCount > 0 && tableWidth > contentWidth) {
-                    const remainingWidth = contentWidth - colGiornoWidth;
-                    colAssetWidth = remainingWidth / safeAssetsCount;
-                    tableWidth = contentWidth;
-                }
-
-                // X centrato (solo se non è a tutta pagina)
-                const tableX = margin + Math.max(0, (contentWidth - tableWidth) / 2);
-
-                const colsConfig = [{ width: colGiornoWidth, align: 'center' }];
-                for (let i = 0; i < safeAssetsCount; i++) colsConfig.push({ width: colAssetWidth, align: 'center' });
+                // FIX 5: CENTRATURA CELLE
+                const colsConfig = [];
+                colsConfig.push({ width: colGiornoWidth, align: 'center' }); // Colonna giorno
+                assets.forEach(() => {
+                    colsConfig.push({ width: colAssetWidth, align: 'center' }); // Colonne asset
+                });
 
                 const tableOptions = {
-                    width: tableWidth,
-                    x: tableX,
-                    divider: {
-                        header: { disabled: false, width: 0.5, opacity: 1 },
-                        horizontal: { disabled: false, width: 0.5, opacity: 0.5 }
-                    },
+                    width: contentWidth,
+                    x: margin,
+                    divider: { header: { disabled: false, width: 0.5, opacity: 1 }, horizontal: { disabled: false, width: 0.5, opacity: 0.5 } },
                     columns: colsConfig,
-                    prepareHeader: () => doc.font("Helvetica-Bold").fontSize(7),
+                    prepareHeader: () => doc.font("Helvetica-Bold").fontSize(7), 
                     prepareRow: (row, indexColumn, indexRow, rectRow, rectCell) => {
                         doc.rect(rectCell.x, rectCell.y, rectCell.width, rectCell.height).strokeColor('#888').stroke();
-                        return doc.font("Helvetica").fontSize(7).fillColor('black');
+                        return doc.font("Helvetica").fontSize(8).fillColor('black');
                     }
                 };
 
@@ -405,8 +395,15 @@ exports.exportGeneric = async (req, res) => {
             doc.moveDown(1);
             
             const table = { headers: headers, rows: rows };
+
+            // --- MODIFICA CENTRATURA TABELLA (Liste Standard) ---
+            const tableWidth = 500;
+            const pageWidth = doc.page.width;
+            const tableX = (pageWidth - tableWidth) / 2;
+
             await doc.table(table, { 
-                width: 500, 
+                width: tableWidth, 
+                x: tableX, // Centra la tabella orizzontalmente
                 prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8), 
                 prepareRow: () => doc.font("Helvetica").fontSize(8).fillColor('black') 
             });
