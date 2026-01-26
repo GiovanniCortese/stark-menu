@@ -126,7 +126,8 @@ exports.exportGeneric = async (req, res) => {
             });
 
             if (format === 'pdf') {
-                const doc = new PDFDocument({ margin: 20, size: 'A4', layout: 'portrait' });
+                // Landscape per mantenere la matrice temperature su UNA SOLA PAGINA (come il modello)
+                const doc = new PDFDocument({ margin: 20, size: 'A4', layout: 'landscape' });
                 
                 let buffers = [];
                 doc.on('data', buffers.push.bind(buffers));
@@ -138,9 +139,10 @@ exports.exportGeneric = async (req, res) => {
                 });
 
                 // --- HEADER DISEGNATO ---
-                const pageWidth = 595.28; 
-                const margin = 20;
-                const contentWidth = pageWidth - (margin * 2);
+                // Usiamo le misure reali della pagina (A4 landscape)
+                const pageWidth = doc.page.width;
+                const margin = doc.page.margins.left;
+                const contentWidth = pageWidth - doc.page.margins.left - doc.page.margins.right;
                 const headerY = 20;
                 const headerH = 65; // Aumentato per spazio dati fiscali
                 
@@ -211,27 +213,41 @@ exports.exportGeneric = async (req, res) => {
                 doc.moveDown(1);
 
                 // --- TABELLA VERTICALE (CENTRATA) ---
-                // Calcolo larghezza colonne
+                // Obiettivo: centrare SOLO la tabella (come in app), senza spostare altro.
                 const colGiornoWidth = 30;
-                const remainingWidth = contentWidth - colGiornoWidth;
-                const colAssetWidth = remainingWidth / assets.length;
+                const safeAssetsCount = Math.max(assets.length, 0);
 
-                // FIX 5: CENTRATURA CELLE
-                const colsConfig = [];
-                colsConfig.push({ width: colGiornoWidth, align: 'center' }); // Colonna giorno
-                assets.forEach(() => {
-                    colsConfig.push({ width: colAssetWidth, align: 'center' }); // Colonne asset
-                });
+                // Larghezza "desiderata" per colonna frigo: se la tabella entra, la centriamo.
+                // Se non entra, ripieghiamo sull'adattamento a tutta larghezza.
+                const desiredAssetColWidth = 75;
+                let colAssetWidth = safeAssetsCount > 0 ? desiredAssetColWidth : 0;
+                let tableWidth = colGiornoWidth + (colAssetWidth * safeAssetsCount);
+
+                // Se non entra, adattiamo per stare dentro contentWidth (nessuna pagina extra)
+                if (safeAssetsCount > 0 && tableWidth > contentWidth) {
+                    const remainingWidth = contentWidth - colGiornoWidth;
+                    colAssetWidth = remainingWidth / safeAssetsCount;
+                    tableWidth = contentWidth;
+                }
+
+                // X centrato (solo se non è a tutta pagina)
+                const tableX = margin + Math.max(0, (contentWidth - tableWidth) / 2);
+
+                const colsConfig = [{ width: colGiornoWidth, align: 'center' }];
+                for (let i = 0; i < safeAssetsCount; i++) colsConfig.push({ width: colAssetWidth, align: 'center' });
 
                 const tableOptions = {
-                    width: contentWidth,
-                    x: margin,
-                    divider: { header: { disabled: false, width: 0.5, opacity: 1 }, horizontal: { disabled: false, width: 0.5, opacity: 0.5 } },
+                    width: tableWidth,
+                    x: tableX,
+                    divider: {
+                        header: { disabled: false, width: 0.5, opacity: 1 },
+                        horizontal: { disabled: false, width: 0.5, opacity: 0.5 }
+                    },
                     columns: colsConfig,
-                    prepareHeader: () => doc.font("Helvetica-Bold").fontSize(7), 
+                    prepareHeader: () => doc.font("Helvetica-Bold").fontSize(7),
                     prepareRow: (row, indexColumn, indexRow, rectRow, rectCell) => {
                         doc.rect(rectCell.x, rectCell.y, rectCell.width, rectCell.height).strokeColor('#888').stroke();
-                        return doc.font("Helvetica").fontSize(8).fillColor('black');
+                        return doc.font("Helvetica").fontSize(7).fillColor('black');
                     }
                 };
 
