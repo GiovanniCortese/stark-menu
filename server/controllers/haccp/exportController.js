@@ -210,56 +210,86 @@ exports.exportGeneric = async (req, res) => {
                 doc.text(`LOCALE: ${localeStr}`, margin + 300, infoY);
 
                 doc.moveDown(1);
-                // --- TABELLA VERTICALE (CENTRATA) ---
-                // Obiettivo: centrare SOLO la tabella (la matrice), senza spostare header/titoli/testi.
-                // Se la tabella "desiderata" entra nei margini, la manteniamo più stretta e centrata.
-                // Se non entra, occupa tutta la larghezza disponibile (e quindi resta con x=margin).
+                // --- TABELLA (FULL WIDTH) - CONTENUTO CENTRATO ---
+// La tabella resta estesa come prima (a tutta larghezza utile).
+// Centriamo SOLO i valori dentro le celle.
+const pageHeight = doc.page.height;
+const tableX = margin;
+const tableY = doc.y + 8;
+const footerReserve = 155; // spazio fisso per "Condizioni" + firma (una sola pagina)
+const tableW = contentWidth;
 
-                const colGiornoWidth = 30;
+const rowCount = tableRows.length + 1; // + header
+const availableH = (pageHeight - margin - footerReserve) - tableY;
+const rowH = Math.max(12, availableH / rowCount);
 
-                // Larghezza "ideale" per ogni colonna frigo (in punti PDF)
-                const desiredAssetColWidth = 70;
+const dayColW = 45;
+const assetColW = (tableW - dayColW) / Math.max(1, assets.length);
 
-                const maxTableWidth = contentWidth;
-                const desiredTableWidth = colGiornoWidth + (desiredAssetColWidth * Math.max(assets.length, 1));
+// Disegno griglia
+doc.save();
+doc.strokeColor('#888').lineWidth(0.5);
 
-                const tableWidth = Math.min(desiredTableWidth, maxTableWidth);
+// linee orizzontali
+for (let r = 0; r <= rowCount; r++) {
+  const y = tableY + (r * rowH);
+  doc.moveTo(tableX, y).lineTo(tableX + tableW, y).stroke();
+}
 
-                // Se siamo riusciti a stare più stretti del massimo, centriamo la tabella.
-                const tableX = margin + Math.max(0, (maxTableWidth - tableWidth) / 2);
+// linee verticali (colonna giorno + asset)
+let x = tableX;
+doc.moveTo(x, tableY).lineTo(x, tableY + (rowCount * rowH)).stroke();
 
-                // Calcolo effettivo della colonna asset in base alla tableWidth scelta
-                const effectiveAssetColWidth = (tableWidth - colGiornoWidth) / Math.max(assets.length, 1);
+x += dayColW;
+doc.moveTo(x, tableY).lineTo(x, tableY + (rowCount * rowH)).stroke();
 
-                // Colonne (testo centrato)
-                const colsConfig = [
-                    { width: colGiornoWidth, align: 'center' },
-                    ...assets.map(() => ({ width: effectiveAssetColWidth, align: 'center' }))
-                ];
+for (let c = 0; c < assets.length; c++) {
+  x += assetColW;
+  doc.moveTo(x, tableY).lineTo(x, tableY + (rowCount * rowH)).stroke();
+}
+doc.restore();
 
-                const tableOptions = {
-                    width: tableWidth,
-                    x: tableX,
-                    // Riduciamo un filo padding/righe per stare sempre in UNA pagina
-                    padding: 3,
-                    minRowHeight: 12,
-                    divider: {
-                        header: { disabled: false, width: 0.5, opacity: 1 },
-                        horizontal: { disabled: false, width: 0.5, opacity: 0.5 }
-                    },
-                    columns: colsConfig,
-                    prepareHeader: () => doc.font("Helvetica-Bold").fontSize(7),
-                    prepareRow: (row, indexColumn, indexRow, rectRow, rectCell) => {
-                        doc.rect(rectCell.x, rectCell.y, rectCell.width, rectCell.height).strokeColor('#888').stroke();
-                        return doc.font("Helvetica").fontSize(8).fillColor('black');
-                    }
-                };
+// Header (centrato)
+doc.font("Helvetica-Bold").fontSize(7);
+let cx = tableX;
+for (let c = 0; c < tableHeaders.length; c++) {
+  const w = (c === 0) ? dayColW : assetColW;
+  const textY = tableY + ((rowH - 7) / 2) - 1;
+  doc.text(String(tableHeaders[c] || ""), cx + 1, textY, {
+    width: w - 2,
+    align: 'center',
+    ellipsis: true
+  });
+  cx += w;
+}
 
+// Celle (centrate)
+doc.font("Helvetica").fontSize(8);
+for (let r = 0; r < tableRows.length; r++) {
+  const row = tableRows[r];
+  const y = tableY + ((r + 1) * rowH);
+  let xCell = tableX;
 
+  for (let c = 0; c < row.length; c++) {
+    const w = (c === 0) ? dayColW : assetColW;
+    const val = (row[c] == null) ? "" : String(row[c]);
 
-                await doc.table({ headers: tableHeaders, rows: tableRows }, tableOptions);
+    if (val) {
+      const textY = y + ((rowH - 8) / 2) - 1;
+      doc.text(val, xCell + 1, textY, {
+        width: w - 2,
+        align: 'center',
+        ellipsis: true
+      });
+    }
+    xCell += w;
+  }
+}
 
-                // PIÈ DI PAGINA
+// Posiziona il cursore sotto la tabella (restando in una pagina)
+doc.y = tableY + (rowCount * rowH) + 10;
+
+// PIÈ DI PAGINA
                 doc.moveDown(0.5); 
                 doc.font("Helvetica-Bold").fontSize(8).text("Condizioni:", { underline: true });
                 doc.font("Helvetica").fontSize(7).lineGap(1) 
