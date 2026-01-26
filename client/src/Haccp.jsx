@@ -368,7 +368,7 @@ const executeDownload = (range) => {
   // --- RENDER 1: CARICAMENTO ---
   if(!info) return <div style={{padding:20}}>Caricamento...</div>;
 
-// --- RENDER 2: LOGIN (MODERNIZZATO) ---
+// --- RENDER 2: LOGIN (CON CSS INCLUSO) ---
   if(!isAuthorized) {
       return (
         <div className="login-wrapper">
@@ -399,6 +399,129 @@ const executeDownload = (range) => {
                 </form>
                 <div className="login-footer">Sistema Jarvis V50</div>
             </div>
+
+            {/* --- IMPORTANTE: IL CSS DEVE ESSERE ANCHE QUI PER ESSERE VISTO --- */}
+            <style>{`
+                /* RESET & BASE */
+                .haccp-container { min-height: 100vh; background: #ecf0f1; padding: 20px; font-family: sans-serif; box-sizing: border-box; }
+                .main-wrapper { max-width: 100%; overflow-x: hidden; }
+                
+                /* HEADER */
+                .header-nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+                .app-title { margin: 0; color: #2c3e50; font-size: 24px; }
+                
+                /* NAVIGATION */
+                .nav-buttons { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+                .nav-btn { padding: 10px 15px; border-radius: 5px; border: none; cursor: pointer; font-weight: bold; text-transform: uppercase; background: white; color: #333; font-size: 13px; }
+                .nav-btn.active { background: #2c3e50; color: white; }
+                .nav-btn.logout { background: #e74c3c; color: white; }
+
+                /* --- LOGIN STYLES --- */
+                .login-wrapper {
+                    min-height: 100vh;
+                    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    padding: 20px;
+                    /* Assicuriamoci che occupi tutto lo schermo */
+                    position: fixed; 
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    z-index: 9999;
+                }
+                .login-card {
+                    background: white;
+                    padding: 40px 30px;
+                    border-radius: 12px;
+                    width: 100%;
+                    max-width: 380px;
+                    text-align: center;
+                    box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+                    animation: fadeIn 0.5s ease-out;
+                }
+                .login-icon-circle {
+                    width: 60px;
+                    height: 60px;
+                    background: #ecf0f1;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 30px;
+                    margin: 0 auto 15px auto;
+                }
+                .login-title {
+                    margin: 0 0 5px 0;
+                    color: #2c3e50;
+                    font-size: 22px;
+                    font-weight: 800;
+                }
+                .login-subtitle {
+                    margin: 0 0 25px 0;
+                    color: #7f8c8d;
+                    font-size: 14px;
+                }
+                .login-form {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 15px;
+                }
+                .login-input {
+                    width: 100%;
+                    padding: 14px;
+                    border-radius: 8px;
+                    border: 2px solid #ecf0f1;
+                    font-size: 16px;
+                    outline: none;
+                    transition: border-color 0.3s;
+                    text-align: center;
+                    box-sizing: border-box;
+                }
+                .login-input:focus {
+                    border-color: #3498db;
+                }
+                .login-btn {
+                    padding: 14px;
+                    background: #27ae60;
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    font-weight: bold;
+                    font-size: 16px;
+                    cursor: pointer;
+                    transition: transform 0.1s, background 0.3s;
+                }
+                .login-btn:hover {
+                    background: #219150;
+                }
+                .login-btn:active {
+                    transform: scale(0.98);
+                }
+                .login-btn:disabled {
+                    background: #95a5a6;
+                    cursor: not-allowed;
+                }
+                .login-error {
+                    color: #e74c3c;
+                    font-size: 13px;
+                    background: #fadbd8;
+                    padding: 10px;
+                    border-radius: 6px;
+                    font-weight: bold;
+                }
+                .login-footer {
+                    margin-top: 25px;
+                    font-size: 10px;
+                    color: #bdc3c7;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                }
+                
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: translateY(20px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+            `}</style>
         </div>
       );
   }
@@ -712,109 +835,6 @@ const executeDownload = (range) => {
             body { margin: 0; padding: 0; } 
             @page { margin: 0; size: auto; } 
         }
-
-/* --- LOGIN STYLES --- */
-        .login-wrapper {
-            min-height: 100vh;
-            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-        }
-        .login-card {
-            background: white;
-            padding: 40px 30px;
-            border-radius: 12px;
-            width: 100%;
-            max-width: 380px;
-            text-align: center;
-            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
-            animation: fadeIn 0.5s ease-out;
-        }
-        .login-icon-circle {
-            width: 60px;
-            height: 60px;
-            background: #ecf0f1;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 30px;
-            margin: 0 auto 15px auto;
-        }
-        .login-title {
-            margin: 0 0 5px 0;
-            color: #2c3e50;
-            font-size: 22px;
-            font-weight: 800;
-        }
-        .login-subtitle {
-            margin: 0 0 25px 0;
-            color: #7f8c8d;
-            font-size: 14px;
-        }
-        .login-form {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-        .login-input {
-            width: 100%;
-            padding: 14px;
-            border-radius: 8px;
-            border: 2px solid #ecf0f1;
-            font-size: 16px;
-            outline: none;
-            transition: border-color 0.3s;
-            text-align: center;
-            box-sizing: border-box;
-        }
-        .login-input:focus {
-            border-color: #3498db;
-        }
-        .login-btn {
-            padding: 14px;
-            background: #27ae60;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-weight: bold;
-            font-size: 16px;
-            cursor: pointer;
-            transition: transform 0.1s, background 0.3s;
-        }
-        .login-btn:hover {
-            background: #219150;
-        }
-        .login-btn:active {
-            transform: scale(0.98);
-        }
-        .login-btn:disabled {
-            background: #95a5a6;
-            cursor: not-allowed;
-        }
-        .login-error {
-            color: #e74c3c;
-            font-size: 13px;
-            background: #fadbd8;
-            padding: 10px;
-            border-radius: 6px;
-            font-weight: bold;
-        }
-        .login-footer {
-            margin-top: 25px;
-            font-size: 10px;
-            color: #bdc3c7;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
       `}</style>
     </div>
   );
