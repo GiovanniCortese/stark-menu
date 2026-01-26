@@ -100,17 +100,20 @@ const [assetForm, setAssetForm] = useState({
       }
   }, [isAuthorized, info, tab, currentDate]);
 
- const ricaricaDati = () => {
+const ricaricaDati = () => {
       if(!info?.id) return;
       fetch(`${API_URL}/api/haccp/assets/${info.id}`).then(r=>r.json()).then(setAssets);
       
-      // --- MODIFICA QUI ---
-      // Scarichiamo 45 giorni invece di 7 per coprire tutto il mese corrente e parte del precedente
-      // Questo risolve il problema che "non vedevi" il dato salvato il 7 Gennaio
+      // --- MODIFICA FIX ORARIO ---
       const start = new Date(); 
       start.setDate(start.getDate() - 45); 
       const startIso = start.toISOString();
-      const endIso = new Date().toISOString();
+
+      // FIX: Chiediamo i dati fino a "DOMANI" per evitare che il fuso orario (+1h) 
+      // faccia sembrare i dati "nel futuro" e li nasconda.
+      const end = new Date();
+      end.setDate(end.getDate() + 2); // +2 giorni per sicurezza totale sui fusi orari
+      const endIso = end.toISOString();
 
       fetch(`${API_URL}/api/haccp/logs/${info.id}?start=${startIso}&end=${endIso}`)
         .then(r=>r.json())
