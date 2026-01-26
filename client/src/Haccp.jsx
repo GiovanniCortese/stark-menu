@@ -376,7 +376,7 @@ const executeDownload = (range) => {
                 <div className="login-icon-circle">
                     🛡️
                 </div>
-                <h2 className="login-title">Accesso Reparto</h2>
+                <h2 className="login-title">Accesso HACCP</h2>
                 <p className="login-subtitle">{info.ristorante}</p>
                 
                 <form onSubmit={handleLogin} className="login-form">
@@ -397,7 +397,7 @@ const executeDownload = (range) => {
                         {loadingLogin ? "Verifica in corso..." : "ENTRA"}
                     </button>
                 </form>
-                <div className="login-footer">Sistema Jarvis V50</div>
+                <div className="login-footer">Sistema Jarvis</div>
             </div>
 
             {/* --- IMPORTANTE: IL CSS DEVE ESSERE ANCHE QUI PER ESSERE VISTO --- */}
