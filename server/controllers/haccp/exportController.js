@@ -50,14 +50,8 @@ exports.exportLabels = async (req, res) => {
             doc.fontSize(14).text(`${titoloReport}: ${rangeName || 'Completo'}`, { align: 'center' });
             doc.moveDown();
             
-            // Centratura Tabella Produzione
-            const tableWidth = 750;
-            const pageWidth = doc.page.width; 
-            const tableX = (pageWidth - tableWidth) / 2;
-
             await doc.table({ headers, rows }, { 
-                width: tableWidth, 
-                x: tableX, 
+                width: 750, 
                 columnsSize: [70, 100, 250, 60, 100, 70, 80], 
                 prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8), 
                 prepareRow: () => doc.font("Helvetica").fontSize(8) 
@@ -92,17 +86,21 @@ exports.exportGeneric = async (req, res) => {
 
         // 1. GESTIONE SPECIALE: MATRICE TEMPERATURE (LAYOUT VERTICALE & FIX DATE)
         if (tipo === 'temperature_matrix') {
+            // FIX LOCALE: Recuperiamo anche il campo 'locale' dagli assets
             const assetsRes = await pool.query("SELECT id, nome, locale FROM haccp_assets WHERE ristorante_id = $1 AND tipo IN ('frigo','cella','vetrina','congelatore','abbattitore') ORDER BY nome", [ristorante_id]);
             const assets = assetsRes.rows;
 
+            // FIX TIMEZONE: Usiamo il database per filtrare ma poi la logica date la facciamo in JS
             let sqlLogs = `SELECT l.data_ora, l.asset_id, l.valore, l.operatore FROM haccp_logs l WHERE l.ristorante_id = $1 AND l.data_ora >= $2 AND l.data_ora <= $3`;
             const logsRes = await pool.query(sqlLogs, [ristorante_id, start, end]);
             const logs = logsRes.rows;
 
+            // FIX DATE 1: Parsing manuale per evitare il problema del fuso orario nel loop
             const [yearS, monthS, dayS] = start.split('-').map(Number);
             const [yearE, monthE, dayE] = end.split('-').map(Number);
 
             const days = [];
+            // Creiamo le date a MEZZOGIORNO (12:00) per evitare che 00:00 diventi 23:00 del giorno prima
             let curr = new Date(yearS, monthS - 1, dayS, 12, 0, 0); 
             const endDate = new Date(yearE, monthE - 1, dayE, 12, 0, 0);
 
@@ -111,6 +109,7 @@ exports.exportGeneric = async (req, res) => {
                 curr.setDate(curr.getDate() + 1);
             }
 
+            // Headers Tabella (Centrati)
             const tableHeaders = ["GIORNO", ...assets.map(a => a.nome.substring(0, 15).toUpperCase())];
             
             const tableRows = days.map(day => {
@@ -138,22 +137,25 @@ exports.exportGeneric = async (req, res) => {
                     res.send(pdfData);
                 });
 
+                // --- HEADER DISEGNATO ---
                 const pageWidth = 595.28; 
                 const margin = 20;
                 const contentWidth = pageWidth - (margin * 2);
                 const headerY = 20;
-                const headerH = 65; 
+                const headerH = 65; // Aumentato per spazio dati fiscali
                 
-                const xDiv1 = margin + (contentWidth * 0.35); 
+                const xDiv1 = margin + (contentWidth * 0.35); // Allargata colonna sinistra
                 const xDiv2 = margin + (contentWidth * 0.85);
 
                 doc.lineWidth(0.5);
 
-                // Box Header
+                // Box
                 doc.rect(margin, headerY, contentWidth, headerH).stroke(); 
                 doc.moveTo(xDiv1, headerY).lineTo(xDiv1, headerY + headerH).stroke(); 
                 doc.moveTo(xDiv2, headerY).lineTo(xDiv2, headerY + headerH).stroke(); 
 
+                // FIX 2: INTESTAZIONE DA DASHBOARD
+                // Usiamo Nome Azienda in Grassetto e Dati Fiscali sotto
                 const nomeAz = aziendaInfo.nome ? aziendaInfo.nome.toUpperCase() : "AZIENDA";
                 const datiFisc = aziendaInfo.dati_fiscali || "";
 
@@ -172,22 +174,27 @@ exports.exportGeneric = async (req, res) => {
                     ellipsis: true
                 });
                 
+                // Titolo Documento
                 doc.font("Helvetica").fontSize(10);
                 doc.text("SCHEDA DI ATTUAZIONE DEL", xDiv1, headerY + 15, { width: (xDiv2 - xDiv1), align: 'center' });
                 doc.font("Helvetica-Bold").fontSize(12);
                 doc.text("PIANO DI AUTOCONTROLLO", xDiv1, headerY + 30, { width: (xDiv2 - xDiv1), align: 'center' });
 
+                // Rev
                 doc.font("Helvetica").fontSize(9);
                 doc.text("Rev 00", xDiv2, headerY + 25, { width: (margin + contentWidth - xDiv2), align: 'center' });
 
-                doc.moveDown(5); 
+                // Spazio dopo header box (layout fisso per restare su UNA pagina)
+                doc.y = headerY + headerH + 18;
 
+                // FIX 3: CENTRATURA TITOLO "DOTAZIONI FRIGORIFERE"
                 doc.font("Helvetica-Bold").fontSize(12);
                 doc.text("DOTAZIONI FRIGORIFERE", margin, doc.y, { width: contentWidth, align: 'center' });
                 doc.moveDown(0.5);
 
+                // FIX 4: MESE E ANNO DALLE STRINGHE ORIGINALI
                 const mesi = ["GENNAIO","FEBBRAIO","MARZO","APRILE","MAGGIO","GIUGNO","LUGLIO","AGOSTO","SETTEMBRE","OTTOBRE","NOVEMBRE","DICEMBRE"];
-                const nomeMese = mesi[monthS - 1]; 
+                const nomeMese = mesi[monthS - 1]; // monthS va da 1 a 12
 
                 doc.font("Helvetica").fontSize(10);
                 const infoY = doc.y;
@@ -195,49 +202,60 @@ exports.exportGeneric = async (req, res) => {
                 doc.text(`MESE: ${nomeMese}`, margin, infoY);
                 doc.text(`ANNO: ${yearS}`, margin + 180, infoY);
 
+                // FIX LOCALE: Logica per determinare cosa scrivere
+                // Se tutti gli asset sono nello stesso locale, scrivilo. Se misti, scrivi "LOCALI VARI".
                 const localiUnici = [...new Set(assets.map(a => a.locale).filter(Boolean))];
                 const localeStr = localiUnici.length === 1 ? localiUnici[0].toUpperCase() : (localiUnici.length > 1 ? "LOCALI VARI" : "CUCINA");
                 
                 doc.text(`LOCALE: ${localeStr}`, margin + 300, infoY);
 
                 doc.moveDown(1);
+                // --- TABELLA VERTICALE (CENTRATA) ---
+                // Obiettivo: centrare SOLO la tabella (la matrice), senza spostare header/titoli/testi.
+                // Se la tabella "desiderata" entra nei margini, la manteniamo più stretta e centrata.
+                // Se non entra, occupa tutta la larghezza disponibile (e quindi resta con x=margin).
 
-                // --- TABELLA VERTICALE ---
                 const colGiornoWidth = 30;
-                const remainingWidth = contentWidth - colGiornoWidth;
-                const colAssetWidth = remainingWidth / assets.length;
 
-                // FIX: CONFIGURAZIONE CENTRATURA PERFETTA
-                const colsConfig = [];
-                // Colonna GIORNO (Centrata orizzontale e verticale + Header centrato)
-                colsConfig.push({ 
-                    width: colGiornoWidth, 
-                    align: 'center', 
-                    valign: 'center',
-                    headerAlign: 'center' 
-                }); 
-                
-                // Colonne ASSETS (Centrate orizzontale e verticale + Header centrato)
-                assets.forEach(() => {
-                    colsConfig.push({ 
-                        width: colAssetWidth, 
-                        align: 'center', 
-                        valign: 'center',
-                        headerAlign: 'center' 
-                    }); 
-                });
+                // Larghezza "ideale" per ogni colonna frigo (in punti PDF)
+                const desiredAssetColWidth = 70;
+
+                const maxTableWidth = contentWidth;
+                const desiredTableWidth = colGiornoWidth + (desiredAssetColWidth * Math.max(assets.length, 1));
+
+                const tableWidth = Math.min(desiredTableWidth, maxTableWidth);
+
+                // Se siamo riusciti a stare più stretti del massimo, centriamo la tabella.
+                const tableX = margin + Math.max(0, (maxTableWidth - tableWidth) / 2);
+
+                // Calcolo effettivo della colonna asset in base alla tableWidth scelta
+                const effectiveAssetColWidth = (tableWidth - colGiornoWidth) / Math.max(assets.length, 1);
+
+                // Colonne (testo centrato)
+                const colsConfig = [
+                    { width: colGiornoWidth, align: 'center' },
+                    ...assets.map(() => ({ width: effectiveAssetColWidth, align: 'center' }))
+                ];
 
                 const tableOptions = {
-                    width: contentWidth,
-                    x: margin,
-                    divider: { header: { disabled: false, width: 0.5, opacity: 1 }, horizontal: { disabled: false, width: 0.5, opacity: 0.5 } },
+                    width: tableWidth,
+                    x: tableX,
+                    // Riduciamo un filo padding/righe per stare sempre in UNA pagina
+                    padding: 3,
+                    minRowHeight: 12,
+                    divider: {
+                        header: { disabled: false, width: 0.5, opacity: 1 },
+                        horizontal: { disabled: false, width: 0.5, opacity: 0.5 }
+                    },
                     columns: colsConfig,
-                    prepareHeader: () => doc.font("Helvetica-Bold").fontSize(7), 
+                    prepareHeader: () => doc.font("Helvetica-Bold").fontSize(7),
                     prepareRow: (row, indexColumn, indexRow, rectRow, rectCell) => {
                         doc.rect(rectCell.x, rectCell.y, rectCell.width, rectCell.height).strokeColor('#888').stroke();
                         return doc.font("Helvetica").fontSize(8).fillColor('black');
                     }
                 };
+
+
 
                 await doc.table({ headers: tableHeaders, rows: tableRows }, tableOptions);
 
@@ -295,6 +313,7 @@ exports.exportGeneric = async (req, res) => {
             const r = await pool.query(sql, params);
             rows = r.rows.map(row => { 
                 const d = new Date(row.data_ora); 
+                // Fix fuso orario italiano
                 return [
                     d.toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' }), 
                     d.toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit', timeZone: 'Europe/Rome'}), 
@@ -348,7 +367,7 @@ exports.exportGeneric = async (req, res) => {
             rows = r.rows.map(row => [
                 String(row.stato ? row.stato.toUpperCase() : "ATTIVO"), 
                 String(row.nome || ''), 
-                String(row.locale || ''), 
+                String(row.locale || ''), // Aggiunto export locale
                 String(row.tipo || ''), 
                 String(row.marca || ''), 
                 String(row.serial_number || '-'), 
@@ -392,15 +411,8 @@ exports.exportGeneric = async (req, res) => {
             doc.moveDown(1);
             
             const table = { headers: headers, rows: rows };
-
-            // Centratura Liste Standard
-            const tableWidth = 500;
-            const pageWidth = doc.page.width;
-            const tableX = (pageWidth - tableWidth) / 2;
-
             await doc.table(table, { 
-                width: tableWidth, 
-                x: tableX, 
+                width: 500, 
                 prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8), 
                 prepareRow: () => doc.font("Helvetica").fontSize(8).fillColor('black') 
             });
@@ -408,6 +420,7 @@ exports.exportGeneric = async (req, res) => {
             return; 
         }
 
+        // EXCEL STANDARD
         const wb = xlsx.utils.book_new();
         const rowAzienda = [aziendaInfo.dati_fiscali || aziendaInfo.nome];
         const rowPeriodo = [`Periodo: ${rangeName || 'Tutto lo storico'}`];
