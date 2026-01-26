@@ -22,15 +22,7 @@ exports.exportLabels = async (req, res) => {
         const r = await pool.query(sql, params);
         
         const titoloReport = "REGISTRO PRODUZIONE";
-        
-        // MODIFICA: Headers come oggetti per forzare la centratura (Simile alla logica matrice)
-        const headersList = ["Data Prod.", "Prodotto", "Ingredienti", "Tipo", "Lotto", "Scadenza", "Operatore"];
-        const headers = headersList.map(h => ({
-            label: h,
-            align: 'center',      // Centra il contenuto della colonna
-            headerAlign: 'center' // Centra il titolo della colonna
-        }));
-
+        const headers = ["Data Prod.", "Prodotto", "Ingredienti", "Tipo", "Lotto", "Scadenza", "Operatore"];
         const rows = r.rows.map(l => [
             new Date(l.data_produzione).toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' }), 
             String(l.prodotto || ''), 
@@ -69,10 +61,8 @@ exports.exportLabels = async (req, res) => {
 
             doc.end();
         } else {
-            // Per Excel usiamo i testi semplici
-            const simpleHeaders = headers.map(h => h.label);
             const wb = xlsx.utils.book_new();
-            const ws = xlsx.utils.aoa_to_sheet([simpleHeaders, ...rows]);
+            const ws = xlsx.utils.aoa_to_sheet([headers, ...rows]);
             xlsx.utils.book_append_sheet(wb, ws, titoloReport);
 
             const buf = xlsx.write(wb, { bookType: 'xlsx', type: 'buffer' });
@@ -101,17 +91,16 @@ exports.exportGeneric = async (req, res) => {
             const assetsRes = await pool.query("SELECT id, nome, locale FROM haccp_assets WHERE ristorante_id = $1 AND tipo IN ('frigo','cella','vetrina','congelatore','abbattitore') ORDER BY nome", [ristorante_id]);
             const assets = assetsRes.rows;
 
-            // FIX TIMEZONE: Usiamo il database per filtrare ma poi la logica date la facciamo in JS
+            // FIX TIMEZONE
             let sqlLogs = `SELECT l.data_ora, l.asset_id, l.valore, l.operatore FROM haccp_logs l WHERE l.ristorante_id = $1 AND l.data_ora >= $2 AND l.data_ora <= $3`;
             const logsRes = await pool.query(sqlLogs, [ristorante_id, start, end]);
             const logs = logsRes.rows;
 
-            // FIX DATE 1: Parsing manuale per evitare il problema del fuso orario nel loop
+            // FIX DATE 1: Parsing manuale
             const [yearS, monthS, dayS] = start.split('-').map(Number);
             const [yearE, monthE, dayE] = end.split('-').map(Number);
 
             const days = [];
-            // Creiamo le date a MEZZOGIORNO (12:00) per evitare che 00:00 diventi 23:00 del giorno prima
             let curr = new Date(yearS, monthS - 1, dayS, 12, 0, 0); 
             const endDate = new Date(yearE, monthE - 1, dayE, 12, 0, 0);
 
@@ -160,12 +149,12 @@ exports.exportGeneric = async (req, res) => {
 
                 doc.lineWidth(0.5);
 
-                // Box
+                // Box Intestazione
                 doc.rect(margin, headerY, contentWidth, headerH).stroke(); 
                 doc.moveTo(xDiv1, headerY).lineTo(xDiv1, headerY + headerH).stroke(); 
                 doc.moveTo(xDiv2, headerY).lineTo(xDiv2, headerY + headerH).stroke(); 
 
-                // INTESTAZIONE
+                // FIX 2: INTESTAZIONE DA DASHBOARD
                 const nomeAz = aziendaInfo.nome ? aziendaInfo.nome.toUpperCase() : "AZIENDA";
                 const datiFisc = aziendaInfo.dati_fiscali || "";
 
@@ -184,24 +173,22 @@ exports.exportGeneric = async (req, res) => {
                     ellipsis: true
                 });
                 
-                // Titolo Documento
                 doc.font("Helvetica").fontSize(10);
                 doc.text("SCHEDA DI ATTUAZIONE DEL", xDiv1, headerY + 15, { width: (xDiv2 - xDiv1), align: 'center' });
                 doc.font("Helvetica-Bold").fontSize(12);
                 doc.text("PIANO DI AUTOCONTROLLO", xDiv1, headerY + 30, { width: (xDiv2 - xDiv1), align: 'center' });
 
-                // Rev
                 doc.font("Helvetica").fontSize(9);
                 doc.text("Rev 00", xDiv2, headerY + 25, { width: (margin + contentWidth - xDiv2), align: 'center' });
 
-                doc.moveDown(5); 
+                doc.moveDown(5); // Spazio dopo header box
 
-                // Titolo "DOTAZIONI FRIGORIFERE"
+                // FIX 3: CENTRATURA TITOLO "DOTAZIONI FRIGORIFERE"
                 doc.font("Helvetica-Bold").fontSize(12);
                 doc.text("DOTAZIONI FRIGORIFERE", margin, doc.y, { width: contentWidth, align: 'center' });
                 doc.moveDown(0.5);
 
-                // MESE E ANNO
+                // FIX 4: INFO MESE E LOCALE
                 const mesi = ["GENNAIO","FEBBRAIO","MARZO","APRILE","MAGGIO","GIUGNO","LUGLIO","AGOSTO","SETTEMBRE","OTTOBRE","NOVEMBRE","DICEMBRE"];
                 const nomeMese = mesi[monthS - 1]; 
 
@@ -211,7 +198,6 @@ exports.exportGeneric = async (req, res) => {
                 doc.text(`MESE: ${nomeMese}`, margin, infoY);
                 doc.text(`ANNO: ${yearS}`, margin + 180, infoY);
 
-                // LOCALE
                 const localiUnici = [...new Set(assets.map(a => a.locale).filter(Boolean))];
                 const localeStr = localiUnici.length === 1 ? localiUnici[0].toUpperCase() : (localiUnici.length > 1 ? "LOCALI VARI" : "CUCINA");
                 
@@ -223,6 +209,7 @@ exports.exportGeneric = async (req, res) => {
                 const colGiornoWidth = 55; 
                 const remainingWidth = contentWidth - colGiornoWidth;
 
+                // Calcolo larghezze
                 const baseAssetW = Math.floor(remainingWidth / assets.length);
                 const remainder = remainingWidth - (baseAssetW * assets.length);
 
@@ -232,8 +219,8 @@ exports.exportGeneric = async (req, res) => {
                 const tableWidth = colWidths.reduce((a, b) => a + b, 0);
                 const tableX = margin + Math.round((contentWidth - tableWidth) / 2);
 
-                const header = 18;
-                const rowH = 18;
+                const header = 18; // Altezza riga header tabella
+                const rowH = 18;   // Altezza riga dati
 
                 doc.lineWidth(0.5).strokeColor('#888').fillColor('black');
 
@@ -245,18 +232,19 @@ exports.exportGeneric = async (req, res) => {
 
                     for (let i = 0; i < colWidths.length; i++) {
                         const w = colWidths[i];
-                        const h = isHeader ? headerH : rowH;
+                        // CORREZIONE: Usiamo 'header' (18) per l'intestazione tabella, non 'headerH' (65)
+                        const h = isHeader ? header : rowH;
 
                         // bordo cella
                         doc.rect(x, y, w, h).stroke();
 
-                        // testo centrato
+                        // TESTO CENTRATO (Orizzontale + Verticale)
                         const txt = cells[i] == null ? "" : String(cells[i]);
                         const yText = y + (h - fontSize) / 2 - 1;
 
                         doc.text(txt, x + 2, yText, {
                             width: w - 4,
-                            align: "center",
+                            align: "center", // <--- Qui avviene la centratura orizzontale
                             lineBreak: false,
                             ellipsis: true
                         });
@@ -271,16 +259,14 @@ exports.exportGeneric = async (req, res) => {
                 drawRow(tableHeaders, tableStartY, true);
 
                 // body
-                let y = tableStartY + headerH;
+                let y = tableStartY + header; // Si riparte da dopo l'header (18)
                 for (const r of tableRows) {
                     drawRow(r, y, false);
                     y += rowH;
                 }
 
-                doc.y = y + 6;
-
                 // PIÈ DI PAGINA
-                doc.moveDown(0.5); 
+                doc.y = y + 10;
                 doc.font("Helvetica-Bold").fontSize(8).text("Condizioni:", { underline: true });
                 doc.font("Helvetica").fontSize(7).lineGap(1) 
                    .text("Assenza di promiscuità e di merce non protetta")
@@ -342,14 +328,7 @@ exports.exportGeneric = async (req, res) => {
         sql += ` ORDER BY data_ora ASC`;
         const r = await pool.query(sql, params);
 
-        // MODIFICA: Headers come oggetti per forzare la centratura
-        const headersList = ["Data", "Ora", "Voce", "Valore", "Operatore"];
-        const headers = headersList.map(h => ({
-            label: h,
-            align: 'center',      // Centra il contenuto della colonna
-            headerAlign: 'center' // Centra il titolo della colonna
-        }));
-
+        const headers = ["Data", "Ora", "Voce", "Valore", "Operatore"];
         const rows = r.rows.map(l => [
             new Date(l.data_ora).toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' }),
             new Date(l.data_ora).toLocaleTimeString('it-IT', { timeZone: 'Europe/Rome' }).slice(0, 5),
@@ -385,10 +364,8 @@ exports.exportGeneric = async (req, res) => {
 
             doc.end();
         } else {
-            // Per Excel usiamo i testi semplici
-            const simpleHeaders = headers.map(h => h.label);
             const wb = xlsx.utils.book_new();
-            const ws = xlsx.utils.aoa_to_sheet([simpleHeaders, ...rows]);
+            const ws = xlsx.utils.aoa_to_sheet([headers, ...rows]);
             xlsx.utils.book_append_sheet(wb, ws, tipo);
 
             const buf = xlsx.write(wb, { bookType: 'xlsx', type: 'buffer' });
