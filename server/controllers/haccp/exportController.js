@@ -210,24 +210,29 @@ exports.exportGeneric = async (req, res) => {
 
                 doc.moveDown(1);
 
-                // --- TABELLA VERTICALE (CENTRATA) ---
-                // Calcolo larghezza colonne
-                const colGiornoWidth = 30;
+                // --- TABELLA VERTICALE (CENTRATA E STRETCHATA) ---
+                // MODIFICA: Calcolo dinamico larghezze per occupare tutta la pagina
+                const colGiornoWidth = 40; 
                 const remainingWidth = contentWidth - colGiornoWidth;
-                const colAssetWidth = remainingWidth / assets.length;
+                const colAssetWidth = Math.floor(remainingWidth / assets.length); // Math.floor evita problemi di render
 
-                // FIX 5: CENTRATURA CELLE
+                // Array per forzare columnsSize
+                const colWidths = [colGiornoWidth];
+                assets.forEach(() => colWidths.push(colAssetWidth));
+
+                // Configurazione allineamento
                 const colsConfig = [];
-                colsConfig.push({ width: colGiornoWidth, align: 'center' }); // Colonna giorno
+                colsConfig.push({ width: colGiornoWidth, align: 'center', headerAlign: 'center' }); 
                 assets.forEach(() => {
-                    colsConfig.push({ width: colAssetWidth, align: 'center' }); // Colonne asset
+                    colsConfig.push({ width: colAssetWidth, align: 'center', headerAlign: 'center' }); 
                 });
 
                 const tableOptions = {
                     width: contentWidth,
                     x: margin,
-                    divider: { header: { disabled: false, width: 0.5, opacity: 1 }, horizontal: { disabled: false, width: 0.5, opacity: 0.5 } },
+                    columnsSize: colWidths, // <--- FORZA LE LARGHEZZE
                     columns: colsConfig,
+                    divider: { header: { disabled: false, width: 0.5, opacity: 1 }, horizontal: { disabled: false, width: 0.5, opacity: 0.5 } },
                     prepareHeader: () => doc.font("Helvetica-Bold").fontSize(7), 
                     prepareRow: (row, indexColumn, indexRow, rectRow, rectCell) => {
                         doc.rect(rectCell.x, rectCell.y, rectCell.width, rectCell.height).strokeColor('#888').stroke();
