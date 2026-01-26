@@ -104,10 +104,10 @@ const [assetForm, setAssetForm] = useState({
       if(!info?.id) return;
       fetch(`${API_URL}/api/haccp/assets/${info.id}`).then(r=>r.json()).then(setAssets);
       
-      // --- MODIFICA 1: RANGE DATE ---
-      // Impostiamo l'inizio al 1° Gennaio dell'anno corrente per vedere tutto lo storico annuale
-      const start = new Date(new Date().getFullYear(), 0, 1); 
-      const startIso = start.toISOString().split('T')[0]; // Format YYYY-MM-DD
+      // --- MODIFICA STORICO COMPLETO ---
+      // Impostiamo l'inizio al 2020 per essere sicuri di prendere anche dati vecchi (es. Ottobre 2024)
+      // in caso di modifiche retroattive o consultazione storico.
+      const startIso = '2020-01-01'; 
 
       // Impostiamo la fine a un paio di giorni nel futuro per sicurezza timezone
       const end = new Date();
