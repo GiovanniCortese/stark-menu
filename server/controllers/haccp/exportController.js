@@ -50,14 +50,14 @@ exports.exportLabels = async (req, res) => {
             doc.fontSize(14).text(`${titoloReport}: ${rangeName || 'Completo'}`, { align: 'center' });
             doc.moveDown();
             
-            // --- MODIFICA CENTRATURA TABELLA ---
+            // Centratura Tabella Produzione
             const tableWidth = 750;
             const pageWidth = doc.page.width; 
             const tableX = (pageWidth - tableWidth) / 2;
 
             await doc.table({ headers, rows }, { 
                 width: tableWidth, 
-                x: tableX, // Centra la tabella orizzontalmente
+                x: tableX, 
                 columnsSize: [70, 100, 250, 60, 100, 70, 80], 
                 prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8), 
                 prepareRow: () => doc.font("Helvetica").fontSize(8) 
@@ -92,21 +92,17 @@ exports.exportGeneric = async (req, res) => {
 
         // 1. GESTIONE SPECIALE: MATRICE TEMPERATURE (LAYOUT VERTICALE & FIX DATE)
         if (tipo === 'temperature_matrix') {
-            // FIX LOCALE: Recuperiamo anche il campo 'locale' dagli assets
             const assetsRes = await pool.query("SELECT id, nome, locale FROM haccp_assets WHERE ristorante_id = $1 AND tipo IN ('frigo','cella','vetrina','congelatore','abbattitore') ORDER BY nome", [ristorante_id]);
             const assets = assetsRes.rows;
 
-            // FIX TIMEZONE: Usiamo il database per filtrare ma poi la logica date la facciamo in JS
             let sqlLogs = `SELECT l.data_ora, l.asset_id, l.valore, l.operatore FROM haccp_logs l WHERE l.ristorante_id = $1 AND l.data_ora >= $2 AND l.data_ora <= $3`;
             const logsRes = await pool.query(sqlLogs, [ristorante_id, start, end]);
             const logs = logsRes.rows;
 
-            // FIX DATE 1: Parsing manuale per evitare il problema del fuso orario nel loop
             const [yearS, monthS, dayS] = start.split('-').map(Number);
             const [yearE, monthE, dayE] = end.split('-').map(Number);
 
             const days = [];
-            // Creiamo le date a MEZZOGIORNO (12:00) per evitare che 00:00 diventi 23:00 del giorno prima
             let curr = new Date(yearS, monthS - 1, dayS, 12, 0, 0); 
             const endDate = new Date(yearE, monthE - 1, dayE, 12, 0, 0);
 
@@ -115,7 +111,6 @@ exports.exportGeneric = async (req, res) => {
                 curr.setDate(curr.getDate() + 1);
             }
 
-            // Headers Tabella (Centrati)
             const tableHeaders = ["GIORNO", ...assets.map(a => a.nome.substring(0, 15).toUpperCase())];
             
             const tableRows = days.map(day => {
@@ -143,25 +138,22 @@ exports.exportGeneric = async (req, res) => {
                     res.send(pdfData);
                 });
 
-                // --- HEADER DISEGNATO ---
                 const pageWidth = 595.28; 
                 const margin = 20;
                 const contentWidth = pageWidth - (margin * 2);
                 const headerY = 20;
-                const headerH = 65; // Aumentato per spazio dati fiscali
+                const headerH = 65; 
                 
-                const xDiv1 = margin + (contentWidth * 0.35); // Allargata colonna sinistra
+                const xDiv1 = margin + (contentWidth * 0.35); 
                 const xDiv2 = margin + (contentWidth * 0.85);
 
                 doc.lineWidth(0.5);
 
-                // Box
+                // Box Header
                 doc.rect(margin, headerY, contentWidth, headerH).stroke(); 
                 doc.moveTo(xDiv1, headerY).lineTo(xDiv1, headerY + headerH).stroke(); 
                 doc.moveTo(xDiv2, headerY).lineTo(xDiv2, headerY + headerH).stroke(); 
 
-                // FIX 2: INTESTAZIONE DA DASHBOARD
-                // Usiamo Nome Azienda in Grassetto e Dati Fiscali sotto
                 const nomeAz = aziendaInfo.nome ? aziendaInfo.nome.toUpperCase() : "AZIENDA";
                 const datiFisc = aziendaInfo.dati_fiscali || "";
 
@@ -180,26 +172,22 @@ exports.exportGeneric = async (req, res) => {
                     ellipsis: true
                 });
                 
-                // Titolo Documento
                 doc.font("Helvetica").fontSize(10);
                 doc.text("SCHEDA DI ATTUAZIONE DEL", xDiv1, headerY + 15, { width: (xDiv2 - xDiv1), align: 'center' });
                 doc.font("Helvetica-Bold").fontSize(12);
                 doc.text("PIANO DI AUTOCONTROLLO", xDiv1, headerY + 30, { width: (xDiv2 - xDiv1), align: 'center' });
 
-                // Rev
                 doc.font("Helvetica").fontSize(9);
                 doc.text("Rev 00", xDiv2, headerY + 25, { width: (margin + contentWidth - xDiv2), align: 'center' });
 
-                doc.moveDown(5); // Spazio dopo header box
+                doc.moveDown(5); 
 
-                // FIX 3: CENTRATURA TITOLO "DOTAZIONI FRIGORIFERE"
                 doc.font("Helvetica-Bold").fontSize(12);
                 doc.text("DOTAZIONI FRIGORIFERE", margin, doc.y, { width: contentWidth, align: 'center' });
                 doc.moveDown(0.5);
 
-                // FIX 4: MESE E ANNO DALLE STRINGHE ORIGINALI
                 const mesi = ["GENNAIO","FEBBRAIO","MARZO","APRILE","MAGGIO","GIUGNO","LUGLIO","AGOSTO","SETTEMBRE","OTTOBRE","NOVEMBRE","DICEMBRE"];
-                const nomeMese = mesi[monthS - 1]; // monthS va da 1 a 12
+                const nomeMese = mesi[monthS - 1]; 
 
                 doc.font("Helvetica").fontSize(10);
                 const infoY = doc.y;
@@ -207,8 +195,6 @@ exports.exportGeneric = async (req, res) => {
                 doc.text(`MESE: ${nomeMese}`, margin, infoY);
                 doc.text(`ANNO: ${yearS}`, margin + 180, infoY);
 
-                // FIX LOCALE: Logica per determinare cosa scrivere
-                // Se tutti gli asset sono nello stesso locale, scrivilo. Se misti, scrivi "LOCALI VARI".
                 const localiUnici = [...new Set(assets.map(a => a.locale).filter(Boolean))];
                 const localeStr = localiUnici.length === 1 ? localiUnici[0].toUpperCase() : (localiUnici.length > 1 ? "LOCALI VARI" : "CUCINA");
                 
@@ -216,17 +202,29 @@ exports.exportGeneric = async (req, res) => {
 
                 doc.moveDown(1);
 
-                // --- TABELLA VERTICALE (CENTRATA) ---
-                // Calcolo larghezza colonne
+                // --- TABELLA VERTICALE ---
                 const colGiornoWidth = 30;
                 const remainingWidth = contentWidth - colGiornoWidth;
                 const colAssetWidth = remainingWidth / assets.length;
 
-                // FIX 5: CENTRATURA CELLE
+                // FIX: CONFIGURAZIONE CENTRATURA PERFETTA
                 const colsConfig = [];
-                colsConfig.push({ width: colGiornoWidth, align: 'center' }); // Colonna giorno
+                // Colonna GIORNO (Centrata orizzontale e verticale + Header centrato)
+                colsConfig.push({ 
+                    width: colGiornoWidth, 
+                    align: 'center', 
+                    valign: 'center',
+                    headerAlign: 'center' 
+                }); 
+                
+                // Colonne ASSETS (Centrate orizzontale e verticale + Header centrato)
                 assets.forEach(() => {
-                    colsConfig.push({ width: colAssetWidth, align: 'center' }); // Colonne asset
+                    colsConfig.push({ 
+                        width: colAssetWidth, 
+                        align: 'center', 
+                        valign: 'center',
+                        headerAlign: 'center' 
+                    }); 
                 });
 
                 const tableOptions = {
@@ -297,7 +295,6 @@ exports.exportGeneric = async (req, res) => {
             const r = await pool.query(sql, params);
             rows = r.rows.map(row => { 
                 const d = new Date(row.data_ora); 
-                // Fix fuso orario italiano
                 return [
                     d.toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' }), 
                     d.toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit', timeZone: 'Europe/Rome'}), 
@@ -351,7 +348,7 @@ exports.exportGeneric = async (req, res) => {
             rows = r.rows.map(row => [
                 String(row.stato ? row.stato.toUpperCase() : "ATTIVO"), 
                 String(row.nome || ''), 
-                String(row.locale || ''), // Aggiunto export locale
+                String(row.locale || ''), 
                 String(row.tipo || ''), 
                 String(row.marca || ''), 
                 String(row.serial_number || '-'), 
@@ -396,14 +393,14 @@ exports.exportGeneric = async (req, res) => {
             
             const table = { headers: headers, rows: rows };
 
-            // --- MODIFICA CENTRATURA TABELLA (Liste Standard) ---
+            // Centratura Liste Standard
             const tableWidth = 500;
             const pageWidth = doc.page.width;
             const tableX = (pageWidth - tableWidth) / 2;
 
             await doc.table(table, { 
                 width: tableWidth, 
-                x: tableX, // Centra la tabella orizzontalmente
+                x: tableX, 
                 prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8), 
                 prepareRow: () => doc.font("Helvetica").fontSize(8).fillColor('black') 
             });
@@ -411,7 +408,6 @@ exports.exportGeneric = async (req, res) => {
             return; 
         }
 
-        // EXCEL STANDARD
         const wb = xlsx.utils.book_new();
         const rowAzienda = [aziendaInfo.dati_fiscali || aziendaInfo.nome];
         const rowPeriodo = [`Periodo: ${rangeName || 'Tutto lo storico'}`];
