@@ -298,7 +298,9 @@ const [assetForm, setAssetForm] = useState({
   const openDownloadModal = (type) => { setDownloadType(type); setShowDownloadModal(true); setSelectedMonth(''); };
   
 const executeDownload = (range) => { 
-      let start = new Date(), end = new Date(), rangeName = "Tutto"; 
+      let start = new Date();
+      let end = new Date();
+      let rangeName = "Tutto"; 
       
       // Funzione Helper per ottenere YYYY-MM-DD locale (evita problemi di fuso orario)
       const toLocalISO = (d) => {
@@ -307,22 +309,41 @@ const executeDownload = (range) => {
       };
 
       if(range === 'week') { 
-          start.setDate(end.getDate() - 7); rangeName="Ultima Settimana"; 
+          // Ultima settimana
+          start.setDate(end.getDate() - 7); 
+          rangeName="Ultima Settimana"; 
       } else if(range === 'month') { 
-          start.setMonth(end.getMonth() - 1); rangeName="Ultimo Mese"; 
+          // Ultimo mese solare (30 giorni fa)
+          start.setMonth(end.getMonth() - 1); 
+          rangeName="Ultimo Mese"; 
       } else if (range === 'custom-month') { 
+          // Mese specifico selezionato dal calendario
           if(!selectedMonth) return alert("Seleziona un mese!"); 
           const [y, m] = selectedMonth.split('-'); 
           start = new Date(y, m - 1, 1);     // Primo del mese
           end = new Date(y, m, 0);           // Ultimo del mese (giorno 0 del mese successivo)
           rangeName = `Mese di ${start.toLocaleString('it-IT', { month: 'long', year: 'numeric' })}`; 
       } else if(range === 'all') { 
-          start = new Date('2020-01-01'); rangeName="Storico Completo"; 
+          start = new Date('2020-01-01'); 
+          rangeName="Storico Completo"; 
       } 
       
-      // USIAMO LE DATE LOCALI FIXATE
-      const query = `?start=${toLocalISO(start)}&end=${toLocalISO(end)}&rangeName=${rangeName}&format=${downloadFormat}`;
+      // Assicuriamoci che end sia oggi a fine giornata se non specificato diversamente
+      if (range !== 'custom-month') {
+          end = new Date();
+      }
+
+      // Costruiamo la query string con date PULITE (YYYY-MM-DD)
+      const sDate = toLocalISO(start);
+      const eDate = toLocalISO(end);
+
+      // Debug (opzionale): console.log("Scaricando:", sDate, eDate);
+
+      const query = `?start=${sDate}&end=${eDate}&rangeName=${rangeName}&format=${downloadFormat}`;
+      
+      // Apre in una nuova scheda
       window.open(`${API_URL}/api/haccp/export/${downloadType}/${info.id}${query}`, '_blank'); 
+      
       setShowDownloadModal(false); 
   };
   

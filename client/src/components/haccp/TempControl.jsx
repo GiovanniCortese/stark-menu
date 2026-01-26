@@ -15,6 +15,30 @@ const TempControl = ({
   
   const [currentMonthDate, setCurrentMonthDate] = useState(new Date());
 
+  // Helper per gestire la modifica manuale (converte virgola in punto)
+  const handleInputChange = (text, assetId, currentData) => {
+      // Sostituisce virgola con punto per i calcoli, ma permette di scriverla
+      let val = text.replace(',', '.');
+      setTempInput({...tempInput, [assetId]: {...currentData, val: val}});
+  };
+
+  // Helper per i bottoni freccia (Stepper)
+  const adjustTemp = (assetId, delta, currentData) => {
+      let currentVal = parseFloat(currentData.val);
+      if (isNaN(currentVal)) currentVal = 0;
+      
+      // Arrotonda a 1 decimale per evitare errori tipo 2.30000004
+      const newVal = Math.round((currentVal + delta) * 10) / 10;
+      
+      setTempInput({
+          ...tempInput, 
+          [assetId]: {
+              ...currentData, 
+              val: String(newVal)
+          }
+      });
+  };
+
   const handleEditFromTable = (asset, dateStr, existingLog) => {
       const targetDate = new Date(dateStr);
       targetDate.setHours(12, 0, 0, 0); 
@@ -75,10 +99,9 @@ const TempControl = ({
                 }
 
                 if (todayLog && !isInputActive && !isRetroactiveEdit) {
-                    // --- FIX FUSO ORARIO QUI SOTTO ---
                     const timeStr = new Date(todayLog.data_ora).toLocaleTimeString('it-IT', {
                         hour:'2-digit', minute:'2-digit', 
-                        timeZone: 'Europe/Rome' // <--- FORZA ORARIO ITALIANO
+                        timeZone: 'Europe/Rome'
                     });
                     
                     return (
@@ -102,7 +125,7 @@ const TempControl = ({
                          <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:15}}>
                               <div>
                                   <h3 style={{margin:0, fontSize:'16px'}}>{asset.nome}</h3>
-                                  <span style={{fontSize:'11px', color:'#999'}}>{asset.marca}</span>
+                                  <div style={{fontSize:12, color:'#2980b9', fontWeight:'bold'}}>📍 {asset.locale || 'N/D'}</div>
                               </div>
                               <span style={{background:'#eee', padding:'2px 6px', borderRadius:4, fontSize:10, whiteSpace:'nowrap'}}>
                                   {asset.range_min}° / {asset.range_max}°
@@ -115,26 +138,48 @@ const TempControl = ({
                             </div>
                          )}
                          
-                         <div className="temp-card-input-area">
-                           <input 
-    type="number" 
-    inputMode="decimal" // <--- AGGIUNGI QUESTO: Forza la tastiera completa con numeri e simboli
-    step="any"          // <--- MODIFICA QUESTO: Meglio di 0.1 per accettare tutto
-    placeholder="°C" 
-    value={currentData.val || ''} 
-    onChange={e => setTempInput({...tempInput, [asset.id]: {...currentData, val: e.target.value}})} 
-    className="temp-input"
-    autoFocus={isRetroactiveEdit} 
-/>
-                            <div className="temp-actions">
+                         <div className="temp-card-input-area" style={{display:'flex', gap:5}}>
+                            
+                            {/* BOTTONE GIÙ */}
+                            <button 
+                                onClick={() => adjustTemp(asset.id, -1, currentData)} 
+                                style={{background:'#e74c3c', color:'white', border:'none', borderRadius:5, width:40, fontSize:18, cursor:'pointer'}}
+                            >
+                                ▼
+                            </button>
+
+                            {/* INPUT MODIFICATO PER SUPPORTARE VIRGOLA E MENO */}
+                            <input 
+                                type="text" 
+                                inputMode="decimal" // Forza tastierino numerico con punto/virgola
+                                placeholder="°C" 
+                                value={currentData.val || ''} 
+                                onChange={e => handleInputChange(e.target.value, asset.id, currentData)} 
+                                className="temp-input"
+                                autoFocus={isRetroactiveEdit}
+                                style={{textAlign:'center', fontSize:22, fontWeight:'bold', flex:1}}
+                            />
+
+                            {/* BOTTONE SU */}
+                            <button 
+                                onClick={() => adjustTemp(asset.id, +1, currentData)} 
+                                style={{background:'#27ae60', color:'white', border:'none', borderRadius:5, width:40, fontSize:18, cursor:'pointer'}}
+                            >
+                                ▲
+                            </button>
+
+                         </div>
+                         
+                         {/* BOTTONI AZIONE SOTTO */}
+                         <div className="temp-actions" style={{marginTop:10}}>
                                 <button onClick={()=>registraTemperatura(asset, true)} className="btn-action off">OFF</button>
                                 <label className={`btn-action photo ${currentData.photo ? 'has-photo' : ''}`}>
                                     <span>📷</span>
                                     <input type="file" accept="image/*" onChange={(e)=>handleLogPhoto(e, asset.id)} style={{display:'none'}} />
                                 </label>
-                                <button onClick={()=>registraTemperatura(asset, false)} className="btn-action save">SALVA</button>
-                            </div>
+                                <button onClick={()=>registraTemperatura(asset, false)} className="btn-action save" style={{flex:2}}>SALVA</button>
                          </div>
+
                          {isInputActive && <button onClick={()=>{const n={...tempInput}; delete n[asset.id]; setTempInput(n);}} className="btn-cancel-edit">ANNULLA</button>}
                     </div>
                 );
