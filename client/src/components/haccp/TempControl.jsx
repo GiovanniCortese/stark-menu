@@ -15,26 +15,30 @@ const TempControl = ({
   
   const [currentMonthDate, setCurrentMonthDate] = useState(new Date());
 
-  // Helper per gestire la modifica manuale (converte virgola in punto)
+  // Gestione Input Manuale (Permette virgola)
   const handleInputChange = (text, assetId, currentData) => {
-      // Sostituisce virgola con punto per i calcoli, ma permette di scriverla
-      let val = text.replace(',', '.');
-      setTempInput({...tempInput, [assetId]: {...currentData, val: val}});
+      // Manteniamo la virgola visiva, ma prepariamo il valore
+      setTempInput({...tempInput, [assetId]: {...currentData, val: text}});
   };
 
-  // Helper per i bottoni freccia (Stepper)
+  // Tasti SU / GIU (0.1 alla volta)
   const adjustTemp = (assetId, delta, currentData) => {
-      let currentVal = parseFloat(currentData.val);
+      // Sostituisce eventuale virgola con punto per calcolare
+      let rawVal = currentData.val ? String(currentData.val).replace(',', '.') : '0';
+      let currentVal = parseFloat(rawVal);
       if (isNaN(currentVal)) currentVal = 0;
       
-      // Arrotonda a 1 decimale per evitare errori tipo 2.30000004
-      const newVal = Math.round((currentVal + delta) * 10) / 10;
+      // Calcolo preciso per evitare 3.300000004
+      const newVal = (currentVal + delta).toFixed(1);
       
+      // Riconverte punto in virgola per la visualizzazione
+      const displayVal = String(newVal).replace('.', ',');
+
       setTempInput({
           ...tempInput, 
           [assetId]: {
               ...currentData, 
-              val: String(newVal)
+              val: displayVal
           }
       });
   };
@@ -46,7 +50,7 @@ const TempControl = ({
       setTempInput(prev => ({
           ...prev,
           [asset.id]: {
-              val: existingLog ? existingLog.valore : '',
+              val: existingLog ? String(existingLog.valore).replace('.', ',') : '',
               customDate: targetDate.toISOString(), 
               photo: existingLog ? existingLog.foto_prova_url : ''
           }
@@ -104,11 +108,17 @@ const TempControl = ({
                         timeZone: 'Europe/Rome'
                     });
                     
+                    // Mostra virgola invece di punto nel log salvato
+                    const valMostrato = todayLog.valore === 'OFF' ? 'SPENTO' : String(todayLog.valore).replace('.', ',') + '°C';
+
                     return (
                         <div key={asset.id} id={`asset-card-${asset.id}`} className="temp-card done">
                             <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                                <h3 style={{margin:0, color:'#27ae60'}}>✅ {asset.nome}</h3>
-                                <span style={{fontSize:'24px', fontWeight:'bold'}}>{todayLog.valore === 'OFF' ? 'SPENTO' : todayLog.valore + '°C'}</span>
+                                <div>
+                                    <h3 style={{margin:0, color:'#27ae60'}}>✅ {asset.nome}</h3>
+                                    <div style={{fontSize:11, color:'#666'}}>{asset.locale || ''}</div>
+                                </div>
+                                <span style={{fontSize:'24px', fontWeight:'bold'}}>{valMostrato}</span>
                             </div>
                             <div style={{fontSize:'12px', color:'#555', marginTop:5}}>
                                 Registrato alle {timeStr}
@@ -138,20 +148,23 @@ const TempControl = ({
                             </div>
                          )}
                          
-                         <div className="temp-card-input-area" style={{display:'flex', gap:5}}>
+                         {/* ZONA INPUT CON BOTTONI + E - */}
+                         <div className="temp-card-input-area" style={{display:'flex', gap:5, alignItems:'center'}}>
                             
-                            {/* BOTTONE GIÙ */}
+                            {/* BOTTONE MENO (DECIMALE) */}
                             <button 
-                                onClick={() => adjustTemp(asset.id, -1, currentData)} 
-                                style={{background:'#e74c3c', color:'white', border:'none', borderRadius:5, width:40, fontSize:18, cursor:'pointer'}}
+                                onClick={() => adjustTemp(asset.id, -0.1, currentData)} 
+                                style={{
+                                    background:'#e74c3c', color:'white', border:'none', 
+                                    borderRadius:5, width:50, height:45, fontSize:20, cursor:'pointer'
+                                }}
                             >
-                                ▼
+                                -
                             </button>
 
-                            {/* INPUT MODIFICATO PER SUPPORTARE VIRGOLA E MENO */}
                             <input 
                                 type="text" 
-                                inputMode="decimal" // Forza tastierino numerico con punto/virgola
+                                inputMode="decimal" 
                                 placeholder="°C" 
                                 value={currentData.val || ''} 
                                 onChange={e => handleInputChange(e.target.value, asset.id, currentData)} 
@@ -160,17 +173,19 @@ const TempControl = ({
                                 style={{textAlign:'center', fontSize:22, fontWeight:'bold', flex:1}}
                             />
 
-                            {/* BOTTONE SU */}
+                            {/* BOTTONE PIU (DECIMALE) */}
                             <button 
-                                onClick={() => adjustTemp(asset.id, +1, currentData)} 
-                                style={{background:'#27ae60', color:'white', border:'none', borderRadius:5, width:40, fontSize:18, cursor:'pointer'}}
+                                onClick={() => adjustTemp(asset.id, +0.1, currentData)} 
+                                style={{
+                                    background:'#27ae60', color:'white', border:'none', 
+                                    borderRadius:5, width:50, height:45, fontSize:20, cursor:'pointer'
+                                }}
                             >
-                                ▲
+                                +
                             </button>
 
                          </div>
                          
-                         {/* BOTTONI AZIONE SOTTO */}
                          <div className="temp-actions" style={{marginTop:10}}>
                                 <button onClick={()=>registraTemperatura(asset, true)} className="btn-action off">OFF</button>
                                 <label className={`btn-action photo ${currentData.photo ? 'has-photo' : ''}`}>

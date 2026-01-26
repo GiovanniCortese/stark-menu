@@ -214,14 +214,20 @@ const [assetForm, setAssetForm] = useState({
   const handleLogPhoto = async (e, assetId) => { const f = e.target.files[0]; if(!f) return; setUploadingLog(assetId); try { const url = await uploadFile(f); setTempInput(prev => ({...prev, [assetId]: { ...(prev[assetId] || {}), photo: url }})); } finally { setUploadingLog(null); } };
   
 // --- FIX 1: REGISTRAZIONE TEMPERATURA (AGGIORNATA PER TABELLA) ---
-  const registraTemperatura = async (asset, isSpento = false) => { 
+ const registraTemperatura = async (asset, isSpento = false) => { 
       let val = 'OFF', conforme = true, azione = ""; 
       
       const currentInput = tempInput[asset.id] || {};
       const dataOraEffettiva = currentInput.customDate || null;
 
+      // Cerchiamo se esiste GIÀ un log per oggi (per decidere se fare AGGIORNA o CREA)
+      const logEsistente = getTodayLog(asset.id);
+
       if (!isSpento) { 
-          val = parseFloat(currentInput.val); 
+          // Sostituiamo la virgola con il punto per i calcoli
+          let cleanVal = currentInput.val ? currentInput.val.toString().replace(',', '.') : '';
+          val = parseFloat(cleanVal); 
+          
           if(isNaN(val) && currentInput.val !== '0') return alert("Inserisci un numero valido"); 
           
           const realMin = Math.min(parseFloat(asset.range_min), parseFloat(asset.range_max)); 
@@ -238,8 +244,21 @@ const [assetForm, setAssetForm] = useState({
       } 
       
       try {
-          await fetch(`${API_URL}/api/haccp/logs`, { 
-              method: 'POST', 
+          // LOGICA INTELLIGENTE: SE ESISTE GIÀ, FACCIAMO PUT (MODIFICA), ALTRIMENTI POST (CREA)
+          // Se stiamo facendo una modifica retroattiva (dal calendario/tabella), usiamo sempre POST o PUT specifico se avevamo l'ID,
+          // ma per la gestione odierna semplice:
+          
+          let url = `${API_URL}/api/haccp/logs`;
+          let method = 'POST';
+
+          // Se c'è già un log per oggi E non stiamo forzando una data vecchia specifica diversa da oggi
+          if (logEsistente && !dataOraEffettiva) {
+              url = `${API_URL}/api/haccp/logs/${logEsistente.id}`;
+              method = 'PUT';
+          }
+
+          await fetch(url, { 
+              method: method, 
               headers:{'Content-Type':'application/json'}, 
               body: JSON.stringify({ 
                   ristorante_id: info.id, 
@@ -250,19 +269,12 @@ const [assetForm, setAssetForm] = useState({
                   conformita: conforme, 
                   azione_correttiva: azione, 
                   foto_prova_url: currentInput.photo || '',
-                  data_ora: dataOraEffettiva 
+                  data_ora: dataOraEffettiva // Se null, il backend mette NOW()
               }) 
           }); 
 
-          // 1. Rimuovi l'input dalla card (reset grafico)
           setTempInput(prev => { const n = {...prev}; delete n[asset.id]; return n; }); 
-          
-          // 2. Ricarica TUTTI i dati per aggiornare sia le card che la tabella sotto
-          // Se la tabella non si aggiorna, l'utente pensa di non aver salvato
           await ricaricaDati(); 
-          
-          // Feedback visivo opzionale
-          // alert("Salvato!"); // Se vuoi essere sicuro, scommenta questa riga
           
       } catch (error) {
           alert("Errore di connessione: " + error.message);
