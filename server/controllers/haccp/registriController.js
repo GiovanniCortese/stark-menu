@@ -1,19 +1,22 @@
+// server/controllers/haccp/registriController.js
 const pool = require('../../config/db');
 const { getItalyDateComponents } = require('../../utils/time'); 
 
 // 1. ASSETS
 exports.getAssets = async (req, res) => { try { const r = await pool.query("SELECT * FROM haccp_assets WHERE ristorante_id = $1 ORDER BY tipo, nome", [req.params.ristorante_id]); res.json(r.rows); } catch(e) { res.status(500).json({error:"Err"}); } };
+
 exports.createAsset = async (req, res) => { 
     try { 
-        const { ristorante_id, nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url, stato, locale } = req.body; // <--- AGGIUNTO locale
+        const { ristorante_id, nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url, stato, locale } = req.body; 
         await pool.query(
             `INSERT INTO haccp_assets (ristorante_id, nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url, stato, locale) 
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, 
-            [ristorante_id, nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url, stato || 'attivo', locale || 'Cucina'] // <--- AGGIUNTO parametro $12
+            [ristorante_id, nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url, stato || 'attivo', locale || 'Cucina'] 
         ); 
         res.json({success:true}); 
     } catch(e) { res.status(500).json({error:e.message}); } 
 };
+
 exports.updateAsset = async (req, res) => { 
     try { 
         const { nome, tipo, range_min, range_max, marca, modello, serial_number, foto_url, etichetta_url, stato, locale } = req.body; 
@@ -26,19 +29,49 @@ exports.updateAsset = async (req, res) => {
 };
 exports.deleteAsset = async (req, res) => { try { await pool.query("DELETE FROM haccp_assets WHERE id=$1", [req.params.id]); res.json({success:true}); } catch(e){ res.status(500).json({error:"Err"}); } };
 
-// 2. LOGS (TEMPERATURE) - FIX DATE
-exports.getLogs = async (req, res) => { try { const { start, end } = req.query; let query = `SELECT l.*, a.nome as nome_asset FROM haccp_logs l LEFT JOIN haccp_assets a ON l.asset_id = a.id WHERE l.ristorante_id = $1`; const params = [req.params.ristorante_id]; if (start && end) { query += ` AND l.data_ora >= $2 AND l.data_ora <= $3 ORDER BY l.data_ora ASC`; params.push(start, end); } else { query += ` AND l.data_ora >= NOW() - INTERVAL '7 days' ORDER BY l.data_ora DESC`; } const r = await pool.query(query, params); res.json(r.rows); } catch(e) { res.status(500).json({error:"Err"}); } };
+// 2. LOGS (TEMPERATURE) - FIX TIMEZONE ITALIA
+exports.getLogs = async (req, res) => { 
+    try { 
+        const { start, end } = req.query; 
+        
+        // MODIFICA QUI: Selezioniamo i dati, ma filtriamo convertendo l'orario UTC in orario ROMA
+        let query = `
+            SELECT l.*, a.nome as nome_asset 
+            FROM haccp_logs l 
+            LEFT JOIN haccp_assets a ON l.asset_id = a.id 
+            WHERE l.ristorante_id = $1
+        `;
+        
+        const params = [req.params.ristorante_id]; 
+        
+        if (start && end) { 
+            // FIX CRUCIALE: Convertiamo l'orario del DB in Europe/Rome PRIMA di confrontarlo con start/end
+            // Questo assicura che le 23:00 UTC (00:00 Italia) vengano contate come il giorno "nuovo"
+            query += ` 
+                AND (l.data_ora AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Rome') >= $2::timestamp 
+                AND (l.data_ora AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Rome') <= $3::timestamp 
+                ORDER BY l.data_ora ASC
+            `; 
+            params.push(start, end); 
+        } else { 
+            query += ` AND l.data_ora >= NOW() - INTERVAL '7 days' ORDER BY l.data_ora DESC`; 
+        } 
+        
+        const r = await pool.query(query, params); 
+        res.json(r.rows); 
+    } catch(e) { 
+        console.error("Errore getLogs", e);
+        res.status(500).json({error:"Err"}); 
+    } 
+};
 
 exports.createLog = async (req, res) => { 
     try { 
-        // FIX: Accetta data_ora dal body. Se null, usa default DB (NOW())
         const { ristorante_id, asset_id, operatore, tipo_log, valore, conformita, azione_correttiva, foto_prova_url, data_ora } = req.body; 
         
         if (data_ora) {
-            // Inserimento retroattivo (es. cliccando sulla cella vuota del calendario)
             await pool.query("INSERT INTO haccp_logs (ristorante_id, asset_id, operatore, tipo_log, valore, conformita, azione_correttiva, foto_prova_url, data_ora) VALUES ($1,$2,$3,$4,$5,$6,$7,$8, $9)", [ristorante_id, asset_id, operatore, tipo_log, valore, conformita, azione_correttiva, foto_prova_url, data_ora]); 
         } else {
-            // Inserimento live (pulsante normale)
             await pool.query("INSERT INTO haccp_logs (ristorante_id, asset_id, operatore, tipo_log, valore, conformita, azione_correttiva, foto_prova_url) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)", [ristorante_id, asset_id, operatore, tipo_log, valore, conformita, azione_correttiva, foto_prova_url]); 
         }
         res.json({success:true}); 
