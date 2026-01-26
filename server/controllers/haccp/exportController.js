@@ -87,21 +87,19 @@ exports.exportGeneric = async (req, res) => {
 
         // 1. GESTIONE SPECIALE: MATRICE TEMPERATURE (LAYOUT VERTICALE & FIX DATE)
         if (tipo === 'temperature_matrix') {
-            // FIX LOCALE: Recuperiamo anche il campo 'locale' dagli assets
             const assetsRes = await pool.query("SELECT id, nome, locale FROM haccp_assets WHERE ristorante_id = $1 AND tipo IN ('frigo','cella','vetrina','congelatore','abbattitore') ORDER BY nome", [ristorante_id]);
             const assets = assetsRes.rows;
 
-            // FIX TIMEZONE: Usiamo il database per filtrare ma poi la logica date la facciamo in JS
             let sqlLogs = `SELECT l.data_ora, l.asset_id, l.valore, l.operatore FROM haccp_logs l WHERE l.ristorante_id = $1 AND l.data_ora >= $2 AND l.data_ora <= $3`;
             const logsRes = await pool.query(sqlLogs, [ristorante_id, start, end]);
             const logs = logsRes.rows;
 
-            // FIX DATE 1: Parsing manuale per evitare il problema del fuso orario nel loop
+            // FIX DATE: Parsing manuale
             const [yearS, monthS, dayS] = start.split('-').map(Number);
             const [yearE, monthE, dayE] = end.split('-').map(Number);
 
             const days = [];
-            // Creiamo le date a MEZZOGIORNO (12:00) per evitare che 00:00 diventi 23:00 del giorno prima
+            // Creiamo le date a MEZZOGIORNO (12:00) per evitare problemi di timezone
             let curr = new Date(yearS, monthS - 1, dayS, 12, 0, 0); 
             const endDate = new Date(yearE, monthE - 1, dayE, 12, 0, 0);
 
@@ -127,7 +125,8 @@ exports.exportGeneric = async (req, res) => {
             });
 
             if (format === 'pdf') {
-                const doc = new PDFDocument({ margin: 20, size: 'A4', layout: 'portrait' });
+                // Impostiamo margini stretti per far stare tutto in una pagina
+                const doc = new PDFDocument({ margin: 20, bottom: 10, size: 'A4', layout: 'portrait' });
                 
                 let buffers = [];
                 doc.on('data', buffers.push.bind(buffers));
@@ -143,20 +142,19 @@ exports.exportGeneric = async (req, res) => {
                 const margin = 20;
                 const contentWidth = pageWidth - (margin * 2);
                 const headerY = 20;
-                const headerH = 65; // Aumentato per spazio dati fiscali
+                const headerBoxH = 65; // Altezza del box intestazione fiscale
                 
-                const xDiv1 = margin + (contentWidth * 0.35); // Allargata colonna sinistra
+                const xDiv1 = margin + (contentWidth * 0.35);
                 const xDiv2 = margin + (contentWidth * 0.85);
 
                 doc.lineWidth(0.5);
 
-                // Box
-                doc.rect(margin, headerY, contentWidth, headerH).stroke(); 
-                doc.moveTo(xDiv1, headerY).lineTo(xDiv1, headerY + headerH).stroke(); 
-                doc.moveTo(xDiv2, headerY).lineTo(xDiv2, headerY + headerH).stroke(); 
+                // Box Intestazione
+                doc.rect(margin, headerY, contentWidth, headerBoxH).stroke(); 
+                doc.moveTo(xDiv1, headerY).lineTo(xDiv1, headerY + headerBoxH).stroke(); 
+                doc.moveTo(xDiv2, headerY).lineTo(xDiv2, headerY + headerBoxH).stroke(); 
 
-                // FIX 2: INTESTAZIONE DA DASHBOARD
-                // Usiamo Nome Azienda in Grassetto e Dati Fiscali sotto
+                // Contenuto Box
                 const nomeAz = aziendaInfo.nome ? aziendaInfo.nome.toUpperCase() : "AZIENDA";
                 const datiFisc = aziendaInfo.dati_fiscali || "";
 
@@ -171,7 +169,7 @@ exports.exportGeneric = async (req, res) => {
                 doc.text(datiFisc, margin + 5, headerY + 25, { 
                     width: (xDiv1 - margin) - 10, 
                     align: 'center',
-                    height: headerH - 30,
+                    height: headerBoxH - 30,
                     ellipsis: true
                 });
                 
@@ -185,16 +183,17 @@ exports.exportGeneric = async (req, res) => {
                 doc.font("Helvetica").fontSize(9);
                 doc.text("Rev 00", xDiv2, headerY + 25, { width: (margin + contentWidth - xDiv2), align: 'center' });
 
-                doc.moveDown(5); // Spazio dopo header box
+                // MODIFICA 1: Ridotto lo spazio dopo l'header per recuperare spazio verticale
+                doc.moveDown(1.5); // Era moveDown(5)
 
-                // FIX 3: CENTRATURA TITOLO "DOTAZIONI FRIGORIFERE"
+                // Titolo Sezione
                 doc.font("Helvetica-Bold").fontSize(12);
                 doc.text("DOTAZIONI FRIGORIFERE", margin, doc.y, { width: contentWidth, align: 'center' });
                 doc.moveDown(0.5);
 
-                // FIX 4: MESE E ANNO DALLE STRINGHE ORIGINALI
+                // Info Mese/Anno/Locale
                 const mesi = ["GENNAIO","FEBBRAIO","MARZO","APRILE","MAGGIO","GIUGNO","LUGLIO","AGOSTO","SETTEMBRE","OTTOBRE","NOVEMBRE","DICEMBRE"];
-                const nomeMese = mesi[monthS - 1]; // monthS va da 1 a 12
+                const nomeMese = mesi[monthS - 1]; 
 
                 doc.font("Helvetica").fontSize(10);
                 const infoY = doc.y;
@@ -202,8 +201,6 @@ exports.exportGeneric = async (req, res) => {
                 doc.text(`MESE: ${nomeMese}`, margin, infoY);
                 doc.text(`ANNO: ${yearS}`, margin + 180, infoY);
 
-                // FIX LOCALE: Logica per determinare cosa scrivere
-                // Se tutti gli asset sono nello stesso locale, scrivilo. Se misti, scrivi "LOCALI VARI".
                 const localiUnici = [...new Set(assets.map(a => a.locale).filter(Boolean))];
                 const localeStr = localiUnici.length === 1 ? localiUnici[0].toUpperCase() : (localiUnici.length > 1 ? "LOCALI VARI" : "CUCINA");
                 
@@ -211,11 +208,10 @@ exports.exportGeneric = async (req, res) => {
 
                 doc.moveDown(1);
 
-                // --- TABELLA VERTICALE (CENTRATA + TESTO CENTRATO COME UI) ---
-                const colGiornoWidth = 55; // più largo per centrare bene "GIORNO"
+                // --- TABELLA VERTICALE ---
+                const colGiornoWidth = 55;
                 const remainingWidth = contentWidth - colGiornoWidth;
 
-                // larghezze colonne asset con resto sull'ultima colonna (usa tutta la width, no buchi)
                 const baseAssetW = Math.floor(remainingWidth / assets.length);
                 const remainder = remainingWidth - (baseAssetW * assets.length);
 
@@ -225,8 +221,10 @@ exports.exportGeneric = async (req, res) => {
                 const tableWidth = colWidths.reduce((a, b) => a + b, 0);
                 const tableX = margin + Math.round((contentWidth - tableWidth) / 2);
 
-                const header = 18;
-                const rowH = 18;
+                // MODIFICA 2: Definite altezze separate per Header Tabella e Righe
+                // MODIFICA 3: Ridotta altezza riga a 16 per far stare 31 giorni comodamente
+                const tableHeaderH = 22; 
+                const rowH = 16; 
 
                 doc.lineWidth(0.5).strokeColor('#888').fillColor('black');
 
@@ -236,16 +234,18 @@ exports.exportGeneric = async (req, res) => {
 
                     doc.font(isHeader ? "Helvetica-Bold" : "Helvetica").fontSize(fontSize);
 
+                    // MODIFICA 4: Usa l'altezza corretta (header piccolo per la tabella, non headerBoxH)
+                    const currentH = isHeader ? tableHeaderH : rowH;
+
                     for (let i = 0; i < colWidths.length; i++) {
                         const w = colWidths[i];
-                        const h = isHeader ? headerH : rowH;
-
+                        
                         // bordo cella
-                        doc.rect(x, y, w, h).stroke();
+                        doc.rect(x, y, w, currentH).stroke();
 
-                        // testo centrato (orizzontale + quasi centrato verticalmente)
+                        // testo centrato
                         const txt = cells[i] == null ? "" : String(cells[i]);
-                        const yText = y + (h - fontSize) / 2 - 1;
+                        const yText = y + (currentH - fontSize) / 2 - 1;
 
                         doc.text(txt, x + 2, yText, {
                             width: w - 4,
@@ -260,21 +260,23 @@ exports.exportGeneric = async (req, res) => {
 
                 const tableStartY = doc.y;
 
-                // header
+                // Disegna Header Tabella
                 drawRow(tableHeaders, tableStartY, true);
 
-                // body
-                let y = tableStartY + headerH;
+                // Disegna Body Tabella
+                let y = tableStartY + tableHeaderH;
                 for (const r of tableRows) {
                     drawRow(r, y, false);
                     y += rowH;
                 }
 
-                // porta avanti il cursore per il blocco “Condizioni…”
-                doc.y = y + 6;
+                // Sposta cursore dopo la tabella
+                doc.y = y + 8;
 
-                // PIÈ DI PAGINA
-                doc.moveDown(0.5); 
+                // --- PIÈ DI PAGINA ---
+                // Verifica spazio: se siamo troppo in basso, il pdfkit andrà a nuova pagina da solo, 
+                // ma con le modifiche sopra (rowH=16 e moveDown ridotto) dovrebbe stare tutto in pagina 1.
+                
                 doc.font("Helvetica-Bold").fontSize(8).text("Condizioni:", { underline: true });
                 doc.font("Helvetica").fontSize(7).lineGap(1) 
                    .text("Assenza di promiscuità e di merce non protetta")
@@ -294,7 +296,7 @@ exports.exportGeneric = async (req, res) => {
                 doc.end();
 
             } else {
-                // EXCEL
+                // EXCEL (Invariato)
                 const wb = xlsx.utils.book_new();
                 const sheetData = [
                     [aziendaInfo.nome, "SCHEDA DI ATTUAZIONE PIANO AUTOCONTROLLO", "", "Rev 00"],
