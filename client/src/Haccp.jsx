@@ -365,8 +365,22 @@ const executeDownload = (range) => {
   const handlePrintQR = (asset) => { setShowQRModal(asset); };
   const printOnlyQR = () => { setPrintMode('qr'); setTimeout(() => { window.print(); setPrintMode(null); }, 500); };
 
-  // --- RENDER 1: CARICAMENTO ---
-  if(!info) return <div style={{padding:20}}>Caricamento...</div>;
+// --- RENDER 1: CARICAMENTO (CENTRATO) ---
+  if(!info) return (
+      <div style={{
+          display: 'flex', 
+          justifyContent: 'center', 
+          alignItems: 'center', 
+          height: '100vh', 
+          width: '100vw',
+          background: '#ecf0f1', // Stesso colore di sfondo dell'app
+          color: '#7f8c8d',
+          fontSize: '1.2rem',
+          fontWeight: 'bold'
+      }}>
+          ⏳ Caricamento...
+      </div>
+  );
 
 // --- RENDER 2: LOGIN (CON CSS INCLUSO) ---
   if(!isAuthorized) {
