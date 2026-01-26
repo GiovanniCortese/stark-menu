@@ -44,35 +44,36 @@ exports.exportLabels = async (req, res) => {
                 res.send(pdfData);
             });
 
-            doc.fontSize(16).text(String(azienda.nome), { align: 'center' });
-            doc.fontSize(10).text(String(azienda.dati_fiscali || ""), { align: 'center' });
-            doc.moveDown();
-            doc.fontSize(14).text(`${titoloReport}: ${rangeName || 'Completo'}`, { align: 'center' });
-            doc.moveDown();
-            
-            await doc.table({ headers, rows }, { 
-                width: 750, 
-                columnsSize: [70, 100, 250, 60, 100, 70, 80], 
-                prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8), 
-                prepareRow: () => doc.font("Helvetica").fontSize(8) 
-            });
+            doc.font("Helvetica-Bold").fontSize(14).text(titoloReport, { align: 'center' });
+            doc.moveDown(0.5);
+            doc.font("Helvetica").fontSize(9).text(azienda?.nome || '', { align: 'center' });
+            doc.moveDown(1);
+
+            await doc.table(
+                { headers, rows },
+                {
+                    width: 760,
+                    prepareHeader: () => doc.font("Helvetica-Bold").fontSize(9),
+                    prepareRow: () => doc.font("Helvetica").fontSize(8),
+                    columnsSize: [70, 140, 200, 90, 70, 70, 110],
+                }
+            );
+
             doc.end();
         } else {
             const wb = xlsx.utils.book_new();
-            const rowAzienda = [azienda.dati_fiscali || azienda.nome];
-            const rowPeriodo = [`Periodo: ${rangeName || 'Tutto lo storico'}`];
-            const rowTitolo = [titoloReport];
-            const rowEmpty = [""];
-            const finalData = [rowAzienda, rowPeriodo, rowTitolo, rowEmpty, headers, ...rows];
-            const ws = xlsx.utils.aoa_to_sheet(finalData);
-            if(!ws['!merges']) ws['!merges'] = [];
-            ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } });
-            xlsx.utils.book_append_sheet(wb, ws, "Produzione");
-            const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
-            res.setHeader('Content-Disposition', `attachment; filename="produzione.xlsx"`);
-            res.send(buffer);
+            const ws = xlsx.utils.aoa_to_sheet([headers, ...rows]);
+            xlsx.utils.book_append_sheet(wb, ws, titoloReport);
+
+            const buf = xlsx.write(wb, { bookType: 'xlsx', type: 'buffer' });
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', `attachment; filename="produzione_${rangeName || 'export'}.xlsx"`);
+            res.send(buf);
         }
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: err.message });
+    }
 };
 
 // --- EXPORT GENERICO ---
@@ -84,19 +85,23 @@ exports.exportGeneric = async (req, res) => {
         const ristRes = await pool.query("SELECT nome, dati_fiscali FROM ristoranti WHERE id = $1", [ristorante_id]);
         const aziendaInfo = ristRes.rows[0];
 
-        // 1. GESTIONE SPECIALE: MATRICE TEMPERATURE
+        // 1. GESTIONE SPECIALE: MATRICE TEMPERATURE (LAYOUT VERTICALE & FIX DATE)
         if (tipo === 'temperature_matrix') {
+            // FIX LOCALE: Recuperiamo anche il campo 'locale' dagli assets
             const assetsRes = await pool.query("SELECT id, nome, locale FROM haccp_assets WHERE ristorante_id = $1 AND tipo IN ('frigo','cella','vetrina','congelatore','abbattitore') ORDER BY nome", [ristorante_id]);
             const assets = assetsRes.rows;
 
+            // FIX TIMEZONE: Usiamo il database per filtrare ma poi la logica date la facciamo in JS
             let sqlLogs = `SELECT l.data_ora, l.asset_id, l.valore, l.operatore FROM haccp_logs l WHERE l.ristorante_id = $1 AND l.data_ora >= $2 AND l.data_ora <= $3`;
             const logsRes = await pool.query(sqlLogs, [ristorante_id, start, end]);
             const logs = logsRes.rows;
 
+            // FIX DATE 1: Parsing manuale per evitare il problema del fuso orario nel loop
             const [yearS, monthS, dayS] = start.split('-').map(Number);
             const [yearE, monthE, dayE] = end.split('-').map(Number);
 
             const days = [];
+            // Creiamo le date a MEZZOGIORNO (12:00) per evitare che 00:00 diventi 23:00 del giorno prima
             let curr = new Date(yearS, monthS - 1, dayS, 12, 0, 0); 
             const endDate = new Date(yearE, monthE - 1, dayE, 12, 0, 0);
 
@@ -105,6 +110,7 @@ exports.exportGeneric = async (req, res) => {
                 curr.setDate(curr.getDate() + 1);
             }
 
+            // Headers Tabella (Centrati)
             const tableHeaders = ["GIORNO", ...assets.map(a => a.nome.substring(0, 15).toUpperCase())];
             
             const tableRows = days.map(day => {
@@ -132,22 +138,25 @@ exports.exportGeneric = async (req, res) => {
                     res.send(pdfData);
                 });
 
+                // --- HEADER DISEGNATO ---
                 const pageWidth = 595.28; 
                 const margin = 20;
                 const contentWidth = pageWidth - (margin * 2);
                 const headerY = 20;
-                const headerH = 65;
+                const headerH = 65; // Aumentato per spazio dati fiscali
                 
-                const xDiv1 = margin + (contentWidth * 0.35);
+                const xDiv1 = margin + (contentWidth * 0.35); // Allargata colonna sinistra
                 const xDiv2 = margin + (contentWidth * 0.85);
 
                 doc.lineWidth(0.5);
 
-                // Box Header
+                // Box
                 doc.rect(margin, headerY, contentWidth, headerH).stroke(); 
                 doc.moveTo(xDiv1, headerY).lineTo(xDiv1, headerY + headerH).stroke(); 
                 doc.moveTo(xDiv2, headerY).lineTo(xDiv2, headerY + headerH).stroke(); 
 
+                // FIX 2: INTESTAZIONE DA DASHBOARD
+                // Usiamo Nome Azienda in Grassetto e Dati Fiscali sotto
                 const nomeAz = aziendaInfo.nome ? aziendaInfo.nome.toUpperCase() : "AZIENDA";
                 const datiFisc = aziendaInfo.dati_fiscali || "";
 
@@ -166,22 +175,26 @@ exports.exportGeneric = async (req, res) => {
                     ellipsis: true
                 });
                 
+                // Titolo Documento
                 doc.font("Helvetica").fontSize(10);
                 doc.text("SCHEDA DI ATTUAZIONE DEL", xDiv1, headerY + 15, { width: (xDiv2 - xDiv1), align: 'center' });
                 doc.font("Helvetica-Bold").fontSize(12);
                 doc.text("PIANO DI AUTOCONTROLLO", xDiv1, headerY + 30, { width: (xDiv2 - xDiv1), align: 'center' });
 
+                // Rev
                 doc.font("Helvetica").fontSize(9);
                 doc.text("Rev 00", xDiv2, headerY + 25, { width: (margin + contentWidth - xDiv2), align: 'center' });
 
-                doc.moveDown(5); 
+                doc.moveDown(5); // Spazio dopo header box
 
+                // FIX 3: CENTRATURA TITOLO "DOTAZIONI FRIGORIFERE"
                 doc.font("Helvetica-Bold").fontSize(12);
                 doc.text("DOTAZIONI FRIGORIFERE", margin, doc.y, { width: contentWidth, align: 'center' });
                 doc.moveDown(0.5);
 
+                // FIX 4: MESE E ANNO DALLE STRINGHE ORIGINALI
                 const mesi = ["GENNAIO","FEBBRAIO","MARZO","APRILE","MAGGIO","GIUGNO","LUGLIO","AGOSTO","SETTEMBRE","OTTOBRE","NOVEMBRE","DICEMBRE"];
-                const nomeMese = mesi[monthS - 1]; 
+                const nomeMese = mesi[monthS - 1]; // monthS va da 1 a 12
 
                 doc.font("Helvetica").fontSize(10);
                 const infoY = doc.y;
@@ -189,6 +202,8 @@ exports.exportGeneric = async (req, res) => {
                 doc.text(`MESE: ${nomeMese}`, margin, infoY);
                 doc.text(`ANNO: ${yearS}`, margin + 180, infoY);
 
+                // FIX LOCALE: Logica per determinare cosa scrivere
+                // Se tutti gli asset sono nello stesso locale, scrivilo. Se misti, scrivi "LOCALI VARI".
                 const localiUnici = [...new Set(assets.map(a => a.locale).filter(Boolean))];
                 const localeStr = localiUnici.length === 1 ? localiUnici[0].toUpperCase() : (localiUnici.length > 1 ? "LOCALI VARI" : "CUCINA");
                 
@@ -196,48 +211,67 @@ exports.exportGeneric = async (req, res) => {
 
                 doc.moveDown(1);
 
-                // --- TABELLA VERTICALE (CENTRATA E STRETCHATA) ---
-                
-                // 1. Calcolo larghezze
-                const colGiornoWidth = 40; 
+                // --- TABELLA VERTICALE (CENTRATA + TESTO CENTRATO COME UI) ---
+                const colGiornoWidth = 55; // più largo per centrare bene "GIORNO"
                 const remainingWidth = contentWidth - colGiornoWidth;
-                const colAssetWidth = Math.floor(remainingWidth / assets.length); 
 
-                // 2. Costruzione CONFIGURAZIONE COLONNE (Unica fonte di verità)
-                const colsConfig = [];
-                
-                // Prima colonna (Giorno)
-                colsConfig.push({ 
-                    width: colGiornoWidth, 
-                    align: 'center', 
-                    valign: 'center',
-                    headerAlign: 'center' 
-                }); 
-                
-                // Altre colonne (Macchine)
-                assets.forEach(() => {
-                    colsConfig.push({ 
-                        width: colAssetWidth, 
-                        align: 'center', 
-                        valign: 'center',
-                        headerAlign: 'center' 
-                    }); 
-                });
+                // larghezze colonne asset con resto sull'ultima colonna (usa tutta la width, no buchi)
+                const baseAssetW = Math.floor(remainingWidth / assets.length);
+                const remainder = remainingWidth - (baseAssetW * assets.length);
 
-                const tableOptions = {
-                    width: contentWidth,
-                    x: margin,
-                    // IMPORTANTE: Rimosso columnsSize per non sovrascrivere "colsConfig"
-                    columns: colsConfig, 
-                    divider: { header: { disabled: false, width: 0.5, opacity: 1 }, horizontal: { disabled: false, width: 0.5, opacity: 0.5 } },
-                    prepareHeader: () => doc.font("Helvetica-Bold").fontSize(7), 
-                    prepareRow: (row, indexColumn, indexRow, rectRow, rectCell) => {
-                        doc.rect(rectCell.x, rectCell.y, rectCell.width, rectCell.height).strokeColor('#888').stroke();
-                        return doc.font("Helvetica").fontSize(8).fillColor('black');
+                const assetWidths = assets.map((_, i) => baseAssetW + (i === assets.length - 1 ? remainder : 0));
+                const colWidths = [colGiornoWidth, ...assetWidths];
+
+                const tableWidth = colWidths.reduce((a, b) => a + b, 0);
+                const tableX = margin + Math.round((contentWidth - tableWidth) / 2);
+
+                const header = 18;
+                const rowH = 18;
+
+                doc.lineWidth(0.5).strokeColor('#888').fillColor('black');
+
+                function drawRow(cells, y, isHeader = false) {
+                    let x = tableX;
+                    const fontSize = isHeader ? 7 : 8;
+
+                    doc.font(isHeader ? "Helvetica-Bold" : "Helvetica").fontSize(fontSize);
+
+                    for (let i = 0; i < colWidths.length; i++) {
+                        const w = colWidths[i];
+                        const h = isHeader ? headerH : rowH;
+
+                        // bordo cella
+                        doc.rect(x, y, w, h).stroke();
+
+                        // testo centrato (orizzontale + quasi centrato verticalmente)
+                        const txt = cells[i] == null ? "" : String(cells[i]);
+                        const yText = y + (h - fontSize) / 2 - 1;
+
+                        doc.text(txt, x + 2, yText, {
+                            width: w - 4,
+                            align: "center",
+                            lineBreak: false,
+                            ellipsis: true
+                        });
+
+                        x += w;
                     }
-                };
+                }
 
-                await doc.table({ headers: tableHeaders, rows: tableRows }, tableOptions);
+                const tableStartY = doc.y;
+
+                // header
+                drawRow(tableHeaders, tableStartY, true);
+
+                // body
+                let y = tableStartY + headerH;
+                for (const r of tableRows) {
+                    drawRow(r, y, false);
+                    y += rowH;
+                }
+
+                // porta avanti il cursore per il blocco “Condizioni…”
+                doc.y = y + 6;
 
                 // PIÈ DI PAGINA
                 doc.moveDown(0.5); 
@@ -268,160 +302,87 @@ exports.exportGeneric = async (req, res) => {
                     [`MESE: ${new Date(start).toLocaleString('it-IT',{month:'long'})}`, `ANNO: ${new Date(start).getFullYear()}`],
                     [""],
                     tableHeaders,
-                    ...tableRows
+                    ...tableRows,
+                    [""],
+                    ["Condizioni:"],
+                    ["Assenza di promiscuità e di merce non protetta"],
+                    ["Assenza segni di sporco visibile, macchie, untuosità al tatto sulle parti a contatto e non con gli alimenti,"],
+                    ["Assenza di odori sgradevoli o anomali,"],
+                    ["Assenza di prodotti con caratteristiche organolettiche (odore, colore, consistenza) anomali."],
+                    [""],
+                    ["C: Conforme ai limiti sopra indicati", "NC: Non conforme ai limiti sopra indicati"],
+                    [""],
+                    ["Firma RHACCP:"]
                 ];
                 const ws = xlsx.utils.aoa_to_sheet(sheetData);
-                xlsx.utils.book_append_sheet(wb, ws, "Registro");
-                const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
-                res.setHeader('Content-Disposition', `attachment; filename="registro_temperature.xlsx"`);
-                res.send(buffer);
+                xlsx.utils.book_append_sheet(wb, ws, "Temperature");
+
+                const buf = xlsx.write(wb, { bookType: 'xlsx', type: 'buffer' });
+                res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+                res.setHeader('Content-Disposition', `attachment; filename="registro_temperature_${rangeName || 'export'}.xlsx"`);
+                res.send(buf);
             }
+
             return;
         }
 
-        // 2. GESTIONE STANDARD (Liste semplici)
-        let headers = [], rows = [], sheetName = "Export", titoloReport = "REPORT";
-        
-        if (tipo === 'temperature') {
-            sheetName = "Temperature";
-            titoloReport = "REGISTRO TEMPERATURE (LISTA)";
-            headers = ["Data", "Ora", "Macchina", "Temp", "Esito", "Az. Correttiva", "Op."];
-            let sql = `SELECT l.data_ora, a.nome as asset, l.valore, l.conformita, l.azione_correttiva, l.operatore FROM haccp_logs l JOIN haccp_assets a ON l.asset_id = a.id WHERE l.ristorante_id = $1`;
-            const params = [ristorante_id];
-            if(start && end) { sql += ` AND l.data_ora >= $2 AND l.data_ora <= $3`; params.push(start, end); }
-            sql += ` ORDER BY l.data_ora ASC`; 
-            const r = await pool.query(sql, params);
-            rows = r.rows.map(row => { 
-                const d = new Date(row.data_ora); 
-                return [
-                    d.toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' }), 
-                    d.toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit', timeZone: 'Europe/Rome'}), 
-                    String(row.asset || ''), 
-                    String(row.valore === 'OFF' ? 'SPENTO' : `${row.valore}°C`), 
-                    row.conformita ? "OK" : "NO", 
-                    String(row.azione_correttiva || ""), 
-                    String(row.operatore || "")
-                ]; 
-            });
-
-        } else if (tipo === 'merci') { 
-            sheetName = "Registro Acquisti";
-            titoloReport = "CONTABILITÀ MAGAZZINO & ACQUISTI";
-            headers = ["Data", "Fornitore", "Prodotto", "Qta", "Unitario €", "Imponibile €", "IVA %", "Totale IVA €", "Totale Lordo €", "Num. Doc", "Note"];
-            
-            let sql = `SELECT * FROM haccp_merci WHERE ristorante_id = $1`;
-            const params = [ristorante_id];
-            if(start && end) { sql += ` AND data_ricezione >= $2 AND data_ricezione <= $3`; params.push(start, end); }
-            sql += ` ORDER BY data_ricezione ASC`; 
-            
-            const r = await pool.query(sql, params);
-            rows = r.rows.map(row => {
-                const qta = parseFloat(row.quantita)||0;
-                const unit = parseFloat(row.prezzo_unitario)||0;
-                const imponibile = parseFloat(row.prezzo) || (qta * unit);
-                const ivaPerc = parseFloat(row.iva)||0;
-                const ivaValore = imponibile * (ivaPerc / 100);
-                const totaleLordo = imponibile + ivaValore;
-
-                return [
-                    new Date(row.data_ricezione).toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' }),
-                    String(row.fornitore || ''),
-                    String(row.prodotto || ''),
-                    String(qta),
-                    `€ ${unit.toFixed(2)}`,
-                    `€ ${imponibile.toFixed(2)}`,
-                    `${ivaPerc}%`,
-                    `€ ${ivaValore.toFixed(2)}`,
-                    `€ ${totaleLordo.toFixed(2)}`,
-                    String(row.lotto || '-'),
-                    String(row.note || '')
-                ];
-            });
-
-        } else if (tipo === 'assets') { 
-            sheetName = "Lista Macchine";
-            titoloReport = "LISTA MACCHINE E ATTREZZATURE";
-            headers = ["Stato", "Nome", "Locale", "Tipo", "Marca", "Matricola", "Range"];
-            const r = await pool.query(`SELECT * FROM haccp_assets WHERE ristorante_id = $1 ORDER BY nome ASC`, [ristorante_id]);
-            rows = r.rows.map(row => [
-                String(row.stato ? row.stato.toUpperCase() : "ATTIVO"), 
-                String(row.nome || ''), 
-                String(row.locale || ''),
-                String(row.tipo || ''), 
-                String(row.marca || ''), 
-                String(row.serial_number || '-'), 
-                `${row.range_min}°C / ${row.range_max}°C`
-            ]);
-
-        } else if (tipo === 'pulizie') {
-            sheetName = "Registro Pulizie";
-            titoloReport = "REGISTRO PULIZIE E SANIFICAZIONI";
-            headers = ["Data", "Ora", "Area/Attrezzatura", "Detergente", "Operatore", "Esito"];
-            let sql = `SELECT * FROM haccp_cleaning WHERE ristorante_id = $1`;
-            const params = [ristorante_id];
-            if(start && end) { sql += ` AND data_ora >= $2 AND data_ora <= $3`; params.push(start, end); }
-            sql += ` ORDER BY data_ora ASC`;
-            const r = await pool.query(sql, params);
-            rows = r.rows.map(row => [
-                new Date(row.data_ora).toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' }), 
-                new Date(row.data_ora).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit', timeZone: 'Europe/Rome'}), 
-                String(row.area || ''), 
-                String(row.prodotto || ''), 
-                String(row.operatore || ''), 
-                row.conformita ? "OK" : "NON CONFORME"
-            ]);
+        // 2. EXPORT STANDARD PER GLI ALTRI TIPI
+        let sql = `SELECT * FROM haccp_logs WHERE ristorante_id = $1 AND tipo = $2`;
+        const params = [ristorante_id, tipo];
+        if (start && end) {
+            sql += ` AND data_ora >= $3 AND data_ora <= $4`;
+            params.push(start, end);
         }
+        sql += ` ORDER BY data_ora ASC`;
+        const r = await pool.query(sql, params);
+
+        const headers = ["Data", "Ora", "Voce", "Valore", "Operatore"];
+        const rows = r.rows.map(l => [
+            new Date(l.data_ora).toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' }),
+            new Date(l.data_ora).toLocaleTimeString('it-IT', { timeZone: 'Europe/Rome' }).slice(0, 5),
+            String(l.voce || ''),
+            String(l.valore || ''),
+            String(l.operatore || '')
+        ]);
 
         if (format === 'pdf') {
-            const doc = new PDFDocument({ margin: 30, size: 'A4' });
+            const doc = new PDFDocument({ margin: 20, size: 'A4', layout: 'landscape' });
             let buffers = [];
             doc.on('data', buffers.push.bind(buffers));
             doc.on('end', () => {
                 let pdfData = Buffer.concat(buffers);
                 res.setHeader('Content-Type', 'application/pdf');
-                res.setHeader('Content-Disposition', `attachment; filename="haccp_${tipo}.pdf"`);
+                res.setHeader('Content-Disposition', `attachment; filename="${tipo}_${rangeName || 'export'}.pdf"`);
                 res.send(pdfData);
             });
 
-            doc.fontSize(16).text(String(aziendaInfo.nome), { align: 'center' });
-            doc.fontSize(10).text(String(aziendaInfo.dati_fiscali || ""), { align: 'center' });
-            doc.moveDown(0.5); 
-            doc.fontSize(12).text(`${titoloReport} - ${rangeName || 'Completo'}`, { align: 'center' }); 
+            doc.font("Helvetica-Bold").fontSize(14).text(`REGISTRO ${tipo.toUpperCase()}`, { align: 'center' });
+            doc.moveDown(0.5);
+            doc.font("Helvetica").fontSize(9).text(aziendaInfo?.nome || '', { align: 'center' });
             doc.moveDown(1);
-            
-            const table = { headers: headers, rows: rows };
-            await doc.table(table, { 
-                width: 500, 
-                prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8), 
-                prepareRow: () => doc.font("Helvetica").fontSize(8).fillColor('black') 
-            });
+
+            await doc.table(
+                { headers, rows },
+                {
+                    width: 760,
+                    prepareHeader: () => doc.font("Helvetica-Bold").fontSize(9),
+                    prepareRow: () => doc.font("Helvetica").fontSize(8),
+                }
+            );
+
             doc.end();
-            return; 
+        } else {
+            const wb = xlsx.utils.book_new();
+            const ws = xlsx.utils.aoa_to_sheet([headers, ...rows]);
+            xlsx.utils.book_append_sheet(wb, ws, tipo);
+
+            const buf = xlsx.write(wb, { bookType: 'xlsx', type: 'buffer' });
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', `attachment; filename="${tipo}_${rangeName || 'export'}.xlsx"`);
+            res.send(buf);
         }
-
-        // EXCEL STANDARD
-        const wb = xlsx.utils.book_new();
-        const rowAzienda = [aziendaInfo.dati_fiscali || aziendaInfo.nome];
-        const rowPeriodo = [`Periodo: ${rangeName || 'Tutto lo storico'}`];
-        const rowTitolo = [titoloReport];
-        const rowEmpty = [""];
-        const finalData = [rowAzienda, rowPeriodo, rowTitolo, rowEmpty, headers, ...rows];
-        
-        const ws = xlsx.utils.aoa_to_sheet(finalData);
-        if(!ws['!merges']) ws['!merges'] = [];
-        ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }); 
-        ws['!merges'].push({ s: { r: 1, c: 0 }, e: { r: 1, c: headers.length - 1 } }); 
-        ws['!merges'].push({ s: { r: 2, c: 0 }, e: { r: 2, c: headers.length - 1 } }); 
-        
-        const wscols = headers.map(() => ({wch: 20}));
-        ws['!cols'] = wscols;
-        
-        xlsx.utils.book_append_sheet(wb, ws, sheetName);
-        const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
-        res.setHeader('Content-Disposition', `attachment; filename="haccp_${tipo}_export.xlsx"`);
-        res.send(buffer);
-
-    } catch (err) { 
-        if (!res.headersSent) res.status(500).json({ error: "Errore Export: " + err.message }); 
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: err.message });
     }
 };
