@@ -8,7 +8,7 @@ const xlsx = require('xlsx');
 const { analyzeImageWithGemini, generateTextWithGemini } = require('../utils/ai'); 
 
 
-// Get Menu (Public)
+// Get Menu (Public) - AGGIORNATO CON LOGICA MODULI
 router.get('/api/menu/:slug', async (req, res) => { 
     try { 
         const rist = await pool.query('SELECT * FROM ristoranti WHERE slug = $1', [req.params.slug]); 
@@ -33,8 +33,21 @@ router.get('/api/menu/:slug', async (req, res) => {
                 prezzo_coperto: data.prezzo_coperto
             }, 
             subscription_active: data.account_attivo !== false, 
-            kitchen_active: data.cucina_super_active !== false, 
+            
+            // --- NUOVO: CONFIGURAZIONE MODULI ---
+            moduli: {
+                menu_digitale: data.modulo_menu_digitale !== false,
+                ordini_clienti: data.modulo_ordini_clienti !== false,
+                magazzino: data.modulo_magazzino === true,
+                haccp: data.modulo_haccp === true,
+                utenti: data.modulo_utenti === true,
+                full_suite: data.cassa_full_suite !== false // Se FALSE, è "Solo Cassa"
+            },
+            
+            // Aggiornato per riflettere la nuova impostazione full_suite
+            kitchen_active: data.cassa_full_suite !== false, 
             ordini_abilitati: data.ordini_abilitati, 
+            
             pw_cassa: data.pw_cassa, pw_cucina: data.pw_cucina, pw_pizzeria: data.pw_pizzeria, pw_bar: data.pw_bar, 
             menu: menu.rows 
         }); 

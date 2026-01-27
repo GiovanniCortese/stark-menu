@@ -85,6 +85,34 @@ router.get('/api/db-init-magazzino-pro', async (req, res) => {
     }
 });
 
+// --- FIX DATABASE: AGGIUNTA MODULI & SCADENZA ---
+router.get('/api/db-fix-modules-v2', async (req, res) => {
+    try {
+        const client = await pool.connect();
+        try {
+            // 1. Aggiungiamo le colonne booleane per i moduli (se non esistono)
+            await client.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS modulo_menu_digitale BOOLEAN DEFAULT TRUE");
+            await client.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS modulo_ordini_clienti BOOLEAN DEFAULT TRUE");
+            await client.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS modulo_magazzino BOOLEAN DEFAULT FALSE");
+            await client.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS modulo_haccp BOOLEAN DEFAULT FALSE");
+            await client.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS modulo_utenti BOOLEAN DEFAULT FALSE");
+            
+            // 2. Aggiungiamo la gestione Cassa/Cucina (Suite)
+            // Nota: cassa_full_suite sostituirà la logica di 'cucina_super_active'
+            await client.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS cassa_full_suite BOOLEAN DEFAULT TRUE");
+
+            // 3. Aggiungiamo la Data Scadenza
+            await client.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS data_scadenza DATE DEFAULT (CURRENT_DATE + INTERVAL '1 year')");
+
+            res.send("✅ DATABASE AGGIORNATO: Moduli, Suite e Scadenza pronti!");
+        } finally {
+            client.release();
+        }
+    } catch (e) {
+        res.status(500).send("Errore DB: " + e.message);
+    }
+});
+
 router.get('/api/db-fix-magazzino-full', async (req, res) => {
     try {
         const client = await pool.connect();
@@ -340,5 +368,7 @@ router.get('/api/db-fix-emergency-columns', async (req, res) => {
         res.status(500).send("Errore DB Fix: " + e.message);
     }
 });
+
+
 
 module.exports = router;
