@@ -1,4 +1,4 @@
-// client/src/components_admin/AdminMenu.jsx - VERSIONE V48 (TOGGLE SUITE & ORDINI) 🛠️
+// client/src/components_admin/AdminMenu.jsx - FIXED SUB-CATEGORY ORDERING & NEW LANG MANAGEMENT
 import { useState, useRef } from 'react'; 
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import ProductRow from './ProductRow';
@@ -84,7 +84,10 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
   const [isScanningMenu, setIsScanningMenu] = useState(false);
   const menuScanRef = useRef(null);
+  
   const [traduzioniInput, setTraduzioniInput] = useState({});
+  // RIMOSSO: const [selectedLangs, setSelectedLangs] = useState(['en']); (Non serve più)
+
   const [editId, setEditId] = useState(null); 
   const [uploading, setUploading] = useState(false);
   const [importing, setImporting] = useState(false); 
@@ -94,41 +97,38 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       return <div style={{padding:'40px', textAlign:'center', color:'#666'}}>🔄 Caricamento Menu...</div>;
   }
 
-  // --- NUOVE FUNZIONI TOGGLE ---
-  const toggleOrdini = async () => {
-      const newVal = !config.ordini_abilitati;
-      setConfig({ ...config, ordini_abilitati: newVal });
-      try {
-          await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ ordini_abilitati: newVal })
-          });
-      } catch (e) { alert("Errore connessione"); }
-  };
-
-  const toggleSuite = async () => {
-      const newVal = !config.cucina_super_active;
-      setConfig({ ...config, cucina_super_active: newVal });
-      try {
-          await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ cucina_super_active: newVal })
-          });
-          // Ricarica per aggiornare la sidebar (nascondere/mostrare pulsanti Cucina/Bar)
-          setTimeout(() => window.location.reload(), 500);
-      } catch (e) { alert("Errore connessione"); }
-  };
-
   const isAbbonamentoAttivo = config.account_attivo !== false; 
-  
+  const isMasterBlock = config.cucina_super_active === false; 
+  const isCucinaAperta = config.ordini_abilitati;
+
+  let headerBg = isCucinaAperta ? 'linear-gradient(135deg, #2ecc71 0%, #27ae60 100%)' : 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)';
+  let headerTitle = isCucinaAperta ? "✅ Servizio Attivo" : "🛑 Servizio Sospeso";
+  let headerDesc = isCucinaAperta ? "I clienti possono inviare ordini." : "Gli ordini sono bloccati.";
+
+  if (isMasterBlock) {
+      headerBg = 'linear-gradient(135deg, #8e44ad 0%, #c0392b 100%)'; 
+      headerTitle = "⛔ BLOCCATO DA SUPER ADMIN";
+      headerDesc = "L'amministrazione centrale ha disabilitato gli ordini per questo locale.";
+  }
+
   const handleSaveStyle = async () => {
     try {
         await fetch(`${API_URL}/api/ristorante/style/${user.id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config) });
-        alert("✨ Impostazioni salvate!");
+        alert("✨ Impostazioni, Coperto e Footer salvati!");
     } catch(e) { alert("Errore salvataggio"); }
   };
+
+  const toggleCucina = async () => { 
+      if (!isAbbonamentoAttivo) return alert("⛔ ABBONAMENTO SOSPESO."); 
+      if (isMasterBlock) return alert("⛔ CUCINA BLOCCATA DAL SUPER ADMIN."); 
+      const nuovoStatoCucina = !isCucinaAperta; 
+      setConfig({...config, ordini_abilitati: nuovoStatoCucina}); 
+      try {
+          await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ ordini_abilitati: nuovoStatoCucina }) }); 
+      } catch (error) { alert("Errore connessione."); setConfig({...config, ordini_abilitati: !nuovoStatoCucina}); }
+  };
+
+  // RIMOSSO: handleTranslateAll e toggleLang perché sostituiti dalla logica inline nel render
 
   const handleSalvaPiatto = async (e) => { 
       e.preventDefault(); 
@@ -238,33 +238,114 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
   const onDragEnd = async (result) => {
     if (!result.destination) return;
+
     const [destCat, destSub] = result.destination.droppableId.split("::");
     const piattoId = parseInt(result.draggableId);
+
     let nuovoMenu = [...menu];
     const piattoSpostato = nuovoMenu.find(p => p.id === piattoId);
     if (!piattoSpostato) return;
+
     nuovoMenu = nuovoMenu.filter(p => p.id !== piattoId);
-    const piattoAggiornato = { ...piattoSpostato, categoria: destCat, sottocategoria: destSub === "Generale" ? "" : destSub };
-    const prodottiDestinazione = nuovoMenu.filter(p => p.categoria === destCat && (p.sottocategoria || "Generale") === destSub).sort((a,b) => (a.posizione||0) - (b.posizione||0)); 
+
+    const piattoAggiornato = { 
+        ...piattoSpostato, 
+        categoria: destCat, 
+        sottocategoria: destSub === "Generale" ? "" : destSub 
+    };
+
+    const prodottiDestinazione = nuovoMenu
+        .filter(p => p.categoria === destCat && (p.sottocategoria || "Generale") === destSub)
+        .sort((a,b) => (a.posizione||0) - (b.posizione||0)); 
+    
     prodottiDestinazione.splice(result.destination.index, 0, piattoAggiornato);
+
     const altriPiatti = nuovoMenu.filter(p => !(p.categoria === destCat && (p.sottocategoria || "Generale") === destSub));
-    const piattiDestinazioneFinali = prodottiDestinazione.map((p, idx) => ({ id: p.id, posizione: idx, categoria: p.categoria, sottocategoria: p.sottocategoria }));
+    
+    const piattiDestinazioneFinali = prodottiDestinazione.map((p, idx) => ({ 
+        id: p.id, 
+        posizione: idx,
+        categoria: p.categoria,
+        sottocategoria: p.sottocategoria 
+    }));
+
     setMenu([...altriPiatti, ...piattiDestinazioneFinali]);
-    await fetch(`${API_URL}/api/prodotti/riordina`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prodotti: piattiDestinazioneFinali.map(p => ({ id: p.id, posizione: p.posizione, categoria: p.categoria, sottocategoria: p.sottocategoria })) }) });
+
+    await fetch(`${API_URL}/api/prodotti/riordina`, { 
+        method: 'PUT', 
+        headers:{'Content-Type':'application/json'}, 
+        body: JSON.stringify({ 
+            prodotti: piattiDestinazioneFinali.map(p => ({ 
+                id: p.id, 
+                posizione: p.posizione, 
+                categoria: p.categoria,
+                sottocategoria: p.sottocategoria 
+            })) 
+        }) 
+    });
   };
 
+  // --- FUNZIONE: SPOSTA SOTTOCATEGORIA INTERA ---
   const spostaSottocategoria = async (catNome, subKey, direzione) => {
+      // 1. Trova tutti i prodotti di questa Categoria
       const prodottiCat = menu.filter(p => p.categoria === catNome);
-      const groups = prodottiCat.reduce((acc, p) => { const s = p.sottocategoria || "Generale"; if (!acc[s]) acc[s] = []; acc[s].push(p); return acc; }, {});
-      let groupKeys = Object.keys(groups).sort((a,b) => { const minPosA = Math.min(...groups[a].map(p => p.posizione || 0)); const minPosB = Math.min(...groups[b].map(p => p.posizione || 0)); return minPosA - minPosB; });
-      const idx = groupKeys.indexOf(subKey); if (idx === -1) return;
-      const nuovoIdx = idx + direzione; if (nuovoIdx < 0 || nuovoIdx >= groupKeys.length) return;
+      
+      // 2. Raggruppa per sottocategoria
+      const groups = prodottiCat.reduce((acc, p) => {
+          const s = p.sottocategoria || "Generale";
+          if (!acc[s]) acc[s] = [];
+          acc[s].push(p);
+          return acc;
+      }, {});
+
+      // 3. Ordina i gruppi in base alla posizione minima del PRIMO prodotto del gruppo
+      let groupKeys = Object.keys(groups).sort((a,b) => {
+          const minPosA = Math.min(...groups[a].map(p => p.posizione || 0));
+          const minPosB = Math.min(...groups[b].map(p => p.posizione || 0));
+          return minPosA - minPosB;
+      });
+
+      // 4. Trova indice da spostare
+      const idx = groupKeys.indexOf(subKey);
+      if (idx === -1) return;
+      
+      // 5. Calcola nuovo indice e scambia
+      const nuovoIdx = idx + direzione;
+      if (nuovoIdx < 0 || nuovoIdx >= groupKeys.length) return; // Fuori limiti
+
+      // Swap nell'array delle chiavi
       [groupKeys[idx], groupKeys[nuovoIdx]] = [groupKeys[nuovoIdx], groupKeys[idx]];
-      let nuoviProdottiDaSalvare = []; let globalCounter = 0;
-      groupKeys.forEach(key => { const prods = groups[key].sort((a,b) => (a.posizione||0) - (b.posizione||0)); prods.forEach(p => { nuoviProdottiDaSalvare.push({ ...p, posizione: globalCounter++ }); }); });
+
+      // 6. Ricostruisci la lista prodotti PIATTA riassegnando le posizioni
+      let nuoviProdottiDaSalvare = [];
+      let globalCounter = 0;
+
+      groupKeys.forEach(key => {
+          const prods = groups[key].sort((a,b) => (a.posizione||0) - (b.posizione||0)); 
+          prods.forEach(p => {
+              nuoviProdottiDaSalvare.push({
+                  ...p,
+                  posizione: globalCounter++ // Nuova posizione sequenziale
+              });
+          });
+      });
+
+      // 7. Aggiorna Stato Locale + Backend
       const altriProdotti = menu.filter(p => p.categoria !== catNome);
       setMenu([...altriProdotti, ...nuoviProdottiDaSalvare]);
-      await fetch(`${API_URL}/api/prodotti/riordina`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prodotti: nuoviProdottiDaSalvare.map(p => ({ id: p.id, posizione: p.posizione, categoria: p.categoria, sottocategoria: p.sottocategoria })) }) });
+
+      await fetch(`${API_URL}/api/prodotti/riordina`, { 
+          method: 'PUT', 
+          headers:{'Content-Type':'application/json'}, 
+          body: JSON.stringify({ 
+              prodotti: nuoviProdottiDaSalvare.map(p => ({ 
+                  id: p.id, 
+                  posizione: p.posizione, 
+                  categoria: p.categoria, 
+                  sottocategoria: p.sottocategoria 
+              })) 
+          }) 
+      });
   };
 
   const containerStyle = { width: '100%', margin: '0 auto', fontFamily: "'Inter', sans-serif", color: '#333', boxSizing: 'border-box' };
@@ -284,45 +365,17 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             </div>
         )}
 
-        {/* --- NUOVA SEZIONE: CONFIGURAZIONE OPERATIVA (ORDINI & SUITE) --- */}
-        <div style={{...cardStyle, borderLeft:'5px solid #2c3e50', background:'#f8f9fa'}}>
-            <h3 style={{marginTop:0, color:'#2c3e50', fontSize:'18px'}}>⚙️ Configurazione Operativa</h3>
-            
-            <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(300px, 1fr))', gap:'20px'}}>
-                
-                {/* 1. RICEZIONE ORDINI (TAVOLI) */}
-                <div style={{background: config.ordini_abilitati ? '#e8f8f5' : '#fff', border: config.ordini_abilitati ? '1px solid #2ecc71' : '1px solid #ddd', padding:'15px', borderRadius:'10px', display:'flex', alignItems:'center', gap:'15px'}}>
-                    <div style={{position:'relative', width:'50px', height:'26px'}}>
-                        <input type="checkbox" checked={config.ordini_abilitati || false} onChange={toggleOrdini} style={{opacity:0, width:0, height:0}} />
-                        <span onClick={toggleOrdini} style={{position:'absolute', cursor:'pointer', top:0, left:0, right:0, bottom:0, background: config.ordini_abilitati ? '#2ecc71' : '#ccc', borderRadius:'34px', transition:'.4s'}}>
-                            <span style={{position:'absolute', content:'""', height:'20px', width:'20px', left: config.ordini_abilitati ? '26px' : '4px', bottom:'3px', background:'white', transition:'.4s', borderRadius:'50%'}}></span>
-                        </span>
-                    </div>
-                    <div>
-                        <h4 style={{margin:0, color:'#2c3e50'}}>🍽️ Ricezione Ordini</h4>
-                        <p style={{margin:0, fontSize:'12px', color:'#7f8c8d'}}>{config.ordini_abilitati ? "I clienti possono ordinare dal tavolo." : "Ordini bloccati (Solo visualizzazione menu)."}</p>
-                    </div>
-                </div>
-
-                {/* 2. MODALITÀ SUITE (Attiva Cucina/Bar/Pizzeria) */}
-                <div style={{background: config.cucina_super_active ? '#ebf5fb' : '#fff', border: config.cucina_super_active ? '1px solid #3498db' : '1px solid #ddd', padding:'15px', borderRadius:'10px', display:'flex', alignItems:'center', gap:'15px'}}>
-                    <div style={{position:'relative', width:'50px', height:'26px'}}>
-                        <input type="checkbox" checked={config.cucina_super_active || false} onChange={toggleSuite} style={{opacity:0, width:0, height:0}} />
-                        <span onClick={toggleSuite} style={{position:'absolute', cursor:'pointer', top:0, left:0, right:0, bottom:0, background: config.cucina_super_active ? '#3498db' : '#ccc', borderRadius:'34px', transition:'.4s'}}>
-                            <span style={{position:'absolute', content:'""', height:'20px', width:'20px', left: config.cucina_super_active ? '26px' : '4px', bottom:'3px', background:'white', transition:'.4s', borderRadius:'50%'}}></span>
-                        </span>
-                    </div>
-                    <div>
-                        <h4 style={{margin:0, color:'#2c3e50'}}>👨‍🍳 Modalità Suite</h4>
-                        <p style={{margin:0, fontSize:'12px', color:'#7f8c8d'}}>{config.cucina_super_active ? "Attivi: Cucina, Bar, Pizzeria & Cassa." : "Attiva: SOLO CASSA (Ideale per piccole attività)."}</p>
-                    </div>
-                </div>
-
-            </div>
+        <div style={{...cardStyle, display:'flex', justifyContent:'space-between', alignItems:'center', background: headerBg, color:'white', border:'none', flexWrap:'wrap', gap:'20px'}}>
+            <div><h2 style={{margin:0, fontSize:'24px'}}>{headerTitle}</h2><p style={{margin:0, opacity:0.9, fontSize:'14px'}}>{headerDesc}</p></div>
+            {isAbbonamentoAttivo && !isMasterBlock && (
+                <button onClick={toggleCucina} style={{background:'white', color: isCucinaAperta ? '#27ae60' : '#c0392b', border:'none', padding:'12px 25px', borderRadius:'30px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 5px 15px rgba(0,0,0,0.2)', whiteSpace:'nowrap'}}>
+                    {isCucinaAperta ? "CHIUDI ORDINI CLIENTE" : "APRI ORDINI CLIENTE"}
+                </button>
+            )}
         </div>
 
         {/* --- PANNEL IMPORT/EXPORT --- */}
-        <div style={{...cardStyle, display:'flex', justifyContent:'space-between', alignItems:'center', padding:'15px 25px', background:'#fff', flexWrap:'wrap', gap:'15px'}}>
+        <div style={{...cardStyle, display:'flex', justifyContent:'space-between', alignItems:'center', padding:'15px 25px', background:'#f8f9fa', flexWrap:'wrap', gap:'15px'}}>
             <div style={{display:'flex', alignItems:'center', gap:'15px'}}><span style={{fontSize:'24px'}}>📊</span><div><h4 style={{margin:0, color:'#2c3e50'}}>Import/Export Menu</h4><p style={{margin:0, fontSize:'12px', color:'#7f8c8d'}}>Gestisci il tuo menu massivamente.</p></div></div>
             <div style={{display:'flex', gap:'10px', flexWrap:'wrap'}}>
                 <button onClick={() => window.open(`${API_URL}/api/export-excel/${user.id}`, '_blank')} style={{background:'white', border:'1px solid #ddd', padding:'8px 15px', borderRadius:'6px', cursor:'pointer', fontWeight:'600', color:'#333', whiteSpace:'nowrap'}}>📤 Scarica Menu</button>
@@ -331,7 +384,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             </div>
         </div>
 
-        {/* --- PANNEL GESTIONE LINGUE --- */}
+        {/* --- PANNEL GESTIONE LINGUE (NUOVO LAYOUT) --- */}
         <div style={{...cardStyle, padding:'25px', background:'#e8f8f5', border:'1px solid #1abc9c'}}>
             <div style={{display:'flex', alignItems:'center', gap:'15px', marginBottom:'20px'}}>
                 <span style={{fontSize:'28px'}}>🌍</span>
@@ -343,23 +396,83 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
             <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(220px, 1fr))', gap:'15px'}}>
                 {Object.entries(LANGUAGES_MAP).map(([code, label]) => {
+                    // 1. Verifichiamo se la lingua è ATTIVA analizzando il menu locale
                     let isAttiva = false;
-                    if (menu) { for (let p of menu) { try { const t = typeof p.traduzioni === 'string' ? JSON.parse(p.traduzioni) : (p.traduzioni || {}); if (t[code]) { isAttiva = true; break; } } catch(e){} } }
+                    if (menu) {
+                        for (let p of menu) {
+                             try {
+                                 const t = typeof p.traduzioni === 'string' ? JSON.parse(p.traduzioni) : (p.traduzioni || {});
+                                 if (t[code]) { isAttiva = true; break; }
+                             } catch(e){}
+                        }
+                    }
 
                     return (
                         <div key={code} style={{
-                            background:'white', borderRadius:'12px', padding:'15px', border: isAttiva ? '2px solid #2ecc71' : '1px solid #ddd',
-                            boxShadow: '0 2px 5px rgba(0,0,0,0.05)', display:'flex', flexDirection:'column', justifyContent:'space-between', gap:'10px'
+                            background:'white', 
+                            borderRadius:'12px', 
+                            padding:'15px', 
+                            border: isAttiva ? '2px solid #2ecc71' : '1px solid #ddd',
+                            boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
+                            display:'flex', flexDirection:'column', justifyContent:'space-between', gap:'10px'
                         }}>
                             <div style={{display:'flex', alignItems:'center', justifyContent:'space-between'}}>
                                 <span style={{fontWeight:'bold', color:'#2c3e50', fontSize:'15px'}}>{label}</span>
-                                {isAttiva ? <span style={{fontSize:'10px', background:'#2ecc71', color:'white', padding:'3px 8px', borderRadius:'10px', fontWeight:'bold'}}>ATTIVA</span> : <span style={{fontSize:'10px', background:'#bdc3c7', color:'white', padding:'3px 8px', borderRadius:'10px', fontWeight:'bold'}}>OFF</span>}
+                                {isAttiva ? <span style={{fontSize:'10px', background:'#2ecc71', color:'white', padding:'3px 8px', borderRadius:'10px', fontWeight:'bold'}}>ATTIVA</span> 
+                                          : <span style={{fontSize:'10px', background:'#bdc3c7', color:'white', padding:'3px 8px', borderRadius:'10px', fontWeight:'bold'}}>OFF</span>}
                             </div>
+                            
                             <div style={{display:'flex', gap:'5px', marginTop:'5px'}}>
+                                {/* PULSANTE DISATTIVA */}
                                 {isAttiva && (
-                                    <button onClick={async () => { if(!confirm(`Disattivare ${label}?`)) return; try { const res = await fetch(`${API_URL}/api/menu/remove-language`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ ristorante_id: user.id, lang: code }) }); if(res.ok) { alert("Lingua disattivata!"); ricaricaDati(); } } catch(e) { alert("Errore"); } }} style={{flex:1, background:'#fff', border:'1px solid #e74c3c', color:'#e74c3c', borderRadius:'6px', padding:'8px', fontSize:'12px', fontWeight:'bold', cursor:'pointer'}}>Disattiva</button>
+                                    <button 
+                                        onClick={async () => {
+                                            if(!confirm(`Vuoi disattivare il ${label}?\nLa bandiera verrà rimossa dal menu.`)) return;
+                                            try {
+                                                const res = await fetch(`${API_URL}/api/menu/remove-language`, {
+                                                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                                                    body: JSON.stringify({ ristorante_id: user.id, lang: code })
+                                                });
+                                                if(res.ok) { alert("Lingua disattivata!"); ricaricaDati(); }
+                                            } catch(e) { alert("Errore"); }
+                                        }}
+                                        style={{flex:1, background:'#fff', border:'1px solid #e74c3c', color:'#e74c3c', borderRadius:'6px', padding:'8px', fontSize:'12px', fontWeight:'bold', cursor:'pointer'}}
+                                    >
+                                        Disattiva
+                                    </button>
                                 )}
-                                <button onClick={async () => { const action = isAttiva ? "Aggiornare" : "Attivare"; if(!confirm(`Vuoi ${action} la traduzione in ${label}?`)) return; setTranslating(true); try { const res = await fetch(`${API_URL}/api/menu/translate-all`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ ristorante_id: user.id, languages: [code] }) }); const data = await res.json(); if(data.success) { alert(`✅ ${label} Attivato!`); ricaricaDati(); } else { alert("Errore AI: " + data.error); } } catch(e) { alert("Errore rete"); } finally { setTranslating(false); } }} disabled={translating} style={{flex:1, background: isAttiva ? '#3498db' : '#2ecc71', border:'none', color:'white', borderRadius:'6px', padding:'8px', fontSize:'12px', fontWeight:'bold', cursor: translating ? 'wait' : 'pointer', opacity: translating ? 0.7 : 1}}>
+
+                                {/* PULSANTE ATTIVA / AGGIORNA */}
+                                <button 
+                                    onClick={async () => {
+                                        const action = isAttiva ? "Aggiornare" : "Attivare";
+                                        if(!confirm(`Vuoi ${action} la traduzione in ${label} con l'AI?\nPotrebbe richiedere qualche minuto.`)) return;
+                                        
+                                        setTranslating(true);
+                                        try {
+                                            const res = await fetch(`${API_URL}/api/menu/translate-all`, {
+                                                method: 'POST', headers: {'Content-Type': 'application/json'},
+                                                body: JSON.stringify({ ristorante_id: user.id, languages: [code] }) // Traduce solo QUESTA lingua
+                                            });
+                                            const data = await res.json();
+                                            if(data.success) { alert(`✅ ${label} Attivato!`); ricaricaDati(); }
+                                            else { alert("Errore AI: " + data.error); }
+                                        } catch(e) { alert("Errore rete"); } finally { setTranslating(false); }
+                                    }}
+                                    disabled={translating}
+                                    style={{
+                                        flex:1, 
+                                        background: isAttiva ? '#3498db' : '#2ecc71', 
+                                        border:'none', 
+                                        color:'white', 
+                                        borderRadius:'6px', 
+                                        padding:'8px', 
+                                        fontSize:'12px', 
+                                        fontWeight:'bold', 
+                                        cursor: translating ? 'wait' : 'pointer',
+                                        opacity: translating ? 0.7 : 1
+                                    }}
+                                >
                                     {translating ? "⏳..." : (isAttiva ? "🔄 Aggiorna" : "✨ Attiva")}
                                 </button>
                             </div>
@@ -367,10 +480,10 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                     );
                 })}
             </div>
+            
             {translating && <div style={{marginTop:'15px', textAlign:'center', color:'#16a085', fontSize:'13px', fontWeight:'bold'}}>🤖 L'Intelligenza Artificiale sta traducendo il menu... attendi...</div>}
         </div>
 
-        {/* --- FORM AGGIUNTA PIATTO --- */}
         <div style={{opacity: isAbbonamentoAttivo ? 1 : 0.5, pointerEvents: isAbbonamentoAttivo ? 'auto' : 'none'}}>
             <div style={{...cardStyle, borderLeft: editId ? '5px solid #3498db' : '5px solid #2ecc71'}}>
                   <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px', flexWrap:'wrap', gap:'10px'}}>
@@ -392,10 +505,17 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                                       {categorie && categorie.map(cat => <option key={cat.id} value={cat.nome}>{cat.nome}</option>)}
                                   </select>
                               </div>
+                              
                               <div style={{flex:1, minWidth:'140px'}}>
                                   <label style={labelStyle}>Sottocategoria</label>
-                                  <input placeholder="Es. Bianchi, Rossi, Terra..." value={nuovoPiatto.sottocategoria || ''} onChange={e => setNuovoPiatto({...nuovoPiatto, sottocategoria: e.target.value})} style={inputStyle} />
+                                  <input 
+                                    placeholder="Es. Bianchi, Rossi, Terra..." 
+                                    value={nuovoPiatto.sottocategoria || ''} 
+                                    onChange={e => setNuovoPiatto({...nuovoPiatto, sottocategoria: e.target.value})} 
+                                    style={inputStyle} 
+                                  />
                               </div>
+
                               <div style={{flex:0.7, minWidth:'100px'}}>
                                   <label style={labelStyle}>Prezzo</label>
                                   <input type="number" placeholder="0.00" value={nuovoPiatto.prezzo} onChange={e => setNuovoPiatto({...nuovoPiatto, prezzo: e.target.value})} style={inputStyle} step="0.10" required />
@@ -452,22 +572,24 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                   </form>
             </div>
 
-            {/* --- LISTA PIATTI (Drag & Drop) --- */}
             <DragDropContext onDragEnd={onDragEnd}>
                 {categorie && categorie.map(cat => {
                     const piattiCat = menu.filter(p => p.categoria === cat.nome);
                     const groups = piattiCat.reduce((acc, p) => {
                         const sub = p.sottocategoria || "Generale";
-                        if (!acc[s]) acc[sub] = [];
+                        if (!acc[sub]) acc[sub] = [];
                         acc[sub].push(p);
                         return acc;
                     }, {});
 
+                    // ORDINA I GRUPPI in base alla posizione del PRIMO prodotto (ordine visuale)
                     const sortedKeys = Object.keys(groups).sort((a,b) => {
                         const minPosA = Math.min(...groups[a].map(p => p.posizione || 0));
                         const minPosB = Math.min(...groups[b].map(p => p.posizione || 0));
                         return minPosA - minPosB;
                     });
+
+                    // Se non ci sono gruppi, forza "Generale" per permettere drop
                     if (sortedKeys.length === 0) sortedKeys.push("Generale");
 
                     return (
@@ -479,29 +601,75 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                             
                             {sortedKeys.map(subKey => {
                                 const products = groups[subKey] || [];
+                                // Ordina prodotti internamente
                                 products.sort((a, b) => (a.posizione || 0) - (b.posizione || 0));
 
                                 return (
                                     <div key={subKey} style={{marginBottom: '15px', marginLeft: '10px'}}>
                                         {subKey !== "Generale" && (
                                             <div style={{display:'flex', alignItems:'center', gap:'10px', marginBottom:'10px'}}>
-                                                <h4 style={{fontSize:'14px', color:'#7f8c8d', margin:0, textTransform:'uppercase', letterSpacing:'1px'}}>↳ {subKey}</h4>
+                                                <h4 style={{fontSize:'14px', color:'#7f8c8d', margin:0, textTransform:'uppercase', letterSpacing:'1px'}}>
+                                                    ↳ {subKey}
+                                                </h4>
+                                                
+                                                {/* PULSANTI SPOSTA SOTTOCATEGORIA */}
                                                 <div style={{display:'flex', gap:'2px'}}>
-                                                    <button onClick={() => spostaSottocategoria(cat.nome, subKey, -1)} style={{fontSize:'10px', padding:'2px 6px', cursor:'pointer', border:'1px solid #ddd', background:'white', borderRadius:'4px'}}>⬆️</button>
-                                                    <button onClick={() => spostaSottocategoria(cat.nome, subKey, 1)} style={{fontSize:'10px', padding:'2px 6px', cursor:'pointer', border:'1px solid #ddd', background:'white', borderRadius:'4px'}}>⬇️</button>
+                                                    <button 
+                                                        onClick={() => spostaSottocategoria(cat.nome, subKey, -1)} 
+                                                        style={{fontSize:'10px', padding:'2px 6px', cursor:'pointer', border:'1px solid #ddd', background:'white', borderRadius:'4px'}}
+                                                        title="Sposta su"
+                                                    >
+                                                        ⬆️
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => spostaSottocategoria(cat.nome, subKey, 1)} 
+                                                        style={{fontSize:'10px', padding:'2px 6px', cursor:'pointer', border:'1px solid #ddd', background:'white', borderRadius:'4px'}}
+                                                        title="Sposta giù"
+                                                    >
+                                                        ⬇️
+                                                    </button>
                                                 </div>
                                             </div>
                                         )}
 
                                         <Droppable droppableId={`${cat.nome}::${subKey}`}>
                                             {(provided) => (
-                                                <div ref={provided.innerRef} {...provided.droppableProps} style={{paddingBottom: products.length === 0 ? '40px' : '10px', background: products.length === 0 ? 'rgba(0,0,0,0.02)' : 'transparent', borderRadius: '8px', border: products.length === 0 ? '1px dashed #ccc' : 'none'}}>
+                                                <div 
+                                                    ref={provided.innerRef} 
+                                                    {...provided.droppableProps} 
+                                                    style={{
+                                                        paddingBottom: products.length === 0 ? '40px' : '10px', 
+                                                        background: products.length === 0 ? 'rgba(0,0,0,0.02)' : 'transparent',
+                                                        borderRadius: '8px',
+                                                        border: products.length === 0 ? '1px dashed #ccc' : 'none'
+                                                    }}
+                                                >
                                                     {products.length === 0 && <div style={{padding:'10px', fontSize:'12px', color:'#aaa', textAlign:'center'}}>Trascina qui per spostare in "{subKey}"</div>}
+                                                    
                                                     {products.map((prodotto, index) => (
-                                                        <Draggable key={String(prodotto.id)} draggableId={String(prodotto.id)} index={index}>
+                                                        <Draggable 
+                                                            key={String(prodotto.id)} 
+                                                            draggableId={String(prodotto.id)} 
+                                                            index={index}
+                                                        >
                                                             {(provided, snapshot) => (
-                                                                <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} style={{...provided.draggableProps.style, marginBottom: '8px', userSelect: 'none', transform: provided.draggableProps.style?.transform}}>
-                                                                    <ProductRow prodotto={prodotto} avviaModifica={avviaModifica} eliminaProdotto={cancellaPiatto} isDragging={snapshot.isDragging} />
+                                                                <div
+                                                                    ref={provided.innerRef}
+                                                                    {...provided.draggableProps}
+                                                                    {...provided.dragHandleProps}
+                                                                    style={{
+                                                                        ...provided.draggableProps.style,
+                                                                        marginBottom: '8px',
+                                                                        userSelect: 'none',
+                                                                        transform: provided.draggableProps.style?.transform,
+                                                                    }}
+                                                                >
+                                                                    <ProductRow 
+                                                                        prodotto={prodotto} 
+                                                                        avviaModifica={avviaModifica} 
+                                                                        eliminaProdotto={cancellaPiatto} 
+                                                                        isDragging={snapshot.isDragging} 
+                                                                    />
                                                                 </div>
                                                             )}
                                                         </Draggable>
@@ -519,35 +687,34 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             </DragDropContext>
         </div>
 
-        {/* --- FOOTER SETTINGS --- */}
-        <div style={{ ...cardStyle, borderLeft: '5px solid #8e44ad' }}>
-            <h3 style={{ marginBottom: '25px', color: '#2c3e50' }}>⚖️ Configurazione Footer & Coperto</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', alignItems:'start' }}>
-                <div style={{display:'flex', flexDirection:'column', gap:'20px'}}>
-                    <div style={{padding:'15px', background:'#fdfefe', borderRadius:'8px', border:'1px solid #bbdefb'}}>
-                        <label style={labelStyle}>💰 Costo Coperto (€)</label>
-                        <input type="number" value={config.prezzo_coperto || 0} onChange={e => setConfig({...config, prezzo_coperto: e.target.value})} style={{...inputStyle, width:'100%', maxWidth:'150px'}} step="0.10" />
-                        <p style={{margin:'5px 0 0 0', fontSize:'12px', color:'#666'}}>Aggiunto in automatico al checkout.</p>
-                    </div>
-                    <div>
-                        <label style={labelStyle}>📝 Testo a piè di pagina</label>
-                        <textarea value={config.info_footer || ''} onChange={e => setConfig({...config, info_footer: e.target.value})} style={{ width: '100%', padding: '15px', borderRadius: '10px', border: '1px solid #ddd', minHeight: '80px', boxSizing: 'border-box' }} />
-                    </div>
-                    <div style={{padding:'15px', background:'#f3e5f5', borderRadius:'8px', border:'1px solid #e1bee7'}}>
-                        <label style={{display:'flex', alignItems:'center', gap:'10px', cursor:'pointer', fontWeight:'bold', color:'#8e44ad'}}>
-                            <input type="checkbox" checked={config.nascondi_euro || false} onChange={(e) => setConfig({...config, nascondi_euro: e.target.checked})} />
-                            <span>Nascondi simbolo "€"</span>
-                        </label>
-                    </div>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '15px' }}>
-                    <div style={{ border: '1px solid #eee', padding: '10px', borderRadius: '10px' }}><label style={labelStyle}>📅 Menù Giorno</label><ImageUploader type="url_menu_giorno" currentUrl={config.url_menu_giorno} icon="🥗" config={config} setConfig={setConfig} API_URL={API_URL} /></div>
-                    <div style={{ border: '1px solid #eee', padding: '10px', borderRadius: '10px' }}><label style={labelStyle}>📄 Menù PDF</label><ImageUploader type="url_menu_pdf" currentUrl={config.url_menu_pdf} icon="📖" config={config} setConfig={setConfig} API_URL={API_URL} /></div>
-                    <div style={{ border: '1px solid #eee', padding: '10px', borderRadius: '10px' }}><label style={labelStyle}>📋 Allergeni</label><ImageUploader type="url_allergeni" currentUrl={config.url_allergeni} icon="⚠️" config={config} setConfig={setConfig} API_URL={API_URL} /></div>
-                </div>
+    <div style={{ ...cardStyle, borderLeft: '5px solid #8e44ad' }}>
+    <h3 style={{ marginBottom: '25px', color: '#2c3e50' }}>⚖️ Configurazione Footer & Coperto</h3>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', alignItems:'start' }}>
+        <div style={{display:'flex', flexDirection:'column', gap:'20px'}}>
+            <div style={{padding:'15px', background:'#fdfefe', borderRadius:'8px', border:'1px solid #bbdefb'}}>
+                <label style={labelStyle}>💰 Costo Coperto (€)</label>
+                <input type="number" value={config.prezzo_coperto || 0} onChange={e => setConfig({...config, prezzo_coperto: e.target.value})} style={{...inputStyle, width:'100%', maxWidth:'150px'}} step="0.10" />
+                <p style={{margin:'5px 0 0 0', fontSize:'12px', color:'#666'}}>Aggiunto in automatico al checkout.</p>
             </div>
-            <button onClick={handleSaveStyle} style={{ marginTop: '30px', width: '100%', padding:'15px', background:'#8e44ad', color:'white', border:'none', borderRadius:'10px', fontWeight:'bold', cursor:'pointer' }}>💾 SALVA IMPOSTAZIONI FOOTER</button>
+            <div>
+                <label style={labelStyle}>📝 Testo a piè di pagina</label>
+                <textarea value={config.info_footer || ''} onChange={e => setConfig({...config, info_footer: e.target.value})} style={{ width: '100%', padding: '15px', borderRadius: '10px', border: '1px solid #ddd', minHeight: '80px', boxSizing: 'border-box' }} />
+            </div>
+            <div style={{padding:'15px', background:'#f3e5f5', borderRadius:'8px', border:'1px solid #e1bee7'}}>
+                <label style={{display:'flex', alignItems:'center', gap:'10px', cursor:'pointer', fontWeight:'bold', color:'#8e44ad'}}>
+                    <input type="checkbox" checked={config.nascondi_euro || false} onChange={(e) => setConfig({...config, nascondi_euro: e.target.checked})} />
+                    <span>Nascondi simbolo "€"</span>
+                </label>
+            </div>
         </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '15px' }}>
+            <div style={{ border: '1px solid #eee', padding: '10px', borderRadius: '10px' }}><label style={labelStyle}>📅 Menù Giorno</label><ImageUploader type="url_menu_giorno" currentUrl={config.url_menu_giorno} icon="🥗" config={config} setConfig={setConfig} API_URL={API_URL} /></div>
+            <div style={{ border: '1px solid #eee', padding: '10px', borderRadius: '10px' }}><label style={labelStyle}>📄 Menù PDF</label><ImageUploader type="url_menu_pdf" currentUrl={config.url_menu_pdf} icon="📖" config={config} setConfig={setConfig} API_URL={API_URL} /></div>
+            <div style={{ border: '1px solid #eee', padding: '10px', borderRadius: '10px' }}><label style={labelStyle}>📋 Allergeni</label><ImageUploader type="url_allergeni" currentUrl={config.url_allergeni} icon="⚠️" config={config} setConfig={setConfig} API_URL={API_URL} /></div>
+        </div>
+    </div>
+    <button onClick={handleSaveStyle} style={{ marginTop: '30px', width: '100%', padding:'15px', background:'#8e44ad', color:'white', border:'none', borderRadius:'10px', fontWeight:'bold', cursor:'pointer' }}>💾 SALVA IMPOSTAZIONI FOOTER</button>
+</div>
     </div>
   );
 }
