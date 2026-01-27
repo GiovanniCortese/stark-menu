@@ -40,6 +40,18 @@ io.on('connection', (socket) => {
     });
 });
 
+// Esempio di controllo alla connessione o tramite un cron job giornaliero
+const checkExpirations = async () => {
+    console.log("🔍 Controllo scadenze abbonamenti...");
+    await pool.query(`
+        UPDATE ristoranti 
+        SET account_attivo = FALSE 
+        WHERE data_scadenza < CURRENT_DATE AND account_attivo = TRUE
+    `);
+};
+// Eseguilo all'avvio del server
+checkExpirations();
+
 // Rendiamo "io" disponibile ovunque nelle rotte tramite req.app.get('io')
 app.set('io', io);
 
