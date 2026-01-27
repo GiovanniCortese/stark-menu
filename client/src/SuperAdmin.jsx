@@ -1,4 +1,4 @@
-// client/src/SuperAdmin.jsx - VERSIONE V66 (MODULARE & CALENDARIO) 🗓️
+// client/src/SuperAdmin.jsx - VERSIONE V67 (AGGIUNTO MODULO CASSA) 🗓️
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
@@ -25,6 +25,7 @@ function SuperAdmin() {
       data_scadenza: new Date().toISOString().split('T')[0], 
       
       // --- MODULI (Checkboxes) ---
+      modulo_cassa: true,           // 💰 NUOVO: Cassa Opzionale
       modulo_menu_digitale: true,   // Menu QR
       modulo_ordini_clienti: true,  // Ricezione ordini da tavolo/asporto
       modulo_magazzino: false,      // Gestione scorte
@@ -110,6 +111,7 @@ function SuperAdmin() {
           nome: '', slug: '', email: '', telefono: '', password: '', 
           account_attivo: true,
           data_scadenza: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0],
+          modulo_cassa: true, // Default ON
           modulo_menu_digitale: true,
           modulo_ordini_clienti: true,
           modulo_magazzino: false,
@@ -132,6 +134,7 @@ function SuperAdmin() {
           data_scadenza: r.data_scadenza ? r.data_scadenza.split('T')[0] : '',
           
           // Mappatura flag DB -> Form
+          modulo_cassa: r.modulo_cassa ?? true, // Default true se manca nel DB vecchio
           modulo_menu_digitale: r.modulo_menu_digitale ?? true,
           modulo_ordini_clienti: r.modulo_ordini_clienti ?? true,
           modulo_magazzino: r.modulo_magazzino ?? false,
@@ -173,7 +176,7 @@ function SuperAdmin() {
   const entraNelPannello = (slug) => { localStorage.setItem(`stark_admin_session_${slug}`, "true"); window.open(`/admin/${slug}`, '_blank'); };
   const logout = () => { if (confirm("Uscire dal J.A.R.V.I.S.?")) { localStorage.removeItem("super_admin_token"); setAuthorized(false); navigate('/'); } };
 
-  // --- LOGICA UTENTI E IMPORT/EXPORT (Codice invariato per brevità ma incluso logicamente) ---
+  // --- LOGICA UTENTI E IMPORT/EXPORT ---
   const handleOpenUserForm = (user = null) => {
       if (user) {
           setEditingUser(user);
@@ -271,6 +274,7 @@ function SuperAdmin() {
                 <div style={{padding:15, flex:1}}>
                     <p style={{margin:'5px 0'}}>📅 Scadenza: <b style={{color: new Date(r.data_scadenza) < new Date() ? 'red' : 'green'}}>{r.data_scadenza ? new Date(r.data_scadenza).toLocaleDateString() : 'N/D'}</b></p>
                     <div style={{display:'flex', flexWrap:'wrap', gap:5, marginTop:10}}>
+                        {r.modulo_cassa && <span style={{fontSize:10, padding:'3px 6px', background:'#eaf2f8', color:'#2980b9', borderRadius:4, border:'1px solid #2980b9'}}>CASSA</span>}
                         {r.modulo_menu_digitale && <span style={{fontSize:10, padding:'3px 6px', background:'#e8f8f5', color:'#27ae60', borderRadius:4, border:'1px solid #27ae60'}}>MENU</span>}
                         {r.modulo_ordini_clienti && <span style={{fontSize:10, padding:'3px 6px', background:'#eafaf1', color:'#2ecc71', borderRadius:4, border:'1px solid #2ecc71'}}>ORDINI</span>}
                         {r.modulo_magazzino && <span style={{fontSize:10, padding:'3px 6px', background:'#fef9e7', color:'#f1c40f', borderRadius:4, border:'1px solid #f1c40f'}}>MAGAZZINO</span>}
@@ -345,6 +349,13 @@ function SuperAdmin() {
                           </div>
 
                           <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
+                              
+                              {/* --- NUOVO: MODULO CASSA --- */}
+                              <div style={moduleCardStyle}>
+                                  <label style={labelSwitchStyle}>💰 Modulo Cassa</label>
+                                  <input type="checkbox" name="modulo_cassa" checked={formData.modulo_cassa} onChange={handleInputChange} style={{transform:'scale(1.3)'}} />
+                              </div>
+
                               <div style={moduleCardStyle}>
                                   <label style={labelSwitchStyle}>📱 Menu Digitale</label>
                                   <input type="checkbox" name="modulo_menu_digitale" checked={formData.modulo_menu_digitale} onChange={handleInputChange} style={{transform:'scale(1.3)'}} />

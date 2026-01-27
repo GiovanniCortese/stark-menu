@@ -1,4 +1,4 @@
-// client/src/Admin.jsx - VERSIONE V47 (SIDEBAR DEFINITIVA: CASSA SEMPRE VISIBILE) 🚀
+// client/src/Admin.jsx - VERSIONE V48 (MODULO CASSA OPZIONALE) 🚀
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -35,6 +35,9 @@ function Admin() {
       account_attivo: true, 
       cucina_super_active: true, // QUESTO FLAG COMANDA LA SUITE (Cucina+Bar+Pizzeria)
       ordini_abilitati: true, 
+      
+      // --- MODULI ---
+      modulo_cassa: true, // Default ON
       modulo_menu_digitale: true,
       modulo_ordini_clienti: true,
       modulo_magazzino: false,
@@ -73,6 +76,8 @@ function Admin() {
                     setConfig(prev => ({
                         ...prev, 
                         ...data.style,
+                        // Mappatura Moduli
+                        modulo_cassa: data.moduli.cassa ?? true, // Recupera config Cassa
                         modulo_menu_digitale: data.moduli.menu_digitale,
                         modulo_ordini_clienti: data.moduli.ordini_clienti,
                         modulo_magazzino: data.moduli.magazzino,
@@ -86,8 +91,13 @@ function Admin() {
                         account_attivo: data.subscription_active
                     }));
                 } else {
-                    // Fallback per compatibilità
-                    setConfig(prev => ({...prev, ...data.style, cucina_super_active: data.cucina_super_active !== false}));
+                    // Fallback per compatibilità con vecchie versioni API
+                    setConfig(prev => ({
+                        ...prev, 
+                        ...data.style, 
+                        cucina_super_active: data.cucina_super_active !== false,
+                        modulo_cassa: data.modulo_cassa !== false // Fallback root level
+                    }));
                 }
                 
                 caricaConfigurazioniExtra(data.id);
@@ -207,6 +217,7 @@ function Admin() {
   const showDashboard = true; 
   
   // 2. Moduli Extra
+  const showCassa = config.modulo_cassa === true; // NUOVO: Gestito da Backend
   const showMenu = config.modulo_menu_digitale !== false;
   const showUtenti = config.modulo_utenti === true;
   const showMagazzino = config.modulo_magazzino === true;
@@ -240,8 +251,10 @@ function Admin() {
         <div className="header-actions">
             <button onClick={() => apriLink(`/${slug}`)} className="action-btn" style={{background:'#3498db'}}>👁️ Menu</button>
             
-            {/* 🟢 CASSA: SEMPRE VISIBILE (Richiesta utente) */}
-            <button onClick={() => apriLink(`/cassa/${slug}`)} className="action-btn" style={{background:'#9b59b6'}}>💰 Cassa</button>
+            {/* 🟢 CASSA: ORA CONDIZIONALE (Solo se abilitata da SuperAdmin) */}
+            {showCassa && (
+                <button onClick={() => apriLink(`/cassa/${slug}`)} className="action-btn" style={{background:'#9b59b6'}}>💰 Cassa</button>
+            )}
             
             {/* 🔴 SUITE (Cucina/Bar/Pizzeria): SOLO SE ATTIVA */}
             {showFullSuite && (
