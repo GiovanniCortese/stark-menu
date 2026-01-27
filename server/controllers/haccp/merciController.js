@@ -77,7 +77,7 @@ exports.scanBolla = async (req, res) => {
         - "unita_misura": (Pz, Kg, Lt, Ct, Conf).
         - "prezzo_unitario": Il prezzo CADUNO netto IVA (Fondamentale).
         - "sconto": Sconto percentuale riga (es. 10), altrimenti 0.
-        - "iva": Aliquota IVA (4, 10, 22). Se manca metti 10.
+        - "iva": Aliquota IVA (4, 10, 22). Se manca metti 0.
         - "lotto": Codice lotto (L. / Lot / Batch). FONDAMENTALE.
         - "scadenza": Data scadenza se presente (YYYY-MM-DD).
 
