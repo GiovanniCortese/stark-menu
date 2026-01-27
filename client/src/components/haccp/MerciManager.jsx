@@ -1,5 +1,7 @@
 // client/src/components/haccp/MerciManager.jsx
 import React, { useState, useEffect, useRef } from 'react';
+// Assicurati che il percorso sia corretto rispetto alla tua struttura cartelle
+import MagazzinoStaging from '../magazzino/MagazzinoStaging'; 
 
 const MerciManager = (props) => {
     // 1. ESTRAPOLIAMO LE PROPS
@@ -31,8 +33,8 @@ const MerciManager = (props) => {
         data_ricezione: new Date().toISOString().split('T')[0],
         ora: new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }),
         fornitore: '', 
-        numero_bolla: '',    // <--- CAMPO SPECIFICO RICHIESTO
-        codice_articolo: '', // <--- CAMPO SPECIFICO RICHIESTO
+        numero_bolla: '',    
+        codice_articolo: '', 
         prodotto: '', 
         quantita: '', 
         unita_misura: 'pz',
@@ -62,7 +64,8 @@ const MerciManager = (props) => {
 
     // --- SCAN & AI STATE ---
     const [isScanning, setIsScanning] = useState(false);
-    const [scannedData, setScannedData] = useState(null); 
+    const [view, setView] = useState('lista'); // 'lista', 'staging'
+    const [stagingData, setStagingData] = useState(null);
     const scanInputRef = useRef(null);
 
     // --- NAVIGAZIONE MESE ---
@@ -160,7 +163,7 @@ const MerciManager = (props) => {
         const cleanData = {
             ...m,
             // Mapping corretto dei campi specifici
-            numero_bolla: m.numero_bolla || '',
+            numero_bolla: m.numero_bolla || m.riferimento_documento || '',
             codice_articolo: m.codice_articolo || '',
             note: m.note || '',
             condizioni: m.condizioni || 'conforme',
@@ -170,29 +173,6 @@ const MerciManager = (props) => {
         if(isControlled) propIniziaModifica(cleanData);
         else setInternalForm(cleanData);
         window.scrollTo({ top: 0, behavior: 'smooth' });
-    };
-
-    // --- TOGGLE HACCP (Se richiesto) ---
-    const toggleHaccpLocal = async (item) => {
-        const newVal = !item.is_haccp;
-        // Se non controllato, aggiornamento ottimistico locale
-        if(!isControlled) {
-            setInternalMerci(prev => prev.map(m => m.id === item.id ? {...m, is_haccp: newVal} : m));
-        }
-        try {
-            await fetch(`${API_URL}/api/haccp/merci/import`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ merci: [{ ...item, is_haccp: newVal }] })
-            });
-            // Refresh dati
-            if(!isControlled) {
-                 const r = await fetch(`${API_URL}/api/haccp/merci/${ristoranteId}?mode=${mode}`);
-                 setInternalMerci(await r.json());
-            } else {
-                // Se controllato, il padre dovrebbe gestire il refresh o l'utente ricarica.
-            }
-        } catch(e) { console.error(e); }
     };
 
     // --- EFFETTI UTILITY ---
@@ -219,17 +199,7 @@ const MerciManager = (props) => {
         }
     }, [merciForm.quantita, merciForm.prezzo_unitario, setMerciForm]);
 
-    const renderRowData = (r) => {
-        const qta = parseFloat(r.quantita) || 0;
-        const unit = parseFloat(r.prezzo_unitario) || 0;
-        const imp = parseFloat(r.prezzo) || (qta * unit);
-        const iva = parseFloat(r.iva) || 0;
-        const ivaTot = imp * (iva / 100);
-        const totIvato = imp + ivaTot;
-        return { imp: imp.toFixed(2), totIvato: totIvato.toFixed(2) };
-    };
-
-    // --- MAGIC SCAN ---
+    // --- MAGIC SCAN LOGIC ---
     const resizeImage = (file, maxWidth = 1000, quality = 0.7) => {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -252,101 +222,103 @@ const MerciManager = (props) => {
 
     const handleScanBolla = async (e) => {
         const file = e.target.files[0]; if(!file) return;
-        setIsScanning(true); setScannedData(null);
+        setIsScanning(true); 
         try {
             const fd = new FormData();
             if (file.type === 'application/pdf') fd.append('photo', file);
             else { const compressedFile = await resizeImage(file, 800, 0.6); fd.append('photo', compressedFile); }
+            
             const res = await fetch(`${API_URL}/api/haccp/scan-bolla`, { method: 'POST', body: fd });
             const json = await res.json();
             if (!json.success) throw new Error(json.error);
-            setScannedData(json.data);
-            if (json.isPdf) alert("📄 PDF Caricato! Allega e usa i dati di testata.");
-        } catch(err) { alert("⚠️ ERRORE SCANSIONE: " + err.message); } finally { setIsScanning(false); e.target.value = null; }
+            
+            // Forza flag HACCP
+            const data = json.data;
+            if (data.prodotti) {
+                data.prodotti = data.prodotti.map(p => ({ ...p, is_haccp: true }));
+            }
+            
+            // Apri Staging Mode
+            setStagingData([data]); // MagazzinoStaging si aspetta un array o oggetto con prodotti
+            setView('staging');
+            
+        } catch(err) { alert("⚠️ ERRORE SCANSIONE: " + err.message); } 
+        finally { setIsScanning(false); e.target.value = null; }
     };
 
-    const usaDatiTestata = () => {
-        const docNum = scannedData.numero_documento || '';
-        setMerciForm(prev => ({
-            ...prev,
-            fornitore: scannedData.fornitore || prev.fornitore,
-            data_ricezione: scannedData.data_ricezione || prev.data_ricezione,
-            ora: scannedData.ora_consegna || getCurrentTime(),
-            numero_bolla: docNum, // Mappiamo su numero_bolla
-            allegato_url: scannedData.allegato_url || prev.allegato_url
-        }));
-        setScannedData(null);
-    };
-
-    const importaProdotto = (prod) => {
-        setMerciForm(prev => ({
-            ...prev,
-            fornitore: scannedData.fornitore || prev.fornitore,
-            data_ricezione: scannedData.data_ricezione || prev.data_ricezione,
-            ora: scannedData.ora_consegna || getCurrentTime(),
-            prodotto: prod.nome, 
-            quantita: prod.quantita || '', 
-            lotto: prod.lotto || '',
-            numero_bolla: scannedData.numero_documento || '', // Mappiamo su numero_bolla
-            codice_articolo: '', // Scan non fornisce questo di solito
-            scadenza: prod.scadenza || '',
-            prezzo: prod.prezzo || '',
-            note: 'Importato da Scan',
-            is_haccp: prod.is_haccp !== undefined ? prod.is_haccp : (mode === 'haccp')
-        }));
-        setScannedData(prev => ({ ...prev, prodotti: prev.prodotti.filter(p => p !== prod) }));
+    // Conferma Salvataggio da Staging
+    const handleStagingConfirm = async (datiFinali) => {
+        try {
+            // Usa import massivo per supportare prodotti multipli
+            const url = `${API_URL}/api/haccp/merci/import`; 
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ merci: datiFinali })
+            });
+            const json = await res.json();
+            
+            if (json.success) {
+                alert("✅ Merce registrata correttamente!");
+                setStagingData(null);
+                setView('lista');
+                // Forza ricarica dati
+                if (isControlled && props.ricaricaDati) props.ricaricaDati(); // Se esiste prop ricarica
+                else if (!isControlled) {
+                    const r = await fetch(`${API_URL}/api/haccp/merci/${ristoranteId}?mode=${mode}`);
+                    setInternalMerci(await r.json());
+                } else {
+                    // Fallback refresh semplice: ricarica pagina o chiama fetch se accessibile
+                    window.location.reload(); 
+                }
+            } else {
+                alert("Errore salvataggio: " + json.error);
+            }
+        } catch (e) {
+            alert("Errore server.");
+        }
     };
 
     // --- RENDER ---
+    
+    // 1. VISTA STAGING (Scan AI / Revisione)
+    if (view === 'staging') {
+        return (
+            <MagazzinoStaging 
+                initialData={stagingData}
+                onConfirm={handleStagingConfirm}
+                onCancel={() => { 
+                    if(window.confirm("Annullare?")) {
+                        setView('lista');
+                        setStagingData(null);
+                    } 
+                }}
+            />
+        );
+    }
+
+    // 2. VISTA STANDARD (Form + Lista)
     return (
         <div className="no-print">
             {/* HEADER */}
             <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:15}}>
                 <h3 style={{color:'#2c3e50', margin:0}}>{title || (mode === 'all' ? "📦 Magazzino Generale" : "🍎 Ricevimento Merci HACCP")}</h3>
                 
-                {/* NAVIGAZIONE MESE */}
-                <div style={{display: 'flex', alignItems: 'center', background: 'white', padding: '5px 15px', borderRadius: '20px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)'}}>
-                    <button onClick={() => changeMonth(-1)} style={{background: 'transparent', border: 'none', fontSize: '18px', cursor: 'pointer', padding: '0 10px'}}>◀</button>
-                    <span style={{fontWeight: 'bold', minWidth: '150px', textAlign: 'center', color: '#2c3e50'}}>
-                        {viewDate.toLocaleString('it-IT', { month: 'long', year: 'numeric' }).toUpperCase()}
-                    </span>
-                    <button onClick={() => changeMonth(1)} style={{background: 'transparent', border: 'none', fontSize: '18px', cursor: 'pointer', padding: '0 10px'}}>▶</button>
-                </div>
-
                 {openDownloadModal && (
                     <button onClick={()=>openDownloadModal('merci')} style={{background:'#f39c12', color:'white', border:'none', padding:'6px 15px', borderRadius:5, cursor:'pointer', fontWeight:'bold'}}>⬇ Report Excel</button>
                 )}
             </div>
 
-            {/* MAGIC SCAN */}
+            {/* MAGIC SCAN (Apre Staging) */}
             <div onClick={() => scanInputRef.current.click()} style={{marginBottom: 20, padding: 15, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderRadius: 10, color: 'white', display:'flex', alignItems:'center', justifyContent:'space-between', cursor: 'pointer'}}>
                 <div><h3 style={{margin:0}}>✨ Magic Scan (AI)</h3><p style={{margin:0, fontSize:12}}>Carica Foto o PDF per auto-compilazione.</p></div>
                 <button disabled={isScanning} style={{background:'white', color:'#764ba2', border:'none', padding:'10px 20px', borderRadius:25, fontWeight:'bold'}}>{isScanning ? '🤖...' : '📸 SCANSIONA'}</button>
                 <input type="file" ref={scanInputRef} accept="image/*,application/pdf" onChange={handleScanBolla} style={{ display: 'none' }} />            
             </div>
 
-            {/* SCAN RESULTS */}
-            {scannedData && (
-                <div style={{marginBottom: 20, padding: 15, background: '#e0f7fa', border: '2px solid #00bcd4', borderRadius: 10}}>
-                    <div style={{display:'flex', justifyContent:'space-between', marginBottom:10}}>
-                        <div><strong>Fornitore: {scannedData.fornitore}</strong></div>
-                        <button onClick={usaDatiTestata} style={{background:'#0097a7', color:'white', border:'none', padding:'5px', borderRadius:5, fontSize:11}}>📝 Usa Dati Testata</button>
-                    </div>
-                    <div style={{display:'flex', flexWrap:'wrap', gap:10}}>
-                        {scannedData.prodotti.map((p, idx) => (
-                            <div key={idx} onClick={() => importaProdotto(p)} style={{background:'white', padding:10, borderRadius:5, border:'1px solid #b2ebf2', cursor:'pointer', flex:1, minWidth:200}}>
-                                <div style={{fontWeight:'bold', display:'flex', justifyContent:'space-between'}}>{p.nome}</div>
-                                <div style={{fontSize:11}}>Qta: {p.quantita} | € {p.prezzo}</div>
-                            </div>
-                        ))}
-                    </div>
-                    <button onClick={() => setScannedData(null)} style={{marginTop:10, border:'none', background:'transparent', textDecoration:'underline', color:'#c0392b'}}>Chiudi</button>
-                </div>
-            )}
-
-            {/* FORM */}
+            {/* FORM MANUALE */}
             <div style={{background:'white', padding:20, borderRadius:10, marginBottom:20, borderLeft: '5px solid #27ae60'}}>
-                <div style={{display:'flex', justifyContent:'space-between'}}><h3>{merciForm.id ? '✏️ Modifica' : '📥 Nuovo Arrivo'}</h3>{merciForm.id && <button onClick={handleReset}>Annulla</button>}</div>
+                <div style={{display:'flex', justifyContent:'space-between'}}><h3>{merciForm.id ? '✏️ Modifica' : '📥 Nuovo Arrivo Manuale'}</h3>{merciForm.id && <button onClick={handleReset}>Annulla</button>}</div>
                 <form onSubmit={handleSave} style={{display:'flex', flexWrap:'wrap', gap:10, alignItems:'flex-end'}}>
                     
                     {/* RIGA 1 */}
@@ -366,13 +338,10 @@ const MerciManager = (props) => {
                         </select>
                     </div>
 
-                    {/* RIGA 3 */}
-                    <div style={{flex:1, minWidth:80}}><label style={{fontSize:11}}>P. Unitario</label><input type="number" step="0.01" value={merciForm.prezzo_unitario || ''} onChange={e=>setMerciForm({...merciForm, prezzo_unitario:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
-                    <div style={{flex:1, minWidth:80}}><label style={{fontSize:11}}>TOTALE</label><input type="number" step="0.01" value={merciForm.prezzo} onChange={e=>setMerciForm({...merciForm, prezzo:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd', background:'#f0f0f0', fontWeight:'bold'}} /></div>
+                    {/* RIGA 3 (Prezzi rimossi visivamente dal form se non necessari, ma tenuti nello stato per compatibilità. Qui li lascio per input manuale ma tolgo dalla tabella) */}
                     <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Lotto</label><input value={merciForm.lotto} onChange={e=>setMerciForm({...merciForm, lotto:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
                     <div style={{flex:1, minWidth:120}}><label style={{fontSize:11}}>Scadenza</label><input type="date" value={merciForm.scadenza} onChange={e=>setMerciForm({...merciForm, scadenza:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
                     
-                    {/* RIGA 4 */}
                     <div style={{flex:1, minWidth:120}}>
                         <label style={{fontSize:11}}>Condizioni</label>
                         <select value={merciForm.condizioni || 'conforme'} onChange={e=>setMerciForm({...merciForm, condizioni:e.target.value})} style={{width:'100%', padding:9, border:'1px solid #ddd', borderColor: merciForm.condizioni === 'conforme' ? '#27ae60' : '#e74c3c'}}>
@@ -380,12 +349,14 @@ const MerciManager = (props) => {
                             <option value="non_conforme">❌ Non Conforme</option>
                         </select>
                     </div>
+                    
                     <div style={{flex:1, minWidth:150}}><label style={{fontSize:11}}>Destinazione</label>
                       <select value={merciForm.destinazione} onChange={e=>setMerciForm({...merciForm, destinazione:e.target.value})} style={{width:'100%', padding:9, border:'1px solid #ddd'}}>
                           <option value="">-- Seleziona --</option>
                           {assets && assets.map(a => <option key={a.id} value={a.nome}>{a.nome}</option>)}
                       </select>
                     </div>
+                    
                     <div style={{flex:2, minWidth:200}}><label style={{fontSize:11}}>Note</label><input value={merciForm.note || ''} onChange={e=>setMerciForm({...merciForm, note:e.target.value})} placeholder="Eventuali note..." style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
 
                     <label style={{background: merciForm.allegato_url ? '#2ecc71' : '#ecf0f1', padding:'10px', borderRadius:5, cursor:'pointer', fontSize:12, marginTop:18}}>{uploadingMerci ? "..." : "📎 Allegato"}<input type="file" accept="image/*,.pdf" onChange={handlePhoto} style={{display:'none'}} /></label>
@@ -393,60 +364,76 @@ const MerciManager = (props) => {
                 </form>
             </div>
 
-            {/* TABELLA */}
-            <div style={{background:'white', padding:20, borderRadius:10}}>
-                <div style={{display:'flex', justifyContent:'space-between', marginBottom:15}}>
-                    <h3>📦 Storico - {viewDate.toLocaleString('it-IT', { month: 'long', year: 'numeric' })}</h3>
-                </div>
+            {/* NAVIGAZIONE MESE (SPOSTATA SOPRA LA TABELLA) */}
+            <div style={{display: 'flex', alignItems: 'center', background: '#f8f9fa', padding: '10px', borderRadius: '8px 8px 0 0', border: '1px solid #eee', borderBottom: 'none', width: 'fit-content'}}>
+                <button onClick={() => changeMonth(-1)} style={{background: 'transparent', border: 'none', fontSize: '18px', cursor: 'pointer', padding: '0 10px'}}>◀</button>
+                <span style={{fontWeight: 'bold', minWidth: '150px', textAlign: 'center', color: '#2c3e50'}}>
+                    {viewDate.toLocaleString('it-IT', { month: 'long', year: 'numeric' }).toUpperCase()}
+                </span>
+                <button onClick={() => changeMonth(1)} style={{background: 'transparent', border: 'none', fontSize: '18px', cursor: 'pointer', padding: '0 10px'}}>▶</button>
+            </div>
+
+            {/* TABELLA STORICO (Senza Prezzi, con Bolla) */}
+            <div style={{background:'white', border:'1px solid #eee', borderTop:'none', borderRadius:'0 0 10px 10px'}}>
                 <div style={{overflowX:'auto'}}>
                     <table style={{width:'100%', borderCollapse:'collapse', fontSize:12}}>
                         <thead>
-                            <tr style={{background:'#f0f0f0', textAlign:'left'}}>
-                                <th style={{padding:8}}>Data</th>
-                                <th style={{padding:8}}>Bolla</th>
-                                <th style={{padding:8}}>Fornitore</th>
-                                <th style={{padding:8}}>Cod. Art</th>
-                                <th style={{padding:8}}>Prodotto</th>
-                                <th style={{padding:8}}>Qta</th>
-                                <th style={{padding:8}}>Totale</th>
-                                <th style={{padding:8}}>Note</th>
-                                <th style={{padding:8}}>Condizioni</th>
-                                <th style={{padding:8}}>Azioni</th>
+                            <tr style={{background:'#ecf0f1', color:'#2c3e50', textAlign:'left'}}>
+                                <th style={{padding:12}}>Data</th>
+                                <th style={{padding:12}}>Bolla / Doc</th> {/* RINOMINATO */}
+                                <th style={{padding:12}}>Fornitore</th>
+                                <th style={{padding:12}}>Cod. Art</th>
+                                <th style={{padding:12}}>Prodotto</th>
+                                <th style={{padding:12}}>Qta</th>
+                                {/* RIMOSSO TOTALE E PREZZO */}
+                                <th style={{padding:12}}>Lotto</th>
+                                <th style={{padding:12}}>Scadenza</th>
+                                <th style={{padding:12}}>Condizioni</th>
+                                <th style={{padding:12}}>Azioni</th>
                             </tr>
                         </thead>
                         <tbody>
                             {filteredMerci.length === 0 ? (
                                 <tr><td colSpan="10" style={{padding:20, textAlign:'center', color:'#999'}}>Nessuna registrazione in questo mese.</td></tr>
                             ) : (
-                                filteredMerci.map(m => {
-                                    const c = renderRowData(m); 
-                                    return (
-                                        <tr key={m.id} style={{borderBottom:'1px solid #eee', background: (showHaccpToggle && !m.is_haccp) ? '#fcfcfc' : 'white'}}>
-                                            <td style={{padding:8}}>
-                                                {new Date(m.data_ricezione).toLocaleDateString()}
-                                                <div style={{fontSize:10, color:'#666'}}>{m.ora}</div>
-                                            </td>
-                                            <td style={{padding:8}}><strong>{m.numero_bolla || '-'}</strong></td>
-                                            <td style={{padding:8}}>{m.fornitore}</td>
-                                            <td style={{padding:8}}>{m.codice_articolo || '-'}</td>
-                                            <td style={{padding:8}}><strong style={{color: m.is_haccp ? '#2c3e50' : '#7f8c8d'}}>{m.prodotto}</strong></td>
-                                            <td style={{padding:8}}>{m.quantita} {m.unita_misura}</td>
-                                            <td style={{padding:8, color:'#27ae60', fontWeight:'bold'}}>€ {c.imp}</td>
-                                            <td style={{padding:8, maxWidth:150, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{m.note}</td>
-                                            <td style={{padding:8}}>
-                                                {m.condizioni === 'non_conforme' ? (
-                                                    <span style={{background:'#fadbd8', color:'#e74c3c', padding:'3px 8px', borderRadius:10, fontSize:10, fontWeight:'bold'}}>NO</span>
-                                                ) : (
-                                                    <span style={{background:'#d5f5e3', color:'#27ae60', padding:'3px 8px', borderRadius:10, fontSize:10, fontWeight:'bold'}}>OK</span>
-                                                )}
-                                            </td>
-                                            <td style={{padding:8}}>
-                                                <button onClick={()=>handleEdit(m)} style={{border:'none', background:'none', cursor:'pointer', fontSize:16}}>✏️</button>
-                                                <button onClick={()=>handleDelete(m.id)} style={{border:'none', background:'none', cursor:'pointer', fontSize:16}}>🗑️</button>
-                                            </td>
-                                        </tr>
-                                    );
-                                })
+                                filteredMerci.map(m => (
+                                    <tr key={m.id} style={{borderBottom:'1px solid #eee', background: (showHaccpToggle && !m.is_haccp) ? '#fcfcfc' : 'white'}}>
+                                        <td style={{padding:10}}>
+                                            {new Date(m.data_ricezione).toLocaleDateString()}
+                                            <div style={{fontSize:10, color:'#999'}}>{m.ora}</div>
+                                        </td>
+                                        
+                                        {/* COLONNA BOLLA COLLEGATA A NUMERO_BOLLA O RIF_DOC */}
+                                        <td style={{padding:10}}>
+                                            <strong>{m.numero_bolla || m.riferimento_documento || '-'}</strong>
+                                        </td>
+                                        
+                                        <td style={{padding:10}}>{m.fornitore}</td>
+                                        <td style={{padding:10}}>{m.codice_articolo || '-'}</td>
+                                        <td style={{padding:10}}>
+                                            <strong style={{color: m.is_haccp ? '#2c3e50' : '#7f8c8d'}}>{m.prodotto}</strong>
+                                            {m.allegato_url && <span style={{marginLeft:5, fontSize:12}}>📎</span>}
+                                        </td>
+                                        <td style={{padding:10}}>{m.quantita} {m.unita_misura}</td>
+                                        
+                                        <td style={{padding:10, fontFamily:'monospace'}}>{m.lotto || '-'}</td>
+                                        <td style={{padding:10, color: m.scadenza ? '#c0392b' : '#333'}}>
+                                            {m.scadenza ? new Date(m.scadenza).toLocaleDateString() : '-'}
+                                        </td>
+                                        
+                                        <td style={{padding:10}}>
+                                            {m.condizioni === 'non_conforme' ? (
+                                                <span style={{background:'#fadbd8', color:'#e74c3c', padding:'3px 8px', borderRadius:10, fontSize:10, fontWeight:'bold'}}>NON CONFORME</span>
+                                            ) : (
+                                                <span style={{background:'#d5f5e3', color:'#27ae60', padding:'3px 8px', borderRadius:10, fontSize:10, fontWeight:'bold'}}>OK</span>
+                                            )}
+                                        </td>
+                                        <td style={{padding:10}}>
+                                            <button onClick={()=>handleEdit(m)} style={{border:'none', background:'none', cursor:'pointer', fontSize:16}}>✏️</button>
+                                            <button onClick={()=>handleDelete(m.id)} style={{border:'none', background:'none', cursor:'pointer', fontSize:16}}>🗑️</button>
+                                        </td>
+                                    </tr>
+                                ))
                             )}
                         </tbody>
                     </table>
