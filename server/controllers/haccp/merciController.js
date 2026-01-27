@@ -294,15 +294,45 @@ exports.updateMerce = async (req, res) => {
     }
 };
 
+// --- FIX 1: DELETE SINGOLO CON ROLLBACK STOCK ---
 exports.deleteMerce = async (req, res) => {
+    const client = await pool.connect();
     try {
-        await pool.query("DELETE FROM haccp_merci WHERE id=$1", [req.params.id]);
+        await client.query('BEGIN');
+        const { id } = req.params;
+
+        // 1. Leggiamo la riga prima di eliminarla per sapere cosa togliere dal magazzino
+        const check = await client.query("SELECT magazzino_id, quantita FROM haccp_merci WHERE id = $1", [id]);
+        
+        if (check.rows.length > 0) {
+            const { magazzino_id, quantita } = check.rows[0];
+            const qtaDaTogliere = parseFloat(quantita) || 0;
+
+            // 2. Se è collegata al magazzino, riduciamo la giacenza
+            if (magazzino_id && qtaDaTogliere > 0) {
+                // Opzionale: Controllo se giacenza < 0 (PostgreSQL gestisce float anche negativi, quindi OK)
+                await client.query(
+                    "UPDATE magazzino_prodotti SET giacenza = giacenza - $1, updated_at = NOW() WHERE id = $2", 
+                    [qtaDaTogliere, magazzino_id]
+                );
+            }
+        }
+
+        // 3. Eliminazione effettiva
+        await client.query("DELETE FROM haccp_merci WHERE id=$1", [id]);
+        await client.query('COMMIT');
+        
         res.json({ success: true });
     } catch (e) {
-        res.status(500).json({ error: "Err" });
+        await client.query('ROLLBACK');
+        console.error("Errore deleteMerce:", e);
+        res.status(500).json({ error: "Errore durante l'eliminazione" });
+    } finally {
+        client.release();
     }
 };
 
+// --- FIX 2: DELETE MASSIVO CON ROLLBACK STOCK ---
 exports.deleteMerceBulk = async (req, res) => {
     const client = await pool.connect();
     try {
@@ -310,12 +340,32 @@ exports.deleteMerceBulk = async (req, res) => {
         if (!ids || ids.length === 0) return res.json({ success: true });
 
         await client.query('BEGIN');
+
+        // 1. Recuperiamo tutte le quantità da stornare
+        const itemsToCheck = await client.query(
+            "SELECT id, magazzino_id, quantita FROM haccp_merci WHERE id = ANY($1::int[])", 
+            [ids]
+        );
+
+        // 2. Aggiorniamo il magazzino per ogni elemento
+        for (const item of itemsToCheck.rows) {
+            const qtaDaTogliere = parseFloat(item.quantita) || 0;
+            if (item.magazzino_id && qtaDaTogliere > 0) {
+                await client.query(
+                    "UPDATE magazzino_prodotti SET giacenza = giacenza - $1, updated_at = NOW() WHERE id = $2",
+                    [qtaDaTogliere, item.magazzino_id]
+                );
+            }
+        }
+
+        // 3. Cancellazione di massa
         await client.query("DELETE FROM haccp_merci WHERE id = ANY($1::int[])", [ids]);
         await client.query('COMMIT');
 
         res.json({ success: true, deleted: ids.length });
     } catch (e) {
         await client.query('ROLLBACK');
+        console.error("Errore deleteMerceBulk:", e);
         res.status(500).json({ error: e.message });
     } finally {
         client.release();
@@ -326,7 +376,7 @@ exports.scanBolla = async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: "Nessun file inviato" });
 
-        // ✅ PROMPT RIPRISTINATO (MAGIC SCAN SUPER 4.0 - PINETA SRL FIX)
+        // ✅ PROMPT (MAGIC SCAN SUPER 4.0 - PINETA SRL FIX)
         const prompt = `
         Sei un contabile esperto italiano. Analizza questa immagine di fattura o DDT.
         Devi estrarre i dati con estrema precisione.
