@@ -6,8 +6,18 @@ const { authenticator } = require('otplib');
 const https = require('https');
 const http = require('http');
 
-// Configurazione Ristorante
-router.get('/api/ristorante/config/:id', async (req, res) => { try { const r = await pool.query('SELECT * FROM ristoranti WHERE id = $1', [req.params.id]); if (r.rows.length > 0) res.json(r.rows[0]); else res.status(404).json({ error: "Not Found" }); } catch (e) { res.status(500).json({ error: "Err" }); } });
+// ==========================================
+// 1. GESTIONE RISTORANTE (CONFIG & STYLE)
+// ==========================================
+
+// Configurazione Ristorante (Lettura)
+router.get('/api/ristorante/config/:id', async (req, res) => { 
+    try { 
+        const r = await pool.query('SELECT * FROM ristoranti WHERE id = $1', [req.params.id]); 
+        if (r.rows.length > 0) res.json(r.rows[0]); 
+        else res.status(404).json({ error: "Not Found" }); 
+    } catch (e) { res.status(500).json({ error: "Err" }); } 
+});
 
 // UPDATE STYLE (Gestisce anche prezzo_coperto e nascondi_euro)
 router.put('/api/ristorante/style/:id', async (req, res) => { 
@@ -24,158 +34,20 @@ router.put('/api/ristorante/style/:id', async (req, res) => {
     } 
 });
 
-router.get('/api/db-fix-magazzino-v3', async (req, res) => {
-    try {
-        const client = await pool.connect();
-        try {
-            // Aggiungiamo Codice Articolo e Sconto sia al Magazzino Master che allo Storico HACCP
-            
-            // 1. Tabella HACCP_MERCI (Storico Bolle)
-            await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS codice_articolo TEXT DEFAULT ''");
-            await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS sconto NUMERIC(5,2) DEFAULT 0");
-
-            // 2. Tabella MAGAZZINO_PRODOTTI (Giacenze)
-            await client.query("ALTER TABLE magazzino_prodotti ADD COLUMN IF NOT EXISTS codice_articolo TEXT DEFAULT ''");
-            
-            res.send("✅ DB AGGIORNATO V3: Aggiunti campi 'codice_articolo' e 'sconto'.");
-        } finally {
-            client.release();
-        }
-    } catch (e) {
-        res.status(500).send("Errore DB: " + e.message);
-    }
+// Update Servizio (Attiva/Disattiva Ordini)
+router.put('/api/ristorante/servizio/:id', async (req, res) => { 
+    try { 
+        const { id } = req.params; 
+        if (req.body.ordini_abilitati !== undefined) await pool.query('UPDATE ristoranti SET ordini_abilitati = $1 WHERE id = $2', [req.body.ordini_abilitati, id]); 
+        if (req.body.servizio_attivo !== undefined) await pool.query('UPDATE ristoranti SET servizio_attivo = $1 WHERE id = $2', [req.body.servizio_attivo, id]); 
+        res.json({ success: true }); 
+    } catch (e) { res.status(500).json({error:"Err"}); } 
 });
 
-router.get('/api/db-init-magazzino-pro', async (req, res) => {
-    try {
-        // 1. Creiamo la tabella MASTER del magazzino
-        // Questa tabella comanda su tutto. HACCP farà riferimento a questa.
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS magazzino_prodotti (
-                id SERIAL PRIMARY KEY,
-                ristorante_id INTEGER NOT NULL,
-                nome TEXT NOT NULL,
-                marca TEXT,
-                ean_barcode TEXT,
-                categoria TEXT DEFAULT 'Generale',
-                reparto TEXT, -- Es. Cucina, Bar, Pizzeria
-                unita_misura TEXT DEFAULT 'Pz',
-                confezione_da NUMERIC(10,2) DEFAULT 1, -- Es. Cartone da 6
-                
-                -- Gestione Stock
-                giacenza NUMERIC(10,2) DEFAULT 0,
-                scorta_minima NUMERIC(10,2) DEFAULT 0,
-                
-                -- Gestione Economica
-                prezzo_ultimo NUMERIC(10,2) DEFAULT 0,
-                prezzo_medio NUMERIC(10,2) DEFAULT 0,
-                iva NUMERIC(5,2) DEFAULT 0,
-                
-                updated_at TIMESTAMP DEFAULT NOW()
-            );
-        `);
-
-        // 2. Colleghiamo HACCP al Magazzino (aggiungiamo colonna link se non c'è)
-        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS magazzino_id INTEGER");
-
-        res.send("✅ ARCHITETTURA MAGAZZINO V2 ATTIVATA: Tabella 'magazzino_prodotti' creata e collegata!");
-    } catch (e) {
-        console.error(e);
-        res.status(500).send("Errore DB: " + e.message);
-    }
-});
-
-// --- FIX DATABASE: AGGIUNTA MODULI & SCADENZA ---
-router.get('/api/db-fix-modules-v2', async (req, res) => {
-    try {
-        const client = await pool.connect();
-        try {
-            // 1. Aggiungiamo le colonne booleane per i moduli (se non esistono)
-            await client.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS modulo_menu_digitale BOOLEAN DEFAULT TRUE");
-            await client.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS modulo_ordini_clienti BOOLEAN DEFAULT TRUE");
-            await client.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS modulo_magazzino BOOLEAN DEFAULT FALSE");
-            await client.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS modulo_haccp BOOLEAN DEFAULT FALSE");
-            await client.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS modulo_utenti BOOLEAN DEFAULT FALSE");
-            
-            // 2. Aggiungiamo la gestione Cassa/Cucina (Suite)
-            // Nota: cassa_full_suite sostituirà la logica di 'cucina_super_active'
-            await client.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS cassa_full_suite BOOLEAN DEFAULT TRUE");
-
-            // 3. Aggiungiamo la Data Scadenza
-            await client.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS data_scadenza DATE DEFAULT (CURRENT_DATE + INTERVAL '1 year')");
-
-            res.send("✅ DATABASE AGGIORNATO: Moduli, Suite e Scadenza pronti!");
-        } finally {
-            client.release();
-        }
-    } catch (e) {
-        res.status(500).send("Errore DB: " + e.message);
-    }
-});
-
-router.get('/api/db-fix-magazzino-full', async (req, res) => {
-    try {
-        const client = await pool.connect();
-        try {
-            // Aggiungiamo campi contabili e logistici precisi
-            await client.query(`
-                ALTER TABLE magazzino_prodotti 
-                ADD COLUMN IF NOT EXISTS data_bolla DATE DEFAULT CURRENT_DATE,
-                ADD COLUMN IF NOT EXISTS numero_bolla TEXT DEFAULT '',
-                ADD COLUMN IF NOT EXISTS lotto TEXT DEFAULT '',
-                
-                ADD COLUMN IF NOT EXISTS tipo_unita TEXT DEFAULT 'Pz', -- Es: Kg, Pz, Colli, Lt
-                ADD COLUMN IF NOT EXISTS peso_per_unita NUMERIC(10,3) DEFAULT 1, -- Es: 1 Collo = 6 Pz
-                
-                ADD COLUMN IF NOT EXISTS prezzo_unitario_netto NUMERIC(10,3) DEFAULT 0, -- Prezzo singolo imponibile
-                ADD COLUMN IF NOT EXISTS aliquota_iva NUMERIC(5,2) DEFAULT 22, -- 4, 10, 22
-                ADD COLUMN IF NOT EXISTS valore_totale_netto NUMERIC(12,2) DEFAULT 0, -- (Qta * Unitario Netto)
-                ADD COLUMN IF NOT EXISTS valore_totale_iva NUMERIC(12,2) DEFAULT 0, -- (TotNetto * Iva)
-                ADD COLUMN IF NOT EXISTS valore_totale_lordo NUMERIC(12,2) DEFAULT 0; -- (TotNetto + TotIva)
-            `);
-            
-            res.send("✅ DB MAGAZZINO AGGIORNATO: Aggiunti campi fiscali (IVA, Netto, Lordo) e logistici (Colli, Kg).");
-        } finally {
-            client.release();
-        }
-    } catch (e) {
-        res.status(500).send("Errore DB: " + e.message);
-    }
-});
-
-// AGGIUNGI QUESTO IN server/routes/adminRoutes.js
-router.get('/api/db-fix-magazzino-v2', async (req, res) => {
-    try {
-        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS ora TEXT DEFAULT ''");
-        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS unita_misura TEXT DEFAULT 'Pz'");
-        
-        // Già che ci siamo, assicuriamoci che ci siano anche le colonne per i prezzi se mancavano
-        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS prezzo_unitario NUMERIC(10,2) DEFAULT 0");
-        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS iva NUMERIC(5,2) DEFAULT 0");
-        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS prezzo NUMERIC(10,2) DEFAULT 0");
-
-        res.send("✅ DATABASE AGGIORNATO: Colonne Magazzino create con successo!");
-    } catch (e) {
-        res.status(500).send("Errore DB: " + e.message);
-    }
-});
-
-// AGGIUNGI QUESTO ROUTE IN adminRoutes.js
-router.get('/api/db-fix-security-magazzino', async (req, res) => {
-    try {
-        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS pw_magazzino TEXT DEFAULT '1234'");
-        res.send("✅ DATABASE AGGIORNATO: Aggiunta password Magazzino!");
-    } catch (e) {
-        res.status(500).send("Errore DB: " + e.message);
-    }
-});
-
-router.put('/api/ristorante/servizio/:id', async (req, res) => { try { const { id } = req.params; if (req.body.ordini_abilitati !== undefined) await pool.query('UPDATE ristoranti SET ordini_abilitati = $1 WHERE id = $2', [req.body.ordini_abilitati, id]); if (req.body.servizio_attivo !== undefined) await pool.query('UPDATE ristoranti SET servizio_attivo = $1 WHERE id = $2', [req.body.servizio_attivo, id]); res.json({ success: true }); } catch (e) { res.status(500).json({error:"Err"}); } });
+// Update Password Reparti (Sicurezza)
 router.put('/api/ristorante/security/:id', async (req, res) => { 
     try { 
-        // AGGIUNTO pw_magazzino nel destructuring
         const { pw_cassa, pw_cucina, pw_pizzeria, pw_bar, pw_haccp, pw_magazzino } = req.body; 
-        
         await pool.query(
             `UPDATE ristoranti SET pw_cassa=$1, pw_cucina=$2, pw_pizzeria=$3, pw_bar=$4, pw_haccp=$5, pw_magazzino=$6 WHERE id=$7`, 
             [pw_cassa, pw_cucina, pw_pizzeria, pw_bar, pw_haccp, pw_magazzino, req.params.id]
@@ -183,105 +55,112 @@ router.put('/api/ristorante/security/:id', async (req, res) => {
         res.json({ success: true }); 
     } catch (e) { res.status(500).json({ error: "Err" }); } 
 });
-router.put('/api/ristorante/dati-fiscali/:id', async (req, res) => { try { const { dati_fiscali } = req.body; await pool.query('UPDATE ristoranti SET dati_fiscali = $1 WHERE id = $2', [dati_fiscali, req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: "Err" }); } });
 
-// --- DB FIX FORZATO (AGGIORNATO) ---
-router.get('/api/db-fix-menu', async (req, res) => { 
+// Update Dati Fiscali
+router.put('/api/ristorante/dati-fiscali/:id', async (req, res) => { 
     try { 
-        // Ristoranti
-        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS prezzo NUMERIC(10,2) DEFAULT 0");
-        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS nascondi_euro BOOLEAN DEFAULT FALSE");
-        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS prezzo_coperto NUMERIC(10,2) DEFAULT 0"); // NUOVO
-        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS url_menu_giorno TEXT DEFAULT ''");
-        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS url_menu_pdf TEXT DEFAULT ''");
-        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS info_footer TEXT DEFAULT ''");
-        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS url_allergeni TEXT DEFAULT ''");
-        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS colore_footer_text TEXT DEFAULT '#888888'");
-        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS dimensione_footer TEXT DEFAULT '12'");
-        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS allineamento_footer TEXT DEFAULT 'center'");
-        
-        // Prodotti
-        await pool.query("ALTER TABLE prodotti ADD COLUMN IF NOT EXISTS unita_misura TEXT DEFAULT ''");
-        await pool.query("ALTER TABLE prodotti ADD COLUMN IF NOT EXISTS qta_minima NUMERIC(10,2) DEFAULT 1"); // NUOVO
-
-        // Ordini
-        await pool.query("ALTER TABLE ordini ADD COLUMN IF NOT EXISTS coperti INTEGER DEFAULT 0"); // NUOVO
-        
-        res.send("✅ DATABASE AGGIORNATO (Coperti, Minimo Qta, Unità, Euro)!"); 
-    } catch (e) { 
-        console.error("Errore DB Fix:", e);
-        res.status(500).send("Errore DB: " + e.message); 
-    } 
+        const { dati_fiscali } = req.body; 
+        await pool.query('UPDATE ristoranti SET dati_fiscali = $1 WHERE id = $2', [dati_fiscali, req.params.id]); 
+        res.json({ success: true }); 
+    } catch (e) { res.status(500).json({ error: "Err" }); } 
 });
 
-// Login Ristorante Owner
-router.post('/api/login', async (req, res) => { const { email, password } = req.body; try { const result = await pool.query("SELECT * FROM ristoranti WHERE email = $1", [email]); if (result.rows.length > 0) { const ristorante = result.rows[0]; if (ristorante.password === password) { return res.json({ success: true, user: { id: ristorante.id, nome: ristorante.nome, slug: ristorante.slug } }); } } res.status(401).json({ success: false, error: "Credenziali errate" }); } catch (e) { res.status(500).json({ success: false, error: "Errore interno" }); } });
+// ==========================================
+// 2. SUPER ADMIN (MODIFICATO E CORRETTO)
+// ==========================================
 
-// Auth Station
-router.post('/api/auth/station', async (req, res) => { 
+// Login Super Admin
+router.post('/api/super/login', (req, res) => { 
     try { 
-        const { ristorante_id, role, password } = req.body; 
+        const { email, password, code2fa } = req.body; 
+        const adminEmail = process.env.ADMIN_EMAIL; 
+        const adminPass = process.env.ADMIN_PASSWORD; 
+        const adminSecret = process.env.ADMIN_2FA_SECRET; 
         
-        // AGGIUNTO 'magazzino': 'pw_magazzino' alla mappa
-        const roleMap = { 
-            'cassa': 'pw_cassa', 
-            'cucina': 'pw_cucina', 
-            'pizzeria': 'pw_pizzeria', 
-            'bar': 'pw_bar', 
-            'haccp': 'pw_haccp',
-            'magazzino': 'pw_magazzino' 
-        }; 
+        if (!adminEmail || !adminPass || !adminSecret) return res.status(500).json({ success: false, error: "Configurazione Server Incompleta" }); 
+        if (email !== adminEmail || password !== adminPass) return res.json({ success: false, error: "Credenziali non valide" }); 
         
-        const colonnaPwd = roleMap[role]; 
-        if (!colonnaPwd) return res.json({ success: false, error: "Ruolo non valido" }); 
+        const isValidToken = authenticator.check(code2fa, adminSecret); 
+        if (!isValidToken) return res.json({ success: false, error: "Codice 2FA Errato o Scaduto" }); 
         
-        // Nota: Assicurati di selezionare anche la nuova colonna nella query se non usi SELECT *
-        // Se usi SELECT * va bene, ma per sicurezza cambiamo la query per essere espliciti o dinamici
-        const r = await pool.query(`SELECT * FROM ristoranti WHERE id = $1`, [ristorante_id]); 
-        
-        if (r.rows.length === 0) return res.json({ success: false, error: "Ristorante non trovato" }); 
-        
-        // Controllo password
-        const storedPwd = r.rows[0][colonnaPwd];
-        
-        if (String(storedPwd) === String(password)) 
-            res.json({ success: true, nome_ristorante: r.rows[0].nome }); 
-        else 
-            res.json({ success: false, error: "Password Errata" }); 
-    } catch (e) { res.status(500).json({ error: "Err: " + e.message }); } 
+        res.json({ success: true, token: "SUPER_GOD_TOKEN_2026" }); 
+    } catch (e) { res.status(500).json({ success: false, error: "Errore interno server" }); } 
 });
 
-// Super Admin
-router.get('/api/super/ristoranti', async (req, res) => { try { const r = await pool.query('SELECT * FROM ristoranti ORDER BY id ASC'); res.json(r.rows); } catch (e) { res.status(500).json({error:"Err"}); } });
-router.post('/api/super/ristoranti', async (req, res) => { try { await pool.query(`INSERT INTO ristoranti (nome, slug, email, telefono, password, account_attivo, servizio_attivo, ordini_abilitati, cucina_super_active) VALUES ($1, $2, $3, $4, $5, TRUE, TRUE, TRUE, TRUE)`, [req.body.nome, req.body.slug, req.body.email, req.body.telefono, req.body.password || 'tonystark']); res.json({ success: true }); } catch (e) { res.status(500).json({error: "Err"}); } });
+// Lista Ristoranti
+router.get('/api/super/ristoranti', async (req, res) => { 
+    try { const r = await pool.query('SELECT * FROM ristoranti ORDER BY id ASC'); res.json(r.rows); } 
+    catch (e) { res.status(500).json({error:"Err"}); } 
+});
+
+// Crea Ristorante
+router.post('/api/super/ristoranti', async (req, res) => { 
+    try { 
+        const b = req.body;
+        await pool.query(`
+            INSERT INTO ristoranti 
+            (nome, slug, email, telefono, password, account_attivo, servizio_attivo, ordini_abilitati, cucina_super_active,
+             modulo_menu_digitale, modulo_ordini_clienti, modulo_magazzino, modulo_haccp, modulo_utenti, cassa_full_suite, data_scadenza) 
+            VALUES ($1, $2, $3, $4, $5, TRUE, TRUE, TRUE, TRUE, $6, $7, $8, $9, $10, $11, $12)`, 
+            [
+                b.nome, b.slug, b.email, b.telefono, b.password || 'tonystark',
+                b.modulo_menu_digitale ?? true,
+                b.modulo_ordini_clienti ?? true,
+                b.modulo_magazzino ?? false,
+                b.modulo_haccp ?? false,
+                b.modulo_utenti ?? false,
+                b.cassa_full_suite ?? true,
+                b.data_scadenza || new Date(new Date().setFullYear(new Date().getFullYear() + 1))
+            ]
+        ); 
+        res.json({ success: true }); 
+    } catch (e) { res.status(500).json({error: "Err: " + e.message}); } 
+});
+
+// UPDATE RISTORANTE (FIXED: COALESCE per evitare cancellazione dati)
 router.put('/api/super/ristoranti/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { 
-            nome, slug, email, telefono, password, 
-            account_attivo, data_scadenza,
-            modulo_menu_digitale, modulo_ordini_clienti, 
-            modulo_magazzino, modulo_haccp, modulo_utenti, 
-            cassa_full_suite 
-        } = req.body;
-
-        // Se la password è fornita, la aggiorniamo, altrimenti teniamo quella vecchia
-        let passwordQuery = "";
-        let params = [nome, slug, email, telefono, account_attivo, data_scadenza, modulo_menu_digitale, modulo_ordini_clienti, modulo_magazzino, modulo_haccp, modulo_utenti, cassa_full_suite, id];
-        
-        if (password && password.trim() !== "") {
-            passwordQuery = ", password=$14";
-            params.push(password);
-        }
+        const b = req.body;
 
         const sql = `
             UPDATE ristoranti SET 
-                nome=$1, slug=$2, email=$3, telefono=$4, account_attivo=$5, 
-                data_scadenza=$6, modulo_menu_digitale=$7, modulo_ordini_clienti=$8, 
-                modulo_magazzino=$9, modulo_haccp=$10, modulo_utenti=$11, 
-                cassa_full_suite=$12
-                ${passwordQuery}
-            WHERE id=$13`;
+                nome = COALESCE($1, nome),
+                slug = COALESCE($2, slug),
+                email = COALESCE($3, email),
+                telefono = COALESCE($4, telefono),
+                account_attivo = COALESCE($5, account_attivo),
+                data_scadenza = COALESCE($6, data_scadenza),
+                
+                modulo_menu_digitale = COALESCE($7, modulo_menu_digitale),
+                modulo_ordini_clienti = COALESCE($8, modulo_ordini_clienti),
+                modulo_magazzino = COALESCE($9, modulo_magazzino),
+                modulo_haccp = COALESCE($10, modulo_haccp),
+                modulo_utenti = COALESCE($11, modulo_utenti),
+                cassa_full_suite = COALESCE($12, cassa_full_suite),
+                
+                password = CASE WHEN $13::text IS NOT NULL AND $13::text <> '' THEN $13 ELSE password END
+            WHERE id = $14
+        `;
+
+        const params = [
+            b.nome || null,
+            b.slug || null,
+            b.email || null,
+            b.telefono || null,
+            b.account_attivo !== undefined ? b.account_attivo : null, 
+            b.data_scadenza || null,
+            
+            b.modulo_menu_digitale !== undefined ? b.modulo_menu_digitale : null,
+            b.modulo_ordini_clienti !== undefined ? b.modulo_ordini_clienti : null,
+            b.modulo_magazzino !== undefined ? b.modulo_magazzino : null,
+            b.modulo_haccp !== undefined ? b.modulo_haccp : null,
+            b.modulo_utenti !== undefined ? b.modulo_utenti : null,
+            b.cassa_full_suite !== undefined ? b.cassa_full_suite : null,
+            
+            b.password || null,
+            id
+        ];
         
         await pool.query(sql, params);
         res.json({ success: true });
@@ -290,13 +169,68 @@ router.put('/api/super/ristoranti/:id', async (req, res) => {
         res.status(500).json({ error: e.message });
     }
 });
-router.delete('/api/super/ristoranti/:id', async (req, res) => { try { const id = req.params.id; await pool.query('DELETE FROM prodotti WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM categorie WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM ordini WHERE ristorante_id = $1', [id]); await pool.query('DELETE FROM ristoranti WHERE id = $1', [id]); res.json({ success: true }); } catch (e) { res.status(500).json({error: "Err"}); } });
-router.post('/api/super/login', (req, res) => { try { const { email, password, code2fa } = req.body; const adminEmail = process.env.ADMIN_EMAIL; const adminPass = process.env.ADMIN_PASSWORD; const adminSecret = process.env.ADMIN_2FA_SECRET; if (!adminEmail || !adminPass || !adminSecret) return res.status(500).json({ success: false, error: "Configurazione Server Incompleta" }); if (email !== adminEmail || password !== adminPass) return res.json({ success: false, error: "Credenziali non valide" }); const isValidToken = authenticator.check(code2fa, adminSecret); if (!isValidToken) return res.json({ success: false, error: "Codice 2FA Errato o Scaduto" }); res.json({ success: true, token: "SUPER_GOD_TOKEN_2026" }); } catch (e) { res.status(500).json({ success: false, error: "Errore interno server" }); } });
 
-// Upload Generico
+// Delete Ristorante
+router.delete('/api/super/ristoranti/:id', async (req, res) => { 
+    try { 
+        const id = req.params.id; 
+        await pool.query('DELETE FROM prodotti WHERE ristorante_id = $1', [id]); 
+        await pool.query('DELETE FROM categorie WHERE ristorante_id = $1', [id]); 
+        await pool.query('DELETE FROM ordini WHERE ristorante_id = $1', [id]); 
+        await pool.query('DELETE FROM ristoranti WHERE id = $1', [id]); 
+        res.json({ success: true }); 
+    } catch (e) { res.status(500).json({error: "Err"}); } 
+});
+
+// ==========================================
+// 3. LOGIN & AUTH GENERICA
+// ==========================================
+
+// Login Ristorante Owner
+router.post('/api/login', async (req, res) => { 
+    const { email, password } = req.body; 
+    try { 
+        const result = await pool.query("SELECT * FROM ristoranti WHERE email = $1", [email]); 
+        if (result.rows.length > 0) { 
+            const ristorante = result.rows[0]; 
+            if (ristorante.password === password) { 
+                return res.json({ success: true, user: { id: ristorante.id, nome: ristorante.nome, slug: ristorante.slug } }); 
+            } 
+        } 
+        res.status(401).json({ success: false, error: "Credenziali errate" }); 
+    } catch (e) { res.status(500).json({ success: false, error: "Errore interno" }); } 
+});
+
+// Auth Station (Cassa, Cucina, Magazzino, ecc.)
+router.post('/api/auth/station', async (req, res) => { 
+    try { 
+        const { ristorante_id, role, password } = req.body; 
+        const roleMap = { 
+            'cassa': 'pw_cassa', 
+            'cucina': 'pw_cucina', 
+            'pizzeria': 'pw_pizzeria', 
+            'bar': 'pw_bar', 
+            'haccp': 'pw_haccp',
+            'magazzino': 'pw_magazzino' 
+        }; 
+        const colonnaPwd = roleMap[role]; 
+        if (!colonnaPwd) return res.json({ success: false, error: "Ruolo non valido" }); 
+        
+        const r = await pool.query(`SELECT * FROM ristoranti WHERE id = $1`, [ristorante_id]); 
+        if (r.rows.length === 0) return res.json({ success: false, error: "Ristorante non trovato" }); 
+        
+        const storedPwd = r.rows[0][colonnaPwd];
+        if (String(storedPwd) === String(password)) res.json({ success: true, nome_ristorante: r.rows[0].nome }); 
+        else res.json({ success: false, error: "Password Errata" }); 
+    } catch (e) { res.status(500).json({ error: "Err: " + e.message }); } 
+});
+
+// ==========================================
+// 4. UTILITY (UPLOAD & PROXY)
+// ==========================================
+
 router.post('/api/upload', upload.single('photo'), (req, res) => res.json({ url: req.file.path }));
 
-// Proxy Download
 router.get('/api/proxy-download', async (req, res) => {
     const fileUrl = req.query.url;
     const fileName = req.query.name || 'documento.pdf';
@@ -328,47 +262,147 @@ router.get('/api/proxy-download', async (req, res) => {
     } catch (e) { console.error("Proxy Error:", e.message); res.status(500).send("Errore interno."); }
 });
 
-// --- NUOVO FIX PER AGGIUNGERE ORA E UDM AL MAGAZZINO ---
-router.get('/api/db-fix-haccp-merci', async (req, res) => {
+// ==========================================
+// 5. DB FIXES & MIGRATIONS (RACCOLTA COMPLETA)
+// ==========================================
+
+// Fix Base Moduli & Scadenza
+router.get('/api/db-fix-modules-v2', async (req, res) => {
     try {
-        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS ora TEXT DEFAULT ''");
-        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS unita_misura TEXT DEFAULT ''");
-        res.send("✅ DATABASE AGGIORNATO: Aggiunte colonne 'ora' e 'unita_misura' a haccp_merci!");
-    } catch (e) {
-        console.error("Errore DB Fix Merci:", e);
-        res.status(500).send("Errore DB: " + e.message);
-    }
+        const client = await pool.connect();
+        try {
+            await client.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS modulo_menu_digitale BOOLEAN DEFAULT TRUE");
+            await client.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS modulo_ordini_clienti BOOLEAN DEFAULT TRUE");
+            await client.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS modulo_magazzino BOOLEAN DEFAULT FALSE");
+            await client.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS modulo_haccp BOOLEAN DEFAULT FALSE");
+            await client.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS modulo_utenti BOOLEAN DEFAULT FALSE");
+            await client.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS cassa_full_suite BOOLEAN DEFAULT TRUE");
+            await client.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS data_scadenza DATE DEFAULT (CURRENT_DATE + INTERVAL '1 year')");
+            res.send("✅ DATABASE AGGIORNATO: Moduli, Suite e Scadenza pronti!");
+        } finally { client.release(); }
+    } catch (e) { res.status(500).send("Errore DB: " + e.message); }
 });
 
-// AGGIUNGI QUESTA ROTTA IN FONDO O DOVE VUOI
+// Fix Magazzino V3 (Codice Articolo & Sconto)
+router.get('/api/db-fix-magazzino-v3', async (req, res) => {
+    try {
+        const client = await pool.connect();
+        try {
+            await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS codice_articolo TEXT DEFAULT ''");
+            await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS sconto NUMERIC(5,2) DEFAULT 0");
+            await client.query("ALTER TABLE magazzino_prodotti ADD COLUMN IF NOT EXISTS codice_articolo TEXT DEFAULT ''");
+            res.send("✅ DB AGGIORNATO V3: Aggiunti campi 'codice_articolo' e 'sconto'.");
+        } finally { client.release(); }
+    } catch (e) { res.status(500).send("Errore DB: " + e.message); }
+});
+
+// Init Magazzino Pro (Struttura Base)
+router.get('/api/db-init-magazzino-pro', async (req, res) => {
+    try {
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS magazzino_prodotti (
+                id SERIAL PRIMARY KEY,
+                ristorante_id INTEGER NOT NULL,
+                nome TEXT NOT NULL,
+                marca TEXT,
+                ean_barcode TEXT,
+                categoria TEXT DEFAULT 'Generale',
+                reparto TEXT,
+                unita_misura TEXT DEFAULT 'Pz',
+                confezione_da NUMERIC(10,2) DEFAULT 1,
+                giacenza NUMERIC(10,2) DEFAULT 0,
+                scorta_minima NUMERIC(10,2) DEFAULT 0,
+                prezzo_ultimo NUMERIC(10,2) DEFAULT 0,
+                prezzo_medio NUMERIC(10,2) DEFAULT 0,
+                iva NUMERIC(5,2) DEFAULT 0,
+                updated_at TIMESTAMP DEFAULT NOW()
+            );
+        `);
+        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS magazzino_id INTEGER");
+        res.send("✅ ARCHITETTURA MAGAZZINO V2 ATTIVATA.");
+    } catch (e) { res.status(500).send("Errore DB: " + e.message); }
+});
+
+// Fix Magazzino Full (Fiscale)
+router.get('/api/db-fix-magazzino-full', async (req, res) => {
+    try {
+        const client = await pool.connect();
+        try {
+            await client.query(`
+                ALTER TABLE magazzino_prodotti 
+                ADD COLUMN IF NOT EXISTS data_bolla DATE DEFAULT CURRENT_DATE,
+                ADD COLUMN IF NOT EXISTS numero_bolla TEXT DEFAULT '',
+                ADD COLUMN IF NOT EXISTS lotto TEXT DEFAULT '',
+                ADD COLUMN IF NOT EXISTS tipo_unita TEXT DEFAULT 'Pz',
+                ADD COLUMN IF NOT EXISTS peso_per_unita NUMERIC(10,3) DEFAULT 1,
+                ADD COLUMN IF NOT EXISTS prezzo_unitario_netto NUMERIC(10,3) DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS aliquota_iva NUMERIC(5,2) DEFAULT 22,
+                ADD COLUMN IF NOT EXISTS valore_totale_netto NUMERIC(12,2) DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS valore_totale_iva NUMERIC(12,2) DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS valore_totale_lordo NUMERIC(12,2) DEFAULT 0;
+            `);
+            res.send("✅ DB MAGAZZINO AGGIORNATO: Aggiunti campi fiscali.");
+        } finally { client.release(); }
+    } catch (e) { res.status(500).send("Errore DB: " + e.message); }
+});
+
+// Fix Magazzino V2 (Prezzi su HACCP Merci)
+router.get('/api/db-fix-magazzino-v2', async (req, res) => {
+    try {
+        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS ora TEXT DEFAULT ''");
+        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS unita_misura TEXT DEFAULT 'Pz'");
+        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS prezzo_unitario NUMERIC(10,2) DEFAULT 0");
+        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS iva NUMERIC(5,2) DEFAULT 0");
+        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS prezzo NUMERIC(10,2) DEFAULT 0");
+        res.send("✅ DATABASE AGGIORNATO: Colonne Magazzino create con successo!");
+    } catch (e) { res.status(500).send("Errore DB: " + e.message); }
+});
+
+// Fix Password Magazzino
+router.get('/api/db-fix-security-magazzino', async (req, res) => {
+    try {
+        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS pw_magazzino TEXT DEFAULT '1234'");
+        res.send("✅ DATABASE AGGIORNATO: Aggiunta password Magazzino!");
+    } catch (e) { res.status(500).send("Errore DB: " + e.message); }
+});
+
+// Fix Menu & Ristorante (Opzioni generali)
+router.get('/api/db-fix-menu', async (req, res) => { 
+    try { 
+        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS prezzo NUMERIC(10,2) DEFAULT 0");
+        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS nascondi_euro BOOLEAN DEFAULT FALSE");
+        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS prezzo_coperto NUMERIC(10,2) DEFAULT 0");
+        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS url_menu_giorno TEXT DEFAULT ''");
+        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS url_menu_pdf TEXT DEFAULT ''");
+        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS info_footer TEXT DEFAULT ''");
+        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS url_allergeni TEXT DEFAULT ''");
+        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS colore_footer_text TEXT DEFAULT '#888888'");
+        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS dimensione_footer TEXT DEFAULT '12'");
+        await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS allineamento_footer TEXT DEFAULT 'center'");
+        
+        await pool.query("ALTER TABLE prodotti ADD COLUMN IF NOT EXISTS unita_misura TEXT DEFAULT ''");
+        await pool.query("ALTER TABLE prodotti ADD COLUMN IF NOT EXISTS qta_minima NUMERIC(10,2) DEFAULT 1");
+        
+        await pool.query("ALTER TABLE ordini ADD COLUMN IF NOT EXISTS coperti INTEGER DEFAULT 0");
+        
+        res.send("✅ DATABASE AGGIORNATO (Coperti, Minimo Qta, Unità, Euro)!"); 
+    } catch (e) { res.status(500).send("Errore DB: " + e.message); } 
+});
+
+// Fix Emergenza (Colonne finali)
 router.get('/api/db-fix-emergency-columns', async (req, res) => {
     try {
         const client = await pool.connect();
         try {
-            console.log("AVVIO FIX EMERGENZA COLONNE...");
-
-            // 1. FIX TABELLA MAGAZZINO (Giacenze Master)
             await client.query("ALTER TABLE magazzino_prodotti ADD COLUMN IF NOT EXISTS codice_articolo TEXT DEFAULT ''");
             await client.query("ALTER TABLE magazzino_prodotti ADD COLUMN IF NOT EXISTS sconto NUMERIC(5,2) DEFAULT 0");
-
-            // 2. FIX TABELLA HACCP (Storico Ricevimento)
             await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS codice_articolo TEXT DEFAULT ''");
             await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS sconto NUMERIC(5,2) DEFAULT 0");
-            
-            // 3. FIX SICUREZZA (Già che ci siamo, per evitare altri errori futuri)
             await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS data_documento DATE DEFAULT CURRENT_DATE");
             await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS riferimento_documento TEXT DEFAULT ''");
-
-            res.send("✅ DATABASE FIX COMPLETATO: Colonne 'codice_articolo' e 'sconto' create ovunque.");
-        } finally {
-            client.release();
-        }
-    } catch (e) {
-        console.error("Errore Fix:", e);
-        res.status(500).send("Errore DB Fix: " + e.message);
-    }
+            res.send("✅ DATABASE FIX COMPLETATO: Colonne mancanti create ovunque.");
+        } finally { client.release(); }
+    } catch (e) { res.status(500).send("Errore DB Fix: " + e.message); }
 });
-
-
 
 module.exports = router;

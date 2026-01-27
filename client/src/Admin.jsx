@@ -1,13 +1,11 @@
-// client/src/Admin.jsx - VERSIONE V43 (RESPONSIVE & FLUID) 📱
+// client/src/Admin.jsx - VERSIONE V44 (LAYOUT FLUIDO + LOGICA MODULI) 🚀
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-// import API_URL from './config'; // Usa la variabile interna come nel tuo codice originale
 
 // *** IMPORTIAMO I SOTTO-COMPONENTI ***
 import AdminMenu from './components_admin/AdminMenu';
 import AdminCategorie from './components_admin/AdminCategorie';
 import AdminGrafica from './components_admin/AdminGrafica';
-import MagazzinoManager from './components/magazzino/MagazzinoManager';
 import AdminUsers from './components_admin/AdminUsers';
 import AdminSicurezza from './components_admin/AdminSicurezza';
 import AdminDashboard from './components_admin/AdminDashboard';
@@ -32,12 +30,18 @@ function Admin() {
   const [menu, setMenu] = useState([]); 
   const [categorie, setCategorie] = useState([]); 
   
-  // CONFIGURAZIONE COMPLETA
+  // CONFIGURAZIONE COMPLETA (Inizializzata con valori sicuri)
   const [config, setConfig] = useState({ 
       account_attivo: true, 
       cucina_super_active: true,
-      ordini_abilitati: false, 
-      servizio_attivo: false,
+      ordini_abilitati: true, // Default true per retrocompatibilità
+      modulo_menu_digitale: true,
+      modulo_ordini_clienti: true,
+      modulo_magazzino: false,
+      modulo_haccp: false,
+      modulo_utenti: false,
+      cassa_full_suite: true,
+      
       logo_url: '', cover_url: '',
       colore_sfondo: '#222222', colore_titolo: '#ffffff',
       colore_testo: '#cccccc', colore_prezzo: '#27ae60',
@@ -66,6 +70,22 @@ function Admin() {
             if (data && data.id) {
                 setUser({ id: data.id, nome: data.ristorante, slug: slug, ruolo: data.ruolo || 'admin' });
                 setMenu(data.menu || []);
+                
+                // Mappiamo i dati iniziali (che contengono già i moduli nel nuovo endpoint menuRoutes)
+                if(data.moduli) {
+                    setConfig(prev => ({
+                        ...prev, 
+                        ...data.style,
+                        modulo_menu_digitale: data.moduli.menu_digitale,
+                        modulo_ordini_clienti: data.moduli.ordini_clienti,
+                        modulo_magazzino: data.moduli.magazzino,
+                        modulo_haccp: data.moduli.haccp,
+                        modulo_utenti: data.moduli.utenti,
+                        cassa_full_suite: data.moduli.full_suite,
+                        account_attivo: data.subscription_active
+                    }));
+                }
+                
                 caricaConfigurazioniExtra(data.id);
             } else { 
                 alert("Ristorante non trovato."); 
@@ -82,6 +102,7 @@ function Admin() {
   }, [slug]);
 
   const caricaConfigurazioniExtra = (id) => {
+    // Recupera la config completa dal DB (sovrascrive eventuali default)
     fetch(`${API_URL}/api/ristorante/config/${id}`)
         .then(r=>r.json())
         .then(d => {
@@ -133,8 +154,17 @@ function Admin() {
         const data = await res.json();
 
         if (data.success) {
+            // Check di sicurezza: siamo sull'admin giusto?
+            if (data.user.slug !== slug) {
+                alert(`Login effettuato per ${data.user.nome}. Ti reindirizzo al tuo pannello.`);
+                window.location.href = `/admin/${data.user.slug}`;
+                return;
+            }
+
             setIsAuthorized(true);
             localStorage.setItem(`stark_admin_session_${data.user.slug}`, "true");
+            // Ricarichiamo la pagina per sicurezza pulita
+            window.location.reload();
         } else {
             setLoginError(true);
         }
@@ -232,6 +262,14 @@ function Admin() {
   }
 
   // --- RENDER PRINCIPALE ---
+  // VARIABILI DI VISIBILITÀ (Logica Moduli V66 applicata al Layout V43)
+  const showDashboard = config.modulo_ordini_clienti !== false;
+  const showMenu = config.modulo_menu_digitale !== false;
+  const showUtenti = config.modulo_utenti === true;
+  const showMagazzino = config.modulo_magazzino === true;
+  const showHaccp = config.modulo_haccp === true;
+  const showFullSuite = config.cassa_full_suite !== false;
+
   return (
     <>
     {/* CSS INJECT PER RESPONSIVENESS */}
@@ -313,65 +351,88 @@ function Admin() {
 
     <div className="admin-wrapper">
       
-      {/* HEADER */}
+      {/* HEADER (Pulsanti Esterni Condizionali) */}
       <div className="admin-header">
         <div className="header-title">
             <h1>⚙️ {user.nome}</h1>
         </div>
+        
         <div className="header-actions">
             <button onClick={() => apriLink(`/${slug}`)} className="action-btn" style={{background:'#3498db'}}>👁️ Menu</button>
             <button onClick={() => apriLink(`/cassa/${slug}`)} className="action-btn" style={{background:'#9b59b6'}}>💰 Cassa</button>
-            <button onClick={() => apriLink(`/cucina/${slug}`)} className="action-btn" style={{background:'#e67e22'}}>👨‍🍳 Cucina</button>
-            <button onClick={() => apriLink(`/pizzeria/${slug}`)} className="action-btn" style={{background:'#c0392b'}}>🍕 Pizzeria</button>
-            <button onClick={() => apriLink(`/bar/${slug}`)} className="action-btn" style={{background:'#1abc9c'}}>🍹 Bar</button>
-            <button onClick={() => apriLink(`/magazzino/${slug}`)} className="action-btn" style={{background:'#8e44ad'}}>📦 Magazzino</button>
-            <button onClick={() => apriLink(`/haccp/${slug}`)} className="action-btn" style={{background:'#2c3e50'}}>🛡️ HACCP</button>
+            
+            {/* Pulsanti Full Suite (Cucina, Pizzeria, Bar) */}
+            {showFullSuite && (
+                <>
+                    <button onClick={() => apriLink(`/cucina/${slug}`)} className="action-btn" style={{background:'#e67e22'}}>👨‍🍳 Cucina</button>
+                    <button onClick={() => apriLink(`/pizzeria/${slug}`)} className="action-btn" style={{background:'#c0392b'}}>🍕 Pizzeria</button>
+                    <button onClick={() => apriLink(`/bar/${slug}`)} className="action-btn" style={{background:'#1abc9c'}}>🍹 Bar</button>
+                </>
+            )}
+
+            {/* Pulsanti Moduli Extra */}
+            {showMagazzino && (
+                <button onClick={() => apriLink(`/magazzino/${slug}`)} className="action-btn" style={{background:'#8e44ad'}}>📦 Magazzino</button>
+            )}
+            
+            {showHaccp && (
+                <button onClick={() => apriLink(`/haccp/${slug}`)} className="action-btn" style={{background:'#2c3e50'}}>🛡️ HACCP</button>
+            )}
+
             <button onClick={handleLogout} className="action-btn" style={{background:'#333', marginLeft:'auto'}}>🚪 Esci</button>
         </div>
       </div>
       
-      {/* MENU TAB DI NAVIGAZIONE */}
+      {/* MENU TAB DI NAVIGAZIONE INTERNA (Condizionali) */}
       <div className="admin-nav">
-        {user.ruolo !== 'editor' && (
+        
+        {/* Home/Dashboard: Solo se ordini attivi e non sei editor limitato */}
+        {showDashboard && user.ruolo !== 'editor' && (
             <button onClick={() => setTab('dashboard')} className="nav-btn" 
                 style={{background: tab==='dashboard'?'#2c3e50':'white', color: tab==='dashboard'?'white':'#444'}}>
                 📈 Home
             </button>
         )}
 
-        <button onClick={() => setTab('menu')} className="nav-btn" 
-            style={{background: tab==='menu'?'#333':'white', color: tab==='menu'?'white':'#444'}}>
-            🍔 Menu
-        </button>
+        {showMenu && (
+            <button onClick={() => setTab('menu')} className="nav-btn" 
+                style={{background: tab==='menu'?'#333':'white', color: tab==='menu'?'white':'#444'}}>
+                🍔 Menu
+            </button>
+        )}
         
-        <button onClick={() => setTab('categorie')} className="nav-btn" 
-            style={{background: tab==='categorie'?'#333':'white', color: tab==='categorie'?'white':'#444'}}>
-            📂 Categorie
-        </button>
+        {showMenu && (
+            <button onClick={() => setTab('categorie')} className="nav-btn" 
+                style={{background: tab==='categorie'?'#333':'white', color: tab==='categorie'?'white':'#444'}}>
+                📂 Categorie
+            </button>
+        )}
         
         <button onClick={() => setTab('style')} className="nav-btn" 
             style={{background: tab==='style'?'#9b59b6':'white', color: tab==='style'?'white':'#444'}}>
             🎨 Grafica
         </button>
         
+        {user.ruolo !== 'editor' && showUtenti && (
+            <button onClick={() => setTab('users')} className="nav-btn" 
+                style={{background: tab==='users'?'#e67e22':'white', color: tab==='users'?'white':'#444'}}>
+                👥 Utenti
+            </button>
+        )}
+
         {user.ruolo !== 'editor' && (
-            <>
-                <button onClick={() => setTab('users')} className="nav-btn" 
-                    style={{background: tab==='users'?'#e67e22':'white', color: tab==='users'?'white':'#444'}}>
-                    👥 Utenti
-                </button>
-                <button onClick={() => setTab('security')} className="nav-btn" 
-                    style={{background: tab==='security'?'#c0392b':'white', color: tab==='security'?'white':'#444'}}>
-                    🔐 Sicurezza
-                </button>
-            </>
+            <button onClick={() => setTab('security')} className="nav-btn" 
+                style={{background: tab==='security'?'#c0392b':'white', color: tab==='security'?'white':'#444'}}>
+                🔐 Sicurezza
+            </button>
         )}
       </div>
 
       {/* --- CONTENT AREA --- */}
       <div style={{background:'white', borderRadius:'12px', padding:'20px', boxShadow:'0 2px 10px rgba(0,0,0,0.05)', minHeight:'500px'}}>
         
-        {tab === 'dashboard' && user.ruolo !== 'editor' && (
+        {/* Mostra Dashboard solo se permesso */}
+        {tab === 'dashboard' && user.ruolo !== 'editor' && showDashboard && (
             <AdminDashboard user={user} API_URL={API_URL} />
         )}
         
@@ -403,7 +464,7 @@ function Admin() {
             />
         )}
 
-        {tab === 'users' && (
+        {tab === 'users' && showUtenti && (
             <AdminUsers 
                 API_URL={API_URL} 
                 user={user} 
