@@ -145,22 +145,33 @@ function SuperAdmin() {
       setShowModal(true);
   };
 
-  const handleSalva = async (e) => { 
+const handleSalva = async (e) => { 
       e.preventDefault(); 
       const endpoint = editingId ? `${API_URL}/api/super/ristoranti/${editingId}` : `${API_URL}/api/super/ristoranti`; 
       const method = editingId ? 'PUT' : 'POST'; 
+      
       try { 
           const res = await fetch(endpoint, { 
               method, 
               headers: { 'Content-Type': 'application/json' }, 
               body: JSON.stringify(formData) 
           }); 
+          
+          const data = await res.json(); // Leggiamo sempre la risposta JSON
+
           if(res.ok) { 
-              alert(editingId ? "Configurazione aggiornata!" : "Locale creato con successo!"); 
+              alert(editingId ? "✅ Configurazione aggiornata!" : "✅ Locale creato con successo!"); 
               setShowModal(false); 
               caricaDati(); 
-          } 
-      } catch(err) { alert("Errore salvataggio"); } 
+          } else {
+              // QUI ORA VEDRAI L'ERRORE REALE DEL SERVER
+              console.error("Errore Backend:", data);
+              alert("❌ Errore Salvataggio: " + (data.error || "Errore sconosciuto"));
+          }
+      } catch(err) { 
+          console.error("Errore Fetch:", err);
+          alert("❌ Errore di connessione o Server Offline"); 
+      } 
   };
 
   const toggleSospensione = async (id, statoAttuale) => {

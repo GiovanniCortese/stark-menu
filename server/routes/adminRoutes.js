@@ -104,32 +104,32 @@ router.get('/api/super/ristoranti', async (req, res) => {
     catch (e) { res.status(500).json({error:"Err"}); } 
 });
 
-// Crea Ristorante
+// Crea Ristorante (AGGIORNATO CON modulo_cassa)
 router.post('/api/super/ristoranti', async (req, res) => { 
     try { 
         const b = req.body;
-await pool.query(`
-    INSERT INTO ristoranti 
-    (nome, slug, email, telefono, password, account_attivo, servizio_attivo, ordini_abilitati, cucina_super_active,
-     modulo_menu_digitale, modulo_ordini_clienti, modulo_magazzino, modulo_haccp, modulo_utenti, modulo_cassa, cassa_full_suite, data_scadenza) 
-    VALUES ($1, $2, $3, $4, $5, TRUE, TRUE, TRUE, TRUE, $6, $7, $8, $9, $10, $11, $12, $13)`, 
-    [
-        b.nome, b.slug, b.email, b.telefono, b.password || 'tonystark',
-        b.modulo_menu_digitale ?? true,
-        b.modulo_ordini_clienti ?? true,
-        b.modulo_magazzino ?? false,
-        b.modulo_haccp ?? false,
-        b.modulo_utenti ?? false,
-        b.modulo_cassa ?? true, // <--- NUOVO CAMPO
-        b.cassa_full_suite ?? true,
-        b.data_scadenza || new Date(new Date().setFullYear(new Date().getFullYear() + 1))
-    ]
-); 
+        await pool.query(`
+            INSERT INTO ristoranti 
+            (nome, slug, email, telefono, password, account_attivo, servizio_attivo, ordini_abilitati, cucina_super_active,
+             modulo_menu_digitale, modulo_ordini_clienti, modulo_magazzino, modulo_haccp, modulo_utenti, modulo_cassa, cassa_full_suite, data_scadenza) 
+            VALUES ($1, $2, $3, $4, $5, TRUE, TRUE, TRUE, TRUE, $6, $7, $8, $9, $10, $11, $12, $13)`, 
+            [
+                b.nome, b.slug, b.email, b.telefono, b.password || 'tonystark',
+                b.modulo_menu_digitale ?? true,
+                b.modulo_ordini_clienti ?? true,
+                b.modulo_magazzino ?? false,
+                b.modulo_haccp ?? false,
+                b.modulo_utenti ?? false,
+                b.modulo_cassa ?? true, // NUOVO
+                b.cassa_full_suite ?? true,
+                b.data_scadenza || new Date(new Date().setFullYear(new Date().getFullYear() + 1))
+            ]
+        ); 
         res.json({ success: true }); 
     } catch (e) { res.status(500).json({error: "Err: " + e.message}); } 
 });
 
-// UPDATE RISTORANTE (FIXED: COALESCE per evitare cancellazione dati)
+// UPDATE RISTORANTE (AGGIORNATO CON modulo_cassa)
 router.put('/api/super/ristoranti/:id', async (req, res) => {
     try {
         const { id } = req.params;
@@ -148,11 +148,12 @@ router.put('/api/super/ristoranti/:id', async (req, res) => {
                 modulo_ordini_clienti = COALESCE($8, modulo_ordini_clienti),
                 modulo_magazzino = COALESCE($9, modulo_magazzino),
                 modulo_haccp = COALESCE($10, modulo_haccp),
-modulo_utenti = COALESCE($11, modulo_utenti),
-modulo_cassa = COALESCE($12, modulo_cassa),  // <--- AGGIUNTO (nota gli indici successivi che slittano)
-cassa_full_suite = COALESCE($13, cassa_full_suite), // Era $12, ora è $13
-password = CASE WHEN $14::text IS NOT NULL AND $14::text <> '' THEN $14 ELSE password END
-WHERE id = $15
+                modulo_utenti = COALESCE($11, modulo_utenti),
+                modulo_cassa = COALESCE($12, modulo_cassa),
+                cassa_full_suite = COALESCE($13, cassa_full_suite),
+                
+                password = CASE WHEN $14::text IS NOT NULL AND $14::text <> '' THEN $14 ELSE password END
+            WHERE id = $15
         `;
 
         const params = [
@@ -168,12 +169,12 @@ WHERE id = $15
             b.modulo_magazzino !== undefined ? b.modulo_magazzino : null,
             b.modulo_haccp !== undefined ? b.modulo_haccp : null,
             b.modulo_utenti !== undefined ? b.modulo_utenti : null,
-b.modulo_cassa !== undefined ? b.modulo_cassa : null, // <--- NUOVO
-b.cassa_full_suite !== undefined ? b.cassa_full_suite : null,
-
-b.password || null,
-id
-];
+            b.modulo_cassa !== undefined ? b.modulo_cassa : null, // Parametro $12
+            b.cassa_full_suite !== undefined ? b.cassa_full_suite : null, // Parametro $13
+            
+            b.password || null, // Parametro $14
+            id // Parametro $15
+        ];
         
         await pool.query(sql, params);
         res.json({ success: true });
@@ -181,18 +182,6 @@ id
         console.error("❌ ERRORE SUPERADMIN UPDATE:", e);
         res.status(500).json({ error: e.message });
     }
-});
-
-// Fix Modulo Cassa (Nuovo campo)
-router.get('/api/db-fix-module-cassa', async (req, res) => {
-    try {
-        const client = await pool.connect();
-        try {
-            // Default TRUE per non bloccare i clienti esistenti
-            await client.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS modulo_cassa BOOLEAN DEFAULT TRUE");
-            res.send("✅ DB AGGIORNATO: Modulo Cassa aggiunto!");
-        } finally { client.release(); }
-    } catch (e) { res.status(500).send("Errore DB: " + e.message); }
 });
 
 // Delete Ristorante
@@ -290,6 +279,18 @@ router.get('/api/proxy-download', async (req, res) => {
 // ==========================================
 // 5. DB FIXES & MIGRATIONS (RACCOLTA COMPLETA)
 // ==========================================
+
+// Fix Modulo Cassa (Nuovo campo) - IMPORTANTE: ESEGUIRE UNA VOLTA
+router.get('/api/db-fix-module-cassa', async (req, res) => {
+    try {
+        const client = await pool.connect();
+        try {
+            // Default TRUE per non bloccare i clienti esistenti
+            await client.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS modulo_cassa BOOLEAN DEFAULT TRUE");
+            res.send("✅ DB AGGIORNATO: Modulo Cassa aggiunto!");
+        } finally { client.release(); }
+    } catch (e) { res.status(500).send("Errore DB: " + e.message); }
+});
 
 // Fix Base Moduli & Scadenza
 router.get('/api/db-fix-modules-v2', async (req, res) => {
