@@ -111,7 +111,7 @@ function SuperAdmin() {
           slug: r.slug,
           email: r.email || '',
           telefono: r.telefono || '',
-          password: '', // Non mostriamo la vecchia password
+          password: '', 
           account_attivo: r.account_attivo !== false,
           data_scadenza: r.data_scadenza ? r.data_scadenza.split('T')[0] : '',
           modulo_menu_digitale: r.modulo_menu_digitale ?? true,
@@ -340,12 +340,14 @@ function SuperAdmin() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.9)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
             <div style={{background: 'white', borderRadius: '12px', width: '1300px', maxWidth:'98%', height:'90vh', display:'flex', flexDirection:'column', overflow:'hidden'}}>
                 <div style={{padding:'20px 25px', background:'#1a252f', color:'white', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                    <h2 style={{margin:0}}>🌍 Database Utenti ({filteredUsers.length})</h2>
+                    <h2 style={{margin:0}}>🌍 Database Utenti Centralizzato ({filteredUsers.length})</h2>
                     <button onClick={() => setShowUsersModal(false)} style={{background:'none', border:'none', color:'white', fontSize:'24px', cursor:'pointer'}}>✕</button>
                 </div>
                 <div style={{padding:'15px 25px', background:'#ecf0f1', display:'flex', justifyContent:'space-between', gap:15}}>
-                     <input type="text" placeholder="🔍 Cerca..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{flex:1, padding:12, borderRadius:30, border:'1px solid #ccc'}} />
-                     <button onClick={() => handleOpenUserForm(null)} style={{background:'#2ecc71', color:'white', padding:'10px 20px', borderRadius:6, border:'none', fontWeight:'bold', cursor:'pointer'}}>➕ NUOVO</button>
+                     <input type="text" placeholder="🔍 Cerca per nome, email, ruolo..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{flex:1, padding:12, borderRadius:30, border:'1px solid #ccc'}} />
+                     <button onClick={() => handleOpenUserForm(null)} style={{background:'#2ecc71', color:'white', padding:'10px 20px', borderRadius:6, border:'none', fontWeight:'bold', cursor:'pointer'}}>➕ NUOVO UTENTE</button>
+                     <button onClick={handleImportTrigger} style={{background:'#e67e22', color:'white', padding:'10px 20px', borderRadius:6, border:'none', fontWeight:'bold', cursor:'pointer'}}>{uploading ? '...' : '📤 IMPORTA'}</button>
+                     <input type="file" id="file-upload-users" style={{display:'none'}} accept=".xlsx, .xls" onChange={handleImportUsers} />
                      <button onClick={exportUsersExcel} style={{background:'#27ae60', color:'white', padding:'10px 20px', borderRadius:6, border:'none', fontWeight:'bold', cursor:'pointer'}}>📥 EXCEL</button>
                 </div>
                 <div style={{flex:1, overflowY:'auto'}}>
@@ -381,22 +383,22 @@ function SuperAdmin() {
         </div>
       )}
 
-      {/* MODALE UTENTE */}
+      {/* MODALE UTENTE (CREATE/EDIT) */}
       {showUserForm && (
           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.8)', zIndex: 10000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-              <div style={{background: 'white', padding: '30px', borderRadius: '10px', width: '450px'}}>
+              <div style={{background: 'white', padding: '30px', borderRadius: '10px', width: '450px', boxShadow:'0 10px 40px rgba(0,0,0,0.5)'}}>
                   <h3>{editingUser ? "Modifica Utente" : "Nuovo Utente"}</h3>
                   <form onSubmit={handleSaveUser} style={{display:'flex', flexDirection:'column', gap:12}}>
                       <div style={{display:'flex', gap:10}}>
                           <select value={userFormData.ruolo} onChange={e=>setUserFormData({...userFormData, ruolo:e.target.value})} style={{...inputStyle, flex:1}}>
-                              <option value="cliente">Cliente</option><option value="cameriere">Cameriere</option><option value="admin">Admin</option>
+                              <option value="cliente">Cliente</option><option value="cameriere">Cameriere</option><option value="editor">Editor</option><option value="admin">Admin</option>
                           </select>
                           <select value={userFormData.ristorante_id} onChange={e=>setUserFormData({...userFormData, ristorante_id:e.target.value})} style={{...inputStyle, flex:1}}>
                               <option value="">-- Globale --</option>
                               {ristoranti.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}
                           </select>
                       </div>
-                      <input placeholder="Nome" value={userFormData.nome} onChange={e=>setUserFormData({...userFormData, nome:e.target.value})} required style={inputStyle} />
+                      <input placeholder="Nome Completo" value={userFormData.nome} onChange={e=>setUserFormData({...userFormData, nome:e.target.value})} required style={inputStyle} />
                       <input placeholder="Email" value={userFormData.email} onChange={e=>setUserFormData({...userFormData, email:e.target.value})} required style={inputStyle} />
                       <input placeholder="Password" value={userFormData.password} onChange={e=>setUserFormData({...userFormData, password:e.target.value})} required style={{...inputStyle, border:'2px solid #e74c3c'}} />
                       <div style={{display:'flex', gap:10, marginTop:10}}>
