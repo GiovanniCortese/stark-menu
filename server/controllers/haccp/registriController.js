@@ -2,6 +2,38 @@
 const pool = require('../../config/db');
 const { getItalyDateComponents } = require('../../utils/time'); 
 
+// --- FUNZIONE AUTO-FIX COLONNE MANCANTI ---
+const ensureMerciColumnsExist = async () => {
+    try {
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS haccp_merci (
+                id SERIAL PRIMARY KEY,
+                ristorante_id INTEGER,
+                data_arrivo TIMESTAMP,
+                fornitore TEXT,
+                prodotto TEXT,
+                quantita TEXT,
+                unita_misura TEXT,
+                prezzo_unitario TEXT,
+                totale TEXT,
+                lotto TEXT,
+                scadenza DATE,
+                destinazione TEXT,
+                allegato_url TEXT,
+                is_haccp BOOLEAN DEFAULT TRUE
+            );
+        `);
+        // Aggiunge le colonne se mancano (Magazzino Update)
+        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS numero_bolla TEXT;");
+        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS codice_articolo TEXT;");
+        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS note TEXT;");
+        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS condizioni TEXT DEFAULT 'conforme';");
+        await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS rif_documento TEXT;"); // Legacy support
+    } catch (e) {
+        console.log("Auto-fix DB Merci: Colonne già presenti o errore non critico.");
+    }
+};
+
 // 1. ASSETS
 exports.getAssets = async (req, res) => { try { const r = await pool.query("SELECT * FROM haccp_assets WHERE ristorante_id = $1 ORDER BY tipo, nome", [req.params.ristorante_id]); res.json(r.rows); } catch(e) { res.status(500).json({error:"Err"}); } };
 
@@ -33,25 +65,15 @@ exports.deleteAsset = async (req, res) => { try { await pool.query("DELETE FROM 
 exports.getLogs = async (req, res) => { 
     try { 
         const { start, end } = req.query; 
-        
-        // MODIFICA FIX: Restituiamo la data formattata esplicitamente per l'Italia nel SELECT.
-        // Questo forza il frontend a ricevere "2026-01-27 00:18:00" invece di UTC.
-        // Selezioniamo tutti i campi esplicitamente per sovrascrivere data_ora.
         let query = `
-            SELECT 
-                l.id, l.ristorante_id, l.asset_id, l.operatore, l.tipo_log, l.valore, 
-                l.conformita, l.azione_correttiva, l.foto_prova_url,
-                (l.data_ora AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Rome') as data_ora,
-                a.nome as nome_asset 
+            SELECT l.*, a.nome as nome_asset 
             FROM haccp_logs l 
             LEFT JOIN haccp_assets a ON l.asset_id = a.id 
             WHERE l.ristorante_id = $1
         `;
-        
         const params = [req.params.ristorante_id]; 
         
         if (start && end) { 
-            // Filtro WHERE mantenendo la logica di conversione per essere precisi
             query += ` 
                 AND (l.data_ora AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Rome') >= $2::timestamp 
                 AND (l.data_ora AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Rome') <= $3::timestamp 
@@ -61,20 +83,14 @@ exports.getLogs = async (req, res) => {
         } else { 
             query += ` AND l.data_ora >= NOW() - INTERVAL '3 months' ORDER BY l.data_ora DESC`; 
         } 
-        
         const r = await pool.query(query, params); 
         res.json(r.rows); 
-    } catch(e) { 
-        console.error("Errore getLogs", e);
-        res.status(500).json({error:"Err"}); 
-    } 
+    } catch(e) { console.error("Errore getLogs", e); res.status(500).json({error:"Err"}); } 
 };
 
 exports.createLog = async (req, res) => { 
     try { 
         const { ristorante_id, asset_id, operatore, tipo_log, valore, conformita, azione_correttiva, foto_prova_url, data_ora } = req.body; 
-        
-        // Se data_ora c'è, la usiamo, altrimenti NOW()
         if (data_ora) {
             await pool.query("INSERT INTO haccp_logs (ristorante_id, asset_id, operatore, tipo_log, valore, conformita, azione_correttiva, foto_prova_url, data_ora) VALUES ($1,$2,$3,$4,$5,$6,$7,$8, $9)", [ristorante_id, asset_id, operatore, tipo_log, valore, conformita, azione_correttiva, foto_prova_url, data_ora]); 
         } else {
@@ -102,3 +118,102 @@ exports.getLabelsHistory = async (req, res) => { try { const { start, end } = re
 exports.getPulizie = async (req, res) => { try { const { start, end } = req.query; let sql = "SELECT * FROM haccp_cleaning WHERE ristorante_id = $1"; const params = [req.params.ristorante_id]; if (start && end) { sql += " AND data_ora >= $2 AND data_ora <= $3 ORDER BY data_ora ASC"; params.push(start, end); } else { sql += " AND data_ora >= NOW() - INTERVAL '7 days' ORDER BY data_ora DESC"; } const r = await pool.query(sql, params); res.json(r.rows); } catch(e) { res.status(500).json({error:"Err"}); } };
 exports.createPulizia = async (req, res) => { try { const { ristorante_id, area, prodotto, operatore, conformita, data_ora } = req.body; await pool.query("INSERT INTO haccp_cleaning (ristorante_id, area, prodotto, operatore, conformita, data_ora) VALUES ($1, $2, $3, $4, $5, $6)", [ristorante_id, area, prodotto, operatore, conformita !== undefined ? conformita : true, data_ora || new Date()]); res.json({success:true}); } catch(e) { res.status(500).json({error:e.message}); } };
 exports.deletePulizia = async (req, res) => { try { await pool.query("DELETE FROM haccp_cleaning WHERE id = $1", [req.params.id]); res.json({success:true}); } catch(e) { res.status(500).json({error:"Err"}); } };
+
+// 5. MERCI (CON AUTO-FIX DB)
+exports.getMerci = async (req, res) => {
+    try {
+        const { start, end, mode } = req.query;
+        let sql = "SELECT * FROM haccp_merci WHERE ristorante_id = $1";
+        const params = [req.params.ristorante_id];
+        
+        if (mode === 'haccp') sql += " AND is_haccp = true";
+
+        if (start && end) {
+            sql += " AND data_arrivo >= $2 AND data_arrivo <= $3 ORDER BY data_arrivo DESC";
+            params.push(start, end);
+        } else {
+            sql += " AND data_arrivo >= '2020-01-01' ORDER BY data_arrivo DESC";
+        }
+        
+        const r = await pool.query(sql, params);
+        res.json(r.rows);
+    } catch(e) { 
+        if (e.code === '42P01') return res.json([]);
+        res.status(500).json({error: "Errore recupero merci"}); 
+    }
+};
+
+exports.createMerci = async (req, res) => {
+    try {
+        await ensureMerciColumnsExist(); // Auto-crea colonne mancanti
+
+        const { 
+            ristorante_id, data_ricezione, ora, fornitore, 
+            numero_bolla, codice_articolo, 
+            prodotto, quantita, unita_misura, 
+            prezzo_unitario, totale, lotto, scadenza, destinazione,
+            condizioni, note,
+            allegato_url, is_haccp
+        } = req.body;
+
+        // Gestione data
+        const dateStr = data_ricezione ? data_ricezione.split('T')[0] : new Date().toISOString().split('T')[0];
+        const timePart = ora || '12:00';
+        const data_arrivo = `${dateStr}T${timePart}:00`;
+
+        await pool.query(
+            `INSERT INTO haccp_merci 
+            (ristorante_id, data_arrivo, fornitore, numero_bolla, codice_articolo, prodotto, quantita, unita_misura, prezzo_unitario, totale, lotto, scadenza, destinazione, condizioni, note, allegato_url, is_haccp) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+            [ristorante_id, data_arrivo, fornitore, numero_bolla, codice_articolo, prodotto, quantita, unita_misura, prezzo_unitario, totale, lotto, scadenza || null, destinazione, condizioni, note, allegato_url, is_haccp !== undefined ? is_haccp : true]
+        );
+        
+        res.json({success: true});
+    } catch (e) {
+        console.error("Errore createMerci", e);
+        res.status(500).json({error: "Errore inserimento merci"});
+    }
+};
+
+exports.updateMerci = async (req, res) => {
+    try {
+        await ensureMerciColumnsExist(); // Auto-crea colonne mancanti
+
+        const { 
+            data_ricezione, ora, fornitore, 
+            numero_bolla, codice_articolo,
+            prodotto, quantita, unita_misura, 
+            prezzo_unitario, totale, lotto, scadenza, destinazione,
+            condizioni, note,
+            allegato_url, is_haccp 
+        } = req.body;
+
+        const dateStr = data_ricezione ? data_ricezione.split('T')[0] : new Date().toISOString().split('T')[0];
+        const timePart = ora || '12:00';
+        const data_arrivo = `${dateStr}T${timePart}:00`;
+
+        await pool.query(
+            `UPDATE haccp_merci SET 
+                data_arrivo=$1, fornitore=$2, numero_bolla=$3, codice_articolo=$4, prodotto=$5, 
+                quantita=$6, unita_misura=$7, prezzo_unitario=$8, totale=$9, 
+                lotto=$10, scadenza=$11, destinazione=$12, condizioni=$13, note=$14,
+                allegato_url=$15, is_haccp=$16
+             WHERE id=$17`,
+            [data_arrivo, fornitore, numero_bolla, codice_articolo, prodotto, quantita, unita_misura, prezzo_unitario, totale, lotto, scadenza || null, destinazione, condizioni, note, allegato_url, is_haccp, req.params.id]
+        );
+
+        res.json({success: true});
+    } catch (e) {
+        console.error("Errore updateMerci", e);
+        res.status(500).json({error: "Errore aggiornamento merci"});
+    }
+};
+
+exports.deleteMerci = async (req, res) => {
+    try {
+        await pool.query("DELETE FROM haccp_merci WHERE id=$1", [req.params.id]);
+        res.json({success: true});
+    } catch (e) {
+        res.status(500).json({error: "Errore eliminazione"});
+    }
+};
