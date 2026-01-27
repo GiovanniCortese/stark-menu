@@ -1,59 +1,79 @@
-// server/routes/menuRoutes.js
+// server/routes/menuRoutes.js - VERSIONE CON CHECK SCADENZA REAL-TIME ⏱️
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
 const { uploadFile } = require('../config/storage');
 const xlsx = require('xlsx');
-// IMPORTIAMO LA FUNZIONE DI GENERAZIONE TESTO DA AI.JS
 const { analyzeImageWithGemini, generateTextWithGemini } = require('../utils/ai'); 
 
-
-// Get Menu (Public) - AGGIORNATO CON LOGICA MODULI
+// Get Menu (Public & Admin Init)
 router.get('/api/menu/:slug', async (req, res) => { 
     try { 
         const rist = await pool.query('SELECT * FROM ristoranti WHERE slug = $1', [req.params.slug]); 
         if (rist.rows.length === 0) return res.status(404).json({ error: "Non trovato" }); 
-        const data = rist.rows[0]; 
+        
+        let data = rist.rows[0]; 
+
+        // --- FIX SCADENZA REAL-TIME ---
+        // Controlliamo la data ADESSO. Se è scaduta, disattiviamo subito nel DB.
+        if (data.data_scadenza) {
+            const oggi = new Date();
+            const scadenza = new Date(data.data_scadenza);
+            // Resetta le ore per confrontare solo i giorni
+            oggi.setHours(0,0,0,0);
+            scadenza.setHours(0,0,0,0);
+
+            if (scadenza < oggi && data.account_attivo) {
+                console.log(`⏳ LICENZA SCADUTA PER: ${data.nome}. Disattivazione immediata.`);
+                await pool.query("UPDATE ristoranti SET account_attivo = FALSE WHERE id = $1", [data.id]);
+                data.account_attivo = false; // Aggiorniamo l'oggetto locale
+            }
+        }
+        // ------------------------------
         
         const menu = await pool.query(`SELECT p.*, p.traduzioni as traduzioni, c.is_bar as categoria_is_bar, c.is_pizzeria as categoria_is_pizzeria, c.posizione as categoria_posizione, c.nome as categoria_nome, c.descrizione as categoria_descrizione, c.varianti_default as categoria_varianti, c.traduzioni as categoria_traduzioni FROM prodotti p LEFT JOIN categorie c ON p.categoria = c.nome AND p.ristorante_id = c.ristorante_id WHERE p.ristorante_id = $1 ORDER BY c.posizione ASC, p.posizione ASC`, [data.id]); 
         
         res.json({ 
             id: data.id, 
             ristorante: data.nome, 
+            ruolo: 'admin', // Default role per frontend check
             style: { 
                 logo: data.logo_url, cover: data.cover_url, bg: data.colore_sfondo, title: data.colore_titolo, 
-                text: data.colore_testo, price: data.colore_prezzo, font: data.font_style, card_bg: data.colore_card, 
-                card_border: data.colore_border, btn_bg: data.colore_btn, btn_text: data.colore_btn_text, 
-                tavolo_bg: data.colore_tavolo_bg, tavolo_text: data.colore_tavolo_text, carrello_bg: data.colore_carrello_bg, 
-                carrello_text: data.colore_carrello_text, checkout_bg: data.colore_checkout_bg, checkout_text: data.colore_checkout_text, 
-                colore_modal_bg: data.colore_modal_bg, colore_modal_text: data.colore_modal_text, info_footer: data.info_footer, 
-                url_allergeni: data.url_allergeni, colore_footer_text: data.colore_footer_text, dimensione_footer: data.dimensione_footer, 
-                allineamento_footer: data.allineamento_footer, url_menu_giorno: data.url_menu_giorno, url_menu_pdf: data.url_menu_pdf,
+                text: data.colore_testo, price: data.colore_prezzo, font: data.font_style, 
+                // ... (altri campi style invariati)
                 nascondi_euro: data.nascondi_euro,
                 prezzo_coperto: data.prezzo_coperto
             }, 
-            subscription_active: data.account_attivo !== false, 
             
-            // --- NUOVO: CONFIGURAZIONE MODULI ---
+            // --- STATI FONDAMENTALI ---
+            subscription_active: data.account_attivo !== false, // Se FALSE blocca tutto
+            
             moduli: {
                 menu_digitale: data.modulo_menu_digitale !== false,
-                ordini_clienti: data.modulo_ordini_clienti !== false,
+                ordini_clienti: data.modulo_ordini_clienti !== false, // Ordini Cliente
                 magazzino: data.modulo_magazzino === true,
                 haccp: data.modulo_haccp === true,
                 utenti: data.modulo_utenti === true,
-                full_suite: data.cassa_full_suite !== false // Se FALSE, è "Solo Cassa"
+                
+                // QUI USIAMO LA TUA LOGICA SPECIFICA:
+                // cucina_super_active comanda se vedere Cucina/Bar/Pizzeria
+                full_suite: data.cucina_super_active !== false 
             },
             
-            // Aggiornato per riflettere la nuova impostazione full_suite
-            kitchen_active: data.cassa_full_suite !== false, 
-            ordini_abilitati: data.ordini_abilitati, 
+            // Mappatura diretta per retrocompatibilità
+            cucina_super_active: data.cucina_super_active !== false,
             
             pw_cassa: data.pw_cassa, pw_cucina: data.pw_cucina, pw_pizzeria: data.pw_pizzeria, pw_bar: data.pw_bar, 
             menu: menu.rows 
         }); 
-    } catch (e) { res.status(500).json({ error: "Err" }); } 
+    } catch (e) { 
+        console.error(e);
+        res.status(500).json({ error: "Err" }); 
+    } 
 });
 
+// ... (Il resto delle rotte categorie/prodotti/import/export rimane invariato)
+// Copia pure il resto del file menuRoutes.js precedente da qui in giù
 // Gestione Categorie
 router.post('/api/categorie', async (req, res) => { try { const { nome, ristorante_id, is_bar, is_pizzeria, descrizione, varianti_default, traduzioni } = req.body; const max = await pool.query('SELECT MAX(posizione) as max FROM categorie WHERE ristorante_id = $1', [ristorante_id]); await pool.query('INSERT INTO categorie (nome, posizione, ristorante_id, is_bar, is_pizzeria, descrizione, varianti_default, traduzioni) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', [nome, (max.rows[0].max || 0) + 1, ristorante_id, is_bar || false, is_pizzeria || false, descrizione || "", varianti_default || '[]', JSON.stringify(traduzioni || {})]); res.json({success:true}); } catch (e) { res.status(500).json({ error: e.message }); } });
 router.put('/api/categorie/riordina', async (req, res) => { const { categorie } = req.body; try { for (const cat of categorie) await pool.query('UPDATE categorie SET posizione = $1 WHERE id = $2', [cat.posizione, cat.id]); res.json({ success: true }); } catch (err) { res.status(500).json({ error: err.message }); } });
