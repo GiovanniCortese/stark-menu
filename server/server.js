@@ -90,3 +90,4 @@ app.use((err, req, res, next) => {
 server.listen(port, () => {
     console.log(`🚀 JARVIS SERVER V50 (WEBSOCKET MODE) su porta ${port}`);
 });
+
