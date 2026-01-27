@@ -1,6 +1,7 @@
 // client/src/components/haccp/MerciManager.jsx
 import React, { useState, useEffect, useRef } from 'react';
-// Assicurati che il percorso sia corretto rispetto alla tua struttura cartelle
+// IMPORTIAMO IL COMPONENTE DI STAGING DEL MAGAZZINO
+// Assicurati che questo percorso sia corretto nella tua struttura
 import MagazzinoStaging from '../magazzino/MagazzinoStaging'; 
 
 const MerciManager = (props) => {
@@ -12,7 +13,7 @@ const MerciManager = (props) => {
         title, 
         showHaccpToggle = false,
         openDownloadModal,
-        // Props da Haccp.jsx (opzionali - se il componente è controllato dal padre)
+        // Props da Haccp.jsx (se controllato dal padre)
         merci: propMerci,
         merciForm: propForm,
         setMerciForm: propSetForm,
@@ -22,7 +23,8 @@ const MerciManager = (props) => {
         iniziaModificaMerci: propIniziaModifica,
         eliminaMerce: propElimina,
         assets: propAssets,
-        resetMerciForm: propReset
+        resetMerciForm: propReset,
+        ricaricaDati // Callback opzionale per ricaricare i dati del padre
     } = props;
 
     // Se propMerci è definito, allora lo stato è gestito dal padre (Haccp.jsx)
@@ -38,7 +40,7 @@ const MerciManager = (props) => {
         prodotto: '', 
         quantita: '', 
         unita_misura: 'pz',
-        prezzo: '', 
+        prezzo: '',          // Teniamo nel form per inserimento manuale, ma nascosto in tabella
         prezzo_unitario: '', 
         lotto: '', 
         scadenza: '', 
@@ -74,26 +76,33 @@ const MerciManager = (props) => {
     // --- HELPER TIME ---
     const getCurrentTime = () => new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
 
-    // --- LOGICA FETCH (Solo se non controllato) ---
+    // --- LOGICA FETCH (Solo se non controllato dal padre) ---
     useEffect(() => {
         if (!isControlled && ristoranteId) {
             const fetchData = async () => {
                 setInternalLoading(true);
                 try {
+                    // Calcoliamo inizio e fine mese per il filtro
+                    const year = viewDate.getFullYear();
+                    const month = viewDate.getMonth();
+                    const start = new Date(year, month, 1).toISOString().split('T')[0];
+                    const end = new Date(year, month + 1, 0).toISOString().split('T')[0];
+
                     const [resM, resA] = await Promise.all([
-                        fetch(`${API_URL}/api/haccp/merci/${ristoranteId}?mode=${mode}`),
+                        fetch(`${API_URL}/api/haccp/merci/${ristoranteId}?mode=${mode}&start=${start}&end=${end}`),
                         fetch(`${API_URL}/api/haccp/assets/${ristoranteId}`)
                     ]);
-                    setInternalMerci(await resM.json());
+                    const dataM = await resM.json();
+                    setInternalMerci(Array.isArray(dataM) ? dataM : []);
                     setInternalAssets(await resA.json());
                 } catch(e) { console.error("Err Fetch", e); }
                 finally { setInternalLoading(false); }
             };
             fetchData();
         }
-    }, [isControlled, ristoranteId, mode, API_URL]);
+    }, [isControlled, ristoranteId, mode, API_URL, viewDate]);
 
-    // --- LOGICA FILTRO MESE ---
+    // --- LOGICA FILTRO MESE (Se i dati arrivano già filtrati dal backend, questo è ridondante ma sicuro) ---
     const filteredMerci = (merci || []).filter(m => {
         const d = new Date(m.data_ricezione);
         return d.getFullYear() === viewDate.getFullYear() && d.getMonth() === viewDate.getMonth();
@@ -121,11 +130,13 @@ const MerciManager = (props) => {
             propSalva(e); 
         } else {
             try {
+                // Salvataggio standard (singolo)
                 const payload = { ...formWithTime, ristorante_id: ristoranteId };
-                const url = payload.id ? `${API_URL}/api/haccp/merci/${payload.id}` : `${API_URL}/api/haccp/merci`;
+                const url = payload.id ? `${API_URL}/api/haccp/merci/${payload.id}` : `${API_URL}/api/haccp/merci`; // createMerce usa ora importMerci logic
                 const method = payload.id ? 'PUT' : 'POST';
                 await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)});
                 handleReset();
+                // Refresh
                 const r = await fetch(`${API_URL}/api/haccp/merci/${ristoranteId}?mode=${mode}`);
                 setInternalMerci(await r.json());
             } catch(e) { alert("Errore salvataggio"); }
@@ -149,11 +160,13 @@ const MerciManager = (props) => {
     };
 
     const handleDelete = async (id) => {
+        if(!window.confirm("Eliminare? Verrà aggiornato lo stock del magazzino.")) return;
+
         if (isControlled) {
             propElimina(id);
         } else {
-            if(!confirm("Eliminare?")) return;
             await fetch(`${API_URL}/api/haccp/merci/${id}`, { method: 'DELETE' });
+            // Refresh rapido
             const r = await fetch(`${API_URL}/api/haccp/merci/${ristoranteId}?mode=${mode}`);
             setInternalMerci(await r.json());
         }
@@ -162,7 +175,7 @@ const MerciManager = (props) => {
     const handleEdit = (m) => {
         const cleanData = {
             ...m,
-            // Mapping corretto dei campi specifici
+            // Mapping corretto dei campi
             numero_bolla: m.numero_bolla || m.riferimento_documento || '',
             codice_articolo: m.codice_articolo || '',
             note: m.note || '',
@@ -175,81 +188,40 @@ const MerciManager = (props) => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
-    // --- EFFETTI UTILITY ---
-    useEffect(() => {
-        if (!merciForm.id) {
-            setMerciForm(prev => ({
-                ...prev,
-                ora: prev.ora || getCurrentTime(),
-                unita_misura: prev.unita_misura || 'pz',
-                is_haccp: prev.is_haccp !== undefined ? prev.is_haccp : (mode === 'haccp'),
-                condizioni: prev.condizioni || 'conforme'
-            }));
-        }
-    }, [merciForm.id, mode, setMerciForm]);
-
-    useEffect(() => {
-        const qta = parseFloat(merciForm.quantita);
-        const unit = parseFloat(merciForm.prezzo_unitario);
-        if (!isNaN(qta) && !isNaN(unit)) {
-            const tot = (qta * unit).toFixed(2);
-            if (merciForm.prezzo !== tot) {
-                setMerciForm(prev => ({ ...prev, prezzo: tot }));
-            }
-        }
-    }, [merciForm.quantita, merciForm.prezzo_unitario, setMerciForm]);
-
-    // --- MAGIC SCAN LOGIC ---
-    const resizeImage = (file, maxWidth = 1000, quality = 0.7) => {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = (event) => {
-                const img = new Image();
-                img.src = event.target.result;
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    let width = img.width, height = img.height;
-                    if (width > height) { if (width > maxWidth) { height *= maxWidth / width; width = maxWidth; } } else { if (height > maxWidth) { width *= maxWidth / height; height = maxWidth; } }
-                    canvas.width = width; canvas.height = height;
-                    const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, width, height);
-                    canvas.toBlob((blob) => resolve(new File([blob], file.name, { type: 'image/jpeg' })), 'image/jpeg', quality);
-                };
-            };
-            reader.onerror = reject;
-        });
-    };
-
+    // --- MAGIC SCAN & STAGING LOGIC ---
+    
     const handleScanBolla = async (e) => {
         const file = e.target.files[0]; if(!file) return;
         setIsScanning(true); 
         try {
             const fd = new FormData();
-            if (file.type === 'application/pdf') fd.append('photo', file);
-            else { const compressedFile = await resizeImage(file, 800, 0.6); fd.append('photo', compressedFile); }
+            // Invia direttamente il file (PDF o Immagine)
+            fd.append('photo', file);
             
+            // Usa l'endpoint che riconosce i PDF e estrae TUTTO (scanBolla aggiornato)
             const res = await fetch(`${API_URL}/api/haccp/scan-bolla`, { method: 'POST', body: fd });
             const json = await res.json();
             if (!json.success) throw new Error(json.error);
             
-            // Forza flag HACCP
+            // I dati arrivano completi (Prezzi, IVA, etc.)
             const data = json.data;
             if (data.prodotti) {
+                // Impostiamo is_haccp=true ma manteniamo i prezzi per il salvataggio in magazzino
                 data.prodotti = data.prodotti.map(p => ({ ...p, is_haccp: true }));
             }
             
-            // Apri Staging Mode
-            setStagingData([data]); // MagazzinoStaging si aspetta un array o oggetto con prodotti
+            // Passa alla vista di revisione (Staging)
+            setStagingData([data]); 
             setView('staging');
             
         } catch(err) { alert("⚠️ ERRORE SCANSIONE: " + err.message); } 
         finally { setIsScanning(false); e.target.value = null; }
     };
 
-    // Conferma Salvataggio da Staging
+    // Conferma salvataggio da Staging
     const handleStagingConfirm = async (datiFinali) => {
         try {
-            // Usa import massivo per supportare prodotti multipli
+            // Chiamata all'endpoint importMerci (che salva prima in Magazzino poi in HACCP)
             const url = `${API_URL}/api/haccp/merci/import`; 
             const res = await fetch(url, {
                 method: 'POST',
@@ -259,16 +231,16 @@ const MerciManager = (props) => {
             const json = await res.json();
             
             if (json.success) {
-                alert("✅ Merce registrata correttamente!");
+                alert("✅ Carico completato: Magazzino aggiornato e Registro HACCP compilato!");
                 setStagingData(null);
                 setView('lista');
-                // Forza ricarica dati
-                if (isControlled && props.ricaricaDati) props.ricaricaDati(); // Se esiste prop ricarica
+                
+                // Ricarica dati
+                if (isControlled && ricaricaDati) ricaricaDati(); 
                 else if (!isControlled) {
                     const r = await fetch(`${API_URL}/api/haccp/merci/${ristoranteId}?mode=${mode}`);
                     setInternalMerci(await r.json());
                 } else {
-                    // Fallback refresh semplice: ricarica pagina o chiama fetch se accessibile
                     window.location.reload(); 
                 }
             } else {
@@ -281,23 +253,25 @@ const MerciManager = (props) => {
 
     // --- RENDER ---
     
-    // 1. VISTA STAGING (Scan AI / Revisione)
+    // 1. VISTA REVISIONE (Staging)
     if (view === 'staging') {
         return (
             <MagazzinoStaging 
                 initialData={stagingData}
                 onConfirm={handleStagingConfirm}
                 onCancel={() => { 
-                    if(window.confirm("Annullare?")) {
+                    if(window.confirm("Annullare il caricamento?")) {
                         setView('lista');
                         setStagingData(null);
                     } 
                 }}
+                // NOTA: Non nascondiamo i prezzi qui (hidePrices={false}) così puoi controllare
+                // che l'AI abbia letto bene la fattura prima di caricare il magazzino.
             />
         );
     }
 
-    // 2. VISTA STANDARD (Form + Lista)
+    // 2. VISTA STANDARD (Lista HACCP)
     return (
         <div className="no-print">
             {/* HEADER */}
@@ -309,36 +283,36 @@ const MerciManager = (props) => {
                 )}
             </div>
 
-            {/* MAGIC SCAN (Apre Staging) */}
+            {/* MAGIC SCAN BUTTON */}
             <div onClick={() => scanInputRef.current.click()} style={{marginBottom: 20, padding: 15, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderRadius: 10, color: 'white', display:'flex', alignItems:'center', justifyContent:'space-between', cursor: 'pointer'}}>
-                <div><h3 style={{margin:0}}>✨ Magic Scan (AI)</h3><p style={{margin:0, fontSize:12}}>Carica Foto o PDF per auto-compilazione.</p></div>
+                <div><h3 style={{margin:0}}>✨ Magic Scan (AI)</h3><p style={{margin:0, fontSize:12}}>Carica Foto o PDF per caricare Magazzino + HACCP.</p></div>
                 <button disabled={isScanning} style={{background:'white', color:'#764ba2', border:'none', padding:'10px 20px', borderRadius:25, fontWeight:'bold'}}>{isScanning ? '🤖...' : '📸 SCANSIONA'}</button>
                 <input type="file" ref={scanInputRef} accept="image/*,application/pdf" onChange={handleScanBolla} style={{ display: 'none' }} />            
             </div>
 
-            {/* FORM MANUALE */}
+            {/* FORM MANUALE (Opzionale, per inserimenti rapidi senza bolla) */}
             <div style={{background:'white', padding:20, borderRadius:10, marginBottom:20, borderLeft: '5px solid #27ae60'}}>
-                <div style={{display:'flex', justifyContent:'space-between'}}><h3>{merciForm.id ? '✏️ Modifica' : '📥 Nuovo Arrivo Manuale'}</h3>{merciForm.id && <button onClick={handleReset}>Annulla</button>}</div>
+                <div style={{display:'flex', justifyContent:'space-between'}}><h3>{merciForm.id ? '✏️ Modifica' : '📥 Inserimento Manuale'}</h3>{merciForm.id && <button onClick={handleReset}>Annulla</button>}</div>
                 <form onSubmit={handleSave} style={{display:'flex', flexWrap:'wrap', gap:10, alignItems:'flex-end'}}>
                     
                     {/* RIGA 1 */}
                     <div style={{flex:1, minWidth:120}}><label style={{fontSize:11}}>Data</label><input type="date" value={merciForm.data_ricezione} onChange={e=>setMerciForm({...merciForm, data_ricezione:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required /></div>
                     <div style={{flex:0.5, minWidth:80}}><label style={{fontSize:11}}>Ora</label><input type="time" value={merciForm.ora || ''} onChange={e=>setMerciForm({...merciForm, ora:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
-                    <div style={{flex:1.5, minWidth:120}}><label style={{fontSize:11}}>Numero Bolla</label><input type="text" value={merciForm.numero_bolla || ''} onChange={e=>setMerciForm({...merciForm, numero_bolla:e.target.value})} placeholder="Es. 104/2024" style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
+                    <div style={{flex:1.5, minWidth:120}}><label style={{fontSize:11}}>N. Documento</label><input type="text" value={merciForm.numero_bolla || ''} onChange={e=>setMerciForm({...merciForm, numero_bolla:e.target.value})} placeholder="Es. 104" style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
                     <div style={{flex:2, minWidth:150}}><label style={{fontSize:11}}>Fornitore</label><input value={merciForm.fornitore} onChange={e=>setMerciForm({...merciForm, fornitore:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required /></div>
 
                     {/* RIGA 2 */}
-                    <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Cod. Articolo</label><input value={merciForm.codice_articolo || ''} onChange={e=>setMerciForm({...merciForm, codice_articolo:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
+                    <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Cod. Art.</label><input value={merciForm.codice_articolo || ''} onChange={e=>setMerciForm({...merciForm, codice_articolo:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
                     <div style={{flex:2, minWidth:150}}><label style={{fontSize:11}}>Prodotto</label><input value={merciForm.prodotto} onChange={e=>setMerciForm({...merciForm, prodotto:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} required /></div>
                     <div style={{flex:1, minWidth:80}}><label style={{fontSize:11}}>Quantità</label><input type="number" step="0.01" value={merciForm.quantita} onChange={e=>setMerciForm({...merciForm, quantita:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
                     <div style={{flex:0.8, minWidth:80}}>
                         <label style={{fontSize:11}}>U.M.</label>
                         <select value={merciForm.unita_misura || 'pz'} onChange={e=>setMerciForm({...merciForm, unita_misura:e.target.value})} style={{width:'100%', padding:9, border:'1px solid #ddd'}}>
-                            <option value="pz">Pz</option><option value="kg">Kg</option><option value="lt">Lt</option><option value="gr">Gr</option><option value="ct">Cartoni</option><option value="css">Casse</option><option value="pch">Pacchi</option>
+                            <option value="pz">Pz</option><option value="kg">Kg</option><option value="lt">Lt</option><option value="ct">Ct</option>
                         </select>
                     </div>
 
-                    {/* RIGA 3 (Prezzi rimossi visivamente dal form se non necessari, ma tenuti nello stato per compatibilità. Qui li lascio per input manuale ma tolgo dalla tabella) */}
+                    {/* RIGA 3 - LOTTO & SCADENZA (Cruciali per HACCP) */}
                     <div style={{flex:1, minWidth:100}}><label style={{fontSize:11}}>Lotto</label><input value={merciForm.lotto} onChange={e=>setMerciForm({...merciForm, lotto:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
                     <div style={{flex:1, minWidth:120}}><label style={{fontSize:11}}>Scadenza</label><input type="date" value={merciForm.scadenza} onChange={e=>setMerciForm({...merciForm, scadenza:e.target.value})} style={{width:'100%', padding:8, border:'1px solid #ddd'}} /></div>
                     
@@ -350,7 +324,7 @@ const MerciManager = (props) => {
                         </select>
                     </div>
                     
-                    <div style={{flex:1, minWidth:150}}><label style={{fontSize:11}}>Destinazione</label>
+                    <div style={{flex:1, minWidth:150}}><label style={{fontSize:11}}>Stoccaggio</label>
                       <select value={merciForm.destinazione} onChange={e=>setMerciForm({...merciForm, destinazione:e.target.value})} style={{width:'100%', padding:9, border:'1px solid #ddd'}}>
                           <option value="">-- Seleziona --</option>
                           {assets && assets.map(a => <option key={a.id} value={a.nome}>{a.nome}</option>)}
@@ -364,7 +338,7 @@ const MerciManager = (props) => {
                 </form>
             </div>
 
-            {/* NAVIGAZIONE MESE (SPOSTATA SOPRA LA TABELLA) */}
+            {/* SELETTORE MESE */}
             <div style={{display: 'flex', alignItems: 'center', background: '#f8f9fa', padding: '10px', borderRadius: '8px 8px 0 0', border: '1px solid #eee', borderBottom: 'none', width: 'fit-content'}}>
                 <button onClick={() => changeMonth(-1)} style={{background: 'transparent', border: 'none', fontSize: '18px', cursor: 'pointer', padding: '0 10px'}}>◀</button>
                 <span style={{fontWeight: 'bold', minWidth: '150px', textAlign: 'center', color: '#2c3e50'}}>
@@ -373,19 +347,18 @@ const MerciManager = (props) => {
                 <button onClick={() => changeMonth(1)} style={{background: 'transparent', border: 'none', fontSize: '18px', cursor: 'pointer', padding: '0 10px'}}>▶</button>
             </div>
 
-            {/* TABELLA STORICO (Senza Prezzi, con Bolla) */}
+            {/* TABELLA STORICO (Senza Prezzi per HACCP) */}
             <div style={{background:'white', border:'1px solid #eee', borderTop:'none', borderRadius:'0 0 10px 10px'}}>
                 <div style={{overflowX:'auto'}}>
                     <table style={{width:'100%', borderCollapse:'collapse', fontSize:12}}>
                         <thead>
                             <tr style={{background:'#ecf0f1', color:'#2c3e50', textAlign:'left'}}>
                                 <th style={{padding:12}}>Data</th>
-                                <th style={{padding:12}}>Bolla / Doc</th> {/* RINOMINATO */}
+                                <th style={{padding:12}}>Rif. Doc</th>
                                 <th style={{padding:12}}>Fornitore</th>
                                 <th style={{padding:12}}>Cod. Art</th>
                                 <th style={{padding:12}}>Prodotto</th>
                                 <th style={{padding:12}}>Qta</th>
-                                {/* RIMOSSO TOTALE E PREZZO */}
                                 <th style={{padding:12}}>Lotto</th>
                                 <th style={{padding:12}}>Scadenza</th>
                                 <th style={{padding:12}}>Condizioni</th>
@@ -403,9 +376,8 @@ const MerciManager = (props) => {
                                             <div style={{fontSize:10, color:'#999'}}>{m.ora}</div>
                                         </td>
                                         
-                                        {/* COLONNA BOLLA COLLEGATA A NUMERO_BOLLA O RIF_DOC */}
                                         <td style={{padding:10}}>
-                                            <strong>{m.numero_bolla || m.riferimento_documento || '-'}</strong>
+                                            <strong>{m.riferimento_documento || m.numero_bolla || '-'}</strong>
                                         </td>
                                         
                                         <td style={{padding:10}}>{m.fornitore}</td>
