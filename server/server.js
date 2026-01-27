@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE JARVIS V68 (TIMEZONE FIX & SUITE LOGIC) 🚀
+// server/server.js - VERSIONE JARVIS V69 (TIMEZONE FIX & SUITE LOGIC) 🚀
 
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
@@ -10,7 +10,8 @@ const { Server } = require("socket.io");
 const pool = require('./config/db'); 
 
 // --- IMPORTIAMO IL GESTORE ORARIO ITALIANO ---
-const { getNowItaly, getTimeItaly } = require('./utils/time'); // Assicurati che time.js sia nella root di server/
+// ✅ FIX: Percorso aggiornato come richiesto
+const { getNowItaly, getTimeItaly } = require('./utils/time'); 
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -106,12 +107,12 @@ app.use('/', adminRoutes);
 app.use((err, req, res, next) => {
     console.error(`🔥 [${getNowItaly()}] ERRORE SERVER:`, err.stack);
     if (!res.headersSent) {
-        res.status(500).json({ error: "Errore V68: " + err.message });
+        res.status(500).json({ error: "Errore V69: " + err.message });
     }
 });
 
 // --- AVVIO ---
 server.listen(port, () => {
-    console.log(`🚀 JARVIS SERVER V68 pronto su porta ${port}`);
+    console.log(`🚀 JARVIS SERVER V69 pronto su porta ${port}`);
     console.log(`🕒 Orario Server: ${getNowItaly()}`);
 });
