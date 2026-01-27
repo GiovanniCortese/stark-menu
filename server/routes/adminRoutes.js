@@ -6,6 +6,10 @@ const { authenticator } = require('otplib');
 const https = require('https');
 const http = require('http');
 
+// --- IMPORTIAMO IL GESTORE ORARIO ITALIANO ---
+// Assicurati che il file time.js sia nella cartella principale 'server'
+const { getNowItaly } = require('../time'); 
+
 // ==========================================
 // 1. GESTIONE RISTORANTE (CONFIG & STYLE)
 // ==========================================
@@ -29,12 +33,12 @@ router.put('/api/ristorante/style/:id', async (req, res) => {
         
         res.json({ success: true }); 
     } catch (err) { 
-        console.error("Errore salvataggio style:", err);
+        console.error(`❌ [${getNowItaly()}] Errore salvataggio style:`, err);
         res.status(500).json({ error: "Errore salvataggio: " + err.message }); 
     } 
 });
 
-// Update Servizio (Attiva/Disattiva Ordini)
+// Update Servizio (Attiva/Disattiva Ordini & Suite)
 router.put('/api/ristorante/servizio/:id', async (req, res) => { 
     try { 
         const { id } = req.params; 
@@ -47,7 +51,7 @@ router.put('/api/ristorante/servizio/:id', async (req, res) => {
         if (req.body.servizio_attivo !== undefined) 
             await pool.query('UPDATE ristoranti SET servizio_attivo = $1 WHERE id = $2', [req.body.servizio_attivo, id]);
             
-        // --- NUOVO: Aggiorna Suite (Cucina/Bar/Pizzeria) ---
+        // --- Aggiorna Suite (Cucina/Bar/Pizzeria) ---
         if (req.body.cucina_super_active !== undefined) 
             await pool.query('UPDATE ristoranti SET cucina_super_active = $1 WHERE id = $2', [req.body.cucina_super_active, id]);
 
@@ -77,7 +81,7 @@ router.put('/api/ristorante/dati-fiscali/:id', async (req, res) => {
 });
 
 // ==========================================
-// 2. SUPER ADMIN (MODIFICATO E CORRETTO)
+// 2. SUPER ADMIN (LOG CON ORARIO ITALIANO)
 // ==========================================
 
 // Login Super Admin
@@ -94,6 +98,7 @@ router.post('/api/super/login', (req, res) => {
         const isValidToken = authenticator.check(code2fa, adminSecret); 
         if (!isValidToken) return res.json({ success: false, error: "Codice 2FA Errato o Scaduto" }); 
         
+        console.log(`👑 [${getNowItaly()}] SuperAdmin Login effettuato.`);
         res.json({ success: true, token: "SUPER_GOD_TOKEN_2026" }); 
     } catch (e) { res.status(500).json({ success: false, error: "Errore interno server" }); } 
 });
@@ -104,10 +109,12 @@ router.get('/api/super/ristoranti', async (req, res) => {
     catch (e) { res.status(500).json({error:"Err"}); } 
 });
 
-// Crea Ristorante (AGGIORNATO CON modulo_cassa)
+// Crea Ristorante (Con Modulo Cassa e Full Suite)
 router.post('/api/super/ristoranti', async (req, res) => { 
     try { 
         const b = req.body;
+        console.log(`🆕 [${getNowItaly()}] Creazione nuovo locale: ${b.nome}`);
+
         await pool.query(`
             INSERT INTO ristoranti 
             (nome, slug, email, telefono, password, account_attivo, servizio_attivo, ordini_abilitati, cucina_super_active,
@@ -120,8 +127,8 @@ router.post('/api/super/ristoranti', async (req, res) => {
                 b.modulo_magazzino ?? false,
                 b.modulo_haccp ?? false,
                 b.modulo_utenti ?? false,
-                b.modulo_cassa ?? true, // NUOVO
-                b.cassa_full_suite ?? true,
+                b.modulo_cassa ?? true, // Modulo Cassa opzionale
+                b.cassa_full_suite ?? true, // Full Suite (Cucina/Bar/Pizzeria)
                 b.data_scadenza || new Date(new Date().setFullYear(new Date().getFullYear() + 1))
             ]
         ); 
@@ -129,11 +136,12 @@ router.post('/api/super/ristoranti', async (req, res) => {
     } catch (e) { res.status(500).json({error: "Err: " + e.message}); } 
 });
 
-// UPDATE RISTORANTE (AGGIORNATO CON modulo_cassa)
+// UPDATE RISTORANTE (Con Log Orario e Nuovi Moduli)
 router.put('/api/super/ristoranti/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const b = req.body;
+        console.log(`✏️ [${getNowItaly()}] Modifica locale ID ${id} - ${b.nome || ''}`);
 
         const sql = `
             UPDATE ristoranti SET 
@@ -169,17 +177,17 @@ router.put('/api/super/ristoranti/:id', async (req, res) => {
             b.modulo_magazzino !== undefined ? b.modulo_magazzino : null,
             b.modulo_haccp !== undefined ? b.modulo_haccp : null,
             b.modulo_utenti !== undefined ? b.modulo_utenti : null,
-            b.modulo_cassa !== undefined ? b.modulo_cassa : null, // Parametro $12
-            b.cassa_full_suite !== undefined ? b.cassa_full_suite : null, // Parametro $13
+            b.modulo_cassa !== undefined ? b.modulo_cassa : null,
+            b.cassa_full_suite !== undefined ? b.cassa_full_suite : null,
             
-            b.password || null, // Parametro $14
-            id // Parametro $15
+            b.password || null,
+            id
         ];
         
         await pool.query(sql, params);
         res.json({ success: true });
     } catch (e) {
-        console.error("❌ ERRORE SUPERADMIN UPDATE:", e);
+        console.error(`❌ [${getNowItaly()}] ERRORE SUPERADMIN UPDATE:`, e);
         res.status(500).json({ error: e.message });
     }
 });
@@ -188,6 +196,7 @@ router.put('/api/super/ristoranti/:id', async (req, res) => {
 router.delete('/api/super/ristoranti/:id', async (req, res) => { 
     try { 
         const id = req.params.id; 
+        console.log(`🗑️ [${getNowItaly()}] Eliminazione locale ID ${id}`);
         await pool.query('DELETE FROM prodotti WHERE ristorante_id = $1', [id]); 
         await pool.query('DELETE FROM categorie WHERE ristorante_id = $1', [id]); 
         await pool.query('DELETE FROM ordini WHERE ristorante_id = $1', [id]); 
@@ -224,7 +233,7 @@ router.post('/api/auth/station', async (req, res) => {
             'cucina': 'pw_cucina', 
             'pizzeria': 'pw_pizzeria', 
             'bar': 'pw_bar', 
-            'haccp': 'pw_haccp',
+            'haccp': 'pw_haccp', 
             'magazzino': 'pw_magazzino' 
         }; 
         const colonnaPwd = roleMap[role]; 
@@ -280,12 +289,11 @@ router.get('/api/proxy-download', async (req, res) => {
 // 5. DB FIXES & MIGRATIONS (RACCOLTA COMPLETA)
 // ==========================================
 
-// Fix Modulo Cassa (Nuovo campo) - IMPORTANTE: ESEGUIRE UNA VOLTA
+// Fix Modulo Cassa (Nuovo campo)
 router.get('/api/db-fix-module-cassa', async (req, res) => {
     try {
         const client = await pool.connect();
         try {
-            // Default TRUE per non bloccare i clienti esistenti
             await client.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS modulo_cassa BOOLEAN DEFAULT TRUE");
             res.send("✅ DB AGGIORNATO: Modulo Cassa aggiunto!");
         } finally { client.release(); }

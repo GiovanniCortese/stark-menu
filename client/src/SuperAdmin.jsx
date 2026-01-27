@@ -1,4 +1,4 @@
-// client/src/SuperAdmin.jsx - VERSIONE V67 (AGGIUNTO MODULO CASSA) 🗓️
+// client/src/SuperAdmin.jsx - VERSIONE V69 (SUITE FIX UI & LOGIC)
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
@@ -14,28 +14,26 @@ function SuperAdmin() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null); 
   
-  // STATO CONFIGURAZIONE (Inclusi i nuovi flag)
+  // STATO CONFIGURAZIONE
   const [formData, setFormData] = useState({ 
       nome: '', 
       slug: '', 
       email: '', 
       telefono: '', 
-      password: '', // Password Admin Ristorante
+      password: '', 
       account_attivo: true,
       data_scadenza: new Date().toISOString().split('T')[0], 
       
-      // --- MODULI (Checkboxes) ---
-      modulo_cassa: true,           // 💰 NUOVO: Cassa Opzionale
-      modulo_menu_digitale: true,   // Menu QR
-      modulo_ordini_clienti: true,  // Ricezione ordini da tavolo/asporto
-      modulo_magazzino: false,      // Gestione scorte
-      modulo_haccp: false,          // Registro temperature/etichette
-      modulo_utenti: false,         // CRM Clienti
+      // Moduli
+      modulo_cassa: true,           
+      modulo_menu_digitale: true,   
+      modulo_ordini_clienti: true,  
+      modulo_magazzino: false,      
+      modulo_haccp: false,          
+      modulo_utenti: false,         
       
-      // --- MODALITÀ CASSA ---
-      // FALSE = Solo Cassa (Scontrino veloce, no reparti)
-      // TRUE = Suite Completa (Invia comande a Bar/Cucina/Pizzeria)
-      cassa_full_suite: true 
+      // Suite Flag
+      cassa_full_suite: true // TRUE = Abilita Cucina/Bar/Pizzeria. FALSE = Niente.
   });
 
   // STATI MODALE UTENTI GLOBAL
@@ -49,7 +47,6 @@ function SuperAdmin() {
   const [uploading, setUploading] = useState(false);
 
   const navigate = useNavigate();
-  // NOTA: Sostituisci con il tuo URL reale se diverso
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
   useEffect(() => {
@@ -92,13 +89,11 @@ function SuperAdmin() {
       } catch (err) { setError("Errore di connessione"); }
   };
 
-  // --- GESTIONE RISTORANTI ---
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData({ ...formData, [name]: type === 'checkbox' ? checked : value });
   };
 
-  // FUNZIONE CALCOLO RAPIDO DATE
   const aggiungiMesi = (mesi) => {
       const oggi = new Date();
       const futura = new Date(oggi.setMonth(oggi.getMonth() + mesi));
@@ -111,7 +106,7 @@ function SuperAdmin() {
           nome: '', slug: '', email: '', telefono: '', password: '', 
           account_attivo: true,
           data_scadenza: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0],
-          modulo_cassa: true, // Default ON
+          modulo_cassa: true, 
           modulo_menu_digitale: true,
           modulo_ordini_clienti: true,
           modulo_magazzino: false,
@@ -133,8 +128,7 @@ function SuperAdmin() {
           account_attivo: r.account_attivo !== false,
           data_scadenza: r.data_scadenza ? r.data_scadenza.split('T')[0] : '',
           
-          // Mappatura flag DB -> Form
-          modulo_cassa: r.modulo_cassa ?? true, // Default true se manca nel DB vecchio
+          modulo_cassa: r.modulo_cassa ?? true,
           modulo_menu_digitale: r.modulo_menu_digitale ?? true,
           modulo_ordini_clienti: r.modulo_ordini_clienti ?? true,
           modulo_magazzino: r.modulo_magazzino ?? false,
@@ -145,7 +139,7 @@ function SuperAdmin() {
       setShowModal(true);
   };
 
-const handleSalva = async (e) => { 
+  const handleSalva = async (e) => { 
       e.preventDefault(); 
       const endpoint = editingId ? `${API_URL}/api/super/ristoranti/${editingId}` : `${API_URL}/api/super/ristoranti`; 
       const method = editingId ? 'PUT' : 'POST'; 
@@ -157,14 +151,13 @@ const handleSalva = async (e) => {
               body: JSON.stringify(formData) 
           }); 
           
-          const data = await res.json(); // Leggiamo sempre la risposta JSON
+          const data = await res.json(); 
 
           if(res.ok) { 
               alert(editingId ? "✅ Configurazione aggiornata!" : "✅ Locale creato con successo!"); 
               setShowModal(false); 
               caricaDati(); 
           } else {
-              // QUI ORA VEDRAI L'ERRORE REALE DEL SERVER
               console.error("Errore Backend:", data);
               alert("❌ Errore Salvataggio: " + (data.error || "Errore sconosciuto"));
           }
@@ -187,7 +180,7 @@ const handleSalva = async (e) => {
   const entraNelPannello = (slug) => { localStorage.setItem(`stark_admin_session_${slug}`, "true"); window.open(`/admin/${slug}`, '_blank'); };
   const logout = () => { if (confirm("Uscire dal J.A.R.V.I.S.?")) { localStorage.removeItem("super_admin_token"); setAuthorized(false); navigate('/'); } };
 
-  // --- LOGICA UTENTI E IMPORT/EXPORT ---
+  // --- LOGICA UTENTI ---
   const handleOpenUserForm = (user = null) => {
       if (user) {
           setEditingUser(user);
@@ -274,7 +267,7 @@ const handleSalva = async (e) => {
       {/* LISTA RISTORANTI */}
       <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '25px'}}>
         {ristoranti.map(r => (
-            <div key={r.id} style={{border: '1px solid #ddd', borderRadius: '12px', overflow:'hidden', background: r.account_attivo !== false ? '#fff' : '#f2f2f2', boxShadow: '0 5px 15px rgba(0,0,0,0.08)', display:'flex', flexDirection:'column', opacity: r.account_attivo ? 1 : 0.7}}>
+            <div key={r.id} style={{border: '1px solid #ddd', borderRadius: '12px', overflow:'hidden', background: r.account_attivo ? '#fff' : '#f2f2f2', boxShadow: '0 5px 15px rgba(0,0,0,0.08)', display:'flex', flexDirection:'column', opacity: r.account_attivo ? 1 : 0.7}}>
                 <div style={{padding:'15px', borderBottom:'1px solid #eee', display:'flex', justifyContent:'space-between', background: r.account_attivo ? 'white' : '#ffebee'}}>
                     <div><h2 style={{margin:0, fontSize:'1.4rem'}}>{r.nome}</h2><span style={{background:'#2c3e50', color:'#fff', padding:'3px 8px', borderRadius:'4px', fontSize:'0.8rem'}}>/{r.slug}</span></div>
                     <div style={{display:'flex', gap:5}}>
@@ -283,22 +276,23 @@ const handleSalva = async (e) => {
                     </div>
                 </div>
                 <div style={{padding:15, flex:1}}>
-                    <p style={{margin:'5px 0'}}>📅 Scadenza: <b style={{color: new Date(r.data_scadenza) < new Date() ? 'red' : 'green'}}>{r.data_scadenza ? new Date(r.data_scadenza).toLocaleDateString() : 'N/D'}</b></p>
+                    {/* SCADENZA: Formattata in Italiano */}
+                    <p style={{margin:'5px 0'}}>📅 Scadenza: <b style={{color: new Date(r.data_scadenza) < new Date() ? 'red' : 'green'}}>{r.data_scadenza ? new Date(r.data_scadenza).toLocaleDateString('it-IT') : 'N/D'}</b></p>
                     <div style={{display:'flex', flexWrap:'wrap', gap:5, marginTop:10}}>
+                        {/* BADGES MODULI ATTIVI */}
                         {r.modulo_cassa && <span style={{fontSize:10, padding:'3px 6px', background:'#eaf2f8', color:'#2980b9', borderRadius:4, border:'1px solid #2980b9'}}>CASSA</span>}
+                        {/* SUITE: Mostra solo se attiva. Se disattiva, non mostra nulla. */}
+                        {r.cassa_full_suite && <span style={{fontSize:10, padding:'3px 6px', background:'#ebf5fb', color:'#8e44ad', borderRadius:4, border:'1px solid #8e44ad'}}>FULL SUITE</span>}
+                        
                         {r.modulo_menu_digitale && <span style={{fontSize:10, padding:'3px 6px', background:'#e8f8f5', color:'#27ae60', borderRadius:4, border:'1px solid #27ae60'}}>MENU</span>}
                         {r.modulo_ordini_clienti && <span style={{fontSize:10, padding:'3px 6px', background:'#eafaf1', color:'#2ecc71', borderRadius:4, border:'1px solid #2ecc71'}}>ORDINI</span>}
                         {r.modulo_magazzino && <span style={{fontSize:10, padding:'3px 6px', background:'#fef9e7', color:'#f1c40f', borderRadius:4, border:'1px solid #f1c40f'}}>MAGAZZINO</span>}
                         {r.modulo_haccp && <span style={{fontSize:10, padding:'3px 6px', background:'#e8f6f3', color:'#16a085', borderRadius:4, border:'1px solid #16a085'}}>HACCP</span>}
-                        {r.cassa_full_suite ? 
-                            <span style={{fontSize:10, padding:'3px 6px', background:'#ebf5fb', color:'#3498db', borderRadius:4, border:'1px solid #3498db'}}>FULL SUITE</span> :
-                            <span style={{fontSize:10, padding:'3px 6px', background:'#f4ecf7', color:'#9b59b6', borderRadius:4, border:'1px solid #9b59b6'}}>SOLO CASSA</span>
-                        }
                     </div>
                 </div>
                 <div style={{padding:15, background:'#f9f9f9', borderTop:'1px solid #eee', display:'flex', gap:10}}>
-                    <button onClick={() => toggleSospensione(r.id, r.account_attivo)} style={{flex:1, padding:10, background: r.account_attivo !== false ? '#e67e22':'#27ae60', color:'white', borderRadius:6, border:'none', fontWeight:'bold', cursor:'pointer'}}>
-                        {r.account_attivo !== false ? "⏸️ SOSPENDI" : "▶️ RIATTIVA"}
+                    <button onClick={() => toggleSospensione(r.id, r.account_attivo)} style={{flex:1, padding:10, background: r.account_attivo ? '#e67e22':'#27ae60', color:'white', borderRadius:6, border:'none', fontWeight:'bold', cursor:'pointer'}}>
+                        {r.account_attivo ? "⏸️ SOSPENDI" : "▶️ RIATTIVA"}
                     </button>
                     <button onClick={() => entraNelPannello(r.slug)} style={{flex:1, background:'#3498db', color:'white', border:'none', padding:10, borderRadius:6, fontWeight:'bold', cursor:'pointer'}}>ACCEDI ↗</button>
                 </div>
@@ -347,21 +341,20 @@ const handleSalva = async (e) => {
                       <div>
                           <h3 style={{fontSize:14, margin:'0 0 10px 0', color:'#3498db'}}>📦 CONFIGURAZIONE PACCHETTO</h3>
                           
-                          {/* MODALITÀ CASSA */}
-                          <div style={{...moduleCardStyle, background: '#ebf5fb', border: '1px solid #aed6f1'}}>
+                          {/* MODALITÀ SUITE (MODIFICATA) */}
+                          <div style={{...moduleCardStyle, background: '#f4ecf7', border: '1px solid #d2b4de'}}>
                               <div style={{flex:1}}>
-                                  <span style={{fontWeight:'bold', fontSize:14, color:'#2980b9'}}>Tipologia Sistema</span>
-                                  <p style={{margin:0, fontSize:11, color:'#555'}}>{formData.cassa_full_suite ? "SUITE COMPLETA (Cucina + Bar + Pizzeria)" : "SOLO CASSA (Scontrino Veloce)"}</p>
+                                  <span style={{fontWeight:'bold', fontSize:14, color:'#8e44ad'}}>Abilita Suite Completa</span>
+                                  <p style={{margin:0, fontSize:11, color:'#555'}}>{formData.cassa_full_suite ? "ATTIVA: Cucina, Pizzeria e Bar visibili." : "DISATTIVATA: Nessun reparto visibile."}</p>
                               </div>
                               <label className="switch">
                                   <input type="checkbox" name="cassa_full_suite" checked={formData.cassa_full_suite} onChange={handleInputChange} />
-                                  <span style={{fontSize:20, cursor:'pointer'}}>{formData.cassa_full_suite ? '🏢' : '📠'}</span>
+                                  <span style={{fontSize:20, cursor:'pointer'}}>{formData.cassa_full_suite ? '👨‍🍳' : '🚫'}</span>
                               </label>
                           </div>
 
                           <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
                               
-                              {/* --- NUOVO: MODULO CASSA --- */}
                               <div style={moduleCardStyle}>
                                   <label style={labelSwitchStyle}>💰 Modulo Cassa</label>
                                   <input type="checkbox" name="modulo_cassa" checked={formData.modulo_cassa} onChange={handleInputChange} style={{transform:'scale(1.3)'}} />
@@ -403,7 +396,7 @@ const handleSalva = async (e) => {
           </div>
       )}
 
-      {/* --- MODALE DATABASE UTENTI (Stesso codice precedente) --- */}
+      {/* --- MODALE DATABASE UTENTI --- */}
       {showUsersModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.9)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
             <div style={{background: 'white', borderRadius: '12px', width: '1300px', maxWidth:'98%', height:'90vh', display:'flex', flexDirection:'column', overflow:'hidden'}}>

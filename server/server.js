@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE JARVIS V65 (AUTO-EXPIRY & WEBSOCKET) 🚀
+// server/server.js - VERSIONE JARVIS V68 (TIMEZONE FIX & SUITE LOGIC) 🚀
 
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
@@ -7,7 +7,10 @@ const express = require('express');
 const cors = require('cors');
 const http = require('http'); 
 const { Server } = require("socket.io"); 
-const pool = require('./config/db'); // ✅ FIX: Importazione necessaria per checkExpirations
+const pool = require('./config/db'); 
+
+// --- IMPORTIAMO IL GESTORE ORARIO ITALIANO ---
+const { getNowItaly, getTimeItaly } = require('./utils/time'); // Assicurati che time.js sia nella root di server/
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -23,23 +26,23 @@ const io = new Server(server, {
 
 // Gestione connessioni Socket
 io.on('connection', (socket) => {
-    console.log(`⚡ Client connesso: ${socket.id}`);
+    console.log(`⚡ [${getTimeItaly()}] Client connesso: ${socket.id}`);
 
     socket.on('join_room', (ristorante_id) => {
         const room = String(ristorante_id);
         socket.join(room);
-        console.log(`🟢 Socket ${socket.id} entrato nella stanza: [${room}]`);
+        console.log(`🟢 [${getTimeItaly()}] Socket ${socket.id} entrato nella stanza: [${room}]`);
         socket.emit('room_joined', room); 
     });
 
     socket.on('disconnect', () => {
-        console.log(`🔴 Socket ${socket.id} disconnesso`);
+        console.log(`🔴 [${getTimeItaly()}] Socket ${socket.id} disconnesso`);
     });
 });
 
-// --- LOGICA AUTO-PAUSA (SaaS Mode) ---
+// --- LOGICA AUTO-PAUSA (SaaS Mode - Ora Italiana) ---
 const checkExpirations = async () => {
-    console.log("🔍 [J.A.R.V.I.S.] Controllo scadenze abbonamenti...");
+    console.log(`🔍 [J.A.R.V.I.S. - ${getNowItaly()}] Controllo scadenze abbonamenti...`);
     try {
         const res = await pool.query(`
             UPDATE ristoranti 
@@ -65,9 +68,9 @@ checkExpirations();
 // Rendiamo "io" disponibile nelle rotte
 app.set('io', io);
 
-// --- 0. LOGGER "RAGGI X" ---
+// --- 0. LOGGER "RAGGI X" (CON ORA ITALIANA) ---
 app.use((req, res, next) => {
-    console.log(`📡 [${new Date().toLocaleTimeString('it-IT')}] ${req.method} ${req.url}`);
+    console.log(`📡 [${getNowItaly()}] ${req.method} ${req.url}`);
     next();
 });
 
@@ -101,13 +104,14 @@ app.use('/', adminRoutes);
 
 // --- 5. GESTIONE ERRORI ---
 app.use((err, req, res, next) => {
-    console.error("🔥 ERRORE SERVER:", err.stack);
+    console.error(`🔥 [${getNowItaly()}] ERRORE SERVER:`, err.stack);
     if (!res.headersSent) {
-        res.status(500).json({ error: "Errore V65: " + err.message });
+        res.status(500).json({ error: "Errore V68: " + err.message });
     }
 });
 
 // --- AVVIO ---
 server.listen(port, () => {
-    console.log(`🚀 JARVIS SERVER V65 pronto su porta ${port}`);
+    console.log(`🚀 JARVIS SERVER V68 pronto su porta ${port}`);
+    console.log(`🕒 Orario Server: ${getNowItaly()}`);
 });
