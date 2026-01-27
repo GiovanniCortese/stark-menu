@@ -1,4 +1,4 @@
-// client/src/Admin.jsx - VERSIONE V46 (DASHBOARD FIX & CASSA SUITE) 🚀
+// client/src/Admin.jsx - VERSIONE V47 (SIDEBAR DEFINITIVA: CASSA SEMPRE VISIBILE) 🚀
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -24,7 +24,7 @@ function Admin() {
   // --- STATI GLOBALI ---
   const [user, setUser] = useState(null); 
   const [loading, setLoading] = useState(true); 
-  const [tab, setTab] = useState('dashboard'); // DEFAULT DASHBOARD 📊
+  const [tab, setTab] = useState('dashboard'); // DEFAULT: SEMPRE DASHBOARD
   
   // Dati condivisi
   const [menu, setMenu] = useState([]); 
@@ -33,7 +33,7 @@ function Admin() {
   // CONFIGURAZIONE COMPLETA
   const [config, setConfig] = useState({ 
       account_attivo: true, 
-      cucina_super_active: true, // Questo controlla la Suite Cucina
+      cucina_super_active: true, // QUESTO FLAG COMANDA LA SUITE (Cucina+Bar+Pizzeria)
       ordini_abilitati: true, 
       modulo_menu_digitale: true,
       modulo_ordini_clienti: true,
@@ -68,25 +68,25 @@ function Admin() {
                 setUser({ id: data.id, nome: data.ristorante, slug: slug, ruolo: data.ruolo || 'admin' });
                 setMenu(data.menu || []);
                 
-                // Mappatura Configurazione
+                // Mappatura Configurazione Backend -> Frontend
                 if(data.moduli) {
                     setConfig(prev => ({
                         ...prev, 
                         ...data.style,
-                        // Mappatura Moduli
                         modulo_menu_digitale: data.moduli.menu_digitale,
                         modulo_ordini_clienti: data.moduli.ordini_clienti,
                         modulo_magazzino: data.moduli.magazzino,
                         modulo_haccp: data.moduli.haccp,
                         modulo_utenti: data.moduli.utenti,
                         
-                        // IMPORTANTE: Qui usiamo cucina_super_active come richiesto per la Suite
+                        // IMPORTANTE: cucina_super_active gestisce la visibilità della Suite (Cucina/Bar/Pizzeria)
                         cucina_super_active: data.cucina_super_active, 
+                        ordini_abilitati: data.ordini_abilitati,
                         
                         account_attivo: data.subscription_active
                     }));
                 } else {
-                    // Fallback per vecchie versioni
+                    // Fallback per compatibilità
                     setConfig(prev => ({...prev, ...data.style, cucina_super_active: data.cucina_super_active !== false}));
                 }
                 
@@ -203,15 +203,16 @@ function Admin() {
   }
 
   // --- VARIABILI VISIBILITÀ ---
-  // Dashboard SEMPRE visibile come richiesto
+  // 1. Dashboard: Sempre visibile
   const showDashboard = true; 
+  
+  // 2. Moduli Extra
   const showMenu = config.modulo_menu_digitale !== false;
   const showUtenti = config.modulo_utenti === true;
   const showMagazzino = config.modulo_magazzino === true;
   const showHaccp = config.modulo_haccp === true;
   
-  // LOGICA "SOLO CASSA" vs "SUITE"
-  // Se cucina_super_active è FALSE, nascondiamo i pulsanti Cucina/Bar/Pizzeria (ma la Cassa resta)
+  // 3. Suite (Cucina/Bar/Pizzeria): Visibile SOLO se 'cucina_super_active' è TRUE
   const showFullSuite = config.cucina_super_active === true;
 
   return (
@@ -239,10 +240,10 @@ function Admin() {
         <div className="header-actions">
             <button onClick={() => apriLink(`/${slug}`)} className="action-btn" style={{background:'#3498db'}}>👁️ Menu</button>
             
-            {/* CASSA SEMPRE VISIBILE */}
+            {/* 🟢 CASSA: SEMPRE VISIBILE (Richiesta utente) */}
             <button onClick={() => apriLink(`/cassa/${slug}`)} className="action-btn" style={{background:'#9b59b6'}}>💰 Cassa</button>
             
-            {/* SUITE (Cucina/Pizzeria/Bar) SOLO SE ATTIVA */}
+            {/* 🔴 SUITE (Cucina/Bar/Pizzeria): SOLO SE ATTIVA */}
             {showFullSuite && (
                 <>
                     <button onClick={() => apriLink(`/cucina/${slug}`)} className="action-btn" style={{background:'#e67e22'}}>👨‍🍳 Cucina</button>

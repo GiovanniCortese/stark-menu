@@ -38,8 +38,19 @@ router.put('/api/ristorante/style/:id', async (req, res) => {
 router.put('/api/ristorante/servizio/:id', async (req, res) => { 
     try { 
         const { id } = req.params; 
-        if (req.body.ordini_abilitati !== undefined) await pool.query('UPDATE ristoranti SET ordini_abilitati = $1 WHERE id = $2', [req.body.ordini_abilitati, id]); 
-        if (req.body.servizio_attivo !== undefined) await pool.query('UPDATE ristoranti SET servizio_attivo = $1 WHERE id = $2', [req.body.servizio_attivo, id]); 
+        
+        // Ordini Abilitati
+        if (req.body.ordini_abilitati !== undefined) 
+            await pool.query('UPDATE ristoranti SET ordini_abilitati = $1 WHERE id = $2', [req.body.ordini_abilitati, id]); 
+        
+        // Servizio Attivo (Legacy)
+        if (req.body.servizio_attivo !== undefined) 
+            await pool.query('UPDATE ristoranti SET servizio_attivo = $1 WHERE id = $2', [req.body.servizio_attivo, id]);
+            
+        // --- NUOVO: Aggiorna Suite (Cucina/Bar/Pizzeria) ---
+        if (req.body.cucina_super_active !== undefined) 
+            await pool.query('UPDATE ristoranti SET cucina_super_active = $1 WHERE id = $2', [req.body.cucina_super_active, id]);
+
         res.json({ success: true }); 
     } catch (e) { res.status(500).json({error:"Err"}); } 
 });
