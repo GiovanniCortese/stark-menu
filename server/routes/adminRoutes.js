@@ -237,25 +237,28 @@ router.put('/api/super/ristoranti/:id', async (req, res) => {
             cassa_full_suite 
         } = req.body;
 
+        // Se la password è fornita, la aggiorniamo, altrimenti teniamo quella vecchia
+        let passwordQuery = "";
+        let params = [nome, slug, email, telefono, account_attivo, data_scadenza, modulo_menu_digitale, modulo_ordini_clienti, modulo_magazzino, modulo_haccp, modulo_utenti, cassa_full_suite, id];
+        
+        if (password && password.trim() !== "") {
+            passwordQuery = ", password=$14";
+            params.push(password);
+        }
+
         const sql = `
             UPDATE ristoranti SET 
-                nome=$1, slug=$2, email=$3, telefono=$4, password=$5, 
-                account_attivo=$6, data_scadenza=$7,
-                modulo_menu_digitale=$8, modulo_ordini_clienti=$9, 
-                modulo_magazzino=$10, modulo_haccp=$11, modulo_utenti=$12, 
-                cassa_full_suite=$13
-            WHERE id=$14`;
+                nome=$1, slug=$2, email=$3, telefono=$4, account_attivo=$5, 
+                data_scadenza=$6, modulo_menu_digitale=$7, modulo_ordini_clienti=$8, 
+                modulo_magazzino=$9, modulo_haccp=$10, modulo_utenti=$11, 
+                cassa_full_suite=$12
+                ${passwordQuery}
+            WHERE id=$13`;
         
-        await pool.query(sql, [
-            nome, slug, email, telefono, password, 
-            account_attivo, data_scadenza,
-            modulo_menu_digitale, modulo_ordini_clienti, 
-            modulo_magazzino, modulo_haccp, modulo_utenti, 
-            cassa_full_suite, id
-        ]);
-
+        await pool.query(sql, params);
         res.json({ success: true });
     } catch (e) {
+        console.error("❌ ERRORE SUPERADMIN UPDATE:", e);
         res.status(500).json({ error: e.message });
     }
 });
