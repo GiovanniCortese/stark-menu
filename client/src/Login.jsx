@@ -22,7 +22,9 @@ function Login() {
         
         // Recuperiamo i dati target salvati dal Razzo
         const targetSlug = localStorage.getItem("superadmin_target_slug");
-        const targetEmail = localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user")).email : "";
+        // Recuperiamo l'email (se salvata nel localStorage user fittizio creato dal superadmin)
+        const storedUser = localStorage.getItem("user");
+        const targetEmail = storedUser ? JSON.parse(storedUser).email : "";
 
         if (targetEmail) {
             // Tentiamo il login automatico usando il token come password
@@ -45,20 +47,28 @@ function Login() {
       const data = await res.json();
 
       if (data.success) {
-        // Puliamo il token god mode per evitare loop infiniti se si fa logout
+        // Puliamo il token god mode per evitare loop infiniti se si fa logout in futuro
         if (userPassword === "SUPER_GOD_TOKEN_2026") {
              localStorage.removeItem("admin_token"); 
         }
 
-        // Salviamo l'utente reale
+        // 1. Salviamo l'utente reale
         localStorage.setItem("user", JSON.stringify(data.user));
+
+        // 🔑 2. FIX DOPPIO LOGIN: Creiamo il passaporto per Admin.jsx
+        // Admin.jsx controlla specificamente questa chiave per evitare di richiedere il login
+        const finalSlug = data.user.slug || redirectSlug;
+        if (finalSlug) {
+            localStorage.setItem(`stark_admin_session_${finalSlug}`, "true");
+        }
         
-        // Redirect intelligente
-        const dest = redirectSlug ? `/admin/${redirectSlug}` : `/admin/${data.user.slug}`;
+        // 3. Redirect alla Dashboard
+        const dest = finalSlug ? `/admin/${finalSlug}` : `/admin`;
         navigate(dest);
+
       } else {
         setError("Accesso Negato: " + data.error);
-        // Se fallisce il god mode, puliamo tutto
+        // Se fallisce il god mode, puliamo tutto per non rimanere bloccati
         if (userPassword === "SUPER_GOD_TOKEN_2026") {
             localStorage.removeItem("admin_token");
             alert("Errore God Mode: " + data.error);
