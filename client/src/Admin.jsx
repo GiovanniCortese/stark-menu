@@ -1,4 +1,4 @@
-// client/src/Admin.jsx - VERSIONE V50 (SUITE BUTTONS FIX) 🛠️
+// client/src/Admin.jsx - VERSIONE V51 (PASSAGGIO CONFIG DASHBOARD) 🛠️
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -33,8 +33,8 @@ function Admin() {
   // CONFIGURAZIONE COMPLETA
   const [config, setConfig] = useState({ 
       account_attivo: true, 
-      cucina_super_active: true, // Legacy Flag
-      cassa_full_suite: true,    // NEW Flag (Database)
+      cucina_super_active: true, // Questo flag controllerà il pulsante ordini nella Dashboard
+      cassa_full_suite: true,    // Questo flag controllerà i pulsanti Cucina/Bar/Pizzeria nell'header
       ordini_abilitati: true, 
       
       // --- MODULI ---
@@ -73,7 +73,6 @@ function Admin() {
                 setMenu(data.menu || []);
                 
                 // Mappatura Configurazione Backend -> Frontend
-                // IMPORTANTE: Gestiamo sia i moduli che i flag legacy
                 const nuoviModuli = data.moduli || {};
                 
                 setConfig(prev => ({
@@ -89,8 +88,10 @@ function Admin() {
                     modulo_utenti: nuoviModuli.utenti ?? data.modulo_utenti,
                     
                     // Mappatura Suite (Cucina/Bar/Pizzeria)
-                    // Verifica sia il flag 'full_suite' dentro moduli, sia 'cassa_full_suite' root, sia 'cucina_super_active'
+                    // cucina_super_active: usato per logica "Blocco Ordini" in Dashboard
                     cucina_super_active: data.cucina_super_active, 
+                    
+                    // cassa_full_suite: usato per visibilità pulsanti Header
                     cassa_full_suite: data.cassa_full_suite ?? data.cucina_super_active ?? true, 
 
                     ordini_abilitati: data.ordini_abilitati,
@@ -209,7 +210,7 @@ function Admin() {
       );
   }
 
-  // --- VARIABILI VISIBILITÀ (Fix Logica) ---
+  // --- VARIABILI VISIBILITÀ ---
   // 1. Moduli
   const showCassa = config.modulo_cassa === true; 
   const showMenu = config.modulo_menu_digitale !== false;
@@ -218,7 +219,7 @@ function Admin() {
   const showHaccp = config.modulo_haccp === true;
   
   // 2. SUITE (Cucina/Bar/Pizzeria)
-  // VISIBILE SOLO SE: cassa_full_suite è TRUE (da SuperAdmin)
+  // VISIBILE SOLO SE: cassa_full_suite è TRUE (o cucina_super_active se legacy)
   const showFullSuite = config.cassa_full_suite === true; 
 
   return (
@@ -254,7 +255,7 @@ function Admin() {
                 <button onClick={() => apriLink(`/cassa/${slug}`)} className="action-btn" style={{background:'#9b59b6'}}>💰 Cassa</button>
             )}
             
-            {/* 🔴 SUITE (Cucina/Bar/Pizzeria): Visibile SOLO se 'cassa_full_suite' è TRUE */}
+            {/* 🔴 SUITE (Cucina/Bar/Pizzeria): Visibile SOLO se SUITE ATTIVA */}
             {showFullSuite && (
                 <>
                     <button onClick={() => apriLink(`/cucina/${slug}`)} className="action-btn" style={{background:'#e67e22'}}>👨‍🍳 Cucina</button>
@@ -301,7 +302,17 @@ function Admin() {
 
       {/* CONTENUTO */}
       <div style={{background:'white', borderRadius:'12px', padding:'20px', boxShadow:'0 2px 10px rgba(0,0,0,0.05)', minHeight:'500px'}}>
-        {tab === 'dashboard' && user.ruolo !== 'editor' && <AdminDashboard user={user} API_URL={API_URL} />}
+        
+        {/* --- MODIFICA CHIAVE: Passo config alla Dashboard così può leggere 'cucina_super_active' --- */}
+        {tab === 'dashboard' && user.ruolo !== 'editor' && (
+            <AdminDashboard 
+                user={user} 
+                API_URL={API_URL} 
+                config={config}       // <--- NUOVO
+                setConfig={setConfig} // <--- NUOVO
+            />
+        )}
+
         {tab === 'menu' && showMenu && <AdminMenu user={user} menu={menu} setMenu={setMenu} categorie={categorie} config={config} setConfig={setConfig} API_URL={API_URL} ricaricaDati={ricaricaDati} />}
         {tab === 'categorie' && showMenu && <AdminCategorie user={user} categorie={categorie} setCategorie={setCategorie} API_URL={API_URL} ricaricaDati={ricaricaDati} />}
         {tab === 'style' && showMenu && <AdminGrafica user={user} config={config} setConfig={setConfig} API_URL={API_URL} />}

@@ -1,10 +1,12 @@
-// client/src/Cassa.jsx - VERSIONE V45 (FIX LOGICA LOG: BLOCCHI ORDINATI) 💶
-import { io } from "socket.io-client"; // Aggiungi questo in alto
+// client/src/Cassa.jsx - VERSIONE V46 (MODULE PROTECTION) 💶
+import { io } from "socket.io-client";
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 
 function Cassa() {
   const { slug } = useParams();
+  const navigate = useNavigate(); // Hook per navigazione
+  
   const [selectedUserData, setSelectedUserData] = useState(null);
   const [loadingUser, setLoadingUser] = useState(false);
   
@@ -15,8 +17,9 @@ function Cassa() {
   const [infoRistorante, setInfoRistorante] = useState(null);
   const [selectedLog, setSelectedLog] = useState(null); 
 
-  // STATI AUTH
+  // STATI AUTH & SICUREZZA
   const [isAuthorized, setIsAuthorized] = useState(false);
+  const [isModuleDisabled, setIsModuleDisabled] = useState(false); // NUOVO STATO BLOCCO
   const [passwordInput, setPasswordInput] = useState("");
   const [loginError, setLoginError] = useState(false);
   const [loadingLogin, setLoadingLogin] = useState(false);
@@ -24,7 +27,21 @@ function Cassa() {
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
   useEffect(() => {
-    fetch(`${API_URL}/api/menu/${slug}`).then(res=>res.json()).then(setInfoRistorante);
+    // 1. Fetch Info Ristorante e controllo Modulo
+    fetch(`${API_URL}/api/menu/${slug}`)
+      .then(res => res.json())
+      .then(data => {
+          setInfoRistorante(data);
+          
+          // --- 🔒 CONTROLLO DI SICUREZZA: MODULO CASSA ATTIVO? ---
+          // Se il modulo cassa è false, blocchiamo l'accesso
+          if (data.moduli && data.moduli.cassa === false) {
+              setIsModuleDisabled(true);
+          }
+      })
+      .catch(err => console.error("Errore fetch info:", err));
+
+    // 2. Controllo Sessione
     const sessionKey = `cassa_session_${slug}`;
     if (localStorage.getItem(sessionKey) === "true") setIsAuthorized(true);
   }, [slug]);
@@ -107,7 +124,7 @@ function Cassa() {
                     tavolo: t, 
                     ordini: [], 
                     totale: 0,
-                    fullLog: "", // Lo calcoliamo dopo per sicurezza
+                    fullLog: "", 
                     cameriere: ord.cameriere,
                     cliente: ord.cliente, 
                     storico_ordini: ord.storico_ordini || 0,
@@ -121,22 +138,17 @@ function Cassa() {
             raggruppati[t].totale += Number(ord.totale || 0);
         });
 
-        // 2. CONVERTI IN ARRAY E ORDINA TAVOLI (FIFO: Primo ordine più vecchio in alto)
+        // 2. CONVERTI IN ARRAY E ORDINA TAVOLI (FIFO)
         const listaOrdinata = Object.values(raggruppati);
         listaOrdinata.sort((a, b) => new Date(a.orarioMin).getTime() - new Date(b.orarioMin).getTime());
 
         // 3. ORDINA GLI ORDINI DENTRO OGNI TAVOLO E COSTRUISCI IL LOG
-        // Qui garantiamo che i blocchi di testo seguano rigorosamente l'ordine cronologico
         listaOrdinata.forEach(tavolo => {
-            // Ordina ordini dal più vecchio al più nuovo
             tavolo.ordini.sort((a,b) => new Date(a.data_ora) - new Date(b.data_ora));
-
-            // Costruisci il log unendo i dettagli in ordine
             tavolo.fullLog = tavolo.ordini
                 .map(o => (o.dettagli || "").trim())
                 .filter(d => d !== "")
                 .join("\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"); 
-                // Separatore più spazioso e chiaro
         });
 
         setTavoliAttivi(listaOrdinata);
@@ -152,28 +164,22 @@ function Cassa() {
         .catch(e => console.error("Errore storico:", e));
   };
 
-useEffect(() => {
+  useEffect(() => {
     // 1. Controllo di sicurezza
-    if (!isAuthorized || !infoRistorante?.id) return;
+    if (!isAuthorized || !infoRistorante?.id || isModuleDisabled) return;
 
     if (tab === 'attivi') {
         console.log("🔌 Cassa Live: Inizializzazione Socket...");
-        
-        // Carica i dati subito (polling iniziale)
         aggiornaDati();
 
-        // 2. CONFIGURAZIONE SOCKET CORRETTA (Senza 'transports: websocket')
-        // Lasciamo che Socket.io scelga il metodo migliore (inizia con HTTP, poi passa a WS)
         const socket = io(API_URL, {
-            reconnectionAttempts: 5,  // Riprova 5 volte se cade
-            reconnectionDelay: 1000,  // Aspetta 1 secondo tra i tentativi
+            reconnectionAttempts: 5,  
+            reconnectionDelay: 1000,  
             autoConnect: true
         });
 
-        // 3. EVENTI DI CONNESSIONE
         socket.on('connect', () => {
             console.log("✅ Cassa Connessa! ID:", socket.id);
-            // Fondamentale: rientra nella stanza del ristorante
             socket.emit('join_room', String(infoRistorante.id));
         });
 
@@ -181,16 +187,12 @@ useEffect(() => {
             console.error("❌ Errore connessione Socket:", err.message);
         });
 
-        // 4. RICEZIONE AGGIORNAMENTI
         socket.on('refresh_ordini', () => {
             console.log("🔥 UPDATE RICEVUTO IN CASSA");
-            aggiornaDati(); // Ricarica la lista ordini
-            
-            // Opzionale: Vibrazione o suono
+            aggiornaDati(); 
             if(navigator.vibrate) navigator.vibrate([50, 50, 50]);
         });
 
-        // 5. PULIZIA
         return () => {
             console.log("❌ Chiusura Socket Cassa");
             socket.off('connect');
@@ -198,12 +200,9 @@ useEffect(() => {
             socket.disconnect();
         };
     } else {
-        // Se siamo nella tab storico, carichiamo solo quello
         caricaStorico();
     }
-    
-    // Riavvia l'effetto se cambiano questi parametri
-}, [isAuthorized, infoRistorante?.id, tab]);
+  }, [isAuthorized, infoRistorante?.id, tab, isModuleDisabled]);
 
   // --- AZIONI SUI PRODOTTI ---
   const modificaStatoProdotto = async (ord, indexDaModificare) => {
@@ -235,8 +234,22 @@ useEffect(() => {
       aggiornaDati();
   };
 
+  // --- BLOCCO 1: SCHERMATA "NON ATTIVO" ---
+  if (isModuleDisabled) {
+      return (
+          <div style={{display:'flex', justifyContent:'center', alignItems:'center', minHeight:'100vh', flexDirection:'column', padding:'20px', textAlign:'center', background:'#ecf0f1', color:'#2c3e50'}}>
+              <h1 style={{fontSize:'4rem', margin:0}}>⛔</h1>
+              <h2 style={{color:'#9b59b6', textTransform:'uppercase'}}>CASSA NON ATTIVA</h2>
+              <p style={{fontSize:'1.2rem', opacity:0.8}}>Il modulo Cassa è disabilitato per questo locale.</p>
+              <button onClick={() => navigate('/')} style={{marginTop:20, padding:'10px 20px', background:'#3498db', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Torna alla Home</button>
+          </div>
+      );
+  }
+
+  // --- BLOCCO 2: CARICAMENTO ---
   if (!infoRistorante) return <div style={{padding:50, textAlign:'center', color:'#fff'}}><h1>⏳ Caricamento...</h1></div>;
 
+  // --- BLOCCO 3: LOGIN ---
   if (!isAuthorized) return (
       <div style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', background:'#2c3e50', flexDirection:'column'}}>
           <div style={{background:'white', color:'black', padding:40, borderRadius:10, textAlign:'center', maxWidth:'400px', width:'90%', boxShadow:'0 10px 25px rgba(0,0,0,0.5)'}}>
@@ -252,6 +265,7 @@ useEffect(() => {
       </div>
   );
 
+  // --- BLOCCO 4: INTERFACCIA CASSA ---
   return (
     <div style={{background:'#eee', minHeight:'100vh', padding:20}}>
       <header style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20}}>
@@ -366,7 +380,7 @@ useEffect(() => {
           </div>
       )}
 
-      {/* --- TAB STORICO (INVARIATO) --- */}
+      {/* --- TAB STORICO --- */}
       {tab === 'storico' && (
           <div style={{background:'white', color:'#0b0b0bff', padding:20, borderRadius:10}}>
               <h2 style={{color:'#191e22ff', marginTop:0}}>📜 Storico Ordini Conclusi</h2>

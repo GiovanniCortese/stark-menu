@@ -2,14 +2,18 @@
 import { useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
-function AdminDashboard({ user, API_URL }) {
+function AdminDashboard({ user, API_URL, config, setConfig }) {
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
     const [datiForm, setDatiForm] = useState({ ragioneSociale: '', piva: '', indirizzo: '', telefono: '', rawText: '' });
 
     useEffect(() => {
         fetch(`${API_URL}/api/stats/dashboard/${user.id}`).then(res => res.json()).then(data => { setStats(data); setLoading(false); }).catch(err => { console.error(err); setLoading(false); });
-        fetch(`${API_URL}/api/ristorante/config/${user.id}`).then(r => r.json()).then(d => { if (d.dati_fiscali) setDatiForm(prev => ({...prev, rawText: d.dati_fiscali})); });
+        
+        // Recupera dati fiscali
+        fetch(`${API_URL}/api/ristorante/config/${user.id}`).then(r => r.json()).then(d => { 
+            if (d.dati_fiscali) setDatiForm(prev => ({...prev, rawText: d.dati_fiscali})); 
+        });
     }, [user.id, API_URL]);
 
     const salvaDatiSocietari = async () => {
@@ -21,6 +25,21 @@ function AdminDashboard({ user, API_URL }) {
         } catch(e) { alert("Errore salvataggio"); }
     };
 
+    // --- FUNZIONE PER ATTIVARE/DISATTIVARE ORDINI ---
+    const toggleOrdini = async () => {
+        const newState = !config.ordini_abilitati;
+        try {
+            await fetch(`${API_URL}/api/ristorante/config/${user.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ordini_abilitati: newState })
+            });
+            setConfig(prev => ({ ...prev, ordini_abilitati: newState }));
+        } catch (e) {
+            alert("Errore aggiornamento stato ordini");
+        }
+    };
+
     if(loading) return <div style={{padding:20}}>🔄 Caricamento...</div>;
     if(!stats) return <div style={{padding:20}}>❌ Errore dati.</div>;
 
@@ -29,10 +48,46 @@ function AdminDashboard({ user, API_URL }) {
     const cardStyle = { background: 'white', padding: '25px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #eff0f1' };
     const inputStyle = { width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '14px', boxSizing:'border-box' };
 
+    // --- LOGICA BLOCCO SUPERADMIN ---
+    // Se 'cucina_super_active' è false, il SuperAdmin ha bloccato tutto.
+    // Nota: 'cucina_super_active' nel DB controlla sia la suite che il permesso generale.
+    // Se vuoi separare i controlli, usa config.modulo_ordini_clienti
+    const isSuperBlocked = config?.modulo_ordini_clienti === false;
+
     return (
         <div style={{maxWidth: '100%', margin: '0 auto'}}>
             
-            {/* 1. SEZIONE INTESTAZIONE / DATI FISCALI (PRIMA IN ALTO) */}
+            {/* 0. CONTROLLO SERVIZIO ORDINI (NUOVO) */}
+            <div style={{marginBottom: '30px'}}>
+                {isSuperBlocked ? (
+                    <div style={{background: '#ffebee', color: '#c62828', padding: '20px', borderRadius: '12px', border: '1px solid #ffcdd2', textAlign:'center'}}>
+                        <h3 style={{margin:0}}>🔒 Gestione Ordini Bloccata</h3>
+                        <p style={{margin:'5px 0 0 0'}}>Il modulo "Ordini Clienti" è stato disattivato dall'amministrazione centrale.</p>
+                    </div>
+                ) : (
+                    <div style={{...cardStyle, background: config.ordini_abilitati ? '#e8f5e9' : '#ffebee', border: config.ordini_abilitati ? '1px solid #a5d6a7' : '1px solid #ffcdd2', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                        <div>
+                            <h3 style={{margin:0, color: config.ordini_abilitati ? '#2e7d32' : '#c62828'}}>
+                                {config.ordini_abilitati ? "✅ Servizio Ordini ATTIVO" : "⛔ Servizio Ordini PAUSA"}
+                            </h3>
+                            <p style={{margin:'5px 0 0 0', fontSize:'13px', color:'#555'}}>
+                                {config.ordini_abilitati ? "I clienti possono inviare ordini dal tavolo." : "I clienti vedranno il menu ma non potranno ordinare."}
+                            </p>
+                        </div>
+                        <button 
+                            onClick={toggleOrdini}
+                            style={{
+                                background: config.ordini_abilitati ? '#c62828' : '#2e7d32',
+                                color: 'white', border: 'none', padding: '12px 25px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize:'14px'
+                            }}
+                        >
+                            {config.ordini_abilitati ? "CHIUDI ORDINI" : "APRI ORDINI"}
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            {/* 1. SEZIONE INTESTAZIONE / DATI FISCALI */}
             <div style={{...cardStyle, marginBottom: '30px', borderLeft: '5px solid #4f46e5', background: '#f8fafc'}}>
                 <h3 style={{marginTop:0, color:'#1e293b', display:'flex', alignItems:'center', gap:'10px'}}>
                     📄 Intestazione Documenti & Dati Aziendali

@@ -11,6 +11,8 @@ import StaffManager from './components/haccp/StaffManager';
 import LabelGenerator from './components/haccp/LabelGenerator';
 import CleaningManager from './components/haccp/CleaningManager';
 
+const [isModuleDisabled, setIsModuleDisabled] = useState(false);
+
 function Haccp() {
   const { slug, scanId } = useParams();
   const navigate = useNavigate();
@@ -86,12 +88,24 @@ const [assetForm, setAssetForm] = useState({
   const [selectedDayLogs, setSelectedDayLogs] = useState(null); 
 
   // --- EFFETTI ---
-  useEffect(() => {
-      fetch(`${API_URL}/api/menu/${slug}`).then(r=>r.json()).then(setInfo);
-      const sess = localStorage.getItem(`haccp_session_${slug}`);
-      if(sess === "true") setIsAuthorized(true);
-      if(scanId) setTab('temperature');
-  }, [slug, scanId]);
+useEffect(() => {
+    fetch(`${API_URL}/api/menu/${slug}`)
+      .then(r => r.json())
+      .then(data => {
+          setInfo(data);
+          
+          // --- AGGIUNGI QUESTO CONTROLLO ---
+          if (data.moduli && data.moduli.haccp === false) {
+              setIsModuleDisabled(true);
+          }
+          // ---------------------------------
+      })
+      .catch(err => console.error("Errore fetch info:", err));
+
+    const sess = localStorage.getItem(`haccp_session_${slug}`);
+    if(sess === "true") setIsAuthorized(true);
+    if(scanId) setTab('temperature');
+}, [slug, scanId]);
 
   useEffect(() => {
       if(isAuthorized && info) {
@@ -367,6 +381,19 @@ const executeDownload = (range) => {
   const handleReprint = (label) => { setLastLabel(label); setPrintMode('label'); setTimeout(() => { window.print(); setPrintMode(null); }, 500); };
   const handlePrintQR = (asset) => { setShowQRModal(asset); };
   const printOnlyQR = () => { setPrintMode('qr'); setTimeout(() => { window.print(); setPrintMode(null); }, 500); };
+
+// --- AGGIUNGI QUESTO BLOCCO PRIMA DEGLI ALTRI RETURN ---
+if (isModuleDisabled) {
+    return (
+        <div style={{display:'flex', justifyContent:'center', alignItems:'center', minHeight:'100vh', flexDirection:'column', padding:'20px', textAlign:'center', background:'#ecf0f1', color:'#2c3e50'}}>
+            <h1 style={{fontSize:'4rem', margin:0}}>⛔</h1>
+            <h2 style={{color:'#c0392b', textTransform:'uppercase'}}>MODULO HACCP NON ATTIVO</h2>
+            <p style={{fontSize:'1.2rem', opacity:0.8}}>La gestione HACCP è disabilitata per questo locale.</p>
+            <button onClick={() => navigate('/')} style={{marginTop:20, padding:'10px 20px', background:'#3498db', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Torna alla Home</button>
+        </div>
+    );
+}
+// -------------------------------------------------------
 
 // --- RENDER 1: CARICAMENTO (CENTRATO) ---
   if(!info) return (
@@ -849,7 +876,7 @@ const executeDownload = (range) => {
         @media print { 
             .no-print { display: none !important; } 
             .print-area { display: flex !important; } 
-            body { margin: 0; padding: 0; } 
+            body { margin: 0; padding: 0; } X
             @page { margin: 0; size: auto; } 
         }
       `}</style>
