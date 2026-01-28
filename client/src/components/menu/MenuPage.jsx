@@ -1,4 +1,4 @@
-// client/src/components/menu/MenuPage.jsx
+// client/src/components/menu/MenuPage.jsx - VERSIONE V50 (ORDINI MODULE CHECK) 🔒
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { dictionary, getContent, flags } from "../../translations";
@@ -42,7 +42,11 @@ export default function MenuPage() {
 
   // STATI DI BLOCCO
   const [isSuspended, setIsSuspended] = useState(false);
-  const [isMenuDisabled, setIsMenuDisabled] = useState(false); // NUOVO STATO
+  const [isMenuDisabled, setIsMenuDisabled] = useState(false);
+  
+  // --- NUOVO STATO: Controllo Modulo Ordini ---
+  const [isOrdiniDisabled, setIsOrdiniDisabled] = useState(false);
+
   const [canOrder, setCanOrder] = useState(true);
   const [error, setError] = useState(false);
 
@@ -98,7 +102,18 @@ export default function MenuPage() {
             setIsMenuDisabled(true);
         }
 
-        setCanOrder(data.ordini_abilitati && data.kitchen_active);
+        // 3. Controllo Modulo Ordini (Se spento dal SuperAdmin)
+        const moduloOrdiniAttivo = data.moduli ? (data.moduli.ordini_clienti !== false) : true;
+        if (!moduloOrdiniAttivo) {
+            setIsOrdiniDisabled(true); // Flag specifico per messaggi UI
+        }
+
+        // Il permesso finale di ordinare dipende da:
+        // A. Admin Locale (ordini_abilitati)
+        // B. Super Admin (modulo_ordini_clienti)
+        // C. Cucina aperta (kitchen_active)
+        setCanOrder(data.ordini_abilitati && data.kitchen_active && moduloOrdiniAttivo);
+        
         setActiveCategory(null);
 
         // SEO / social preview
@@ -142,6 +157,12 @@ export default function MenuPage() {
   };
 
   const aggiungiAlCarrello = (piatto, override = null) => {
+    // SE IL MODULO E' DISATTIVATO, NON AGGIUNGERE NULLA (Per sicurezza)
+    if (isOrdiniDisabled && !isStaff) {
+        alert("Gli ordini online sono disabilitati per questo locale.");
+        return;
+    }
+
     // override: {qty, nome, prezzo, varianti_scelte}
     const qtySpecific = override?.qty ?? 1;
     let finalQty = qtySpecific;
@@ -335,6 +356,13 @@ export default function MenuPage() {
     <div style={{ minHeight: "100vh", background: bg, color: text, fontFamily: font, paddingBottom: 80 }}>
       <style>{`:root { color-scheme: light; } * { box-sizing: border-box; margin: 0; padding: 0; } body, html { background-color: ${bg} !important; color: ${text} !important; overflow-x: hidden; width: 100%; top: 0 !important; }`}</style>
 
+      {/* --- BANNER ORDINI DISABILITATI (SE MODULO SPENTO DA SUPERADMIN) --- */}
+      {isOrdiniDisabled && !isStaff && (
+          <div style={{background:'#c0392b', color:'white', textAlign:'center', padding:'10px', fontWeight:'bold', fontSize:'14px'}}>
+              🚫 ORDINI MOMENTANEAMENTE NON ATTIVI
+          </div>
+      )}
+
       <MenuHeaderCover
         showCheckout={showCheckout}
         style={style}
@@ -412,7 +440,7 @@ export default function MenuPage() {
         lang={lang}
         t={t}
         style={style}
-        canOrder={canOrder}
+        canOrder={canOrder} // Questo blocca il tasto "AGGIUNGI" se false
         onClose={() => setSelectedPiatto(null)}
         onAddToCart={(piatto, override) => aggiungiAlCarrello(piatto, override)}
       />

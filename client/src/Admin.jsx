@@ -1,4 +1,4 @@
-// client/src/Admin.jsx - VERSIONE V49 (STRICT VISIBILITY FIX) 🔒
+// client/src/Admin.jsx - VERSIONE V50 (SUITE BUTTONS FIX) 🛠️
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -33,11 +33,12 @@ function Admin() {
   // CONFIGURAZIONE COMPLETA
   const [config, setConfig] = useState({ 
       account_attivo: true, 
-      cucina_super_active: true, // QUESTO FLAG COMANDA LA SUITE (Cucina+Bar+Pizzeria)
+      cucina_super_active: true, // Legacy Flag
+      cassa_full_suite: true,    // NEW Flag (Database)
       ordini_abilitati: true, 
       
       // --- MODULI ---
-      modulo_cassa: true, // Default ON
+      modulo_cassa: true,
       modulo_menu_digitale: true,
       modulo_ordini_clienti: true,
       modulo_magazzino: false,
@@ -72,33 +73,29 @@ function Admin() {
                 setMenu(data.menu || []);
                 
                 // Mappatura Configurazione Backend -> Frontend
-                if(data.moduli) {
-                    setConfig(prev => ({
-                        ...prev, 
-                        ...data.style,
-                        // Mappatura Moduli
-                        modulo_cassa: data.moduli.cassa ?? true, // Recupera config Cassa
-                        modulo_menu_digitale: data.moduli.menu_digitale,
-                        modulo_ordini_clienti: data.moduli.ordini_clienti,
-                        modulo_magazzino: data.moduli.magazzino,
-                        modulo_haccp: data.moduli.haccp,
-                        modulo_utenti: data.moduli.utenti,
-                        
-                        // IMPORTANTE: cucina_super_active gestisce la visibilità della Suite (Cucina/Bar/Pizzeria)
-                        cucina_super_active: data.cucina_super_active, 
-                        ordini_abilitati: data.ordini_abilitati,
-                        
-                        account_attivo: data.subscription_active
-                    }));
-                } else {
-                    // Fallback per compatibilità con vecchie versioni API
-                    setConfig(prev => ({
-                        ...prev, 
-                        ...data.style, 
-                        cucina_super_active: data.cucina_super_active !== false,
-                        modulo_cassa: data.modulo_cassa !== false // Fallback root level
-                    }));
-                }
+                // IMPORTANTE: Gestiamo sia i moduli che i flag legacy
+                const nuoviModuli = data.moduli || {};
+                
+                setConfig(prev => ({
+                    ...prev, 
+                    ...data.style,
+                    
+                    // Mappatura Moduli
+                    modulo_cassa: nuoviModuli.cassa ?? data.modulo_cassa ?? true,
+                    modulo_menu_digitale: nuoviModuli.menu_digitale ?? data.modulo_menu_digitale ?? true,
+                    modulo_ordini_clienti: nuoviModuli.ordini_clienti ?? data.modulo_ordini_clienti ?? true,
+                    modulo_magazzino: nuoviModuli.magazzino ?? data.modulo_magazzino,
+                    modulo_haccp: nuoviModuli.haccp ?? data.modulo_haccp,
+                    modulo_utenti: nuoviModuli.utenti ?? data.modulo_utenti,
+                    
+                    // Mappatura Suite (Cucina/Bar/Pizzeria)
+                    // Verifica sia il flag 'full_suite' dentro moduli, sia 'cassa_full_suite' root, sia 'cucina_super_active'
+                    cucina_super_active: data.cucina_super_active, 
+                    cassa_full_suite: data.cassa_full_suite ?? data.cucina_super_active ?? true, 
+
+                    ordini_abilitati: data.ordini_abilitati,
+                    account_attivo: data.subscription_active
+                }));
                 
                 caricaConfigurazioniExtra(data.id);
             } else { 
@@ -212,19 +209,17 @@ function Admin() {
       );
   }
 
-  // --- VARIABILI VISIBILITÀ ---
-  // 1. Dashboard: Sempre visibile
-  const showDashboard = true; 
-  
-  // 2. Moduli Extra
-  const showCassa = config.modulo_cassa === true; // NUOVO: Gestito da Backend
+  // --- VARIABILI VISIBILITÀ (Fix Logica) ---
+  // 1. Moduli
+  const showCassa = config.modulo_cassa === true; 
   const showMenu = config.modulo_menu_digitale !== false;
   const showUtenti = config.modulo_utenti === true;
   const showMagazzino = config.modulo_magazzino === true;
   const showHaccp = config.modulo_haccp === true;
   
-  // 3. Suite (Cucina/Bar/Pizzeria): Visibile SOLO se 'cucina_super_active' è TRUE
-  const showFullSuite = config.cucina_super_active === true;
+  // 2. SUITE (Cucina/Bar/Pizzeria)
+  // VISIBILE SOLO SE: cassa_full_suite è TRUE (da SuperAdmin)
+  const showFullSuite = config.cassa_full_suite === true; 
 
   return (
     <>
@@ -259,7 +254,7 @@ function Admin() {
                 <button onClick={() => apriLink(`/cassa/${slug}`)} className="action-btn" style={{background:'#9b59b6'}}>💰 Cassa</button>
             )}
             
-            {/* 🔴 SUITE (Cucina/Bar/Pizzeria): Visibile SOLO se flag 'cucina_super_active' è TRUE */}
+            {/* 🔴 SUITE (Cucina/Bar/Pizzeria): Visibile SOLO se 'cassa_full_suite' è TRUE */}
             {showFullSuite && (
                 <>
                     <button onClick={() => apriLink(`/cucina/${slug}`)} className="action-btn" style={{background:'#e67e22'}}>👨‍🍳 Cucina</button>
