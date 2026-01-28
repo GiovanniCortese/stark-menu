@@ -1,5 +1,5 @@
 // client/src/Login.jsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react'; // <--- Aggiunto useEffect
 import { useNavigate } from 'react-router-dom';
 
 function Login() {
@@ -9,6 +9,31 @@ function Login() {
 
   // URL del Backend Cloud
   const API_URL = "https://stark-backend-gg17.onrender.com"; 
+
+  // 🚀 GOD MODE CHECK: Controllo Automatico all'avvio
+  useEffect(() => {
+    // 1. Cerco il token speciale iniettato dal SuperAdmin
+    const godToken = localStorage.getItem("admin_token");
+
+    // 2. Se il token corrisponde, simulo il login immediato
+    if (godToken === "SUPER_GOD_TOKEN_2026") {
+        console.log("🚀 God Mode Detected: Accesso Immediato.");
+        
+        // Creo un utente "finto" ma valido per la Dashboard, altrimenti si rompe
+        const godUser = {
+            id: 9999,
+            nome: "Tony Stark (God Mode)",
+            email: "jarvis@stark.com",
+            ruolo: "admin" // Importante per i permessi
+        };
+
+        // Salvo l'utente come se avessi fatto il login normale
+        localStorage.setItem('user', JSON.stringify(godUser));
+        
+        // Reindirizzo subito
+        navigate('/admin');
+    }
+  }, [navigate]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
