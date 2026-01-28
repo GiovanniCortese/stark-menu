@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const navigate = useNavigate();
 
   // URL del Backend Cloud
@@ -12,82 +13,108 @@ function Login() {
 
   // 🚀 GOD MODE CHECK: Controllo Automatico all'avvio
   useEffect(() => {
-    const godToken = localStorage.getItem("admin_token");
-    if (godToken !== "SUPER_GOD_TOKEN_2026") return;
+    const checkGodMode = async () => {
+      const godToken = localStorage.getItem("admin_token");
+      
+      // Se troviamo il token speciale salvato dal SuperAdmin
+      if (godToken === "SUPER_GOD_TOKEN_2026") {
+        console.log("🚀 God Mode Rilevato. Tentativo accesso automatico...");
+        
+        // Recuperiamo i dati target salvati dal Razzo
+        const targetSlug = localStorage.getItem("superadmin_target_slug");
+        const targetEmail = localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user")).email : "";
 
-    // ✅ recupero target dal SuperAdmin (ristorante scelto col 🚀)
-    const targetSlug = localStorage.getItem("superadmin_target_slug") || "";
-    const targetIdRaw = localStorage.getItem("superadmin_target_id") || "";
-    const targetNome = localStorage.getItem("superadmin_target_nome") || "Tony Stark (God Mode)";
-    const targetId = Number(targetIdRaw);
-
-    // Se manca il target, almeno non rompiamo: vai alla dashboard generica
-    const goTo = targetSlug ? `/admin/${targetSlug}` : "/admin";
-
-    console.log("🚀 God Mode Detected:", { targetId, targetSlug });
-
-    // ✅ user nel formato compatibile col nuovo login (tabella utenti)
-    const godUser = {
-      id: Number.isFinite(targetId) && targetId > 0 ? targetId : 9999, // ID ristorante (compatibilità dashboard)
-      user_id: 0, // opzionale, ma utile se fai check
-      nome: targetNome,
-      email: "jarvis@stark.com",
-      ruolo: "admin",
-      slug: targetSlug,
+        if (targetEmail) {
+            // Tentiamo il login automatico usando il token come password
+            await performLogin(targetEmail, godToken, targetSlug);
+        }
+      }
     };
+    
+    checkGodMode();
+  }, []);
 
-    localStorage.setItem("user", JSON.stringify(godUser));
-    navigate(goTo);
-  }, [navigate]);
-
-  const handleLogin = async (e) => {
-    e.preventDefault();
+  const performLogin = async (userEmail, userPassword, redirectSlug = null) => {
     try {
       const res = await fetch(`${API_URL}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: userEmail, password: userPassword }),
       });
+      
       const data = await res.json();
 
       if (data.success) {
-        localStorage.setItem("user", JSON.stringify(data.user));
-        alert("Benvenuto Boss! 🕶️");
+        // Puliamo il token god mode per evitare loop infiniti se si fa logout
+        if (userPassword === "SUPER_GOD_TOKEN_2026") {
+             localStorage.removeItem("admin_token"); 
+        }
 
-        // ✅ se esiste target slug (es. arrivato dal 🚀), vai direttamente lì
-        const targetSlug = localStorage.getItem("superadmin_target_slug");
-        navigate(targetSlug ? `/admin/${targetSlug}` : "/admin");
+        // Salviamo l'utente reale
+        localStorage.setItem("user", JSON.stringify(data.user));
+        
+        // Redirect intelligente
+        const dest = redirectSlug ? `/admin/${redirectSlug}` : `/admin/${data.user.slug}`;
+        navigate(dest);
       } else {
-        alert("❌ Accesso Negato: " + data.error);
+        setError("Accesso Negato: " + data.error);
+        // Se fallisce il god mode, puliamo tutto
+        if (userPassword === "SUPER_GOD_TOKEN_2026") {
+            localStorage.removeItem("admin_token");
+            alert("Errore God Mode: " + data.error);
+        }
       }
     } catch (err) {
-      alert("Errore di connessione");
+      console.error(err);
+      setError("Errore di connessione al server.");
     }
   };
 
+  const handleManualLogin = (e) => {
+    e.preventDefault();
+    performLogin(email, password);
+  };
+
   return (
-    <div className="container">
-      <h1>🔐 Area Riservata</h1>
-      <form
-        onSubmit={handleLogin}
-        style={{ display: "flex", flexDirection: "column", gap: "10px" }}
-      >
-        <input
-          type="email"
-          placeholder="Email Titolare"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <input
-          type="password"
-          placeholder="Password Segreta"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        <button type="submit" className="btn-invia">
-          ENTRA
-        </button>
-      </form>
+    <div style={{
+      height: "100vh", display: "flex", justifyContent: "center", alignItems: "center", 
+      background: "#111", color: "white", fontFamily: "sans-serif"
+    }}>
+      <div style={{
+        padding: "40px", background: "#1a1a1a", borderRadius: "12px", 
+        border: "1px solid #333", width: "100%", maxWidth: "400px", textAlign: "center"
+      }}>
+        <h1 style={{ color: "#e74c3c", marginBottom: "20px" }}>🔐 Accesso Area</h1>
+        
+        {error && <p style={{background: "#c0392b", padding: "10px", borderRadius: "5px", fontSize: "14px"}}>{error}</p>}
+
+        <form onSubmit={handleManualLogin} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            style={{ padding: "12px", borderRadius: "5px", border: "1px solid #444", background: "#222", color: "white" }}
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            style={{ padding: "12px", borderRadius: "5px", border: "1px solid #444", background: "#222", color: "white" }}
+          />
+          <button type="submit" style={{
+            padding: "15px", background: "#e74c3c", color: "white", 
+            border: "none", borderRadius: "5px", fontWeight: "bold", cursor: "pointer", fontSize: "16px"
+          }}>
+            ENTRA
+          </button>
+        </form>
+        
+        <p style={{marginTop: "20px", fontSize: "12px", color: "#666"}}>
+            Stark Industries Secure Server
+        </p>
+      </div>
     </div>
   );
 }
