@@ -27,8 +27,40 @@ router.post('/api/auth/login', async (req, res) => {
 // Registrazione
 router.post('/api/register', async (req, res) => { try { const { nome, email, password, telefono, indirizzo, ruolo, ristorante_id } = req.body; const check = await pool.query('SELECT * FROM utenti WHERE email = $1', [email]); if (check.rows.length > 0) return res.json({ success: false, error: "Email già registrata" }); const r_id = ristorante_id ? ristorante_id : null; const r = await pool.query('INSERT INTO utenti (nome, email, password, telefono, indirizzo, ruolo, ristorante_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *', [nome, email, password, telefono, indirizzo, ruolo || 'cliente', r_id]); res.json({ success: true, user: r.rows[0] }); } catch (e) { res.status(500).json({ error: e.message }); } });
 
-// Get Utenti
-router.get('/api/utenti', async (req, res) => { try { const { mode, ristorante_id } = req.query; if (mode === 'super') { const r = await pool.query('SELECT * FROM utenti ORDER BY id DESC'); return res.json(r.rows); } if (mode === 'staff' && ristorante_id) { const r = await pool.query("SELECT * FROM utenti WHERE ristorante_id = $1 ORDER BY nome", [ristorante_id]); return res.json(r.rows); } if ((mode === 'clienti' || mode === 'clienti_ordini') && ristorante_id) { const r = await pool.query(`SELECT u.id, u.nome, u.email, u.telefono, COUNT(o.id) as totale_ordini, MAX(o.data_ora) as ultimo_ordine FROM utenti u INNER JOIN ordini o ON u.id = o.utente_id WHERE o.ristorante_id = $1 GROUP BY u.id, u.nome, u.email, u.telefono ORDER BY ultimo_ordine DESC`, [ristorante_id]); return res.json(r.rows); } res.json([]); } catch (e) { res.status(500).json({ error: e.message }); } });
+// Get Utenti (MODIFICATO PER VISIONE TOTALE SUPER ADMIN)
+router.get('/api/utenti', async (req, res) => { 
+    try { 
+        const { mode, ristorante_id } = req.query; 
+
+        // 👁️ MODALITÀ SUPER ADMIN: VEDI TUTTO
+        if (mode === 'super') { 
+            const query = `
+                SELECT 
+                    u.*, 
+                    r.nome as nome_ristorante_collegato,
+                    to_char(u.ultimo_accesso, 'DD/MM/YYYY HH24:MI') as ultimo_login_formattato
+                FROM utenti u
+                LEFT JOIN ristoranti r ON u.ristorante_id = r.id
+                ORDER BY u.id DESC
+            `;
+            const r = await pool.query(query); 
+            return res.json(r.rows); 
+        } 
+
+        // ... (MANTIENI LE ALTRE MODALITÀ STAFF E CLIENTI COME SONO) ...
+        if (mode === 'staff' && ristorante_id) { 
+             const r = await pool.query("SELECT * FROM utenti WHERE ristorante_id = $1 ORDER BY nome", [ristorante_id]); 
+             return res.json(r.rows); 
+        } 
+        if ((mode === 'clienti' || mode === 'clienti_ordini') && ristorante_id) { 
+             const r = await pool.query(`SELECT u.id, u.nome, u.email, u.telefono, COUNT(o.id) as totale_ordini, MAX(o.data_ora) as ultimo_ordine FROM utenti u INNER JOIN ordini o ON u.id = o.utente_id WHERE o.ristorante_id = $1 GROUP BY u.id, u.nome, u.email, u.telefono ORDER BY ultimo_ordine DESC`, [ristorante_id]); 
+             return res.json(r.rows); 
+        } 
+        res.json([]); 
+    } catch (e) { 
+        res.status(500).json({ error: e.message }); 
+    } 
+});
 
 // Import Utenti Excel
 router.post('/api/utenti/import/excel', uploadFile.single('file'), async (req, res) => { try { if (!req.file) return res.status(400).json({ error: "File mancante" }); const workbook = xlsx.read(req.file.buffer, { type: 'buffer' }); const sheetName = workbook.SheetNames[0]; const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]); for (const row of data) { const ruolo = row.ruolo || 'cliente'; if(!row.email) continue; const check = await pool.query("SELECT id FROM utenti WHERE email = $1", [row.email]); if (check.rows.length > 0) { await pool.query("UPDATE utenti SET nome=$1, password=$2, telefono=$3, indirizzo=$4, ruolo=$5 WHERE email=$6", [row.nome, row.password, row.telefono, row.indirizzo, ruolo, row.email]); } else { await pool.query("INSERT INTO utenti (nome, email, password, telefono, indirizzo, ruolo) VALUES ($1, $2, $3, $4, $5, $6)", [row.nome, row.email, row.password, row.telefono, row.indirizzo, ruolo]); } } res.json({ success: true, message: "Importazione completata" }); } catch (e) { console.error(e); res.status(500).json({ error: "Errore Import" }); } });

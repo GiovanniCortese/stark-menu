@@ -1,4 +1,4 @@
-// client/src/SuperAdmin.jsx - VERSIONE V79 (GOD MODE AUTO-LOGIN 🚀)
+// client/src/SuperAdmin.jsx - VERSIONE V80 (TOTAL VISION & GOD MODE) 🚀
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
@@ -188,21 +188,31 @@ function SuperAdmin() {
       try { await fetch(`${API_URL}/api/super/ristoranti/${id}`, { method: 'DELETE' }); caricaDati(); } catch(err) { alert("Errore cancellazione"); } 
   };
 
-// --- GOD MODE BYPASS LOGIC ---
-const entraNelPannello = (r) => {
-  // r = oggetto ristorante { id, slug, nome, ... }
+  // --- GOD MODE BYPASS LOGIC 🚀 (Updated) ---
+  const entraNelPannello = (r) => {
+      // 1. Imposta il token di superpotere
+      localStorage.setItem("admin_token", "SUPER_GOD_TOKEN_2026");
 
-  localStorage.setItem("admin_token", "SUPER_GOD_TOKEN_2026");
+      // 2. Salva il contesto del ristorante target
+      localStorage.setItem("superadmin_target_id", String(r.id));
+      localStorage.setItem("superadmin_target_slug", r.slug);
+      localStorage.setItem("superadmin_target_nome", r.nome);
 
-  // ✅ salva contesto ristorante per far creare al Login.jsx un user coerente
-  localStorage.setItem("superadmin_target_id", String(r.id));
-  localStorage.setItem("superadmin_target_slug", r.slug);
-  localStorage.setItem("superadmin_target_nome", r.nome);
+      // 3. TRUCCO: Creiamo un user object temporaneo nel localStorage
+      // Questo aiuta se il redirect automatico di Login.jsx fallisce
+      const godUser = {
+          id: r.id,
+          nome: r.nome,
+          slug: r.slug,
+          email: r.email,
+          ruolo: 'admin',
+          is_god_mode: true
+      };
+      localStorage.setItem("user", JSON.stringify(godUser));
 
-  // ✅ apri la login: si auto-logga (God Mode) e poi fa redirect a /admin/:slug
-  window.open(`/login`, "_blank");
-};
-
+      // 4. Apri la login
+      window.open(`/login`, "_blank");
+  };
 
   // --- GESTIONE MODALE CONFIGURAZIONE (CRM & EDIT) ---
   const avviaModifica = (r) => {
@@ -594,7 +604,7 @@ const entraNelPannello = (r) => {
           </div>
       )}
 
-      {/* MODALE UTENTI (DARK) */}
+      {/* MODALE UTENTI (DARK & TOTAL VISION) */}
       {showUsersModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.95)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
             <div style={{background: '#1a1a1a', borderRadius: '12px', width: '1300px', maxWidth:'98%', height:'90vh', display:'flex', flexDirection:'column', overflow:'hidden', border:'1px solid #333'}}>
@@ -611,27 +621,63 @@ const entraNelPannello = (r) => {
                      <button onClick={exportUsersExcel} style={{background:'#27ae60', color:'white', padding:'8px 15px', borderRadius:5, border:'none', cursor:'pointer'}}>📥 EXCEL</button>
                 </div>
 
+                {/* TABELLA UTENTI POTENZIATA (TOTAL VISION) */}
                 <div style={{flex:1, overflowY:'auto', background:'#111'}}>
-                    <table style={{width:'100%', borderCollapse:'collapse', fontSize:'13px', color:'white'}}>
-                        <thead style={{position:'sticky', top:0, background:'#000', zIndex:10}}>
+                    <table style={{width:'100%', borderCollapse:'collapse', fontSize:'12px', color:'white'}}>
+                        <thead style={{position:'sticky', top:0, background:'#000', zIndex:10, borderBottom:'2px solid #333'}}>
                             <tr>
-                                <th onClick={() => handleSort('id')} style={{padding:15, textAlign:'left', cursor:'pointer'}}>ID</th>
-                                <th onClick={() => handleSort('nome')} style={{padding:15, textAlign:'left', cursor:'pointer'}}>NOME</th>
-                                <th onClick={() => handleSort('email')} style={{padding:15, textAlign:'left', cursor:'pointer'}}>EMAIL</th>
-                                <th style={{padding:15, textAlign:'left'}}>RUOLO</th>
-                                <th style={{padding:15, textAlign:'left'}}>LOCALE</th>
-                                <th style={{padding:15, textAlign:'left'}}>AZIONI</th>
+                                <th onClick={() => handleSort('id')} style={{padding:10, textAlign:'left', cursor:'pointer'}}>ID</th>
+                                <th onClick={() => handleSort('nome')} style={{padding:10, textAlign:'left', cursor:'pointer'}}>ANAGRAFICA</th>
+                                <th onClick={() => handleSort('email')} style={{padding:10, textAlign:'left', cursor:'pointer'}}>CREDENZIALI (Email / Pw)</th>
+                                <th style={{padding:10, textAlign:'left'}}>RUOLO & LOCALE</th>
+                                <th style={{padding:10, textAlign:'left'}}>ULTIMO LOGIN</th>
+                                <th style={{padding:10, textAlign:'left'}}>AZIONI</th>
                             </tr>
                         </thead>
                         <tbody>
                             {filteredUsers.map((u, idx) => (
                                 <tr key={u.id} style={{borderBottom:'1px solid #333', background: idx%2===0?'#1a1a1a':'#222'}}>
-                                    <td style={{padding:15, color:'#888'}}>#{u.id}</td>
-                                    <td style={{padding:15, fontWeight:'bold'}}>{u.nome}</td>
-                                    <td style={{padding:15, color:'#3498db'}}>{u.email}</td>
-                                    <td style={{padding:15}}><span style={{background: u.ruolo==='admin'?'#c0392b':'#3498db', color:'white', padding:'4px 10px', borderRadius:15, fontSize:10, fontWeight:'bold'}}>{u.ruolo}</span></td>
-                                    <td style={{padding:15}}>{ristoranti.find(r => r.id === u.ristorante_id)?.nome || 'GLOBALE'}</td>
-                                    <td style={{padding:15}}>
+                                    <td style={{padding:10, color:'#666'}}>#{u.id}</td>
+                                    
+                                    {/* ANAGRAFICA */}
+                                    <td style={{padding:10}}>
+                                        <div style={{fontWeight:'bold', fontSize:'14px', color:'#ecf0f1'}}>{u.nome}</div>
+                                        <div style={{color:'#95a5a6'}}>📞 {u.telefono || 'N/D'}</div>
+                                    </td>
+
+                                    {/* CREDENZIALI VISIBILI */}
+                                    <td style={{padding:10}}>
+                                        <div style={{color:'#3498db', fontWeight:'bold'}}>{u.email}</div>
+                                        <div style={{
+                                            background:'#c0392b', color:'white', display:'inline-block', 
+                                            padding:'2px 6px', borderRadius:'4px', marginTop:'4px', 
+                                            fontFamily:'monospace', fontSize:'11px'
+                                        }}>
+                                            🔑 {u.password}
+                                        </div>
+                                    </td>
+
+                                    {/* RUOLO E LOCALE */}
+                                    <td style={{padding:10}}>
+                                        <div style={{marginBottom:'4px'}}>
+                                            <span style={{
+                                                background: u.ruolo==='admin'?'#e74c3c':(u.ruolo==='cameriere'?'#f39c12':'#2980b9'), 
+                                                color:'white', padding:'3px 8px', borderRadius:'4px', fontSize:'10px', textTransform:'uppercase'
+                                            }}>
+                                                {u.ruolo}
+                                            </span>
+                                        </div>
+                                        <div style={{color:'#bdc3c7', fontSize:'11px'}}>
+                                            {u.nome_ristorante_collegato || ristoranti.find(r => r.id === u.ristorante_id)?.nome || '🌍 GLOBALE'}
+                                        </div>
+                                    </td>
+
+                                    {/* ULTIMO ACCESSO */}
+                                    <td style={{padding:10, color:'#aaa'}}>
+                                        {u.ultimo_login_formattato || 'Mai'}
+                                    </td>
+
+                                    <td style={{padding:10}}>
                                         <button onClick={() => handleOpenUserForm(u)} style={{background:'#f1c40f', border:'none', borderRadius:4, padding:'5px 10px', marginRight:5, cursor:'pointer'}}>✏️</button>
                                         <button onClick={() => handleDeleteUser(u.id, u.nome)} style={{background:'#e74c3c', border:'none', color:'white', borderRadius:4, padding:'5px 10px', cursor:'pointer'}}>🗑️</button>
                                     </td>
