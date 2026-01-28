@@ -81,10 +81,10 @@ router.put('/api/ristorante/dati-fiscali/:id', async (req, res) => {
 });
 
 // ==========================================
-// 2. SUPER ADMIN (LOG CON ORARIO ITALIANO)
+// 2. SUPER ADMIN (LOG CON ORARIO ITALIANO & SYNC UTENTI)
 // ==========================================
 
-// Login Super Admin
+// Login Super Admin (INVARIATO)
 router.post('/api/super/login', (req, res) => { 
     try { 
         const { email, password, code2fa } = req.body; 
@@ -109,17 +109,22 @@ router.get('/api/super/ristoranti', async (req, res) => {
     catch (e) { res.status(500).json({error:"Err"}); } 
 });
 
-// Crea Ristorante (Con Modulo Cassa e Full Suite)
+// Crea Ristorante (MODIFICATO: Crea automaticamente anche l'Utente Admin)
 router.post('/api/super/ristoranti', async (req, res) => { 
+    const client = await pool.connect();
     try { 
+        await client.query('BEGIN'); // Iniziamo una transazione sicura
+
         const b = req.body;
         console.log(`🆕 [${getNowItaly()}] Creazione nuovo locale: ${b.nome}`);
 
-        await pool.query(`
+        // 1. Creiamo il Ristorante (Manteniamo la password anche qui come backup legacy)
+        const newRest = await client.query(`
             INSERT INTO ristoranti 
             (nome, slug, email, telefono, password, account_attivo, servizio_attivo, ordini_abilitati, cucina_super_active,
              modulo_menu_digitale, modulo_ordini_clienti, modulo_magazzino, modulo_haccp, modulo_utenti, modulo_cassa, cassa_full_suite, data_scadenza) 
-            VALUES ($1, $2, $3, $4, $5, TRUE, TRUE, TRUE, TRUE, $6, $7, $8, $9, $10, $11, $12, $13)`, 
+            VALUES ($1, $2, $3, $4, $5, TRUE, TRUE, TRUE, TRUE, $6, $7, $8, $9, $10, $11, $12, $13)
+            RETURNING id`, 
             [
                 b.nome, b.slug, b.email, b.telefono, b.password || 'tonystark',
                 b.modulo_menu_digitale ?? true,
@@ -127,65 +132,64 @@ router.post('/api/super/ristoranti', async (req, res) => {
                 b.modulo_magazzino ?? false,
                 b.modulo_haccp ?? false,
                 b.modulo_utenti ?? false,
-                b.modulo_cassa ?? true, // Modulo Cassa opzionale
-                b.cassa_full_suite ?? true, // Full Suite (Cucina/Bar/Pizzeria)
+                b.modulo_cassa ?? true,
+                b.cassa_full_suite ?? true,
                 b.data_scadenza || new Date(new Date().setFullYear(new Date().getFullYear() + 1))
             ]
         ); 
+        
+        const newRestId = newRest.rows[0].id;
+
+        // 2. CREIAMO AUTOMATICAMENTE L'UTENTE ADMIN IN TABELLA UTENTI
+        // Così il login funzionerà subito
+        await client.query(`
+            INSERT INTO utenti (nome, email, password, telefono, ruolo, ristorante_id, data_registrazione)
+            VALUES ($1, $2, $3, $4, 'admin', $5, NOW())
+        `, [
+            b.nome,              // Nome Utente = Nome Ristorante
+            b.email,             // Email
+            b.password || 'tonystark', // Password
+            b.telefono,
+            newRestId            // Colleghiamo al ristorante appena creato
+        ]);
+
+        await client.query('COMMIT'); // Confermiamo tutto
         res.json({ success: true }); 
-    } catch (e) { res.status(500).json({error: "Err: " + e.message}); } 
+
+    } catch (e) { 
+        await client.query('ROLLBACK'); // Se qualcosa va storto, annulliamo tutto
+        res.status(500).json({error: "Err: " + e.message}); 
+    } finally {
+        client.release();
+    }
 });
 
-// UPDATE RISTORANTE (Con Log Orario e Nuovi Moduli)
+// UPDATE RISTORANTE (MODIFICATO: Se cambi password/email, aggiorna anche l'utente admin)
 router.put('/api/super/ristoranti/:id', async (req, res) => {
+    const client = await pool.connect();
     try {
+        await client.query('BEGIN');
         const { id } = req.params;
         const b = req.body;
         
+        // 1. Aggiorna Tabella Ristoranti (Logica esistente)
         const sql = `
             UPDATE ristoranti SET 
-                -- Account Base
                 nome = COALESCE($1, nome),
                 email = COALESCE($2, email),
                 password = CASE WHEN $3::text IS NOT NULL AND $3::text <> '' THEN $3 ELSE password END,
                 slug = COALESCE($4, slug),
                 telefono = COALESCE($5, telefono),
-                
-                -- Dati Fiscali & Sedi (NUOVI)
-                piva = COALESCE($6, piva),
-                codice_fiscale = COALESCE($7, codice_fiscale),
-                pec = COALESCE($8, pec),
-                codice_sdi = COALESCE($9, codice_sdi),
-                sede_legale = COALESCE($10, sede_legale),
-                sede_operativa = COALESCE($11, sede_operativa),
-                referente = COALESCE($12, referente),
-                note_interne = COALESCE($13, note_interne),
-
-                -- Moduli & Scadenze
-                modulo_menu_digitale = COALESCE($14, modulo_menu_digitale),
-                scadenza_menu_digitale = COALESCE($15, scadenza_menu_digitale),
-
-                modulo_ordini_clienti = COALESCE($16, modulo_ordini_clienti),
-                scadenza_ordini_clienti = COALESCE($17, scadenza_ordini_clienti),
-
-                modulo_magazzino = COALESCE($18, modulo_magazzino),
-                scadenza_magazzino = COALESCE($19, scadenza_magazzino),
-
-                modulo_haccp = COALESCE($20, modulo_haccp),
-                scadenza_haccp = COALESCE($21, scadenza_haccp),
-                
-                modulo_cassa = COALESCE($22, modulo_cassa),
-                scadenza_cassa = COALESCE($23, scadenza_cassa),
-
-                modulo_utenti = COALESCE($24, modulo_utenti),
-                scadenza_utenti = COALESCE($25, scadenza_utenti),
-                
-                cassa_full_suite = COALESCE($26, cassa_full_suite),
-                account_attivo = COALESCE($27, account_attivo)
-
+                piva = COALESCE($6, piva), codice_fiscale = COALESCE($7, codice_fiscale), pec = COALESCE($8, pec), codice_sdi = COALESCE($9, codice_sdi), sede_legale = COALESCE($10, sede_legale), sede_operativa = COALESCE($11, sede_operativa), referente = COALESCE($12, referente), note_interne = COALESCE($13, note_interne),
+                modulo_menu_digitale = COALESCE($14, modulo_menu_digitale), scadenza_menu_digitale = COALESCE($15, scadenza_menu_digitale),
+                modulo_ordini_clienti = COALESCE($16, modulo_ordini_clienti), scadenza_ordini_clienti = COALESCE($17, scadenza_ordini_clienti),
+                modulo_magazzino = COALESCE($18, modulo_magazzino), scadenza_magazzino = COALESCE($19, scadenza_magazzino),
+                modulo_haccp = COALESCE($20, modulo_haccp), scadenza_haccp = COALESCE($21, scadenza_haccp),
+                modulo_cassa = COALESCE($22, modulo_cassa), scadenza_cassa = COALESCE($23, scadenza_cassa),
+                modulo_utenti = COALESCE($24, modulo_utenti), scadenza_utenti = COALESCE($25, scadenza_utenti),
+                cassa_full_suite = COALESCE($26, cassa_full_suite), account_attivo = COALESCE($27, account_attivo)
             WHERE id = $28
         `;
-
         const params = [
             b.nome, b.email, b.password, b.slug, b.telefono, // 1-5
             b.piva, b.codice_fiscale, b.pec, b.codice_sdi, b.sede_legale, b.sede_operativa, b.referente, b.note_interne, // 6-13
@@ -195,30 +199,45 @@ router.put('/api/super/ristoranti/:id', async (req, res) => {
             b.modulo_haccp, b.scadenza_haccp, // 20-21
             b.modulo_cassa, b.scadenza_cassa, // 22-23
             b.modulo_utenti, b.scadenza_utenti, // 24-25
-            b.cassa_full_suite, // 26
-            b.account_attivo, // 27
-            id // 28
+            b.cassa_full_suite, b.account_attivo, id
         ];
+        await client.query(sql, params);
+
+        // 2. AGGIORNA UTENTE (SYNC): Se è cambiata la password o l'email, aggiorniamo anche l'utente admin
+        if ((b.password && b.password !== "") || b.email) {
+            // Aggiorna solo gli utenti che sono 'admin' o 'titolare' di quel ristorante
+            let updateQuery = "UPDATE utenti SET ";
+            let updateParams = [];
+            let idx = 1;
+
+            if (b.email) {
+                updateQuery += `email = $${idx}, `;
+                updateParams.push(b.email);
+                idx++;
+            }
+            if (b.password && b.password !== "") {
+                updateQuery += `password = $${idx}, `;
+                updateParams.push(b.password);
+                idx++;
+            }
+
+            // Rimuovi l'ultima virgola e aggiungi WHERE
+            updateQuery = updateQuery.slice(0, -2) + ` WHERE ristorante_id = $${idx} AND (ruolo = 'admin' OR ruolo = 'titolare')`;
+            updateParams.push(id);
+
+            await client.query(updateQuery, updateParams);
+            console.log(`🔄 [SYNC] Aggiornate credenziali utenti admin per Ristorante ID ${id}`);
+        }
         
-        await pool.query(sql, params);
+        await client.query('COMMIT');
         res.json({ success: true });
     } catch (e) {
+        await client.query('ROLLBACK');
         console.error("Errore Update SuperAdmin:", e);
         res.status(500).json({ error: e.message });
+    } finally {
+        client.release();
     }
-});
-
-// Delete Ristorante
-router.delete('/api/super/ristoranti/:id', async (req, res) => { 
-    try { 
-        const id = req.params.id; 
-        console.log(`🗑️ [${getNowItaly()}] Eliminazione locale ID ${id}`);
-        await pool.query('DELETE FROM prodotti WHERE ristorante_id = $1', [id]); 
-        await pool.query('DELETE FROM categorie WHERE ristorante_id = $1', [id]); 
-        await pool.query('DELETE FROM ordini WHERE ristorante_id = $1', [id]); 
-        await pool.query('DELETE FROM ristoranti WHERE id = $1', [id]); 
-        res.json({ success: true }); 
-    } catch (e) { res.status(500).json({error: "Err"}); } 
 });
 
 // ==========================================
