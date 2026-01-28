@@ -54,7 +54,7 @@ function Admin() {
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
   // --- INIZIALIZZAZIONE ---
-  useEffect(() => {
+useEffect(() => {
     if (!slug) return;
 
     const init = async () => {
@@ -79,6 +79,10 @@ function Admin() {
                     ...prev, 
                     ...data.style,
                     
+                    // --- NUOVO: Passo la data scadenza al config ---
+                    data_scadenza: data.data_scadenza,
+                    // ----------------------------------------------
+
                     // Mappatura Moduli
                     modulo_cassa: nuoviModuli.cassa ?? data.modulo_cassa ?? true,
                     modulo_menu_digitale: nuoviModuli.menu_digitale ?? data.modulo_menu_digitale ?? true,
@@ -87,11 +91,7 @@ function Admin() {
                     modulo_haccp: nuoviModuli.haccp ?? data.modulo_haccp,
                     modulo_utenti: nuoviModuli.utenti ?? data.modulo_utenti,
                     
-                    // Mappatura Suite (Cucina/Bar/Pizzeria)
-                    // cucina_super_active: usato per logica "Blocco Ordini" in Dashboard
                     cucina_super_active: data.cucina_super_active, 
-                    
-                    // cassa_full_suite: usato per visibilità pulsanti Header
                     cassa_full_suite: data.cassa_full_suite ?? data.cucina_super_active ?? true, 
 
                     ordini_abilitati: data.ordini_abilitati,

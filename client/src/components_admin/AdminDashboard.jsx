@@ -10,7 +10,6 @@ function AdminDashboard({ user, API_URL, config, setConfig }) {
     useEffect(() => {
         fetch(`${API_URL}/api/stats/dashboard/${user.id}`).then(res => res.json()).then(data => { setStats(data); setLoading(false); }).catch(err => { console.error(err); setLoading(false); });
         
-        // Recupera dati fiscali
         fetch(`${API_URL}/api/ristorante/config/${user.id}`).then(r => r.json()).then(d => { 
             if (d.dati_fiscali) setDatiForm(prev => ({...prev, rawText: d.dati_fiscali})); 
         });
@@ -25,69 +24,86 @@ function AdminDashboard({ user, API_URL, config, setConfig }) {
         } catch(e) { alert("Errore salvataggio"); }
     };
 
-    // --- FUNZIONE PER ATTIVARE/DISATTIVARE ORDINI ---
-    const toggleOrdini = async () => {
-        const newState = !config.ordini_abilitati;
-        try {
-            await fetch(`${API_URL}/api/ristorante/config/${user.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ordini_abilitati: newState })
-            });
-            setConfig(prev => ({ ...prev, ordini_abilitati: newState }));
-        } catch (e) {
-            alert("Errore aggiornamento stato ordini");
-        }
-    };
-
     if(loading) return <div style={{padding:20}}>🔄 Caricamento...</div>;
     if(!stats) return <div style={{padding:20}}>❌ Errore dati.</div>;
 
     const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
-    
     const cardStyle = { background: 'white', padding: '25px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #eff0f1' };
     const inputStyle = { width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '14px', boxSizing:'border-box' };
 
-    // --- LOGICA BLOCCO SUPERADMIN ---
-    // Se 'cucina_super_active' è false, il SuperAdmin ha bloccato tutto.
-    // Nota: 'cucina_super_active' nel DB controlla sia la suite che il permesso generale.
-    // Se vuoi separare i controlli, usa config.modulo_ordini_clienti
-    const isSuperBlocked = config?.modulo_ordini_clienti === false;
+    // Formattazione data scadenza
+    const dataScadenza = config.data_scadenza ? new Date(config.data_scadenza).toLocaleDateString('it-IT') : 'N/D';
+
+    // Lista moduli per la visualizzazione abbonamento
+    const moduliList = [
+        { label: "Menu Digitale", active: config.modulo_menu_digitale },
+        { label: "Ordini al Tavolo", active: config.modulo_ordini_clienti },
+        { label: "Sistema Cassa", active: config.modulo_cassa },
+        { label: "Magazzino", active: config.modulo_magazzino },
+        { label: "HACCP & Sicurezza", active: config.modulo_haccp },
+        { label: "Gestione Utenti", active: config.modulo_utenti }
+    ];
 
     return (
         <div style={{maxWidth: '100%', margin: '0 auto'}}>
             
-            {/* 0. CONTROLLO SERVIZIO ORDINI (NUOVO) */}
-            <div style={{marginBottom: '30px'}}>
-                {isSuperBlocked ? (
-                    <div style={{background: '#ffebee', color: '#c62828', padding: '20px', borderRadius: '12px', border: '1px solid #ffcdd2', textAlign:'center'}}>
-                        <h3 style={{margin:0}}>🔒 Gestione Ordini Bloccata</h3>
-                        <p style={{margin:'5px 0 0 0'}}>Il modulo "Ordini Clienti" è stato disattivato dall'amministrazione centrale.</p>
+            {/* 1. SEZIONE ABBONAMENTI & MODULI (Nuova Richiesta) */}
+            <div style={{...cardStyle, marginBottom: '30px', borderLeft: '5px solid #8e44ad', background: '#fdfefe'}}>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:'20px'}}>
+                    <div>
+                        <h3 style={{margin:0, color:'#2c3e50', display:'flex', alignItems:'center', gap:'10px'}}>
+                            💎 Il tuo Piano Abbonamento
+                        </h3>
+                        <p style={{fontSize:'13px', color:'#64748b', margin:'5px 0 20px 0'}}>Gestisci le funzionalità attive nel tuo locale.</p>
                     </div>
-                ) : (
-                    <div style={{...cardStyle, background: config.ordini_abilitati ? '#e8f5e9' : '#ffebee', border: config.ordini_abilitati ? '1px solid #a5d6a7' : '1px solid #ffcdd2', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                        <div>
-                            <h3 style={{margin:0, color: config.ordini_abilitati ? '#2e7d32' : '#c62828'}}>
-                                {config.ordini_abilitati ? "✅ Servizio Ordini ATTIVO" : "⛔ Servizio Ordini PAUSA"}
-                            </h3>
-                            <p style={{margin:'5px 0 0 0', fontSize:'13px', color:'#555'}}>
-                                {config.ordini_abilitati ? "I clienti possono inviare ordini dal tavolo." : "I clienti vedranno il menu ma non potranno ordinare."}
-                            </p>
+                    {config.account_attivo && (
+                        <div style={{background:'#e8f5e9', color:'#2e7d32', padding:'5px 15px', borderRadius:'20px', fontSize:'12px', fontWeight:'bold', border:'1px solid #a5d6a7'}}>
+                            ✅ LICENZA ATTIVA
                         </div>
-                        <button 
-                            onClick={toggleOrdini}
-                            style={{
-                                background: config.ordini_abilitati ? '#c62828' : '#2e7d32',
-                                color: 'white', border: 'none', padding: '12px 25px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize:'14px'
-                            }}
-                        >
-                            {config.ordini_abilitati ? "CHIUDI ORDINI" : "APRI ORDINI"}
-                        </button>
-                    </div>
-                )}
+                    )}
+                </div>
+
+                <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap:'15px'}}>
+                    {moduliList.map((mod, idx) => (
+                        <div key={idx} style={{
+                            padding:'15px', 
+                            borderRadius:'8px', 
+                            border: mod.active ? '1px solid #d1f2eb' : '1px dashed #ccc',
+                            background: mod.active ? '#f4fbf9' : '#fafafa',
+                            opacity: mod.active ? 1 : 0.6
+                        }}>
+                            <div style={{display:'flex', justifyContent:'space-between', marginBottom:'5px'}}>
+                                <span style={{fontWeight:'bold', color: mod.active ? '#16a085' : '#7f8c8d'}}>{mod.label}</span>
+                                <span style={{fontSize:'16px'}}>{mod.active ? '✨' : '🔒'}</span>
+                            </div>
+                            <div style={{fontSize:'11px', fontWeight:'bold', color: mod.active ? '#27ae60' : '#e74c3c'}}>
+                                {mod.active ? `Scadenza: ${dataScadenza}` : "DA ATTIVARE"}
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </div>
 
-            {/* 1. SEZIONE INTESTAZIONE / DATI FISCALI */}
+            {/* 2. STATISTICHE GENERALI (KPI) */}
+            <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px', marginBottom: '30px'}}>
+                <div style={cardStyle}>
+                    <span style={{fontSize:'12px', color:'#6b7280', fontWeight:'bold', textTransform:'uppercase'}}>Incasso Oggi</span>
+                    <h3 style={{fontSize:'28px', margin:'5px 0', color:'#111827'}}>€ {Number(stats.incassi.oggi || 0).toFixed(2)}</h3>
+                    <span style={{fontSize:12, color: stats.incassi.oggi >= stats.incassi.ieri ? '#10b981' : '#ef4444'}}>
+                        {stats.incassi.oggi >= stats.incassi.ieri ? '▲' : '▼'} vs Ieri (€ {Number(stats.incassi.ieri || 0).toFixed(2)})
+                    </span>
+                </div>
+                <div style={cardStyle}>
+                    <span style={{fontSize:'12px', color:'#6b7280', fontWeight:'bold', textTransform:'uppercase'}}>Ordini Mese</span>
+                    <h3 style={{fontSize:'28px', margin:'5px 0', color:'#3b82f6'}}>{stats.chartData.reduce((acc, curr) => acc + curr.ordini, 0)}</h3>
+                </div>
+                <div style={cardStyle}>
+                    <span style={{fontSize:'12px', color:'#6b7280', fontWeight:'bold', textTransform:'uppercase'}}>Piatti Totali</span>
+                    <h3 style={{fontSize:'28px', margin:'5px 0', color:'#8b5cf6'}}>{stats.topDishes ? stats.topDishes.length : 0}</h3>
+                </div>
+            </div>
+
+            {/* 3. SEZIONE INTESTAZIONE / DATI FISCALI */}
             <div style={{...cardStyle, marginBottom: '30px', borderLeft: '5px solid #4f46e5', background: '#f8fafc'}}>
                 <h3 style={{marginTop:0, color:'#1e293b', display:'flex', alignItems:'center', gap:'10px'}}>
                     📄 Intestazione Documenti & Dati Aziendali
@@ -109,29 +125,7 @@ function AdminDashboard({ user, API_URL, config, setConfig }) {
                 </div>
             </div>
 
-            {/* 2. STATISTICHE GENERALI (KPI) */}
-            <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px', marginBottom: '30px'}}>
-                <div style={cardStyle}>
-                    <span style={{fontSize:'12px', color:'#6b7280', fontWeight:'bold', textTransform:'uppercase'}}>Incasso Oggi</span>
-                    <h3 style={{fontSize:'28px', margin:'5px 0', color:'#111827'}}>€ {Number(stats.incassi.oggi || 0).toFixed(2)}</h3>
-                    <span style={{fontSize:12, color: stats.incassi.oggi >= stats.incassi.ieri ? '#10b981' : '#ef4444'}}>
-                        {stats.incassi.oggi >= stats.incassi.ieri ? '▲' : '▼'} vs Ieri (€ {Number(stats.incassi.ieri || 0).toFixed(2)})
-                    </span>
-                </div>
-                <div style={cardStyle}>
-                    <span style={{fontSize:'12px', color:'#6b7280', fontWeight:'bold', textTransform:'uppercase'}}>Ordini Mese</span>
-                    <h3 style={{fontSize:'28px', margin:'5px 0', color:'#3b82f6'}}>{stats.chartData.reduce((acc, curr) => acc + curr.ordini, 0)}</h3>
-                </div>
-                <div style={cardStyle}>
-                    <span style={{fontSize:'12px', color:'#6b7280', fontWeight:'bold', textTransform:'uppercase'}}>Stato Sistema</span>
-                    <div style={{display:'flex', alignItems:'center', gap:10, marginTop:10}}>
-                        <div style={{width:12, height:12, borderRadius:'50%', background:'#10b981', boxShadow:'0 0 10px #10b981'}}></div>
-                        <span style={{fontWeight:'bold', color:'#374151'}}>Operativo</span>
-                    </div>
-                </div>
-            </div>
-
-            {/* 3. GRAFICI */}
+            {/* 4. GRAFICI */}
             <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '20px'}}>
                 <div style={cardStyle}>
                     <h4 style={{marginTop:0, color:'#374151'}}>🕒 Andamento Ordini (Oggi)</h4>
