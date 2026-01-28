@@ -22,6 +22,8 @@ export default function Checkout({
 }) {
   if (!open) return null;
 
+  const canSend = canOrder || isStaffQui;
+
   return (
     <div
       style={{
@@ -52,7 +54,7 @@ export default function Checkout({
       >
         <h2 className="notranslate" style={{ color: titleColor, margin: 0 }}>
           {/* Se non si può ordinare, cambiamo il titolo in Lista Desideri */}
-          {(canOrder || isStaffQui) ? (t?.summary || "Riepilogo Ordine") : (t?.wishlist || "Lista Desideri")} 📝
+          {canSend ? t?.summary || "Riepilogo Ordine" : t?.wishlist || "Lista Desideri"} 📝
         </h2>
         <button
           onClick={onClose}
@@ -78,27 +80,8 @@ export default function Checkout({
           width: "100%",
         }}
       >
-        {carrello.length > 0 && (canOrder || isStaffQui) && (
-  <button
-    onClick={onSendOrder}
-    style={{
-      width: "100%",
-      padding: "15px",
-      fontSize: "18px",
-      background: "#159709ff",
-      color: "white",
-      border: `1px solid ${style?.text || "#ccc"}`,
-      borderRadius: "30px",
-      fontWeight: "bold",
-      cursor: "pointer",
-    }}
-  >
-    {isStaffQui ? "INVIA ORDINE STAFF 🚀" : (t?.confirm || "CONFERMA E INVIA") + " 🚀"}
-  </button>
-)}
-
-        {/* GESTIONE COPERTI (Solo se si può ordinare o se impostato) */}
-        {style.prezzo_coperto > 0 && carrello.length > 0 && (canOrder || isStaffQui) && (
+        {/* GESTIONE COPERTI (Solo se si può ordinare) */}
+        {style.prezzo_coperto > 0 && carrello.length > 0 && canSend && (
           <div
             style={{
               background: "rgba(255,255,255,0.1)",
@@ -131,9 +114,7 @@ export default function Checkout({
               >
                 -
               </button>
-              <span style={{ fontSize: "18px", fontWeight: "bold" }}>
-                {numCoperti}
-              </span>
+              <span style={{ fontSize: "18px", fontWeight: "bold" }}>{numCoperti}</span>
               <button
                 onClick={() => setNumCoperti((n) => n + 1)}
                 style={{
@@ -155,9 +136,7 @@ export default function Checkout({
         {/* CUCINA (per portate) */}
         {(() => {
           const itemsCucina = carrello.filter((i) => !i.categoria_is_bar);
-          const coursePresenti = [
-            ...new Set(itemsCucina.map((i) => i.course)),
-          ].sort();
+          const coursePresenti = [...new Set(itemsCucina.map((i) => i.course))].sort();
           const coloriPortata = ["#27ae60", "#f1c40f", "#e67e22", "#c0392b"];
           const nomePortata = [
             null,
@@ -192,9 +171,7 @@ export default function Checkout({
                   const allergeniItem = getSafeAllergeni(item);
 
                   const qtaLabel =
-                    item.qty > 1
-                      ? `x ${item.qty} ${item.unita_misura || ""}`
-                      : "";
+                    item.qty > 1 ? `x ${item.qty} ${item.unita_misura || ""}` : "";
                   const totaleRiga = Number(item.prezzo) * (item.qty || 1);
 
                   return (
@@ -245,11 +222,7 @@ export default function Checkout({
                                   trads = JSON.parse(trads);
                                 } catch (e) {}
                               }
-                              if (
-                                trads &&
-                                trads[lang] &&
-                                trads[lang].ingredienti_base
-                              ) {
+                              if (trads && trads[lang] && trads[lang].ingredienti_base) {
                                 ingStr = trads[lang].ingredienti_base.join(", ");
                               }
                               return ingStr;
@@ -259,8 +232,7 @@ export default function Checkout({
 
                         {allergeniItem.length > 0 && (
                           <div className="notranslate" style={{ marginTop: "6px" }}>
-                            {allergeniItem.filter((a) => !a.includes("❄️"))
-                              .length > 0 && (
+                            {allergeniItem.filter((a) => !a.includes("❄️")).length > 0 && (
                               <div
                                 style={{
                                   fontSize: "10px",
@@ -270,9 +242,7 @@ export default function Checkout({
                                 }}
                               >
                                 ⚠️ {t?.allergens || "Allergeni"}:{" "}
-                                {allergeniItem
-                                  .filter((a) => !a.includes("❄️"))
-                                  .join(", ")}
+                                {allergeniItem.filter((a) => !a.includes("❄️")).join(", ")}
                               </div>
                             )}
                             {allergeniItem.some((a) => a.includes("❄️")) && (
@@ -453,14 +423,9 @@ export default function Checkout({
                       }}
                     >
                       {item.nome}{" "}
-                      {item.qty > 1 && (
-                        <span style={{ fontSize: "0.8em" }}>x{item.qty}</span>
-                      )}
+                      {item.qty > 1 && <span style={{ fontSize: "0.8em" }}>x{item.qty}</span>}
                     </div>
-                    <div
-                      className="notranslate"
-                      style={{ color: "#888", fontSize: "12px" }}
-                    >
+                    <div className="notranslate" style={{ color: "#888", fontSize: "12px" }}>
                       {(Number(item.prezzo) * (item.qty || 1)).toFixed(2)}€
                     </div>
                   </div>
@@ -484,7 +449,7 @@ export default function Checkout({
           </div>
         )}
 
-        {/* Footer checkout con logica Wishlist */}
+        {/* Footer checkout: quando ordini sono chiusi NON mostriamo nulla */}
         <div
           className="notranslate"
           style={{
@@ -493,48 +458,25 @@ export default function Checkout({
             paddingTop: "20px",
           }}
         >
-          {carrello.length > 0 ? (
-            (canOrder || isStaffQui) ? (
-              // MODALITA' ORDINE ATTIVA
-              <button
-                onClick={onSendOrder}
-                style={{
-                  width: "100%",
-                  padding: "15px",
-                  fontSize: "18px",
-                  background: "#159709ff",
-                  color: "white",
-                  border: `1px solid ${style?.text || "#ccc"}`,
-                  borderRadius: "30px",
-                  fontWeight: "bold",
-                  cursor: "pointer",
-                }}
-              >
-                {isStaffQui
-                  ? "INVIA ORDINE STAFF 🚀"
-                  : (t?.confirm || "CONFERMA E INVIA") + " 🚀"}
-              </button>
-            ) : (
-              // MODALITA' WISHLIST (Ordini disabilitati)
-              <div
-                style={{
-                  textAlign: "center",
-                  padding: "15px",
-                  background: "rgba(255,255,255,0.05)",
-                  borderRadius: "15px",
-                  border: "1px solid #555",
-                  marginBottom: "10px",
-                }}
-              >
-                <p style={{ margin: 0, fontWeight: "bold", color: "#f1c40f", fontSize: "16px" }}>
-                  🚫 {t?.orders_disabled || "Ordini momentaneamente sospesi"}
-                </p>
-                <p style={{ margin: "5px 0 0 0", fontSize: "12px", color: "#aaa" }}>
-                  {t?.wishlist_msg || "Puoi usare questa lista come promemoria da mostrare al cameriere."}
-                </p>
-              </div>
-            )
-          ) : null}
+          {/* ✅ Bottone invio SOLO se si può ordinare */}
+          {carrello.length > 0 && canSend && (
+            <button
+              onClick={onSendOrder}
+              style={{
+                width: "100%",
+                padding: "15px",
+                fontSize: "18px",
+                background: "#159709ff",
+                color: "white",
+                border: `1px solid ${style?.text || "#ccc"}`,
+                borderRadius: "30px",
+                fontWeight: "bold",
+                cursor: "pointer",
+              }}
+            >
+              {isStaffQui ? "INVIA ORDINE STAFF 🚀" : (t?.confirm || "CONFERMA E INVIA") + " 🚀"}
+            </button>
+          )}
 
           <button
             onClick={onClose}
