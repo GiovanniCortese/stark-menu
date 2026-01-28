@@ -1,4 +1,4 @@
-// client/src/Admin.jsx - VERSIONE V52 (NO DOPPIO LOGIN & LOGOUT FIX) 🛠️
+// client/src/Admin.jsx - VERSIONE V52 (NO LOGIN FORM & AUTO REDIRECT) 🛠️
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -16,10 +16,7 @@ function Admin() {
 
   // --- STATI LOGIN ADMIN ---
   const [isAuthorized, setIsAuthorized] = useState(false);
-  const [identifierInput, setIdentifierInput] = useState("");
-  const [passwordInput, setPasswordInput] = useState("");
-  const [loginError, setLoginError] = useState(false);
-  const [loadingLogin, setLoadingLogin] = useState(false);
+  // NOTA: Rimossi input login locale (identifierInput, passwordInput, ecc)
 
   // --- STATI GLOBALI ---
   const [user, setUser] = useState(null); 
@@ -53,28 +50,27 @@ function Admin() {
 
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
-  // --- INIZIALIZZAZIONE ---
+  // --- INIZIALIZZAZIONE E CHECK AUTH ---
   useEffect(() => {
     if (!slug) return;
 
     const init = async () => {
         setLoading(true);
         
-        // 1. CHECK SESSIONE SPECIFICA
+        // 1. CHECK SESSIONE E USER
         const sessionKey = `stark_admin_session_${slug}`;
         const hasSession = localStorage.getItem(sessionKey); 
-        
-        // 2. CHECK USER GLOBALE (FIX DOPPIO LOGIN 🚀)
-        // Se c'è un utente loggato nel localStorage che corrisponde a questo slug (o è God Mode), entra subito.
         const storedUser = localStorage.getItem("user");
-        let autoAuth = false;
         
+        let authorized = false;
+        
+        // Logica di validazione automatica (Local Storage)
         if (storedUser) {
             try {
                 const u = JSON.parse(storedUser);
                 // Se lo slug corrisponde o è un super admin in god mode
                 if (u.slug === slug || u.is_god_mode) {
-                    autoAuth = true;
+                    authorized = true;
                     // Rigeneriamo la sessione locale per sicurezza futura
                     localStorage.setItem(sessionKey, "true");
                 }
@@ -83,10 +79,21 @@ function Admin() {
             }
         }
 
-        if (hasSession === "true" || autoAuth) {
-            setIsAuthorized(true);
+        if (hasSession === "true") {
+            authorized = true;
         }
 
+        // --- PUNTO DI SNODO: SE NON AUTORIZZATO -> REDIRECT ---
+        if (!authorized) {
+            // Nessuna UI di login qui, rimandiamo al login principale
+            navigate('/login');
+            setLoading(false);
+            return;
+        }
+
+        setIsAuthorized(true);
+
+        // Se autorizzato, carichiamo i dati
         try {
             const res = await fetch(`${API_URL}/api/menu/${slug}`);
             const data = await res.json();
@@ -160,75 +167,31 @@ function Admin() {
       });
   };
 
-  // --- LOGOUT AGGIORNATO: RITORNA AL LOGIN ---
+  // --- LOGOUT AGGIORNATO ---
   const handleLogout = () => { 
       if(confirm("Uscire dal pannello?")) { 
           // 1. Rimuove la sessione di questo specifico ristorante
           localStorage.removeItem(`stark_admin_session_${slug}`); 
-          // 2. Rimuove l'utente globale (così non rientra in automatico)
+          // 2. Rimuove l'utente globale
           localStorage.removeItem("user");
           // 3. Rimuove eventuali token God Mode
           localStorage.removeItem("admin_token");
           
-          // 4. Redirect alla pagina di Login (schermata nera)
+          // 4. Redirect alla pagina di Login
           navigate('/login'); 
       } 
   };
   
-  const handleAdminLogin = async (e) => {
-    e.preventDefault();
-    setLoadingLogin(true);
-    setLoginError(false);
-
-    try {
-        const res = await fetch(`${API_URL}/api/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: identifierInput, password: passwordInput })
-        });
-        
-        const data = await res.json();
-
-        if (data.success) {
-            if (data.user.slug !== slug) {
-                window.location.href = `/admin/${data.user.slug}`;
-                return;
-            }
-            setIsAuthorized(true);
-            // Salviamo anche l'utente globale per coerenza
-            localStorage.setItem("user", JSON.stringify(data.user));
-            localStorage.setItem(`stark_admin_session_${data.user.slug}`, "true");
-            window.location.reload();
-        } else {
-            setLoginError(true);
-        }
-    } catch (err) { alert("Errore connessione"); } 
-    finally { setLoadingLogin(false); }
-  };
-  
   const apriLink = (path) => window.open(path, '_blank');
 
+  // --- LOADING SCREEN ---
   if (loading) return <div style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', fontSize:'1.2rem', color:'#666'}}>🔄 Caricamento Admin...</div>;
 
-  // --- LOGIN SCREEN (Solo se non autorizzato) ---
+  // --- SECURITY CHECK (Se per caso il loading finisce ma non è autorizzato, non mostrare nulla o redirect) ---
   if (!isAuthorized) {
-    return (
-        <div style={{display:'flex', justifyContent:'center', alignItems:'center', minHeight:'100vh', background:'#1a1a1a', flexDirection:'column', padding: '20px'}}>
-            <div style={{background:'white', padding:'40px', borderRadius:'15px', width:'100%', maxWidth:'400px', textAlign:'center', boxShadow:'0 10px 25px rgba(0,0,0,0.5)'}}>
-                <div style={{fontSize:'3rem', marginBottom:'10px'}}>🕶️</div>
-                <h2 style={{color:'#333', margin:'0 0 10px 0'}}>Admin Panel</h2>
-                <p style={{color:'#666', marginBottom:'20px'}}>{user?.nome || "Accesso Riservato"}</p>
-                <form onSubmit={handleAdminLogin}>
-                    <input type="email" placeholder="Email Amministratore" value={identifierInput} onChange={e => setIdentifierInput(e.target.value)} required style={{width:'100%', padding:'15px', borderRadius:'8px', border: loginError ? '2px solid #e74c3c' : '1px solid #ddd', fontSize:'16px', boxSizing:'border-box', marginBottom:'10px', textAlign:'center'}} />
-                    <input type="password" placeholder="Password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} required style={{width:'100%', padding:'15px', borderRadius:'8px', border: loginError ? '2px solid #e74c3c' : '1px solid #ddd', fontSize:'16px', boxSizing:'border-box', marginBottom:'10px', textAlign:'center'}} />
-                    {loginError && <p style={{color:'#e74c3c', fontWeight:'bold', fontSize:'0.9rem'}}>Email o Password errati ⛔</p>}
-                    <button type="submit" disabled={loadingLogin} style={{width:'100%', padding:'15px', background:'#2c3e50', color:'white', border:'none', borderRadius:'8px', fontSize:'16px', fontWeight:'bold', cursor:'pointer', marginTop:'10px'}}>{loadingLogin ? "Verifica..." : "ACCEDI AL PANNELLO"}</button>
-                </form>
-                {/* Modifica anche qui per tornare al login invece che alla home */}
-                <button onClick={() => navigate('/login')} style={{marginTop:20, background:'none', border:'none', color:'#999', cursor:'pointer'}}>← Torna al Login</button>
-            </div>
-        </div>
-    );
+      // Questo stato teoricamente non si raggiunge grazie al redirect in useEffect, 
+      // ma per sicurezza restituiamo null o un div vuoto
+      return null;
   }
 
   // --- BLOCCO ABBONAMENTO SCADUTO ---
@@ -340,8 +303,8 @@ function Admin() {
             <AdminDashboard 
                 user={user} 
                 API_URL={API_URL} 
-                config={config}       // <--- NUOVO
-                setConfig={setConfig} // <--- NUOVO
+                config={config}       
+                setConfig={setConfig} 
             />
         )}
 
