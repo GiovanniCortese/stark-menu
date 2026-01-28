@@ -10,6 +10,18 @@ const http = require('http');
 // ✅ FIX: Aggiornato il percorso per puntare alla cartella 'utils'
 const { getNowItaly } = require('../utils/time'); 
 
+// ✅ DB boot: esegui migrazioni senza top-level await (CJS safe)
+(async function ensureRistorantiColumns() {
+  try {
+    await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS colore_footer_text VARCHAR(30)`);
+    await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS dimensione_footer INTEGER`);
+    await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS allineamento_footer VARCHAR(10)`);
+    console.log(`✅ [${getNowItaly()}] DB OK: colonne footer pronte`);
+  } catch (e) {
+    console.error(`❌ [${getNowItaly()}] DB MIGRATION ERROR:`, e.message);
+  }
+})();
+
 // ==========================================
 // 1. GESTIONE RISTORANTE (CONFIG & STYLE)
 // ==========================================
@@ -22,11 +34,6 @@ router.get('/api/ristorante/config/:id', async (req, res) => {
         else res.status(404).json({ error: "Not Found" }); 
     } catch (e) { res.status(500).json({ error: "Err" }); } 
 });
-
-await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS colore_footer_text VARCHAR(30)`);
-await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS dimensione_footer INTEGER`);
-await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS allineamento_footer VARCHAR(10)`);
-
 
 // UPDATE STYLE (Gestisce anche prezzo_coperto e nascondi_euro)
 router.put('/api/ristorante/style/:id', async (req, res) => { 
