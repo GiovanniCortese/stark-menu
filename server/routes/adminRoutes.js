@@ -704,4 +704,56 @@ router.get("/api/db-fix-emergency-columns", async (req, res) => {
   }
 });
 
+// ✅ DELETE RISTORANTE (SuperAdmin) + cleanup dati collegati
+router.delete('/api/super/ristoranti/:id', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ success: false, error: "ID non valido" });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // helper: cancella senza crash se tabella non esiste (o colonna diversa)
+    const safeDel = async (sql, params) => {
+      try {
+        await client.query(sql, params);
+      } catch (e) {
+        // 42P01 = undefined_table (Postgres)
+        if (e.code !== '42P01') throw e;
+      }
+    };
+
+    // 1) Dati “core”
+    await safeDel('DELETE FROM ordini WHERE ristorante_id = $1', [id]);
+    await safeDel('DELETE FROM prodotti WHERE ristorante_id = $1', [id]);
+    await safeDel('DELETE FROM categorie WHERE ristorante_id = $1', [id]);
+
+    // 2) Utenti collegati (visto che ora il login sta su tabella utenti)
+    await safeDel('DELETE FROM utenti WHERE ristorante_id = $1', [id]);
+
+    // 3) Moduli extra (se esistono nel DB)
+    await safeDel('DELETE FROM magazzino_prodotti WHERE ristorante_id = $1', [id]);
+    await safeDel('DELETE FROM haccp_merci WHERE ristorante_id = $1', [id]);
+    await safeDel('DELETE FROM haccp_temperature WHERE ristorante_id = $1', [id]);
+    await safeDel('DELETE FROM tavoli WHERE ristorante_id = $1', [id]);
+
+    // 4) Infine il ristorante
+    const del = await client.query('DELETE FROM ristoranti WHERE id = $1 RETURNING id', [id]);
+    if (del.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ success: false, error: "Ristorante non trovato" });
+    }
+
+    await client.query('COMMIT');
+    res.json({ success: true });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error("❌ Errore delete ristorante:", e);
+    res.status(500).json({ success: false, error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
+
 module.exports = router;
