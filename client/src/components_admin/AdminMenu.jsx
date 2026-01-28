@@ -1,4 +1,4 @@
-// client/src/components_admin/AdminMenu.jsx - FIXED SUB-CATEGORY ORDERING & NEW LANG MANAGEMENT
+// client/src/components_admin/AdminMenu.jsx
 import { useState, useRef } from 'react'; 
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import ProductRow from './ProductRow';
@@ -84,10 +84,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
   const [isScanningMenu, setIsScanningMenu] = useState(false);
   const menuScanRef = useRef(null);
-  
   const [traduzioniInput, setTraduzioniInput] = useState({});
-  // RIMOSSO: const [selectedLangs, setSelectedLangs] = useState(['en']); (Non serve più)
-
   const [editId, setEditId] = useState(null); 
   const [uploading, setUploading] = useState(false);
   const [importing, setImporting] = useState(false); 
@@ -97,18 +94,19 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
       return <div style={{padding:'40px', textAlign:'center', color:'#666'}}>🔄 Caricamento Menu...</div>;
   }
 
+  // --- LOGICA DI CONTROLLO STATO E MODULI ---
   const isAbbonamentoAttivo = config.account_attivo !== false; 
-  const isMasterBlock = config.cucina_super_active === false; 
+  const isModuloOrdiniAttivo = config.modulo_ordini_clienti !== false; 
   const isCucinaAperta = config.ordini_abilitati;
 
   let headerBg = isCucinaAperta ? 'linear-gradient(135deg, #2ecc71 0%, #27ae60 100%)' : 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)';
   let headerTitle = isCucinaAperta ? "✅ Servizio Attivo" : "🛑 Servizio Sospeso";
-  let headerDesc = isCucinaAperta ? "I clienti possono inviare ordini." : "Gli ordini sono bloccati.";
+  let headerDesc = isCucinaAperta ? "I clienti possono inviare ordini dal tavolo." : "Gli ordini sono attualmente bloccati.";
 
-  if (isMasterBlock) {
-      headerBg = 'linear-gradient(135deg, #8e44ad 0%, #c0392b 100%)'; 
-      headerTitle = "⛔ BLOCCATO DA SUPER ADMIN";
-      headerDesc = "L'amministrazione centrale ha disabilitato gli ordini per questo locale.";
+  if (!isModuloOrdiniAttivo) {
+      headerBg = 'linear-gradient(135deg, #7f8c8d 0%, #34495e 100%)'; 
+      headerTitle = "⚖️ MODULO ORDINI DISABILITATO";
+      headerDesc = "La funzione ordini è stata disattivata dal SuperAdmin o non è prevista nel piano.";
   }
 
   const handleSaveStyle = async () => {
@@ -120,15 +118,13 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
   const toggleCucina = async () => { 
       if (!isAbbonamentoAttivo) return alert("⛔ ABBONAMENTO SOSPESO."); 
-      if (isMasterBlock) return alert("⛔ CUCINA BLOCCATA DAL SUPER ADMIN."); 
+      if (!isModuloOrdiniAttivo) return alert("⛔ FUNZIONE DISABILITATA DAL SUPER ADMIN."); 
       const nuovoStatoCucina = !isCucinaAperta; 
       setConfig({...config, ordini_abilitati: nuovoStatoCucina}); 
       try {
           await fetch(`${API_URL}/api/ristorante/servizio/${user.id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ ordini_abilitati: nuovoStatoCucina }) }); 
       } catch (error) { alert("Errore connessione."); setConfig({...config, ordini_abilitati: !nuovoStatoCucina}); }
   };
-
-  // RIMOSSO: handleTranslateAll e toggleLang perché sostituiti dalla logica inline nel render
 
   const handleSalvaPiatto = async (e) => { 
       e.preventDefault(); 
@@ -238,120 +234,56 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
 
   const onDragEnd = async (result) => {
     if (!result.destination) return;
-
     const [destCat, destSub] = result.destination.droppableId.split("::");
     const piattoId = parseInt(result.draggableId);
-
     let nuovoMenu = [...menu];
     const piattoSpostato = nuovoMenu.find(p => p.id === piattoId);
     if (!piattoSpostato) return;
-
     nuovoMenu = nuovoMenu.filter(p => p.id !== piattoId);
-
-    const piattoAggiornato = { 
-        ...piattoSpostato, 
-        categoria: destCat, 
-        sottocategoria: destSub === "Generale" ? "" : destSub 
-    };
-
+    const piattoAggiornato = { ...piattoSpostato, categoria: destCat, sottocategoria: destSub === "Generale" ? "" : destSub };
     const prodottiDestinazione = nuovoMenu
         .filter(p => p.categoria === destCat && (p.sottocategoria || "Generale") === destSub)
         .sort((a,b) => (a.posizione||0) - (b.posizione||0)); 
-    
     prodottiDestinazione.splice(result.destination.index, 0, piattoAggiornato);
-
     const altriPiatti = nuovoMenu.filter(p => !(p.categoria === destCat && (p.sottocategoria || "Generale") === destSub));
-    
-    const piattiDestinazioneFinali = prodottiDestinazione.map((p, idx) => ({ 
-        id: p.id, 
-        posizione: idx,
-        categoria: p.categoria,
-        sottocategoria: p.sottocategoria 
-    }));
-
+    const piattiDestinazioneFinali = prodottiDestinazione.map((p, idx) => ({ id: p.id, posizione: idx, categoria: p.categoria, sottocategoria: p.sottocategoria }));
     setMenu([...altriPiatti, ...piattiDestinazioneFinali]);
-
-    await fetch(`${API_URL}/api/prodotti/riordina`, { 
-        method: 'PUT', 
-        headers:{'Content-Type':'application/json'}, 
-        body: JSON.stringify({ 
-            prodotti: piattiDestinazioneFinali.map(p => ({ 
-                id: p.id, 
-                posizione: p.posizione, 
-                categoria: p.categoria,
-                sottocategoria: p.sottocategoria 
-            })) 
-        }) 
-    });
+    await fetch(`${API_URL}/api/prodotti/riordina`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prodotti: piattiDestinazioneFinali }) });
   };
 
-  // --- FUNZIONE: SPOSTA SOTTOCATEGORIA INTERA ---
   const spostaSottocategoria = async (catNome, subKey, direzione) => {
-      // 1. Trova tutti i prodotti di questa Categoria
       const prodottiCat = menu.filter(p => p.categoria === catNome);
-      
-      // 2. Raggruppa per sottocategoria
       const groups = prodottiCat.reduce((acc, p) => {
           const s = p.sottocategoria || "Generale";
           if (!acc[s]) acc[s] = [];
           acc[s].push(p);
           return acc;
       }, {});
-
-      // 3. Ordina i gruppi in base alla posizione minima del PRIMO prodotto del gruppo
       let groupKeys = Object.keys(groups).sort((a,b) => {
           const minPosA = Math.min(...groups[a].map(p => p.posizione || 0));
           const minPosB = Math.min(...groups[b].map(p => p.posizione || 0));
           return minPosA - minPosB;
       });
-
-      // 4. Trova indice da spostare
       const idx = groupKeys.indexOf(subKey);
       if (idx === -1) return;
-      
-      // 5. Calcola nuovo indice e scambia
       const nuovoIdx = idx + direzione;
-      if (nuovoIdx < 0 || nuovoIdx >= groupKeys.length) return; // Fuori limiti
-
-      // Swap nell'array delle chiavi
+      if (nuovoIdx < 0 || nuovoIdx >= groupKeys.length) return; 
       [groupKeys[idx], groupKeys[nuovoIdx]] = [groupKeys[nuovoIdx], groupKeys[idx]];
-
-      // 6. Ricostruisci la lista prodotti PIATTA riassegnando le posizioni
       let nuoviProdottiDaSalvare = [];
       let globalCounter = 0;
-
       groupKeys.forEach(key => {
           const prods = groups[key].sort((a,b) => (a.posizione||0) - (b.posizione||0)); 
-          prods.forEach(p => {
-              nuoviProdottiDaSalvare.push({
-                  ...p,
-                  posizione: globalCounter++ // Nuova posizione sequenziale
-              });
-          });
+          prods.forEach(p => { nuoviProdottiDaSalvare.push({ ...p, posizione: globalCounter++ }); });
       });
-
-      // 7. Aggiorna Stato Locale + Backend
       const altriProdotti = menu.filter(p => p.categoria !== catNome);
       setMenu([...altriProdotti, ...nuoviProdottiDaSalvare]);
-
-      await fetch(`${API_URL}/api/prodotti/riordina`, { 
-          method: 'PUT', 
-          headers:{'Content-Type':'application/json'}, 
-          body: JSON.stringify({ 
-              prodotti: nuoviProdottiDaSalvare.map(p => ({ 
-                  id: p.id, 
-                  posizione: p.posizione, 
-                  categoria: p.categoria, 
-                  sottocategoria: p.sottocategoria 
-              })) 
-          }) 
-      });
+      await fetch(`${API_URL}/api/prodotti/riordina`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prodotti: nuoviProdottiDaSalvare }) });
   };
 
   const containerStyle = { width: '100%', margin: '0 auto', fontFamily: "'Inter', sans-serif", color: '#333', boxSizing: 'border-box' };
   const cardStyle = { background: 'white', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', padding: '25px', marginBottom: '30px', border: '1px solid #f0f0f0', boxSizing: 'border-box' };
-  const inputStyle = { width: '100%', padding: '12px 15px', borderRadius: '8px', border: '1px solid #e0e0e0', fontSize: '14px', background: '#f9f9f9', transition: 'all 0.3s', boxSizing: 'border-box' };
-  const labelStyle = { fontSize: '12px', fontWeight: '600', color: '#666', marginBottom: '8px', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' };
+  const inputStyle = { width: '100%', padding: '12px 15px', borderRadius: '8px', border: '1px solid #e0e0e0', fontSize: '14px', background: '#f9f9f9', boxSizing: 'border-box' };
+  const labelStyle = { fontSize: '12px', fontWeight: '600', color: '#666', marginBottom: '8px', display: 'block', textTransform: 'uppercase' };
 
   return (
     <div style={containerStyle}>
@@ -360,43 +292,38 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
         {(importing || isScanningMenu || translating) && (
             <div style={{ position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(255,255,255,0.9)', zIndex:9999, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
                 <div style={{fontSize:'50px'}}>{translating ? "🌍" : "🤖"}</div>
-                <h2 style={{color: translating ? '#16a085' : '#3498db'}}>{translating ? "Traduzione Intelligente in corso..." : (isScanningMenu ? "Analisi Menu con AI..." : "Sto elaborando il file...")}</h2>
-                <p>{translating ? "JARVIS sta traducendo il menu, potrebbe richiedere fino a 5 Minuti." : "Potrebbe richiedere fino a 5 Minuti."}</p>
+                <h2 style={{color: translating ? '#16a085' : '#3498db'}}>{translating ? "Traduzione Intelligente..." : "Elaborazione in corso..."}</h2>
             </div>
         )}
 
+        {/* HEADER STATO ORDINI */}
         <div style={{...cardStyle, display:'flex', justifyContent:'space-between', alignItems:'center', background: headerBg, color:'white', border:'none', flexWrap:'wrap', gap:'20px'}}>
             <div><h2 style={{margin:0, fontSize:'24px'}}>{headerTitle}</h2><p style={{margin:0, opacity:0.9, fontSize:'14px'}}>{headerDesc}</p></div>
-            {isAbbonamentoAttivo && !isMasterBlock && (
-                <button onClick={toggleCucina} style={{background:'white', color: isCucinaAperta ? '#27ae60' : '#c0392b', border:'none', padding:'12px 25px', borderRadius:'30px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 5px 15px rgba(0,0,0,0.2)', whiteSpace:'nowrap'}}>
+            {isAbbonamentoAttivo && isModuloOrdiniAttivo && (
+                <button onClick={toggleCucina} style={{background:'white', color: isCucinaAperta ? '#27ae60' : '#c0392b', border:'none', padding:'12px 25px', borderRadius:'30px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 5px 15px rgba(0,0,0,0.2)'}}>
                     {isCucinaAperta ? "CHIUDI ORDINI CLIENTE" : "APRI ORDINI CLIENTE"}
                 </button>
             )}
+            {!isModuloOrdiniAttivo && (
+                <div style={{background:'rgba(255,255,255,0.2)', padding:'10px 15px', borderRadius:'8px', fontSize:'12px', fontWeight:'bold'}}>SOLO CONSULTAZIONE</div>
+            )}
         </div>
 
-        {/* --- PANNEL IMPORT/EXPORT --- */}
+        {/* STRUMENTI IMPORT/SCAN */}
         <div style={{...cardStyle, display:'flex', justifyContent:'space-between', alignItems:'center', padding:'15px 25px', background:'#f8f9fa', flexWrap:'wrap', gap:'15px'}}>
-            <div style={{display:'flex', alignItems:'center', gap:'15px'}}><span style={{fontSize:'24px'}}>📊</span><div><h4 style={{margin:0, color:'#2c3e50'}}>Import/Export Menu</h4><p style={{margin:0, fontSize:'12px', color:'#7f8c8d'}}>Gestisci il tuo menu massivamente.</p></div></div>
+            <div style={{display:'flex', alignItems:'center', gap:'15px'}}><span style={{fontSize:'24px'}}>📊</span><div><h4 style={{margin:0, color:'#2c3e50'}}>Import/Export</h4><p style={{margin:0, fontSize:'12px', color:'#7f8c8d'}}>Gestione massiva menu.</p></div></div>
             <div style={{display:'flex', gap:'10px', flexWrap:'wrap'}}>
-                <button onClick={() => window.open(`${API_URL}/api/export-excel/${user.id}`, '_blank')} style={{background:'white', border:'1px solid #ddd', padding:'8px 15px', borderRadius:'6px', cursor:'pointer', fontWeight:'600', color:'#333', whiteSpace:'nowrap'}}>📤 Scarica Menu</button>
-                <div style={{position:'relative'}}><button style={{background:'#3498db', color:'white', border:'none', padding:'8px 15px', borderRadius:'6px', cursor:'pointer', fontWeight:'600', whiteSpace:'nowrap'}}>📥 Carica Excel</button><input type="file" accept=".xlsx, .xls" onChange={handleImportExcel} style={{position:'absolute', inset:0, opacity:0, cursor:'pointer'}} /></div>
-                <div style={{position:'relative'}}><button onClick={() => menuScanRef.current.click()} style={{background:'#8e44ad', color:'white', padding:'8px 15px', borderRadius:'6px', border:'none', cursor:'pointer', fontWeight:'600', whiteSpace:'nowrap'}}>📸 SCAN MENU CARTACEO</button><input type="file" ref={menuScanRef} accept="image/*,application/pdf" onChange={handleMenuScan} style={{ display: 'none' }} /></div>         
+                <button onClick={() => window.open(`${API_URL}/api/export-excel/${user.id}`, '_blank')} style={{background:'white', border:'1px solid #ddd', padding:'8px 15px', borderRadius:'6px', cursor:'pointer', fontWeight:'600'}}>📤 Scarica</button>
+                <div style={{position:'relative'}}><button style={{background:'#3498db', color:'white', border:'none', padding:'8px 15px', borderRadius:'6px', cursor:'pointer', fontWeight:'600'}}>📥 Excel</button><input type="file" accept=".xlsx, .xls" onChange={handleImportExcel} style={{position:'absolute', inset:0, opacity:0, cursor:'pointer'}} /></div>
+                <div style={{position:'relative'}}><button onClick={() => menuScanRef.current.click()} style={{background:'#8e44ad', color:'white', padding:'8px 15px', borderRadius:'6px', border:'none', cursor:'pointer', fontWeight:'600'}}>📸 AI SCAN</button><input type="file" ref={menuScanRef} accept="image/*,application/pdf" onChange={handleMenuScan} style={{ display: 'none' }} /></div>         
             </div>
         </div>
 
-        {/* --- PANNEL GESTIONE LINGUE (NUOVO LAYOUT) --- */}
-        <div style={{...cardStyle, padding:'25px', background:'#e8f8f5', border:'1px solid #1abc9c'}}>
-            <div style={{display:'flex', alignItems:'center', gap:'15px', marginBottom:'20px'}}>
-                <span style={{fontSize:'28px'}}>🌍</span>
-                <div>
-                    <h4 style={{margin:0, color:'#16a085', fontSize:'18px'}}>Gestione Lingue Internazionali</h4>
-                    <p style={{margin:0, fontSize:'13px', color:'#7f8c8d'}}>Attiva o disattiva le lingue del tuo menu digitale.</p>
-                </div>
-            </div>
-
+        {/* GESTIONE LINGUE */}
+        <div style={{...cardStyle, background:'#e8f8f5', border:'1px solid #1abc9c'}}>
+            <div style={{display:'flex', alignItems:'center', gap:'15px', marginBottom:'20px'}}><span style={{fontSize:'28px'}}>🌍</span><h4 style={{margin:0, color:'#16a085'}}>Lingue Internazionali</h4></div>
             <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(220px, 1fr))', gap:'15px'}}>
                 {Object.entries(LANGUAGES_MAP).map(([code, label]) => {
-                    // 1. Verifichiamo se la lingua è ATTIVA analizzando il menu locale
                     let isAttiva = false;
                     if (menu) {
                         for (let p of menu) {
@@ -406,172 +333,64 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                              } catch(e){}
                         }
                     }
-
                     return (
-                        <div key={code} style={{
-                            background:'white', 
-                            borderRadius:'12px', 
-                            padding:'15px', 
-                            border: isAttiva ? '2px solid #2ecc71' : '1px solid #ddd',
-                            boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
-                            display:'flex', flexDirection:'column', justifyContent:'space-between', gap:'10px'
-                        }}>
+                        <div key={code} style={{background:'white', borderRadius:'12px', padding:'15px', border: isAttiva ? '2px solid #2ecc71' : '1px solid #ddd', display:'flex', flexDirection:'column', gap:'10px'}}>
                             <div style={{display:'flex', alignItems:'center', justifyContent:'space-between'}}>
-                                <span style={{fontWeight:'bold', color:'#2c3e50', fontSize:'15px'}}>{label}</span>
-                                {isAttiva ? <span style={{fontSize:'10px', background:'#2ecc71', color:'white', padding:'3px 8px', borderRadius:'10px', fontWeight:'bold'}}>ATTIVA</span> 
-                                          : <span style={{fontSize:'10px', background:'#bdc3c7', color:'white', padding:'3px 8px', borderRadius:'10px', fontWeight:'bold'}}>OFF</span>}
+                                <span style={{fontWeight:'bold', color:'#2c3e50'}}>{label}</span>
+                                <span style={{fontSize:'10px', background: isAttiva ? '#2ecc71' : '#bdc3c7', color:'white', padding:'3px 8px', borderRadius:'10px'}}>{isAttiva ? 'ATTIVA' : 'OFF'}</span>
                             </div>
-                            
-                            <div style={{display:'flex', gap:'5px', marginTop:'5px'}}>
-                                {/* PULSANTE DISATTIVA */}
-                                {isAttiva && (
-                                    <button 
-                                        onClick={async () => {
-                                            if(!confirm(`Vuoi disattivare il ${label}?\nLa bandiera verrà rimossa dal menu.`)) return;
-                                            try {
-                                                const res = await fetch(`${API_URL}/api/menu/remove-language`, {
-                                                    method: 'POST', headers: {'Content-Type': 'application/json'},
-                                                    body: JSON.stringify({ ristorante_id: user.id, lang: code })
-                                                });
-                                                if(res.ok) { alert("Lingua disattivata!"); ricaricaDati(); }
-                                            } catch(e) { alert("Errore"); }
-                                        }}
-                                        style={{flex:1, background:'#fff', border:'1px solid #e74c3c', color:'#e74c3c', borderRadius:'6px', padding:'8px', fontSize:'12px', fontWeight:'bold', cursor:'pointer'}}
-                                    >
-                                        Disattiva
-                                    </button>
-                                )}
-
-                                {/* PULSANTE ATTIVA / AGGIORNA */}
-                                <button 
-                                    onClick={async () => {
-                                        const action = isAttiva ? "Aggiornare" : "Attivare";
-                                        if(!confirm(`Vuoi ${action} la traduzione in ${label} con l'AI?\nPotrebbe richiedere qualche minuto.`)) return;
-                                        
-                                        setTranslating(true);
-                                        try {
-                                            const res = await fetch(`${API_URL}/api/menu/translate-all`, {
-                                                method: 'POST', headers: {'Content-Type': 'application/json'},
-                                                body: JSON.stringify({ ristorante_id: user.id, languages: [code] }) // Traduce solo QUESTA lingua
-                                            });
-                                            const data = await res.json();
-                                            if(data.success) { alert(`✅ ${label} Attivato!`); ricaricaDati(); }
-                                            else { alert("Errore AI: " + data.error); }
-                                        } catch(e) { alert("Errore rete"); } finally { setTranslating(false); }
-                                    }}
-                                    disabled={translating}
-                                    style={{
-                                        flex:1, 
-                                        background: isAttiva ? '#3498db' : '#2ecc71', 
-                                        border:'none', 
-                                        color:'white', 
-                                        borderRadius:'6px', 
-                                        padding:'8px', 
-                                        fontSize:'12px', 
-                                        fontWeight:'bold', 
-                                        cursor: translating ? 'wait' : 'pointer',
-                                        opacity: translating ? 0.7 : 1
-                                    }}
-                                >
-                                    {translating ? "⏳..." : (isAttiva ? "🔄 Aggiorna" : "✨ Attiva")}
-                                </button>
+                            <div style={{display:'flex', gap:'5px'}}>
+                                {isAttiva && <button onClick={async () => { if(confirm(`Rimuovere ${label}?`)) { await fetch(`${API_URL}/api/menu/remove-language`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ristorante_id:user.id, lang:code})}); ricaricaDati(); }}} style={{flex:1, background:'#fff', border:'1px solid #e74c3c', color:'#e74c3c', borderRadius:'6px', padding:'8px', fontSize:'12px', cursor:'pointer'}}>Disattiva</button>}
+                                <button onClick={async () => { setTranslating(true); try { const res = await fetch(`${API_URL}/api/menu/translate-all`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ristorante_id:user.id, languages:[code]})}); const data = await res.json(); if(data.success) { alert(`${label} Pronto!`); ricaricaDati(); } } finally { setTranslating(false); } }} style={{flex:1, background: isAttiva ? '#3498db' : '#2ecc71', border:'none', color:'white', borderRadius:'6px', padding:'8px', fontSize:'12px', cursor:'pointer'}}>{isAttiva ? "🔄 Aggiorna" : "✨ Attiva"}</button>
                             </div>
                         </div>
                     );
                 })}
             </div>
-            
-            {translating && <div style={{marginTop:'15px', textAlign:'center', color:'#16a085', fontSize:'13px', fontWeight:'bold'}}>🤖 L'Intelligenza Artificiale sta traducendo il menu... attendi...</div>}
         </div>
 
+        {/* AGGIUNTA/MODIFICA PIATTO */}
         <div style={{opacity: isAbbonamentoAttivo ? 1 : 0.5, pointerEvents: isAbbonamentoAttivo ? 'auto' : 'none'}}>
             <div style={{...cardStyle, borderLeft: editId ? '5px solid #3498db' : '5px solid #2ecc71'}}>
-                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px', flexWrap:'wrap', gap:'10px'}}>
-                      <h3 style={{margin:0, color:'#2c3e50'}}>{editId ? "✏️ Modifica Piatto" : "✨ Aggiungi Nuovo Piatto"}</h3>
-                      {editId && <button onClick={annullaModifica} style={{background:'#eee', color:'#333', border:'none', padding:'5px 15px', borderRadius:'20px', cursor:'pointer', fontWeight:'bold'}}>Annulla Modifica</button>}
-                  </div>
-
+                 <h3 style={{marginBottom:'20px'}}>{editId ? "✏️ Modifica Piatto" : "✨ Nuovo Piatto"}</h3>
                  <form onSubmit={handleSalvaPiatto} style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '25px'}}>
                       <div style={{display:'flex', flexDirection:'column', gap:'15px'}}>
-                          <div>
-                              <label style={labelStyle}>Nome del Piatto *</label>
-                              <input placeholder="Es. Spaghetti alle Vongole" value={nuovoPiatto.nome} onChange={e => setNuovoPiatto({...nuovoPiatto, nome: e.target.value})} required style={inputStyle} />
+                          <input placeholder="Nome del Piatto *" value={nuovoPiatto.nome} onChange={e => setNuovoPiatto({...nuovoPiatto, nome: e.target.value})} required style={inputStyle} />
+                          <div style={{display:'flex', gap:'10px'}}>
+                              <select value={nuovoPiatto.categoria} onChange={e => setNuovoPiatto({...nuovoPiatto, categoria: e.target.value})} style={{...inputStyle, flex:1}}>
+                                  {categorie && categorie.map(cat => <option key={cat.id} value={cat.nome}>{cat.nome}</option>)}
+                              </select>
+                              <input placeholder="Sottocategoria" value={nuovoPiatto.sottocategoria || ''} onChange={e => setNuovoPiatto({...nuovoPiatto, sottocategoria: e.target.value})} style={{...inputStyle, flex:1}} />
                           </div>
-                          
-                          <div style={{display:'flex', gap:'15px', flexWrap:'wrap'}}>
-                              <div style={{flex:1, minWidth:'140px'}}>
-                                  <label style={labelStyle}>Categoria</label>
-                                  <select value={nuovoPiatto.categoria} onChange={e => setNuovoPiatto({...nuovoPiatto, categoria: e.target.value})} style={inputStyle}>
-                                      {categorie && categorie.map(cat => <option key={cat.id} value={cat.nome}>{cat.nome}</option>)}
-                                  </select>
-                              </div>
-                              
-                              <div style={{flex:1, minWidth:'140px'}}>
-                                  <label style={labelStyle}>Sottocategoria</label>
-                                  <input 
-                                    placeholder="Es. Bianchi, Rossi, Terra..." 
-                                    value={nuovoPiatto.sottocategoria || ''} 
-                                    onChange={e => setNuovoPiatto({...nuovoPiatto, sottocategoria: e.target.value})} 
-                                    style={inputStyle} 
-                                  />
-                              </div>
-
-                              <div style={{flex:0.7, minWidth:'100px'}}>
-                                  <label style={labelStyle}>Prezzo</label>
-                                  <input type="number" placeholder="0.00" value={nuovoPiatto.prezzo} onChange={e => setNuovoPiatto({...nuovoPiatto, prezzo: e.target.value})} style={inputStyle} step="0.10" required />
-                              </div>
+                          <div style={{display:'flex', gap:'10px'}}>
+                              <input type="number" placeholder="Prezzo (€)" value={nuovoPiatto.prezzo} onChange={e => setNuovoPiatto({...nuovoPiatto, prezzo: e.target.value})} style={{...inputStyle, flex:1}} step="0.10" required />
+                              <input type="text" placeholder="Unità (es: /hg)" value={nuovoPiatto.unita_misura || ''} onChange={e => setNuovoPiatto({...nuovoPiatto, unita_misura: e.target.value})} style={{...inputStyle, flex:1}} />
                           </div>
-
-                          <div style={{display:'flex', gap:'15px', flexWrap:'wrap'}}>
-                              <div style={{flex:1, minWidth:'100px'}}>
-                                    <label style={labelStyle}>Unità</label>
-                                    <input type="text" placeholder="/hg" value={nuovoPiatto.unita_misura || ''} onChange={e => setNuovoPiatto({...nuovoPiatto, unita_misura: e.target.value})} style={inputStyle} />
-                                </div>
-                                <div style={{flex:1, minWidth:'100px'}}>
-                                    <label style={labelStyle}>Minimo</label>
-                                    <input type="number" placeholder="1" value={nuovoPiatto.qta_minima || 1} onChange={e => setNuovoPiatto({...nuovoPiatto, qta_minima: e.target.value})} style={inputStyle} min="0.1" step="0.1" />
-                                </div>
-                          </div>
-
-                          <div><label style={labelStyle}>Descrizione</label><textarea placeholder="Descrivi il piatto..." value={nuovoPiatto.descrizione} onChange={e => setNuovoPiatto({...nuovoPiatto, descrizione: e.target.value})} style={{...inputStyle, minHeight:'80px', resize:'vertical'}}/></div>
-                          <div>
-                                <label style={labelStyle}>📷 Foto Piatto</label>
-                                <div style={{background: '#f8f9fa', border: '2px dashed #ddd', borderRadius: '8px', padding: '15px', textAlign: 'center', cursor: 'pointer', position:'relative', boxSizing:'border-box'}}>
-                                    <input type="file" onChange={handleFileChange} style={{position:'absolute', inset:0, opacity:0, cursor:'pointer'}} />
-                                    {uploading ? <span style={{color:'#3498db'}}>⏳ Caricamento...</span> : (nuovoPiatto.immagine_url ? <div style={{display:'flex', alignItems:'center', justifyContent:'center', gap:'10px'}}><img src={nuovoPiatto.immagine_url} style={{width:40, height:40, borderRadius:5, objectFit:'cover'}} /><span style={{color:'#27ae60', fontWeight:'bold'}}>Foto Caricata!</span></div> : <span style={{color:'#888'}}>Trascina qui o clicca per caricare</span>)}
-                                </div>
+                          <textarea placeholder="Descrizione..." value={nuovoPiatto.descrizione} onChange={e => setNuovoPiatto({...nuovoPiatto, descrizione: e.target.value})} style={{...inputStyle, minHeight:'80px'}}/>
+                          <div style={{background:'#f8f9fa', border:'2px dashed #ddd', padding:'10px', textAlign:'center', position:'relative'}}>
+                                <input type="file" onChange={handleFileChange} style={{position:'absolute', inset:0, opacity:0}} />
+                                {uploading ? "⏳..." : (nuovoPiatto.immagine_url ? "✅ Foto Caricata" : "📸 Clicca per Foto")}
                           </div>
                       </div>
-
                       <div style={{display:'flex', flexDirection:'column', gap:'15px'}}>
-                          <div style={{background:'#fffcf0', padding:'15px', borderRadius:'8px', border:'1px solid #f9e79f', boxSizing:'border-box'}}>
-                              <label style={{...labelStyle, color:'#d4ac0d'}}>🧂 Varianti & Ingredienti</label>
-                              <input placeholder="Ingredienti Base (es: Pomodoro, Mozzarella)" value={nuovoPiatto.ingredienti_base || ""} onChange={e => setNuovoPiatto({...nuovoPiatto, ingredienti_base: e.target.value})} style={{...inputStyle, marginBottom:'10px', background:'white'}} />
-                              <textarea placeholder="Aggiunte Extra (es: Bufala:2.00, Salame:1.50)" value={nuovoPiatto.varianti_str || ""} onChange={e => setNuovoPiatto({...nuovoPiatto, varianti_str: e.target.value})} style={{...inputStyle, minHeight:'60px', background:'white'}} />
+                          <div style={{background:'#fffcf0', padding:'10px', borderRadius:'8px', border:'1px solid #f9e79f'}}>
+                              <input placeholder="Ingredienti Base" value={nuovoPiatto.ingredienti_base || ""} onChange={e => setNuovoPiatto({...nuovoPiatto, ingredienti_base: e.target.value})} style={{...inputStyle, marginBottom:'10px'}} />
+                              <textarea placeholder="Varianti (es: Bufala:2.00)" value={nuovoPiatto.varianti_str || ""} onChange={e => setNuovoPiatto({...nuovoPiatto, varianti_str: e.target.value})} style={{...inputStyle, minHeight:'60px'}} />
                           </div>
-
-                          <div style={{background:'#fcfcfc', padding:'15px', borderRadius:'8px', border:'1px solid #eee', boxSizing:'border-box'}}>
-                              <label style={labelStyle}>⚠️ Allergeni</label>
-                              <div style={{display:'flex', flexWrap:'wrap', gap:'8px'}}>
-                                  {LISTA_ALLERGENI.map(all => {
-                                      const currentAllergeni = parseAllergeniSicuro(nuovoPiatto.allergeni);
-                                      const isSelected = currentAllergeni.includes(all);
-                                      return (
-                                          <div key={all} 
-                                              onClick={() => {if (isSelected) setNuovoPiatto({...nuovoPiatto, allergeni: currentAllergeni.filter(x => x !== all)}); else setNuovoPiatto({...nuovoPiatto, allergeni: [...currentAllergeni, all]});}}
-                                              style={{padding:'6px 12px', borderRadius:'20px', fontSize:'11px', cursor:'pointer', fontWeight:'bold', background: isSelected ? '#ffebee' : 'white', color: isSelected ? '#c0392b' : '#555', border: isSelected ? '1px solid #e74c3c' : '1px solid #ddd', transition: 'all 0.2s', boxSizing: 'border-box'}}>
-                                              {isSelected ? '✅ ' : ''}{all}
-                                          </div>
-                                      )
-                                  })}
-                              </div>
+                          <div style={{display:'flex', flexWrap:'wrap', gap:'5px'}}>
+                                {LISTA_ALLERGENI.map(all => {
+                                    const currentAll = parseAllergeniSicuro(nuovoPiatto.allergeni);
+                                    const sel = currentAll.includes(all);
+                                    return <div key={all} onClick={() => setNuovoPiatto({...nuovoPiatto, allergeni: sel ? currentAll.filter(x => x!==all) : [...currentAll, all]})} style={{padding:'5px 10px', borderRadius:'15px', fontSize:'10px', cursor:'pointer', background: sel ? '#ffebee' : '#fff', border: sel ? '1px solid #e74c3c' : '1px solid #ddd'}}>{all}</div>
+                                })}
                           </div>
-                          
-                          <button type="submit" style={{marginTop:'auto', background: editId ? '#3498db' : '#2ecc71', color:'white', padding:'15px', border:'none', borderRadius:'8px', fontSize:'16px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 4px 10px rgba(0,0,0,0.1)'}}>{editId ? "💾 AGGIORNA MODIFICHE" : "➕ SALVA PIATTO"}</button>
+                          <button type="submit" style={{marginTop:'auto', background: editId ? '#3498db' : '#2ecc71', color:'white', padding:'15px', border:'none', borderRadius:'8px', fontWeight:'bold', cursor:'pointer'}}>{editId ? "💾 AGGIORNA" : "➕ AGGIUNGI AL MENU"}</button>
+                          {editId && <button onClick={annullaModifica} style={{background:'#eee', border:'none', padding:'5px', cursor:'pointer'}}>Annulla</button>}
                       </div>
-                  </form>
+                 </form>
             </div>
 
+            {/* LISTA MENU DRAG & DROP */}
             <DragDropContext onDragEnd={onDragEnd}>
                 {categorie && categorie.map(cat => {
                     const piattiCat = menu.filter(p => p.categoria === cat.nome);
@@ -581,95 +400,35 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
                         acc[sub].push(p);
                         return acc;
                     }, {});
-
-                    // ORDINA I GRUPPI in base alla posizione del PRIMO prodotto (ordine visuale)
                     const sortedKeys = Object.keys(groups).sort((a,b) => {
                         const minPosA = Math.min(...groups[a].map(p => p.posizione || 0));
                         const minPosB = Math.min(...groups[b].map(p => p.posizione || 0));
                         return minPosA - minPosB;
                     });
-
-                    // Se non ci sono gruppi, forza "Generale" per permettere drop
                     if (sortedKeys.length === 0) sortedKeys.push("Generale");
 
                     return (
                         <div key={cat.id} style={{marginBottom: '40px'}}>
-                            <h3 style={{display:'flex', alignItems:'center', gap:'10px', color:'#2c3e50', borderBottom:'2px solid #eee', paddingBottom:'10px', marginBottom:'20px'}}>
-                                <span style={{background:'#eee', borderRadius:'50%', width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'14px'}}>📂</span> 
-                                {cat.nome}
-                            </h3>
-                            
+                            <h3 style={{borderBottom:'2px solid #eee', paddingBottom:'10px'}}>{cat.nome}</h3>
                             {sortedKeys.map(subKey => {
-                                const products = groups[subKey] || [];
-                                // Ordina prodotti internamente
-                                products.sort((a, b) => (a.posizione || 0) - (b.posizione || 0));
-
+                                const products = (groups[subKey] || []).sort((a,b) => (a.posizione||0) - (b.posizione||0));
                                 return (
                                     <div key={subKey} style={{marginBottom: '15px', marginLeft: '10px'}}>
                                         {subKey !== "Generale" && (
-                                            <div style={{display:'flex', alignItems:'center', gap:'10px', marginBottom:'10px'}}>
-                                                <h4 style={{fontSize:'14px', color:'#7f8c8d', margin:0, textTransform:'uppercase', letterSpacing:'1px'}}>
-                                                    ↳ {subKey}
-                                                </h4>
-                                                
-                                                {/* PULSANTI SPOSTA SOTTOCATEGORIA */}
-                                                <div style={{display:'flex', gap:'2px'}}>
-                                                    <button 
-                                                        onClick={() => spostaSottocategoria(cat.nome, subKey, -1)} 
-                                                        style={{fontSize:'10px', padding:'2px 6px', cursor:'pointer', border:'1px solid #ddd', background:'white', borderRadius:'4px'}}
-                                                        title="Sposta su"
-                                                    >
-                                                        ⬆️
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => spostaSottocategoria(cat.nome, subKey, 1)} 
-                                                        style={{fontSize:'10px', padding:'2px 6px', cursor:'pointer', border:'1px solid #ddd', background:'white', borderRadius:'4px'}}
-                                                        title="Sposta giù"
-                                                    >
-                                                        ⬇️
-                                                    </button>
-                                                </div>
+                                            <div style={{display:'flex', gap:'10px', alignItems:'center', marginBottom:'10px'}}>
+                                                <span style={{fontSize:'12px', color:'#7f8c8d'}}>↳ {subKey}</span>
+                                                <button onClick={() => spostaSottocategoria(cat.nome, subKey, -1)} style={{border:'none', background:'none', cursor:'pointer'}}>⬆️</button>
+                                                <button onClick={() => spostaSottocategoria(cat.nome, subKey, 1)} style={{border:'none', background:'none', cursor:'pointer'}}>⬇️</button>
                                             </div>
                                         )}
-
                                         <Droppable droppableId={`${cat.nome}::${subKey}`}>
                                             {(provided) => (
-                                                <div 
-                                                    ref={provided.innerRef} 
-                                                    {...provided.droppableProps} 
-                                                    style={{
-                                                        paddingBottom: products.length === 0 ? '40px' : '10px', 
-                                                        background: products.length === 0 ? 'rgba(0,0,0,0.02)' : 'transparent',
-                                                        borderRadius: '8px',
-                                                        border: products.length === 0 ? '1px dashed #ccc' : 'none'
-                                                    }}
-                                                >
-                                                    {products.length === 0 && <div style={{padding:'10px', fontSize:'12px', color:'#aaa', textAlign:'center'}}>Trascina qui per spostare in "{subKey}"</div>}
-                                                    
-                                                    {products.map((prodotto, index) => (
-                                                        <Draggable 
-                                                            key={String(prodotto.id)} 
-                                                            draggableId={String(prodotto.id)} 
-                                                            index={index}
-                                                        >
-                                                            {(provided, snapshot) => (
-                                                                <div
-                                                                    ref={provided.innerRef}
-                                                                    {...provided.draggableProps}
-                                                                    {...provided.dragHandleProps}
-                                                                    style={{
-                                                                        ...provided.draggableProps.style,
-                                                                        marginBottom: '8px',
-                                                                        userSelect: 'none',
-                                                                        transform: provided.draggableProps.style?.transform,
-                                                                    }}
-                                                                >
-                                                                    <ProductRow 
-                                                                        prodotto={prodotto} 
-                                                                        avviaModifica={avviaModifica} 
-                                                                        eliminaProdotto={cancellaPiatto} 
-                                                                        isDragging={snapshot.isDragging} 
-                                                                    />
+                                                <div ref={provided.innerRef} {...provided.droppableProps} style={{minHeight:'20px'}}>
+                                                    {products.map((p, index) => (
+                                                        <Draggable key={String(p.id)} draggableId={String(p.id)} index={index}>
+                                                            {(pvd, snp) => (
+                                                                <div ref={pvd.innerRef} {...pvd.draggableProps} {...pvd.dragHandleProps} style={{...pvd.draggableProps.style, marginBottom:'5px'}}>
+                                                                    <ProductRow prodotto={p} avviaModifica={avviaModifica} eliminaProdotto={cancellaPiatto} isDragging={snp.isDragging} />
                                                                 </div>
                                                             )}
                                                         </Draggable>
@@ -687,34 +446,29 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
             </DragDropContext>
         </div>
 
-    <div style={{ ...cardStyle, borderLeft: '5px solid #8e44ad' }}>
-    <h3 style={{ marginBottom: '25px', color: '#2c3e50' }}>⚖️ Configurazione Footer & Coperto</h3>
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', alignItems:'start' }}>
-        <div style={{display:'flex', flexDirection:'column', gap:'20px'}}>
-            <div style={{padding:'15px', background:'#fdfefe', borderRadius:'8px', border:'1px solid #bbdefb'}}>
-                <label style={labelStyle}>💰 Costo Coperto (€)</label>
-                <input type="number" value={config.prezzo_coperto || 0} onChange={e => setConfig({...config, prezzo_coperto: e.target.value})} style={{...inputStyle, width:'100%', maxWidth:'150px'}} step="0.10" />
-                <p style={{margin:'5px 0 0 0', fontSize:'12px', color:'#666'}}>Aggiunto in automatico al checkout.</p>
+        {/* CONFIGURAZIONE FOOTER & COPERTO */}
+        <div style={{ ...cardStyle, borderLeft: '5px solid #8e44ad' }}>
+            <h3 style={{ marginBottom: '25px' }}>⚖️ Configurazione Footer & Coperto</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
+                <div style={{display:'flex', flexDirection:'column', gap:'20px'}}>
+                    <div style={{padding:'15px', background:'#fdfefe', borderRadius:'8px', border:'1px solid #bbdefb'}}>
+                        <label style={labelStyle}>💰 Costo Coperto (€)</label>
+                        <input type="number" value={config.prezzo_coperto || 0} onChange={e => setConfig({...config, prezzo_coperto: e.target.value})} style={inputStyle} step="0.10" />
+                    </div>
+                    <textarea placeholder="Testo footer (es. Info Legali, Orari)..." value={config.info_footer || ''} onChange={e => setConfig({...config, info_footer: e.target.value})} style={{...inputStyle, minHeight:'100px'}} />
+                    <label style={{display:'flex', alignItems:'center', gap:'10px', fontWeight:'bold', color:'#8e44ad', cursor:'pointer'}}>
+                        <input type="checkbox" checked={config.nascondi_euro || false} onChange={(e) => setConfig({...config, nascondi_euro: e.target.checked})} />
+                        Nascondi simbolo "€"
+                    </label>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '15px' }}>
+                    <div style={{ border: '1px solid #eee', padding: '10px', borderRadius: '10px' }}><label style={labelStyle}>🥗 Menu Giorno</label><ImageUploader type="url_menu_giorno" currentUrl={config.url_menu_giorno} icon="🥗" config={config} setConfig={setConfig} API_URL={API_URL} /></div>
+                    <div style={{ border: '1px solid #eee', padding: '10px', borderRadius: '10px' }}><label style={labelStyle}>📖 Menu PDF</label><ImageUploader type="url_menu_pdf" currentUrl={config.url_menu_pdf} icon="📖" config={config} setConfig={setConfig} API_URL={API_URL} /></div>
+                    <div style={{ border: '1px solid #eee', padding: '10px', borderRadius: '10px' }}><label style={labelStyle}>⚠️ Allergeni</label><ImageUploader type="url_allergeni" currentUrl={config.url_allergeni} icon="⚠️" config={config} setConfig={setConfig} API_URL={API_URL} /></div>
+                </div>
             </div>
-            <div>
-                <label style={labelStyle}>📝 Testo a piè di pagina</label>
-                <textarea value={config.info_footer || ''} onChange={e => setConfig({...config, info_footer: e.target.value})} style={{ width: '100%', padding: '15px', borderRadius: '10px', border: '1px solid #ddd', minHeight: '80px', boxSizing: 'border-box' }} />
-            </div>
-            <div style={{padding:'15px', background:'#f3e5f5', borderRadius:'8px', border:'1px solid #e1bee7'}}>
-                <label style={{display:'flex', alignItems:'center', gap:'10px', cursor:'pointer', fontWeight:'bold', color:'#8e44ad'}}>
-                    <input type="checkbox" checked={config.nascondi_euro || false} onChange={(e) => setConfig({...config, nascondi_euro: e.target.checked})} />
-                    <span>Nascondi simbolo "€"</span>
-                </label>
-            </div>
+            <button onClick={handleSaveStyle} style={{ marginTop: '30px', width: '100%', padding:'15px', background:'#8e44ad', color:'white', border:'none', borderRadius:'10px', fontWeight:'bold', cursor:'pointer' }}>💾 SALVA IMPOSTAZIONI FOOTER</button>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '15px' }}>
-            <div style={{ border: '1px solid #eee', padding: '10px', borderRadius: '10px' }}><label style={labelStyle}>📅 Menù Giorno</label><ImageUploader type="url_menu_giorno" currentUrl={config.url_menu_giorno} icon="🥗" config={config} setConfig={setConfig} API_URL={API_URL} /></div>
-            <div style={{ border: '1px solid #eee', padding: '10px', borderRadius: '10px' }}><label style={labelStyle}>📄 Menù PDF</label><ImageUploader type="url_menu_pdf" currentUrl={config.url_menu_pdf} icon="📖" config={config} setConfig={setConfig} API_URL={API_URL} /></div>
-            <div style={{ border: '1px solid #eee', padding: '10px', borderRadius: '10px' }}><label style={labelStyle}>📋 Allergeni</label><ImageUploader type="url_allergeni" currentUrl={config.url_allergeni} icon="⚠️" config={config} setConfig={setConfig} API_URL={API_URL} /></div>
-        </div>
-    </div>
-    <button onClick={handleSaveStyle} style={{ marginTop: '30px', width: '100%', padding:'15px', background:'#8e44ad', color:'white', border:'none', borderRadius:'10px', fontWeight:'bold', cursor:'pointer' }}>💾 SALVA IMPOSTAZIONI FOOTER</button>
-</div>
     </div>
   );
 }
