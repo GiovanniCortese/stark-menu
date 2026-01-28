@@ -1,4 +1,4 @@
-// client/src/SuperAdmin.jsx - VERSIONE V78 (RESTORED "ENTER" BUTTON) 🚀
+// client/src/SuperAdmin.jsx - VERSIONE V79 (GOD MODE AUTO-LOGIN 🚀)
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
@@ -188,10 +188,14 @@ function SuperAdmin() {
       try { await fetch(`${API_URL}/api/super/ristoranti/${id}`, { method: 'DELETE' }); caricaDati(); } catch(err) { alert("Errore cancellazione"); } 
   };
 
-  // Funzione per entrare nel pannello admin (Impersonificazione)
+  // --- GOD MODE BYPASS LOGIC ---
   const entraNelPannello = (slug) => {
-      // Opzionale: Salva un flag in localStorage se il frontend richiede auth locale
-      // localStorage.setItem(`stark_session_${slug}`, "true"); 
+      // 🚀 INIEZIONE TOKEN DI SESSIONE
+      // Imposta il token "God Mode" nel localStorage condiviso (same origin)
+      // Questo permette di saltare il login nella nuova scheda
+      localStorage.setItem("admin_token", "SUPER_GOD_TOKEN_2026");
+      
+      // Apre il pannello admin specifico
       window.open(`/admin/${slug}`, '_blank');
   };
 
