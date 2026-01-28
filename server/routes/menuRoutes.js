@@ -37,13 +37,57 @@ router.get('/api/menu/:slug', async (req, res) => {
             id: data.id, 
             ristorante: data.nome, 
             ruolo: 'admin', // Default role per frontend check
-            style: { 
-                logo: data.logo_url, cover: data.cover_url, bg: data.colore_sfondo, title: data.colore_titolo, 
-                text: data.colore_testo, price: data.colore_prezzo, font: data.font_style, 
-                // ... (altri campi style invariati)
-                nascondi_euro: data.nascondi_euro,
-                prezzo_coperto: data.prezzo_coperto
-            }, 
+style: {
+  // immagini
+ logo: data.logo_url,
+  cover: data.cover_url,
+
+  // retrocompatibilità:
+  logo_url: data.logo_url,
+  cover_url: data.cover_url,
+  
+  // colori base (frontend li usa così)
+  bg: data.colore_sfondo,
+  title: data.colore_titolo,
+  text: data.colore_testo,
+  price: data.colore_prezzo,
+  font: data.font_style,
+
+  // mapping per i component che leggono style.card_bg / style.btn_bg ecc
+  card_bg: data.colore_card,
+  card_border: data.colore_border,
+  btn_bg: data.colore_btn,
+  btn_text: data.colore_btn_text,
+
+  tavolo_bg: data.colore_tavolo_bg,
+  tavolo_text: data.colore_tavolo_text,
+
+  carrello_bg: data.colore_carrello_bg,
+  carrello_text: data.colore_carrello_text,
+
+  checkout_bg: data.colore_checkout_bg,
+  checkout_text: data.colore_checkout_text,
+
+  // questi nel frontend sono già letti come "colore_modal_*"
+  colore_modal_bg: data.colore_modal_bg,
+  colore_modal_text: data.colore_modal_text,
+
+  // footer / documenti
+  info_footer: data.info_footer,
+  url_allergeni: data.url_allergeni,
+  url_menu_giorno: data.url_menu_giorno,
+  url_menu_pdf: data.url_menu_pdf,
+
+  // stile footer
+  colore_footer_text: data.colore_footer_text,
+  dimensione_footer: data.dimensione_footer,
+  allineamento_footer: data.allineamento_footer,
+
+  // extra
+  nascondi_euro: data.nascondi_euro,
+  prezzo_coperto: data.prezzo_coperto
+},
+
             
             // --- STATI FONDAMENTALI ---
             subscription_active: data.account_attivo !== false, // Se FALSE blocca tutto

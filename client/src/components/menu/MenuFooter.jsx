@@ -7,7 +7,7 @@ export default function MenuFooter({ style, footerBtnStyle, setUrlFileAttivo, se
       className="notranslate"
       style={{
         textAlign: style.allineamento_footer || "center",
-        padding: "20px 20px 60px 20px",
+        padding: "20px 20px calc(140px + env(safe-area-inset-bottom)) 20px",
         opacity: 0.9,
       }}
     >

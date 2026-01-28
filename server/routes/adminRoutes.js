@@ -23,14 +23,46 @@ router.get('/api/ristorante/config/:id', async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Err" }); } 
 });
 
+await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS colore_footer_text VARCHAR(30)`);
+await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS dimensione_footer INTEGER`);
+await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS allineamento_footer VARCHAR(10)`);
+
+
 // UPDATE STYLE (Gestisce anche prezzo_coperto e nascondi_euro)
 router.put('/api/ristorante/style/:id', async (req, res) => { 
     try { 
-        const { logo_url, cover_url, colore_sfondo, colore_titolo, colore_testo, colore_prezzo, colore_card, colore_btn, colore_btn_text, colore_border, colore_tavolo_bg, colore_tavolo_text, colore_carrello_bg, colore_carrello_text, colore_checkout_bg, colore_checkout_text, colore_modal_bg, colore_modal_text, font_style, info_footer, url_allergeni, url_menu_giorno, url_menu_pdf, nascondi_euro, prezzo_coperto } = req.body; 
+        const { logo_url, cover_url, colore_sfondo, colore_titolo, colore_testo, colore_prezzo, colore_card, colore_btn, colore_btn_text, colore_border, colore_tavolo_bg, colore_tavolo_text, colore_carrello_bg, colore_carrello_text, colore_checkout_bg, colore_checkout_text, colore_modal_bg, colore_modal_text, font_style, info_footer, url_allergeni, url_menu_giorno, url_menu_pdf, nascondi_euro, prezzo_coperto, colore_footer_text, dimensione_footer, allineamento_footer } = req.body;
         
-        await pool.query(`UPDATE ristoranti SET logo_url=$1, cover_url=$2, colore_sfondo=$3, colore_titolo=$4, colore_testo=$5, colore_prezzo=$6, colore_card=$7, colore_btn=$8, colore_btn_text=$9, colore_border=$10, colore_tavolo_bg=$11, colore_tavolo_text=$12, colore_carrello_bg=$13, colore_carrello_text=$14, colore_checkout_bg=$15, colore_checkout_text=$16, colore_modal_bg=$17, colore_modal_text=$18, font_style=$19, info_footer=$20, url_allergeni=$21, url_menu_giorno=$22, url_menu_pdf=$23, nascondi_euro=$24, prezzo_coperto=$25 WHERE id=$26`, 
-        [logo_url, cover_url, colore_sfondo, colore_titolo, colore_testo, colore_prezzo, colore_card, colore_btn, colore_btn_text, colore_border, colore_tavolo_bg, colore_tavolo_text, colore_carrello_bg, colore_carrello_text, colore_checkout_bg, colore_checkout_text, colore_modal_bg, colore_modal_text, font_style, info_footer, url_allergeni, url_menu_giorno, url_menu_pdf, nascondi_euro, prezzo_coperto || 0, req.params.id]); 
-        
+        await pool.query(
+  `UPDATE ristoranti SET
+    logo_url=$1, cover_url=$2,
+    colore_sfondo=$3, colore_titolo=$4, colore_testo=$5, colore_prezzo=$6,
+    colore_card=$7, colore_btn=$8, colore_btn_text=$9, colore_border=$10,
+    colore_tavolo_bg=$11, colore_tavolo_text=$12,
+    colore_carrello_bg=$13, colore_carrello_text=$14,
+    colore_checkout_bg=$15, colore_checkout_text=$16,
+    colore_modal_bg=$17, colore_modal_text=$18,
+    font_style=$19,
+    info_footer=$20, url_allergeni=$21, url_menu_giorno=$22, url_menu_pdf=$23,
+    colore_footer_text=$24, dimensione_footer=$25, allineamento_footer=$26,
+    nascondi_euro=$27, prezzo_coperto=$28
+   WHERE id=$29`,
+  [
+    logo_url, cover_url,
+    colore_sfondo, colore_titolo, colore_testo, colore_prezzo,
+    colore_card, colore_btn, colore_btn_text, colore_border,
+    colore_tavolo_bg, colore_tavolo_text,
+    colore_carrello_bg, colore_carrello_text,
+    colore_checkout_bg, colore_checkout_text,
+    colore_modal_bg, colore_modal_text,
+    font_style,
+    info_footer, url_allergeni, url_menu_giorno, url_menu_pdf,
+    colore_footer_text, parseInt(dimensione_footer || 12, 10), allineamento_footer,
+    nascondi_euro, prezzo_coperto || 0,
+    req.params.id
+  ]
+);
+
         res.json({ success: true }); 
     } catch (err) { 
         console.error(`❌ [${getNowItaly()}] Errore salvataggio style:`, err);

@@ -53,7 +53,13 @@ function AdminGrafica({ user, config, setConfig, API_URL }) {
                       <>
                         <span style={{fontSize:'24px'}}>{icon}</span>
                         <span style={{fontSize:'12px', color:'#555', marginTop:5}}>Carica {label}</span>
-                        <input type="file" onChange={(e) => handleUpload(e, type)} style={styles.fileInputHidden} />
+                        <input
+  type="color"
+  value={isTransparent ? "#ffffff" : val}
+  onChange={(e) => setConfig(prev => ({ ...prev, [field]: e.target.value }))}
+  onInput={(e) => setConfig(prev => ({ ...prev, [field]: e.target.value }))} // ✅ live mentre trascini
+  style={{ opacity: 0, width: "100%", height: "100%", cursor: "pointer" }}
+/>
                       </>
                   )}
               </div>
