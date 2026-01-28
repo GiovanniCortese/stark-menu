@@ -1,4 +1,4 @@
-// client/src/SuperAdmin.jsx - VERSIONE V75 (DARK MODE JARVIS + KDS + EDIT) 🦇
+// client/src/SuperAdmin.jsx - VERSIONE V76 (SEARCH & SORT) 🦇
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
@@ -24,15 +24,12 @@ function SuperAdmin() {
       account_attivo: true,
       data_scadenza: new Date().toISOString().split('T')[0], 
       
-      // Moduli Boolean
       modulo_cassa: true,           
       modulo_menu_digitale: true,   
       modulo_ordini_clienti: true,  
       modulo_magazzino: false,      
       modulo_haccp: false,          
       modulo_utenti: false,         
-      
-      // Suite Flag
       cassa_full_suite: true
   });
 
@@ -42,6 +39,11 @@ function SuperAdmin() {
   const [editingUser, setEditingUser] = useState(null); 
   const [userFormData, setUserFormData] = useState({ nome: '', email: '', password: '', telefono: '', indirizzo: '', ruolo: 'cliente', ristorante_id: '' });
 
+  // --- STATI RICERCA E ORDINAMENTO (RISTORANTI) ---
+  const [restaurantSearchTerm, setRestaurantSearchTerm] = useState("");
+  const [restaurantSortConfig, setRestaurantSortConfig] = useState({ key: 'id', direction: 'desc' });
+
+  // --- STATI RICERCA E ORDINAMENTO (UTENTI) ---
   const [searchTerm, setSearchTerm] = useState("");
   const [sortConfig, setSortConfig] = useState({ key: 'id', direction: 'desc' });
   const [uploading, setUploading] = useState(false);
@@ -49,12 +51,12 @@ function SuperAdmin() {
   const navigate = useNavigate();
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
-  // DEFINIZIONE COLONNE MODULI (Con mappatura DB precisa)
+  // DEFINIZIONE COLONNE MODULI
   const modulesConfig = [
       { label: '📱 Menu', dbField: 'modulo_menu_digitale', dateField: 'scadenza_menu_digitale' },
       { label: '🍽️ Ordini', dbField: 'modulo_ordini_clienti', dateField: 'scadenza_ordini_clienti' },
       { label: '💶 Cassa', dbField: 'modulo_cassa', dateField: 'scadenza_cassa' },
-      { label: '👨‍🍳 KDS Suite', dbField: 'cassa_full_suite', dateField: 'scadenza_cassa' }, // KDS usa scadenza cassa solitamente o nulla
+      { label: '👨‍🍳 KDS Suite', dbField: 'cassa_full_suite', dateField: 'scadenza_cassa' }, 
       { label: '📦 Magazzino', dbField: 'modulo_magazzino', dateField: 'scadenza_magazzino' },
       { label: '🛡️ HACCP', dbField: 'modulo_haccp', dateField: 'scadenza_haccp' },
       { label: '👥 Utenti', dbField: 'modulo_utenti', dateField: 'scadenza_utenti' },
@@ -100,27 +102,62 @@ function SuperAdmin() {
       } catch (err) { setError("Errore di connessione"); }
   };
 
-  // --- AZIONI SUI RISTORANTI ---
+  // --- LOGICA FILTRO E ORDINAMENTO RISTORANTI ---
+  const handleRestaurantSort = (key) => {
+    let direction = 'asc';
+    if (restaurantSortConfig.key === key && restaurantSortConfig.direction === 'asc') {
+        direction = 'desc';
+    }
+    setRestaurantSortConfig({ key, direction });
+  };
 
+  const filteredRistoranti = useMemo(() => {
+    let data = [...ristoranti];
+    
+    // 1. Filtro Ricerca
+    if (restaurantSearchTerm) {
+        const term = restaurantSearchTerm.toLowerCase();
+        data = data.filter(r => 
+            (r.nome && r.nome.toLowerCase().includes(term)) ||
+            (r.slug && r.slug.toLowerCase().includes(term)) ||
+            (r.email && r.email.toLowerCase().includes(term)) ||
+            (r.telefono && r.telefono.includes(term))
+        );
+    }
+
+    // 2. Ordinamento
+    if (restaurantSortConfig.key) {
+        data.sort((a, b) => {
+            let valA = a[restaurantSortConfig.key];
+            let valB = b[restaurantSortConfig.key];
+
+            // Gestione stringhe case-insensitive
+            if (typeof valA === 'string') valA = valA.toLowerCase();
+            if (typeof valB === 'string') valB = valB.toLowerCase();
+
+            if (valA < valB) return restaurantSortConfig.direction === 'asc' ? -1 : 1;
+            if (valA > valB) return restaurantSortConfig.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }
+    return data;
+  }, [ristoranti, restaurantSearchTerm, restaurantSortConfig]);
+
+
+  // --- AZIONI SUI RISTORANTI ---
   const toggleModulo = async (id, field, currentValue) => {
     const newValue = !currentValue;
-    // Aggiornamento Ottimistico UI
     setRistoranti(prev => prev.map(r => r.id === id ? { ...r, [field]: newValue } : r));
-
     try {
         await fetch(`${API_URL}/api/super/ristoranti/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ [field]: newValue })
         });
-    } catch (error) {
-        console.error("Errore update modulo:", error);
-        caricaDati(); // Revert in caso di errore
-    }
+    } catch (error) { console.error("Errore update modulo:", error); caricaDati(); }
   };
 
   const updateDate = async (id, field, value) => {
-    // Aggiorna stato locale optimistic
     setRistoranti(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
     try {
         await fetch(`${API_URL}/api/super/ristoranti/${id}`, {
@@ -128,17 +165,12 @@ function SuperAdmin() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ [field]: value })
         });
-    } catch (error) {
-        console.error("Errore update date:", error);
-    }
+    } catch (error) { console.error("Errore update date:", error); }
   };
 
   const handleElimina = async (id, nome) => { 
-      if(!confirm(`⚠️ ATTENZIONE: Eliminare definitivamente "${nome}" e tutti i suoi dati?`)) return; 
-      try { 
-          await fetch(`${API_URL}/api/super/ristoranti/${id}`, { method: 'DELETE' }); 
-          caricaDati(); 
-      } catch(err) { alert("Errore cancellazione"); } 
+      if(!confirm(`⚠️ ATTENZIONE: Eliminare definitivamente "${nome}"?`)) return; 
+      try { await fetch(`${API_URL}/api/super/ristoranti/${id}`, { method: 'DELETE' }); caricaDati(); } catch(err) { alert("Errore cancellazione"); } 
   };
 
   // --- GESTIONE MODALE CONFIGURAZIONE (EDIT) ---
@@ -149,10 +181,9 @@ function SuperAdmin() {
           slug: r.slug,
           email: r.email || '',
           telefono: r.telefono || '',
-          password: '', // Non mostriamo la password hashata, se la scrive la resetta
+          password: '',
           account_attivo: r.account_attivo,
           data_scadenza: r.data_scadenza ? r.data_scadenza.split('T')[0] : '',
-          
           modulo_cassa: r.modulo_cassa,
           modulo_menu_digitale: r.modulo_menu_digitale,
           modulo_ordini_clienti: r.modulo_ordini_clienti,
@@ -175,13 +206,8 @@ function SuperAdmin() {
           nome: '', slug: '', email: '', telefono: '', password: '', 
           account_attivo: true,
           data_scadenza: new Date(new Date().setMonth(new Date().getMonth() + 12)).toISOString().split('T')[0],
-          modulo_cassa: true, 
-          modulo_menu_digitale: true,
-          modulo_ordini_clienti: true,
-          modulo_magazzino: false,
-          modulo_haccp: false,
-          modulo_utenti: false,
-          cassa_full_suite: true
+          modulo_cassa: true, modulo_menu_digitale: true, modulo_ordini_clienti: true,
+          modulo_magazzino: false, modulo_haccp: false, modulo_utenti: false, cassa_full_suite: true
       }); 
       setShowModal(true); 
   };
@@ -190,23 +216,11 @@ function SuperAdmin() {
       e.preventDefault(); 
       const endpoint = editingId ? `${API_URL}/api/super/ristoranti/${editingId}` : `${API_URL}/api/super/ristoranti`; 
       const method = editingId ? 'PUT' : 'POST'; 
-      
       try { 
-          const res = await fetch(endpoint, { 
-              method, 
-              headers: { 'Content-Type': 'application/json' }, 
-              body: JSON.stringify(formData) 
-          }); 
-          
-          if(res.ok) { 
-              alert(editingId ? "✅ Configurazione aggiornata!" : "✅ Locale creato con successo!"); 
-              setShowModal(false); 
-              caricaDati(); 
-          } else {
-              const data = await res.json(); 
-              alert("❌ Errore Salvataggio: " + (data.error || "Errore sconosciuto"));
-          }
-      } catch(err) { alert("❌ Errore di connessione o Server Offline"); } 
+          const res = await fetch(endpoint, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formData) }); 
+          if(res.ok) { alert("✅ Operazione riuscita!"); setShowModal(false); caricaDati(); } 
+          else { const data = await res.json(); alert("❌ Errore: " + (data.error || "Sconosciuto")); }
+      } catch(err) { alert("❌ Errore di connessione"); } 
   };
 
   const exportExcel = () => {
@@ -217,21 +231,14 @@ function SuperAdmin() {
   };
 
   const logout = () => { 
-      if (confirm("Uscire dal J.A.R.V.I.S.?")) { 
-          localStorage.removeItem("super_admin_token"); 
-          setAuthorized(false); 
-      } 
+      if (confirm("Uscire dal J.A.R.V.I.S.?")) { localStorage.removeItem("super_admin_token"); setAuthorized(false); } 
   };
 
   // --- LOGICA UTENTI GLOBALI ---
   const handleOpenUserForm = (user = null) => {
       if (user) {
           setEditingUser(user);
-          setUserFormData({
-              nome: user.nome || '', email: user.email || '', password: user.password || '',
-              telefono: user.telefono || '', indirizzo: user.indirizzo || '',
-              ruolo: user.ruolo || 'cliente', ristorante_id: user.ristorante_id || ''
-          });
+          setUserFormData({ nome: user.nome || '', email: user.email || '', password: '', telefono: user.telefono || '', indirizzo: user.indirizzo || '', ruolo: user.ruolo || 'cliente', ristorante_id: user.ristorante_id || '' });
       } else {
           setEditingUser(null);
           setUserFormData({ nome: '', email: '', password: '', telefono: '', indirizzo: '', ruolo: 'cliente', ristorante_id: '' });
@@ -251,7 +258,7 @@ function SuperAdmin() {
       } catch (err) { alert("Errore connessione"); }
   };
 
-  const handleDeleteUser = async (id, nome) => { if (!confirm(`Vuoi eliminare definitivamente l'utente "${nome}"?`)) return; try { await fetch(`${API_URL}/api/utenti/${id}`, { method: 'DELETE' }); caricaDati(); } catch (err) { alert("Errore"); } };
+  const handleDeleteUser = async (id, nome) => { if (!confirm(`Eliminare "${nome}"?`)) return; try { await fetch(`${API_URL}/api/utenti/${id}`, { method: 'DELETE' }); caricaDati(); } catch (err) { alert("Errore"); } };
   
   const handleSort = (key) => {
       let direction = 'asc';
@@ -280,7 +287,6 @@ function SuperAdmin() {
   const handleImportTrigger = () => document.getElementById('file-upload-users').click();
   const handleImportUsers = async (e) => { const file = e.target.files[0]; if(!file) return; setUploading(true); const fd = new FormData(); fd.append('file', file); try { const res = await fetch(`${API_URL}/api/utenti/import/excel`, { method: 'POST', body: fd }); if(res.ok) { alert("Importazione completata!"); caricaDati(); } } catch(err) { alert("Errore"); } finally { setUploading(false); e.target.value = null; } };
 
-  // --- STILI CSS (DARK THEME) ---
   const inputStyle = { width: '100%', padding: '12px', marginTop: '5px', border: '1px solid #444', background: '#222', color: 'white', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' };
 
   if (!authorized) return (
@@ -316,14 +322,37 @@ function SuperAdmin() {
               </div>
           </div>
 
+          {/* BARRA DI RICERCA RISTORANTI (NUOVA) */}
+          <div style={{marginBottom: 20, display:'flex', gap:15}}>
+              <input 
+                  type="text" 
+                  placeholder="🔍 Cerca Attività (Nome, Email, Telefono, Slug)..." 
+                  value={restaurantSearchTerm}
+                  onChange={(e) => setRestaurantSearchTerm(e.target.value)}
+                  style={{
+                      flex: 1, 
+                      padding: '12px 20px', 
+                      borderRadius: '8px', 
+                      border: '1px solid #444', 
+                      background: '#1a1a1a', 
+                      color: 'white', 
+                      fontSize: '16px'
+                  }}
+              />
+              <div style={{display:'flex', alignItems:'center', color:'#888', fontSize:14}}>
+                  Totale: {filteredRistoranti.length}
+              </div>
+          </div>
+
           {/* TABELLA RISTORANTI (SCROLLABILE DARK) */}
           <div style={{background:'#1a1a1a', borderRadius:10, border:'1px solid #333', overflow:'hidden'}}>
               <div style={{overflowX:'auto'}}>
                   <table style={{width:'100%', borderCollapse:'collapse', minWidth:'1200px'}}>
                       <thead style={{background:'#000', color:'#e74c3c', borderBottom:'2px solid #333'}}>
                           <tr>
-                              <th style={{padding:15, textAlign:'left'}}>ID / Ristorante</th>
-                              <th style={{padding:15, textAlign:'left'}}>Contatti</th>
+                              <th onClick={() => handleRestaurantSort('id')} style={{padding:15, textAlign:'left', cursor:'pointer'}}>ID ↕</th>
+                              <th onClick={() => handleRestaurantSort('nome')} style={{padding:15, textAlign:'left', cursor:'pointer'}}>Ristorante ↕</th>
+                              <th onClick={() => handleRestaurantSort('email')} style={{padding:15, textAlign:'left', cursor:'pointer'}}>Contatti ↕</th>
                               
                               {/* HEADER DINAMICO MODULI */}
                               {modulesConfig.map(m => (
@@ -337,9 +366,11 @@ function SuperAdmin() {
                           </tr>
                       </thead>
                       <tbody>
-                          {ristoranti.map(r => (
+                          {filteredRistoranti.map(r => (
                               <tr key={r.id} style={{borderBottom:'1px solid #333', background: r.account_attivo ? '#222' : '#2c0b0e'}}>
                                   
+                                  <td style={{padding:15, color:'#666'}}>#{r.id}</td>
+
                                   {/* INFO BASE */}
                                   <td style={{padding:15}}>
                                       <div style={{fontWeight:'bold', color:'white', fontSize:'15px'}}>{r.nome}</div>
