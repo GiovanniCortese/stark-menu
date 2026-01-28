@@ -1,4 +1,4 @@
-// client/src/Admin.jsx - VERSIONE V51 (PASSAGGIO CONFIG DASHBOARD) 🛠️
+// client/src/Admin.jsx - VERSIONE V52 (NO DOPPIO LOGIN & LOGOUT FIX) 🛠️
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -54,15 +54,38 @@ function Admin() {
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
   // --- INIZIALIZZAZIONE ---
-useEffect(() => {
+  useEffect(() => {
     if (!slug) return;
 
     const init = async () => {
         setLoading(true);
+        
+        // 1. CHECK SESSIONE SPECIFICA
         const sessionKey = `stark_admin_session_${slug}`;
         const hasSession = localStorage.getItem(sessionKey); 
         
-        if (hasSession === "true") setIsAuthorized(true);
+        // 2. CHECK USER GLOBALE (FIX DOPPIO LOGIN 🚀)
+        // Se c'è un utente loggato nel localStorage che corrisponde a questo slug (o è God Mode), entra subito.
+        const storedUser = localStorage.getItem("user");
+        let autoAuth = false;
+        
+        if (storedUser) {
+            try {
+                const u = JSON.parse(storedUser);
+                // Se lo slug corrisponde o è un super admin in god mode
+                if (u.slug === slug || u.is_god_mode) {
+                    autoAuth = true;
+                    // Rigeneriamo la sessione locale per sicurezza futura
+                    localStorage.setItem(sessionKey, "true");
+                }
+            } catch(e) {
+                console.error("Errore parsing user localStorage", e);
+            }
+        }
+
+        if (hasSession === "true" || autoAuth) {
+            setIsAuthorized(true);
+        }
 
         try {
             const res = await fetch(`${API_URL}/api/menu/${slug}`);
@@ -79,9 +102,8 @@ useEffect(() => {
                     ...prev, 
                     ...data.style,
                     
-                    // --- NUOVO: Passo la data scadenza al config ---
+                    // --- Passo la data scadenza al config ---
                     data_scadenza: data.data_scadenza,
-                    // ----------------------------------------------
 
                     // Mappatura Moduli
                     modulo_cassa: nuoviModuli.cassa ?? data.modulo_cassa ?? true,
@@ -111,7 +133,7 @@ useEffect(() => {
     };
 
     init();
-  }, [slug]);
+  }, [slug, navigate]);
 
   const caricaConfigurazioniExtra = (id) => {
     fetch(`${API_URL}/api/ristorante/config/${id}`)
@@ -138,10 +160,18 @@ useEffect(() => {
       });
   };
 
+  // --- LOGOUT AGGIORNATO: RITORNA AL LOGIN ---
   const handleLogout = () => { 
       if(confirm("Uscire dal pannello?")) { 
+          // 1. Rimuove la sessione di questo specifico ristorante
           localStorage.removeItem(`stark_admin_session_${slug}`); 
-          navigate('/'); 
+          // 2. Rimuove l'utente globale (così non rientra in automatico)
+          localStorage.removeItem("user");
+          // 3. Rimuove eventuali token God Mode
+          localStorage.removeItem("admin_token");
+          
+          // 4. Redirect alla pagina di Login (schermata nera)
+          navigate('/login'); 
       } 
   };
   
@@ -165,6 +195,8 @@ useEffect(() => {
                 return;
             }
             setIsAuthorized(true);
+            // Salviamo anche l'utente globale per coerenza
+            localStorage.setItem("user", JSON.stringify(data.user));
             localStorage.setItem(`stark_admin_session_${data.user.slug}`, "true");
             window.location.reload();
         } else {
@@ -178,7 +210,7 @@ useEffect(() => {
 
   if (loading) return <div style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', fontSize:'1.2rem', color:'#666'}}>🔄 Caricamento Admin...</div>;
 
-  // --- LOGIN SCREEN ---
+  // --- LOGIN SCREEN (Solo se non autorizzato) ---
   if (!isAuthorized) {
     return (
         <div style={{display:'flex', justifyContent:'center', alignItems:'center', minHeight:'100vh', background:'#1a1a1a', flexDirection:'column', padding: '20px'}}>
@@ -192,7 +224,8 @@ useEffect(() => {
                     {loginError && <p style={{color:'#e74c3c', fontWeight:'bold', fontSize:'0.9rem'}}>Email o Password errati ⛔</p>}
                     <button type="submit" disabled={loadingLogin} style={{width:'100%', padding:'15px', background:'#2c3e50', color:'white', border:'none', borderRadius:'8px', fontSize:'16px', fontWeight:'bold', cursor:'pointer', marginTop:'10px'}}>{loadingLogin ? "Verifica..." : "ACCEDI AL PANNELLO"}</button>
                 </form>
-                <button onClick={() => navigate('/')} style={{marginTop:20, background:'none', border:'none', color:'#999', cursor:'pointer'}}>← Torna al sito</button>
+                {/* Modifica anche qui per tornare al login invece che alla home */}
+                <button onClick={() => navigate('/login')} style={{marginTop:20, background:'none', border:'none', color:'#999', cursor:'pointer'}}>← Torna al Login</button>
             </div>
         </div>
     );
@@ -219,7 +252,6 @@ useEffect(() => {
   const showHaccp = config.modulo_haccp === true;
   
   // 2. SUITE (Cucina/Bar/Pizzeria)
-  // VISIBILE SOLO SE: cassa_full_suite è TRUE (o cucina_super_active se legacy)
   const showFullSuite = config.cassa_full_suite === true; 
 
   return (
