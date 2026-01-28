@@ -188,16 +188,21 @@ function SuperAdmin() {
       try { await fetch(`${API_URL}/api/super/ristoranti/${id}`, { method: 'DELETE' }); caricaDati(); } catch(err) { alert("Errore cancellazione"); } 
   };
 
-  // --- GOD MODE BYPASS LOGIC ---
-  const entraNelPannello = (slug) => {
-      // 🚀 INIEZIONE TOKEN DI SESSIONE
-      // Imposta il token "God Mode" nel localStorage condiviso (same origin)
-      // Questo permette di saltare il login nella nuova scheda
-      localStorage.setItem("admin_token", "SUPER_GOD_TOKEN_2026");
-      
-      // Apre il pannello admin specifico
-      window.open(`/admin/${slug}`, '_blank');
-  };
+// --- GOD MODE BYPASS LOGIC ---
+const entraNelPannello = (r) => {
+  // r = oggetto ristorante { id, slug, nome, ... }
+
+  localStorage.setItem("admin_token", "SUPER_GOD_TOKEN_2026");
+
+  // ✅ salva contesto ristorante per far creare al Login.jsx un user coerente
+  localStorage.setItem("superadmin_target_id", String(r.id));
+  localStorage.setItem("superadmin_target_slug", r.slug);
+  localStorage.setItem("superadmin_target_nome", r.nome);
+
+  // ✅ apri la login: si auto-logga (God Mode) e poi fa redirect a /admin/:slug
+  window.open(`/login`, "_blank");
+};
+
 
   // --- GESTIONE MODALE CONFIGURAZIONE (CRM & EDIT) ---
   const avviaModifica = (r) => {
@@ -506,13 +511,7 @@ function SuperAdmin() {
                                   {/* AZIONI (ENTRA, MODIFICA, ELIMINA) */}
                                   <td style={{padding:15, textAlign:'center'}}>
                                       <div style={{display:'flex', gap:5, justifyContent:'center'}}>
-                                          <button 
-                                              onClick={() => entraNelPannello(r.slug)}
-                                              style={{background:'#3498db', color:'white', border:'none', width:30, height:30, borderRadius:5, cursor:'pointer', fontSize:14}}
-                                              title="Entra nel Pannello"
-                                          >
-                                              🚀
-                                          </button>
+                                          <button onClick={() => entraNelPannello(r)}>🚀</button>
                                           <button 
                                               onClick={() => avviaModifica(r)} 
                                               style={{background:'#f39c12', color:'white', border:'none', width:30, height:30, borderRadius:5, cursor:'pointer', fontSize:14}}
