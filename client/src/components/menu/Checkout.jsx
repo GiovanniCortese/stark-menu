@@ -78,14 +78,25 @@ export default function Checkout({
           width: "100%",
         }}
       >
-        {carrello.length === 0 && (
-          <p
-            className="notranslate"
-            style={{ color: style?.text || "#fff", textAlign: "center" }}
-          >
-            {t?.empty_cart || "Il carrello è vuoto"}
-          </p>
-        )}
+        {carrello.length > 0 && (canOrder || isStaffQui) && (
+  <button
+    onClick={onSendOrder}
+    style={{
+      width: "100%",
+      padding: "15px",
+      fontSize: "18px",
+      background: "#159709ff",
+      color: "white",
+      border: `1px solid ${style?.text || "#ccc"}`,
+      borderRadius: "30px",
+      fontWeight: "bold",
+      cursor: "pointer",
+    }}
+  >
+    {isStaffQui ? "INVIA ORDINE STAFF 🚀" : (t?.confirm || "CONFERMA E INVIA") + " 🚀"}
+  </button>
+)}
+
 
         {/* GESTIONE COPERTI (Solo se si può ordinare o se impostato) */}
         {style.prezzo_coperto > 0 && carrello.length > 0 && (canOrder || isStaffQui) && (
