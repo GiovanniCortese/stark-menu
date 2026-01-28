@@ -97,7 +97,6 @@ export default function Checkout({
   </button>
 )}
 
-
         {/* GESTIONE COPERTI (Solo se si può ordinare o se impostato) */}
         {style.prezzo_coperto > 0 && carrello.length > 0 && (canOrder || isStaffQui) && (
           <div
