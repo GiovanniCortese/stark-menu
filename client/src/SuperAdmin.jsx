@@ -252,6 +252,13 @@ function SuperAdmin() {
     </div>
   );
 
+const updateDate = async (id, field, value) => {
+    // Aggiorna stato locale optimistic
+    setRistoranti(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
+    // Chiama API (usa un debounce se vuoi, o salva al blur/change)
+    await axios.put(`${API_URL}/api/super/ristoranti/${id}`, { [field]: value });
+};
+
   return (
     <div className="container" style={{maxWidth: '1200px', margin: '0 auto', padding: '20px'}}>
       
@@ -267,37 +274,45 @@ function SuperAdmin() {
       {/* LISTA RISTORANTI */}
       <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '25px'}}>
         {ristoranti.map(r => (
-            <div key={r.id} style={{border: '1px solid #ddd', borderRadius: '12px', overflow:'hidden', background: r.account_attivo ? '#fff' : '#f2f2f2', boxShadow: '0 5px 15px rgba(0,0,0,0.08)', display:'flex', flexDirection:'column', opacity: r.account_attivo ? 1 : 0.7}}>
-                <div style={{padding:'15px', borderBottom:'1px solid #eee', display:'flex', justifyContent:'space-between', background: r.account_attivo ? 'white' : '#ffebee'}}>
-                    <div><h2 style={{margin:0, fontSize:'1.4rem'}}>{r.nome}</h2><span style={{background:'#2c3e50', color:'#fff', padding:'3px 8px', borderRadius:'4px', fontSize:'0.8rem'}}>/{r.slug}</span></div>
-                    <div style={{display:'flex', gap:5}}>
-                        <button onClick={() => avviaModifica(r)} style={{background:'#f39c12', border:'none', borderRadius:4, padding:8, cursor:'pointer'}}>⚙️</button>
-                        <button onClick={() => handleElimina(r.id, r.nome)} style={{background:'#c0392b', color:'white', border:'none', borderRadius:4, padding:8, cursor:'pointer'}}>🗑️</button>
-                    </div>
-                </div>
-                <div style={{padding:15, flex:1}}>
-                    {/* SCADENZA: Formattata in Italiano */}
-                    <p style={{margin:'5px 0'}}>📅 Scadenza: <b style={{color: new Date(r.data_scadenza) < new Date() ? 'red' : 'green'}}>{r.data_scadenza ? new Date(r.data_scadenza).toLocaleDateString('it-IT') : 'N/D'}</b></p>
-                    <div style={{display:'flex', flexWrap:'wrap', gap:5, marginTop:10}}>
-                        {/* BADGES MODULI ATTIVI */}
-                        {r.modulo_cassa && <span style={{fontSize:10, padding:'3px 6px', background:'#eaf2f8', color:'#2980b9', borderRadius:4, border:'1px solid #2980b9'}}>CASSA</span>}
-                        {/* SUITE: Mostra solo se attiva. Se disattiva, non mostra nulla. */}
-                        {r.cassa_full_suite && <span style={{fontSize:10, padding:'3px 6px', background:'#ebf5fb', color:'#8e44ad', borderRadius:4, border:'1px solid #8e44ad'}}>FULL SUITE</span>}
-                        
-                        {r.modulo_menu_digitale && <span style={{fontSize:10, padding:'3px 6px', background:'#e8f8f5', color:'#27ae60', borderRadius:4, border:'1px solid #27ae60'}}>MENU</span>}
-                        {r.modulo_ordini_clienti && <span style={{fontSize:10, padding:'3px 6px', background:'#eafaf1', color:'#2ecc71', borderRadius:4, border:'1px solid #2ecc71'}}>ORDINI</span>}
-                        {r.modulo_magazzino && <span style={{fontSize:10, padding:'3px 6px', background:'#fef9e7', color:'#f1c40f', borderRadius:4, border:'1px solid #f1c40f'}}>MAGAZZINO</span>}
-                        {r.modulo_haccp && <span style={{fontSize:10, padding:'3px 6px', background:'#e8f6f3', color:'#16a085', borderRadius:4, border:'1px solid #16a085'}}>HACCP</span>}
-                    </div>
-                </div>
-                <div style={{padding:15, background:'#f9f9f9', borderTop:'1px solid #eee', display:'flex', gap:10}}>
-                    <button onClick={() => toggleSospensione(r.id, r.account_attivo)} style={{flex:1, padding:10, background: r.account_attivo ? '#e67e22':'#27ae60', color:'white', borderRadius:6, border:'none', fontWeight:'bold', cursor:'pointer'}}>
-                        {r.account_attivo ? "⏸️ SOSPENDI" : "▶️ RIATTIVA"}
-                    </button>
-                    <button onClick={() => entraNelPannello(r.slug)} style={{flex:1, background:'#3498db', color:'white', border:'none', padding:10, borderRadius:6, fontWeight:'bold', cursor:'pointer'}}>ACCEDI ↗</button>
-                </div>
-            </div>
-        ))}
+  <tr key={r.id} className="border-b border-gray-700 hover:bg-gray-800 transition">
+    <td className="p-4">{r.nome}</td>
+    
+    {/* COLONNE MODULI CON CALENDARIO POPUP */}
+    {['menu_digitale', 'ordini_clienti', 'magazzino', 'haccp', 'cassa'].map(mod => {
+       const fieldBool = `modulo_${mod}`;
+       const fieldDate = `scadenza_${mod}`;
+       const isActive = r[fieldBool];
+       const dateVal = r[fieldDate] ? r[fieldDate].substring(0,10) : '';
+
+       return (
+         <td key={mod} className="p-4 text-center">
+           <div className="flex flex-col items-center gap-2">
+             {/* Toggle */}
+             <button 
+               onClick={() => toggleModulo(r.id, fieldBool, !isActive)}
+               className={`w-10 h-6 rounded-full p-1 transition ${isActive ? 'bg-green-500' : 'bg-gray-600'}`}
+             >
+               <div className={`w-4 h-4 bg-white rounded-full shadow-md transform transition ${isActive ? 'translate-x-4' : ''}`} />
+             </button>
+             
+             {/* Date Picker (Visibile solo se attivo) */}
+             {isActive && (
+               <input 
+                 type="date" 
+                 className="bg-gray-900 text-white text-xs p-1 rounded border border-gray-600 w-24"
+                 value={dateVal}
+                 onChange={(e) => updateDate(r.id, fieldDate, e.target.value)}
+               />
+             )}
+             {!isActive && <span className="text-xs text-gray-500">Da attivare</span>}
+           </div>
+         </td>
+       );
+    })}
+
+    {/* ... Pulsanti Salva/Elimina ... */}
+  </tr>
+))}
       </div>
 
       {/* MODALE RISTORANTE (EDIT/CREATE) */}

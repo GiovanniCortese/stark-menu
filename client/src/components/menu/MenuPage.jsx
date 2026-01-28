@@ -44,10 +44,10 @@ export default function MenuPage() {
   const [isSuspended, setIsSuspended] = useState(false);
   const [isMenuDisabled, setIsMenuDisabled] = useState(false);
   
-  // Se ordini disabilitati, canOrder diventa false, UI si adatta (niente carrello)
+  // Se ordini disabilitati, canOrder diventa false, ma la Wishlist funziona
   const [canOrder, setCanOrder] = useState(true);
   const [error, setError] = useState(false);
-
+  
   const [carrello, setCarrello] = useState([]);
 
   const [activeCategory, setActiveCategory] = useState(null);
@@ -57,7 +57,7 @@ export default function MenuPage() {
   const [showCheckout, setShowCheckout] = useState(false);
   const [numCoperti, setNumCoperti] = useState(1);
 
-  // auth
+  // Auth & Staff check
   const [user, setUser] = useState(null);
   const isStaffQui =
     user &&
@@ -92,26 +92,31 @@ export default function MenuPage() {
         setMenu(data.menu || []);
         setStyle(data.style || {});
 
+        // 1. Controllo Scadenza Abbonamento Globale
         if (data.subscription_active === false) setIsSuspended(true);
+        
+        // 2. Controllo Modulo Menu Digitale (Se spento dal SuperAdmin, non si vede nulla)
         if (data.moduli && data.moduli.menu_digitale === false) {
             setIsMenuDisabled(true);
         }
 
-        // Calcolo permesso ordini (Combinazione SuperAdmin + Admin Locale)
+        // 3. Controllo Ordini (Modulo SuperAdmin + Interruttore Ristoratore + Cucina)
+        // Se false, attiva modalità Wishlist
         const moduloOrdiniAttivo = data.moduli ? (data.moduli.ordini_clienti !== false) : true;
         const adminLocaleAttivo = data.ordini_abilitati; // Flag del ristoratore
         const kitchenAttiva = data.kitchen_active; // Flag storico
         
-        // Se uno qualsiasi di questi è falso, niente ordini, solo catalogo.
         setCanOrder(moduloOrdiniAttivo && adminLocaleAttivo && kitchenAttiva);
         
         setActiveCategory(null);
 
+        // SEO
         const pageTitle = `${data.ristorante} | Menu Digitale`;
         const pageDesc = "Sfoglia il nostro menu, ordina comodamente dal tavolo e scopri le nostre specialità!";
         const pageImage = data.style.logo_url || data.style.cover_url || "";
         updateMetaTags(pageTitle, pageImage, pageDesc);
 
+        // Lingue disponibili
         const foundLangs = new Set(["it"]);
         if (data.menu && data.menu.length > 0) {
           data.menu.forEach((p) => {
@@ -143,7 +148,8 @@ export default function MenuPage() {
   };
 
   const aggiungiAlCarrello = (piatto, override = null) => {
-    if (!canOrder && !isStaff) return; // Blocco silenzioso
+    // MODIFICA CRUCIALE: Rimosso il blocco if (!canOrder) return;
+    // Ora permettiamo di aggiungere al carrello anche se è solo una Wishlist.
 
     const qtySpecific = override?.qty ?? 1;
     let finalQty = qtySpecific;
@@ -188,10 +194,15 @@ export default function MenuPage() {
   };
 
   const inviaOrdine = async () => {
+    // Protezione finale: se non puoi ordinare e non sei staff, non invia nulla.
+    if (!canOrder && !isStaff) {
+        alert("Gli ordini sono momentaneamente disabilitati. Mostra questa lista al cameriere.");
+        return; 
+    }
+    
     if (carrello.length === 0) return;
 
     const finalUserId = user?.id || user?.user?.id || null;
-    if (!canOrder && !isStaff) return;
 
     let tavoloFinale = numeroTavolo;
     if (isStaff) {
@@ -296,6 +307,7 @@ export default function MenuPage() {
     margin: "0 auto",
   };
 
+  // SCHERMATE DI ERRORE O SOSPENSIONE
   if (isSuspended) {
     return (
       <div style={{ display:'flex', justifyContent:'center', alignItems:'center', minHeight:'100vh', flexDirection:'column', padding:'20px', textAlign:'center', background: bg, color: text }}>
@@ -366,7 +378,7 @@ export default function MenuPage() {
         cardBorder={cardBorder}
         btnBg={btnBg}
         btnText={btnText}
-        canOrder={canOrder} // Nuovo prop per nascondere tasti
+        canOrder={canOrder} // Passiamo lo stato per cambiare icona (Razzo vs Lista)
       />
 
       <MenuFooter
@@ -406,22 +418,20 @@ export default function MenuPage() {
         lang={lang}
         t={t}
         style={style}
-        canOrder={canOrder} // Blocca il tasto "AGGIUNGI" se false
+        canOrder={canOrder} 
         onClose={() => setSelectedPiatto(null)}
         onAddToCart={(piatto, override) => aggiungiAlCarrello(piatto, override)}
       />
 
-      {/* CartBar visibile SOLO se canOrder è true. Se false, l'utente vede solo il listino. */}
-      {canOrder && (
-          <CartBar
-            visible={carrello.length > 0 && !showCheckout && !selectedPiatto}
-            style={style}
-            carrelloCount={carrello.length}
-            canOrder={canOrder}
-            t={t}
-            onOpenCheckout={() => setShowCheckout(true)}
-          />
-      )}
+      {/* CartBar visibile ANCHE se canOrder è false (Modalità Wishlist) */}
+      <CartBar
+        visible={carrello.length > 0 && !showCheckout && !selectedPiatto}
+        style={style}
+        carrelloCount={carrello.length}
+        canOrder={canOrder} // Determina se giallo/razzo o blu/lista
+        t={t}
+        onOpenCheckout={() => setShowCheckout(true)}
+      />
 
       <Checkout
         open={showCheckout}

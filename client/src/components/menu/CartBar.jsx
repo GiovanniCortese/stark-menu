@@ -22,20 +22,37 @@ export default function CartBar({ visible, style, carrelloCount, canOrder, t, on
         justifyContent: "space-between",
         alignItems: "center",
         padding: "10px 12px",
+        // Aggiungo padding per sicurezza su iPhone (Home Indicator)
+        paddingBottom: "max(10px, env(safe-area-inset-bottom))"
       }}
     >
       <div className="totale" style={{ display: "flex", flexDirection: "column" }}>
         <span style={{ fontWeight: "bold", fontSize: "1.1rem", color: style.carrello_text || "#222" }}>
-          {carrelloCount} prodotti
+          {carrelloCount} {carrelloCount === 1 ? (t?.product || "prodotto") : (t?.products || "prodotti")}
         </span>
       </div>
 
       <button
         onClick={onOpenCheckout}
         className="btn-invia"
-        style={{ background: canOrder ? "#f1c40f" : "#3498db", color: canOrder ? "black" : "white", border: "none", padding: "10px 14px", borderRadius: "12px", fontWeight: "bold", cursor: "pointer" }}
+        style={{ 
+          background: canOrder ? "#f1c40f" : "#3498db", // Giallo se ordini attivi, Blu se Wishlist
+          color: canOrder ? "black" : "white", 
+          border: "none", 
+          padding: "10px 20px", 
+          borderRadius: "30px", // Più rotondo per stile app
+          fontWeight: "bold", 
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          boxShadow: "0 4px 10px rgba(0,0,0,0.2)"
+        }}
       >
-        {canOrder ? `${t?.see_order || "VEDI ORDINE"} 📝` : `${t?.see_order || "VEDI ORDINE"} 👀`}
+        {canOrder 
+          ? <>{t?.see_order || "VEDI ORDINE"} 🚀</> 
+          : <>{t?.wishlist || "LISTA DESIDERI"} 📝</>
+        }
       </button>
     </div>
   );

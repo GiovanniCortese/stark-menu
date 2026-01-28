@@ -43,31 +43,29 @@ io.on('connection', (socket) => {
 
 // --- LOGICA AUTO-PAUSA (SaaS Mode - ORA ITALIANA REALE) ---
 const checkExpirations = async () => {
-    // 1. Calcoliamo la data di OGGI in Italia (YYYY-MM-DD)
     const { year, month, day } = getItalyDateComponents();
     const todayItaly = `${year}-${month}-${day}`;
-
-    console.log(`🔍 [J.A.R.V.I.S. - ${getNowItaly()}] Controllo scadenze (Data Italia: ${todayItaly})...`);
+    console.log(`🔍 [J.A.R.V.I.S.] Controllo scadenze moduli al ${todayItaly}...`);
     
     try {
-        // 2. Confrontiamo data_scadenza con la data italiana passata come parametro ($1)
-        // Se data_scadenza < todayItaly, allora è scaduto.
-        const res = await pool.query(`
-            UPDATE ristoranti 
-            SET account_attivo = FALSE 
-            WHERE data_scadenza < $1 
-            AND account_attivo = TRUE
-            RETURNING nome
-        `, [todayItaly]);
+        // 1. Menu Digitale (Se scade, disattiva tutto l'account o solo il modulo? Di solito il menu è la base)
+        await pool.query("UPDATE ristoranti SET modulo_menu_digitale = FALSE WHERE scadenza_menu_digitale < $1 AND modulo_menu_digitale = TRUE", [todayItaly]);
 
-        if (res.rowCount > 0) {
-            console.log(`⚠️  AUTO-PAUSA: Disattivati ${res.rowCount} locali per scadenza (Data ref: ${todayItaly}).`);
-            res.rows.forEach(r => console.log(`   - ${r.nome}`));
-        } else {
-            console.log("✅ Nessuna nuova scadenza rilevata oggi.");
-        }
+        // 2. Ordini Clienti
+        await pool.query("UPDATE ristoranti SET modulo_ordini_clienti = FALSE WHERE scadenza_ordini_clienti < $1 AND modulo_ordini_clienti = TRUE", [todayItaly]);
+
+        // 3. Magazzino
+        await pool.query("UPDATE ristoranti SET modulo_magazzino = FALSE WHERE scadenza_magazzino < $1 AND modulo_magazzino = TRUE", [todayItaly]);
+
+        // 4. HACCP
+        await pool.query("UPDATE ristoranti SET modulo_haccp = FALSE WHERE scadenza_haccp < $1 AND modulo_haccp = TRUE", [todayItaly]);
+        
+        // 5. Cassa/Suite
+        await pool.query("UPDATE ristoranti SET modulo_cassa = FALSE, cassa_full_suite = FALSE WHERE scadenza_cassa < $1 AND modulo_cassa = TRUE", [todayItaly]);
+
+        console.log("✅ Controllo scadenze granulari completato.");
     } catch (e) {
-        console.error("❌ Errore critico nel controllo scadenze:", e.message);
+        console.error("❌ Errore critico controllo scadenze:", e.message);
     }
 };
 

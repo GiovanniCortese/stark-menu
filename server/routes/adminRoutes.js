@@ -141,53 +141,47 @@ router.put('/api/super/ristoranti/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const b = req.body;
-        console.log(`✏️ [${getNowItaly()}] Modifica locale ID ${id} - ${b.nome || ''}`);
-
+        
+        // Costruisci la query dinamica includendo le nuove date
         const sql = `
             UPDATE ristoranti SET 
                 nome = COALESCE($1, nome),
-                slug = COALESCE($2, slug),
-                email = COALESCE($3, email),
-                telefono = COALESCE($4, telefono),
-                account_attivo = COALESCE($5, account_attivo),
-                data_scadenza = COALESCE($6, data_scadenza),
+                email = COALESCE($2, email),
+                password = CASE WHEN $3::text IS NOT NULL AND $3::text <> '' THEN $3 ELSE password END,
                 
-                modulo_menu_digitale = COALESCE($7, modulo_menu_digitale),
-                modulo_ordini_clienti = COALESCE($8, modulo_ordini_clienti),
-                modulo_magazzino = COALESCE($9, modulo_magazzino),
+                modulo_menu_digitale = COALESCE($4, modulo_menu_digitale),
+                scadenza_menu_digitale = COALESCE($5, scadenza_menu_digitale),
+
+                modulo_ordini_clienti = COALESCE($6, modulo_ordini_clienti),
+                scadenza_ordini_clienti = COALESCE($7, scadenza_ordini_clienti),
+
+                modulo_magazzino = COALESCE($8, modulo_magazzino),
+                scadenza_magazzino = COALESCE($9, scadenza_magazzino),
+
                 modulo_haccp = COALESCE($10, modulo_haccp),
-                modulo_utenti = COALESCE($11, modulo_utenti),
-                modulo_cassa = COALESCE($12, modulo_cassa),
-                cassa_full_suite = COALESCE($13, cassa_full_suite),
+                scadenza_haccp = COALESCE($11, scadenza_haccp),
                 
-                password = CASE WHEN $14::text IS NOT NULL AND $14::text <> '' THEN $14 ELSE password END
+                modulo_cassa = COALESCE($12, modulo_cassa),
+                scadenza_cassa = COALESCE($13, scadenza_cassa),
+
+                account_attivo = COALESCE($14, account_attivo)
             WHERE id = $15
         `;
 
         const params = [
-            b.nome || null,
-            b.slug || null,
-            b.email || null,
-            b.telefono || null,
-            b.account_attivo !== undefined ? b.account_attivo : null, 
-            b.data_scadenza || null,
-            
-            b.modulo_menu_digitale !== undefined ? b.modulo_menu_digitale : null,
-            b.modulo_ordini_clienti !== undefined ? b.modulo_ordini_clienti : null,
-            b.modulo_magazzino !== undefined ? b.modulo_magazzino : null,
-            b.modulo_haccp !== undefined ? b.modulo_haccp : null,
-            b.modulo_utenti !== undefined ? b.modulo_utenti : null,
-            b.modulo_cassa !== undefined ? b.modulo_cassa : null,
-            b.cassa_full_suite !== undefined ? b.cassa_full_suite : null,
-            
-            b.password || null,
-            id
+            b.nome, b.email, b.password,
+            b.modulo_menu_digitale, b.scadenza_menu_digitale, // $4, $5
+            b.modulo_ordini_clienti, b.scadenza_ordini_clienti, // $6, $7
+            b.modulo_magazzino, b.scadenza_magazzino, // $8, $9
+            b.modulo_haccp, b.scadenza_haccp, // $10, $11
+            b.modulo_cassa, b.scadenza_cassa, // $12, $13
+            b.account_attivo, // $14
+            id // $15
         ];
         
         await pool.query(sql, params);
         res.json({ success: true });
     } catch (e) {
-        console.error(`❌ [${getNowItaly()}] ERRORE SUPERADMIN UPDATE:`, e);
         res.status(500).json({ error: e.message });
     }
 });

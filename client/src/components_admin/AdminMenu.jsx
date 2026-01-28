@@ -233,23 +233,71 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   };
 
   const onDragEnd = async (result) => {
+    // 1. Controlli di sicurezza base
     if (!result.destination) return;
-    const [destCat, destSub] = result.destination.droppableId.split("::");
-    const piattoId = parseInt(result.draggableId);
+    
+    const { source, destination, draggableId } = result;
+
+    // Se l'utente ha trascinato nello stesso punto, non fare nulla
+    if (source.droppableId === destination.droppableId && source.index === destination.index) return;
+
+    // 2. Estrai i dati
+    const [destCat, destSub] = destination.droppableId.split("::");
+    const piattoId = parseInt(draggableId);
+
+    // 3. Clona il menu attuale (per non modificare direttamente lo stato)
     let nuovoMenu = [...menu];
-    const piattoSpostato = nuovoMenu.find(p => p.id === piattoId);
-    if (!piattoSpostato) return;
-    nuovoMenu = nuovoMenu.filter(p => p.id !== piattoId);
-    const piattoAggiornato = { ...piattoSpostato, categoria: destCat, sottocategoria: destSub === "Generale" ? "" : destSub };
-    const prodottiDestinazione = nuovoMenu
-        .filter(p => p.categoria === destCat && (p.sottocategoria || "Generale") === destSub)
-        .sort((a,b) => (a.posizione||0) - (b.posizione||0)); 
-    prodottiDestinazione.splice(result.destination.index, 0, piattoAggiornato);
-    const altriPiatti = nuovoMenu.filter(p => !(p.categoria === destCat && (p.sottocategoria || "Generale") === destSub));
-    const piattiDestinazioneFinali = prodottiDestinazione.map((p, idx) => ({ id: p.id, posizione: idx, categoria: p.categoria, sottocategoria: p.sottocategoria }));
-    setMenu([...altriPiatti, ...piattiDestinazioneFinali]);
-    await fetch(`${API_URL}/api/prodotti/riordina`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prodotti: piattiDestinazioneFinali }) });
-  };
+
+    // 4. Trova e rimuovi il piatto dalla sua vecchia posizione
+    const indexPiatto = nuovoMenu.findIndex(p => p.id === piattoId);
+    if (indexPiatto === -1) return;
+    const [piattoSpostato] = nuovoMenu.splice(indexPiatto, 1);
+
+    // 5. Aggiorna i dati del piatto (Categoria e Sottocategoria)
+    const piattoAggiornato = {
+        ...piattoSpostato,
+        categoria: destCat,
+        sottocategoria: destSub === "Generale" ? "" : destSub
+    };
+
+    // 6. Separiamo i piatti della categoria di destinazione dagli altri
+    // (Questo serve per calcolare le nuove posizioni 1, 2, 3...)
+    const piattiTarget = nuovoMenu.filter(p => 
+        p.categoria === destCat && 
+        (p.sottocategoria || "Generale") === destSub
+    );
+    
+    const altriPiatti = nuovoMenu.filter(p => 
+        !(p.categoria === destCat && (p.sottocategoria || "Generale") === destSub)
+    );
+
+    // 7. Ordiniamo i piatti target per sicurezza (per evitare scatti)
+    piattiTarget.sort((a, b) => (a.posizione || 0) - (b.posizione || 0));
+
+    // 8. Inseriamo il piatto nella nuova posizione
+    piattiTarget.splice(destination.index, 0, piattoAggiornato);
+
+    // 9. Ricalcoliamo le posizioni sequenziali (1, 2, 3...) solo per questa categoria
+    const piattiTargetFinali = piattiTarget.map((p, idx) => ({
+        ...p,
+        posizione: idx + 1
+    }));
+
+    // 10. Ricostruiamo il menu unendo il resto + i piatti aggiornati
+    // IMPORTANTE: Questo setta lo stato visuale IMMEDIATAMENTE (Nessun "scatto")
+    setMenu([...altriPiatti, ...piattiTargetFinali]);
+
+    // 11. Inviamo al server solo i piatti riordinati (in background)
+    try {
+        await fetch(`${API_URL}/api/prodotti/riordina`, { 
+            method: 'PUT', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ prodotti: piattiTargetFinali }) 
+        });
+    } catch (error) {
+        console.error("Errore salvataggio ordine:", error);
+    }
+};
 
   const spostaSottocategoria = async (catNome, subKey, direzione) => {
       const prodottiCat = menu.filter(p => p.categoria === catNome);

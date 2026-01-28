@@ -8,12 +8,21 @@ function AdminDashboard({ user, API_URL, config, setConfig }) {
     const [datiForm, setDatiForm] = useState({ ragioneSociale: '', piva: '', indirizzo: '', telefono: '', rawText: '' });
 
     useEffect(() => {
-        fetch(`${API_URL}/api/stats/dashboard/${user.id}`).then(res => res.json()).then(data => { setStats(data); setLoading(false); }).catch(err => { console.error(err); setLoading(false); });
+        // Carica statistiche
+        fetch(`${API_URL}/api/stats/dashboard/${user.id}`)
+            .then(res => res.json())
+            .then(data => { setStats(data); setLoading(false); })
+            .catch(err => { console.error(err); setLoading(false); });
         
-        fetch(`${API_URL}/api/ristorante/config/${user.id}`).then(r => r.json()).then(d => { 
-            if (d.dati_fiscali) setDatiForm(prev => ({...prev, rawText: d.dati_fiscali})); 
-        });
-    }, [user.id, API_URL]);
+        // Carica config aggiornata per scadenze e dati fiscali
+        fetch(`${API_URL}/api/ristorante/config/${user.id}`)
+            .then(r => r.json())
+            .then(d => { 
+                if (d.dati_fiscali) setDatiForm(prev => ({...prev, rawText: d.dati_fiscali})); 
+                // Aggiorniamo anche la config globale se ci sono nuove date
+                if(setConfig) setConfig(d);
+            });
+    }, [user.id, API_URL, setConfig]);
 
     const salvaDatiSocietari = async () => {
         const stringaFinale = `${datiForm.ragioneSociale || user.nome} - P.IVA: ${datiForm.piva} - ${datiForm.indirizzo} - Tel: ${datiForm.telefono}`;
@@ -24,61 +33,110 @@ function AdminDashboard({ user, API_URL, config, setConfig }) {
         } catch(e) { alert("Errore salvataggio"); }
     };
 
-    if(loading) return <div style={{padding:20}}>🔄 Caricamento...</div>;
-    if(!stats) return <div style={{padding:20}}>❌ Errore dati.</div>;
+    if(loading) return <div style={{padding:20}}>🔄 Caricamento dashboard...</div>;
+    if(!stats) return <div style={{padding:20}}>❌ Errore caricamento dati.</div>;
 
     const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
     const cardStyle = { background: 'white', padding: '25px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #eff0f1' };
     const inputStyle = { width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '14px', boxSizing:'border-box' };
 
-    // Formattazione data scadenza
-    const dataScadenza = config.data_scadenza ? new Date(config.data_scadenza).toLocaleDateString('it-IT') : 'N/D';
+    // Helper per formattare date
+    const formatDate = (dateStr) => {
+        if (!dateStr) return 'N/D';
+        return new Date(dateStr).toLocaleDateString('it-IT');
+    };
 
-    // Lista moduli per la visualizzazione abbonamento
+    // --- CONFIGURAZIONE VISUALIZZAZIONE ABBONAMENTI ---
+    // Qui mappiamo ogni modulo alla sua variabile di configurazione e alla sua data specifica
     const moduliList = [
-        { label: "Menu Digitale", active: config.modulo_menu_digitale },
-        { label: "Ordini al Tavolo", active: config.modulo_ordini_clienti },
-        { label: "Sistema Cassa", active: config.modulo_cassa },
-        { label: "Magazzino", active: config.modulo_magazzino },
-        { label: "HACCP & Sicurezza", active: config.modulo_haccp },
-        { label: "Gestione Utenti", active: config.modulo_utenti }
+        { 
+            label: "Menu Digitale 📱", 
+            active: config.modulo_menu_digitale, 
+            scadenza: config.scadenza_menu_digitale || config.data_scadenza // Fallback su globale se manca specifica
+        },
+        { 
+            label: "Ordini al Tavolo 🍽️", 
+            active: config.modulo_ordini_clienti, 
+            scadenza: config.scadenza_ordini_clienti || config.data_scadenza 
+        },
+        { 
+            label: "Sistema Cassa 💶", 
+            active: config.modulo_cassa, 
+            scadenza: config.scadenza_cassa || config.data_scadenza 
+        },
+        { 
+            label: "Suite KDS (Cucina/Bar) 👨‍🍳", 
+            active: config.cassa_full_suite, 
+            scadenza: config.scadenza_cassa || config.data_scadenza // La suite segue la scadenza cassa solitamente
+        },
+        { 
+            label: "Magazzino & Costi 📦", 
+            active: config.modulo_magazzino, 
+            scadenza: config.scadenza_magazzino 
+        },
+        { 
+            label: "HACCP Digitale 🛡️", 
+            active: config.modulo_haccp, 
+            scadenza: config.scadenza_haccp 
+        },
+        { 
+            label: "CRM & Utenti 👥", 
+            active: config.modulo_utenti, 
+            scadenza: config.scadenza_utenti 
+        }
     ];
 
     return (
         <div style={{maxWidth: '100%', margin: '0 auto'}}>
             
-            {/* 1. SEZIONE ABBONAMENTI & MODULI (Nuova Richiesta) */}
+            {/* 1. SEZIONE ABBONAMENTI & MODULI */}
             <div style={{...cardStyle, marginBottom: '30px', borderLeft: '5px solid #8e44ad', background: '#fdfefe'}}>
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:'20px'}}>
                     <div>
                         <h3 style={{margin:0, color:'#2c3e50', display:'flex', alignItems:'center', gap:'10px'}}>
                             💎 Il tuo Piano Abbonamento
                         </h3>
-                        <p style={{fontSize:'13px', color:'#64748b', margin:'5px 0 20px 0'}}>Gestisci le funzionalità attive nel tuo locale.</p>
+                        <p style={{fontSize:'13px', color:'#64748b', margin:'5px 0 20px 0'}}>
+                            Stato dei servizi attivi e relative scadenze.
+                        </p>
                     </div>
                     {config.account_attivo && (
                         <div style={{background:'#e8f5e9', color:'#2e7d32', padding:'5px 15px', borderRadius:'20px', fontSize:'12px', fontWeight:'bold', border:'1px solid #a5d6a7'}}>
-                            ✅ LICENZA ATTIVA
+                            ✅ ACCOUNT ATTIVO
                         </div>
                     )}
                 </div>
 
-                <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap:'15px'}}>
+                <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))', gap:'15px'}}>
                     {moduliList.map((mod, idx) => (
                         <div key={idx} style={{
                             padding:'15px', 
-                            borderRadius:'8px', 
+                            borderRadius:'10px', 
                             border: mod.active ? '1px solid #d1f2eb' : '1px dashed #ccc',
                             background: mod.active ? '#f4fbf9' : '#fafafa',
-                            opacity: mod.active ? 1 : 0.6
+                            transition: 'all 0.2s'
                         }}>
-                            <div style={{display:'flex', justifyContent:'space-between', marginBottom:'5px'}}>
-                                <span style={{fontWeight:'bold', color: mod.active ? '#16a085' : '#7f8c8d'}}>{mod.label}</span>
+                            <div style={{display:'flex', justifyContent:'space-between', marginBottom:'8px'}}>
+                                <span style={{fontWeight:'bold', color: mod.active ? '#16a085' : '#7f8c8d', fontSize:'13px'}}>
+                                    {mod.label}
+                                </span>
                                 <span style={{fontSize:'16px'}}>{mod.active ? '✨' : '🔒'}</span>
                             </div>
-                            <div style={{fontSize:'11px', fontWeight:'bold', color: mod.active ? '#27ae60' : '#e74c3c'}}>
-                                {mod.active ? `Scadenza: ${dataScadenza}` : "DA ATTIVARE"}
-                            </div>
+                            
+                            {mod.active ? (
+                                <div>
+                                    <div style={{fontSize:'10px', color:'#7f8c8d', textTransform:'uppercase'}}>Scadenza</div>
+                                    <div style={{fontSize:'13px', fontWeight:'bold', color: '#27ae60'}}>
+                                        {formatDate(mod.scadenza)}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div style={{display:'flex', alignItems:'center', height:'100%', paddingTop:'5px'}}>
+                                    <span style={{fontSize:'11px', fontWeight:'bold', color: '#95a5a6', background:'#eee', padding:'3px 8px', borderRadius:'4px'}}>
+                                        DA ATTIVARE
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     ))}
                 </div>
@@ -108,7 +166,9 @@ function AdminDashboard({ user, API_URL, config, setConfig }) {
                 <h3 style={{marginTop:0, color:'#1e293b', display:'flex', alignItems:'center', gap:'10px'}}>
                     📄 Intestazione Documenti & Dati Aziendali
                 </h3>
-                <p style={{fontSize:'13px', color:'#64748b', marginBottom:'20px'}}>Questi dati appariranno nell'intestazione dei report PDF, delle comande e dell'HACCP.</p>
+                <p style={{fontSize:'13px', color:'#64748b', marginBottom:'20px'}}>
+                    Questi dati appariranno nell'intestazione dei report PDF, delle comande e dell'HACCP.
+                </p>
                 
                 <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap:'15px', marginBottom:'15px'}}>
                     <input style={inputStyle} value={datiForm.ragioneSociale} onChange={e => setDatiForm({...datiForm, ragioneSociale: e.target.value, rawText: ''})} placeholder={`Ragione Sociale (Es. ${user.nome})`} />
@@ -118,7 +178,7 @@ function AdminDashboard({ user, API_URL, config, setConfig }) {
                 </div>
                 <div style={{display:'flex', gap:'10px', alignItems:'flex-end', flexWrap:'wrap'}}>
                     <div style={{flex:1, minWidth:'250px'}}>
-                        <label style={{fontSize:'11px', fontWeight:'bold', color:'#64748b'}}>Anteprima stringa completa (Modificabile):</label>
+                        <label style={{fontSize:'11px', fontWeight:'bold', color:'#64748b'}}>Anteprima stringa completa (Modificabile manualmente):</label>
                         <textarea value={datiForm.rawText || (datiForm.ragioneSociale ? `${datiForm.ragioneSociale} - P.IVA: ${datiForm.piva} - ${datiForm.indirizzo} - Tel: ${datiForm.telefono}` : '')} onChange={e => setDatiForm({...datiForm, rawText: e.target.value})} style={{...inputStyle, minHeight:'50px', fontFamily:'monospace', background:'white'}} />
                     </div>
                     <button onClick={salvaDatiSocietari} style={{background: '#4f46e5', color: 'white', border: 'none', padding: '12px 25px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', height:'50px'}}>💾 SALVA DATI</button>
