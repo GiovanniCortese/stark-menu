@@ -40,7 +40,9 @@ export default function MenuPage() {
   const [titoloFile, setTitoloFile] = useState("");
   const [showFileModal, setShowFileModal] = useState(false);
 
+  // STATI DI BLOCCO
   const [isSuspended, setIsSuspended] = useState(false);
+  const [isMenuDisabled, setIsMenuDisabled] = useState(false); // NUOVO STATO
   const [canOrder, setCanOrder] = useState(true);
   const [error, setError] = useState(false);
 
@@ -88,7 +90,14 @@ export default function MenuPage() {
         setMenu(data.menu || []);
         setStyle(data.style || {});
 
+        // 1. Controllo Abbonamento (Licenza)
         if (data.subscription_active === false) setIsSuspended(true);
+
+        // 2. Controllo Modulo Menu (Se spento dall'Admin)
+        if (data.moduli && data.moduli.menu_digitale === false) {
+            setIsMenuDisabled(true);
+        }
+
         setCanOrder(data.ordini_abilitati && data.kitchen_active);
         setActiveCategory(null);
 
@@ -256,7 +265,7 @@ export default function MenuPage() {
     }
   };
 
-  // stile derivato (come prima)
+  // --- STILI ---
   const bg = style.bg || "#222";
   const text = style.text || "#fff";
   const titleColor = style.title || "#fff";
@@ -292,10 +301,24 @@ export default function MenuPage() {
     margin: "0 auto",
   };
 
+  // --- RENDERING SCHERMATE DI BLOCCO ---
+  
   if (isSuspended) {
     return (
-      <div style={{ padding: 50, textAlign: "center", color: "red", background: bg, minHeight: "100vh" }}>
-        <h1>⛔ SERVIZIO SOSPESO</h1>
+      <div style={{ display:'flex', justifyContent:'center', alignItems:'center', minHeight:'100vh', flexDirection:'column', padding:'20px', textAlign:'center', background: bg, color: text }}>
+        <h1 style={{fontSize:'4rem', margin:0}}>⛔</h1>
+        <h2 style={{color:'#e74c3c', textTransform:'uppercase'}}>SERVIZIO SOSPESO</h2>
+        <p style={{fontSize:'1.2rem', opacity:0.8}}>Contatta l'amministrazione del locale.</p>
+      </div>
+    );
+  }
+
+  if (isMenuDisabled) {
+    return (
+      <div style={{ display:'flex', justifyContent:'center', alignItems:'center', minHeight:'100vh', flexDirection:'column', padding:'20px', textAlign:'center', background: bg, color: text }}>
+        <h1 style={{fontSize:'4rem', margin:0}}>📴</h1>
+        <h2 style={{color:'#e74c3c', textTransform:'uppercase'}}>MENU NON ATTIVO</h2>
+        <p style={{fontSize:'1.2rem', opacity:0.8}}>Il menu digitale non è abilitato per questo locale.</p>
       </div>
     );
   }

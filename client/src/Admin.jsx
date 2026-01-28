@@ -1,4 +1,4 @@
-// client/src/Admin.jsx - VERSIONE V48 (MODULO CASSA OPZIONALE) 🚀
+// client/src/Admin.jsx - VERSIONE V49 (STRICT VISIBILITY FIX) 🔒
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -249,14 +249,17 @@ function Admin() {
         <div className="header-title"><h1>⚙️ {user.nome}</h1></div>
         
         <div className="header-actions">
-            <button onClick={() => apriLink(`/${slug}`)} className="action-btn" style={{background:'#3498db'}}>👁️ Menu</button>
+            {/* 👁️ MENU: Visibile SOLO se modulo attivo */}
+            {showMenu && (
+                <button onClick={() => apriLink(`/${slug}`)} className="action-btn" style={{background:'#3498db'}}>👁️ Menu</button>
+            )}
             
-            {/* 🟢 CASSA: ORA CONDIZIONALE (Solo se abilitata da SuperAdmin) */}
+            {/* 🟢 CASSA: Visibile SOLO se modulo attivo */}
             {showCassa && (
                 <button onClick={() => apriLink(`/cassa/${slug}`)} className="action-btn" style={{background:'#9b59b6'}}>💰 Cassa</button>
             )}
             
-            {/* 🔴 SUITE (Cucina/Bar/Pizzeria): SOLO SE ATTIVA */}
+            {/* 🔴 SUITE (Cucina/Bar/Pizzeria): Visibile SOLO se flag 'cucina_super_active' è TRUE */}
             {showFullSuite && (
                 <>
                     <button onClick={() => apriLink(`/cucina/${slug}`)} className="action-btn" style={{background:'#e67e22'}}>👨‍🍳 Cucina</button>
@@ -283,9 +286,14 @@ function Admin() {
             </button>
         )}
 
+        {/* MENU e CATEGORIE: Visibili SOLO se showMenu è true */}
         {showMenu && <button onClick={() => setTab('menu')} className="nav-btn" style={{background: tab==='menu'?'#333':'white', color: tab==='menu'?'white':'#444'}}>🍔 Menu</button>}
         {showMenu && <button onClick={() => setTab('categorie')} className="nav-btn" style={{background: tab==='categorie'?'#333':'white', color: tab==='categorie'?'white':'#444'}}>📂 Categorie</button>}
-        <button onClick={() => setTab('style')} className="nav-btn" style={{background: tab==='style'?'#9b59b6':'white', color: tab==='style'?'white':'#444'}}>🎨 Grafica</button>
+        
+        {/* GRAFICA: Visibile SOLO se showMenu è true */}
+        {showMenu && (
+             <button onClick={() => setTab('style')} className="nav-btn" style={{background: tab==='style'?'#9b59b6':'white', color: tab==='style'?'white':'#444'}}>🎨 Grafica</button>
+        )}
         
         {user.ruolo !== 'editor' && showUtenti && (
             <button onClick={() => setTab('users')} className="nav-btn" style={{background: tab==='users'?'#e67e22':'white', color: tab==='users'?'white':'#444'}}>👥 Utenti</button>
@@ -299,9 +307,9 @@ function Admin() {
       {/* CONTENUTO */}
       <div style={{background:'white', borderRadius:'12px', padding:'20px', boxShadow:'0 2px 10px rgba(0,0,0,0.05)', minHeight:'500px'}}>
         {tab === 'dashboard' && user.ruolo !== 'editor' && <AdminDashboard user={user} API_URL={API_URL} />}
-        {tab === 'menu' && <AdminMenu user={user} menu={menu} setMenu={setMenu} categorie={categorie} config={config} setConfig={setConfig} API_URL={API_URL} ricaricaDati={ricaricaDati} />}
-        {tab === 'categorie' && <AdminCategorie user={user} categorie={categorie} setCategorie={setCategorie} API_URL={API_URL} ricaricaDati={ricaricaDati} />}
-        {tab === 'style' && <AdminGrafica user={user} config={config} setConfig={setConfig} API_URL={API_URL} />}
+        {tab === 'menu' && showMenu && <AdminMenu user={user} menu={menu} setMenu={setMenu} categorie={categorie} config={config} setConfig={setConfig} API_URL={API_URL} ricaricaDati={ricaricaDati} />}
+        {tab === 'categorie' && showMenu && <AdminCategorie user={user} categorie={categorie} setCategorie={setCategorie} API_URL={API_URL} ricaricaDati={ricaricaDati} />}
+        {tab === 'style' && showMenu && <AdminGrafica user={user} config={config} setConfig={setConfig} API_URL={API_URL} />}
         {tab === 'users' && showUtenti && <AdminUsers API_URL={API_URL} user={user} />}
         {tab === 'security' && <AdminSicurezza user={user} API_URL={API_URL} />}
       </div>

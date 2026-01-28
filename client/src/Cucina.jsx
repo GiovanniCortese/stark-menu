@@ -1,7 +1,7 @@
-// client/src/Cucina.jsx - VERSIONE V5 (FIX VARIANTI & RAGGRUPPAMENTO SICURO) 👨‍🍳
-import { io } from "socket.io-client"; // Aggiungi questo in alto
+// client/src/Cucina.jsx - VERSIONE V6 (FIX SUITE CHECK & VARIANTI) 👨‍🍳
+import { io } from "socket.io-client";
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom'; // Aggiunto useNavigate per redirect
 
 function Cucina() {
   const [tavoli, setTavoli] = useState([]); 
@@ -9,17 +9,37 @@ function Cucina() {
   const [isAuthorized, setIsAuthorized] = useState(false); 
   const [passwordInput, setPasswordInput] = useState("");
   const [loginError, setLoginError] = useState(false); 
-const [loadingLogin, setLoadingLogin] = useState(false); 
+  const [loadingLogin, setLoadingLogin] = useState(false); 
+  
+  // STATO BLOCCO (Suite Disattivata)
+  const [isSuiteDisabled, setIsSuiteDisabled] = useState(false);
+
   const { slug } = useParams(); 
+  const navigate = useNavigate();
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
   useEffect(() => {
-    fetch(`${API_URL}/api/menu/${slug}`).then(r=>r.json()).then(setInfoRistorante);
+    fetch(`${API_URL}/api/menu/${slug}`)
+      .then(r => r.json())
+      .then(data => {
+          setInfoRistorante(data);
+
+          // --- 🔒 CONTROLLO DI SICUREZZA: SUITE ATTIVA? ---
+          // Se la "Full Suite" è disattivata dal SuperAdmin, blocchiamo l'accesso.
+          // Nota: il backend potrebbe mandare 'cucina_super_active' o dentro 'moduli'
+          const isSuiteActive = data.cucina_super_active !== false; 
+          
+          if (!isSuiteActive) {
+              setIsSuiteDisabled(true);
+          }
+      })
+      .catch(err => console.error("Errore fetch info ristorante:", err));
+
     const sessionKey = `cucina_session_${slug}`;
     if (localStorage.getItem(sessionKey) === "true") setIsAuthorized(true);
   }, [slug]);
 
-const handleLogin = async (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     if(!infoRistorante?.id) return;
     
@@ -49,7 +69,7 @@ const handleLogin = async (e) => {
     } finally { 
         setLoadingLogin(false); 
     }
-};
+  };
 
   const handleLogout = () => {
       if(confirm("Uscire dalla cucina?")) {
@@ -90,7 +110,8 @@ const handleLogin = async (e) => {
                             stato: prod.stato,
                             riaperto: prod.riaperto,
                             cameriere: ord.cameriere, 
-                            cliente: ord.cliente
+                            cliente: ord.cliente,
+                            chiuso_da_cassa: prod.stato === 'servito' && !prod.ora_servizio // Esempio logica, o basata su log
                         });
                     });
                 }
@@ -108,7 +129,7 @@ const handleLogin = async (e) => {
         .catch(e => console.error("Polling error:", e));
   };
 
-useEffect(() => {
+  useEffect(() => {
     // 1. Controllo di sicurezza
     if (!isAuthorized || !infoRistorante?.id) return;
 
@@ -117,7 +138,7 @@ useEffect(() => {
     // 2. Carica i dati iniziali subito
     aggiorna();
 
-    // 3. Configurazione Socket (RIMOSSO 'transports: websocket' per compatibilità Render)
+    // 3. Configurazione Socket
     const socket = io(API_URL, {
         reconnectionAttempts: 5,
         reconnectionDelay: 1000,
@@ -127,7 +148,6 @@ useEffect(() => {
     // 4. Gestione Eventi Socket
     socket.on('connect', () => {
         console.log("✅ Socket Connesso! ID:", socket.id);
-        // Importante: ri-entriamo nella stanza ogni volta che ci connettiamo (anche dopo riconnessione)
         socket.emit('join_room', String(infoRistorante.id));
     });
 
@@ -138,7 +158,6 @@ useEffect(() => {
     socket.on('refresh_ordini', () => {
         console.log("🔥 EVENTO RICEVUTO: Aggiornamento ordini in corso...");
         aggiorna();
-        // Feedback sonoro opzionale (se supportato dal browser)
         if(navigator.vibrate) navigator.vibrate([100, 50, 100]);
     });
 
@@ -151,44 +170,37 @@ useEffect(() => {
         socket.disconnect();
     };
 
-    // Dipendenze: riavvia solo se cambia l'ID o l'autorizzazione
-}, [isAuthorized, infoRistorante?.id]);
+  }, [isAuthorized, infoRistorante?.id]);
 
   const segnaPiattoServito = async (targetItems) => {
-      // Invece di raggruppare, spariamo un aggiornamento per ogni singolo piatto.
-      // Il server gestirà la coda per evitare conflitti.
       const promises = targetItems.map(item => {
           return fetch(`${API_URL}/api/ordine/${item.parentOrderId}/patch-item`, {
               method: 'PUT',
               headers: {'Content-Type': 'application/json'},
               body: JSON.stringify({ 
-                  index: item.originalIndex, // Diciamo al server ESATTAMENTE quale riga toccare
+                  index: item.originalIndex,
                   stato: 'servito',
-                  operatore: 'CUCINA 👨‍🍳'   // Questo apparirà nel log
+                  operatore: 'CUCINA 👨‍🍳'
               })
           });
       });
 
-      // Promise.all aspetta che tutti i "colpi" siano andati a segno
       try {
           await Promise.all(promises);
-          aggiorna(); // Ricarica la vista subito dopo
+          aggiorna();
       } catch (error) {
           console.error("Errore aggiornamento piatti:", error);
           alert("Errore di connessione durante l'aggiornamento.");
       }
   };
 
-  // --- HELPER: GENERA CHIAVE UNICA PER VARIANTI ---
   const getVariantKey = (v) => {
       if(!v) return "";
-      // Crea una stringa univoca tipo "senza_cipolla|doppia_mozzarella"
       const r = (v.rimozioni || []).sort().join('_');
       const a = (v.aggiunte || []).map(x => x.nome).sort().join('_');
       return `${r}|${a}`;
   };
 
-  // --- LOGICA CORE: RAGGRUPPAMENTO ---
   const processaTavolo = (items) => {
       const courses = { 1: [], 2: [], 3: [], 4: [] };
       
@@ -218,8 +230,6 @@ useEffect(() => {
 
           const groups = [];
           courses[cNum].forEach(p => {
-              // *** FIX FONDAMENTALE ***
-              // Ora la chiave include le varianti. Se le varianti sono diverse, crea due righe separate.
               const variantKey = getVariantKey(p.varianti_scelte);
               const key = `${p.nome}-${p.stato}-${p.riaperto}-${variantKey}-${p.is_pizzeria ? 'piz' : 'cuc'}`;
               
@@ -250,7 +260,21 @@ useEffect(() => {
       return finalStructure;
   };
 
+  // --- BLOCCO 1: SCHERMATA "NON ATTIVO" (SE SUITE DISABILITATA) ---
+  if (isSuiteDisabled) {
+      return (
+          <div style={{display:'flex', justifyContent:'center', alignItems:'center', minHeight:'100vh', flexDirection:'column', padding:'20px', textAlign:'center', background:'#ecf0f1', color:'#2c3e50'}}>
+              <h1 style={{fontSize:'4rem', margin:0}}>⛔</h1>
+              <h2 style={{color:'#c0392b', textTransform:'uppercase'}}>REPARTO NON ATTIVO</h2>
+              <p style={{fontSize:'1.2rem', opacity:0.8}}>La gestione cucina è disabilitata per questo locale.</p>
+              <button onClick={() => navigate('/')} style={{marginTop:20, padding:'10px 20px', background:'#3498db', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Torna alla Home</button>
+          </div>
+      );
+  }
+
   if (!infoRistorante) return <div style={{textAlign:'center', padding:50}}><h1>⏳ Caricamento...</h1></div>;
+  
+  // --- BLOCCO 2: LOGIN ---
   if (!isAuthorized) return (
     <div className="cucina-container" style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', flexDirection:'column', background:'#d35400'}}>
         <div style={{background:'white', padding:'40px', borderRadius:'10px', width:'90%', maxWidth:'400px', textAlign:'center', boxShadow:'0 10px 30px rgba(0,0,0,0.3)'}}>
@@ -276,7 +300,9 @@ useEffect(() => {
             </form>
         </div>
     </div>
-);
+  );
+
+  // --- BLOCCO 3: INTERFACCIA CUCINA ---
   return (
     <div className="cucina-container">
       <header style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 20px', background:'#fff', marginBottom:'20px', borderRadius:'8px'}}>
@@ -287,42 +313,39 @@ useEffect(() => {
       <div className="ordini-grid">
         {tavoli.length === 0 && <div style={{textAlign: 'center', width: '100%', marginTop: '50px', color: '#888'}}><h2>Nessuna comanda in attesa 👨‍🍳</h2></div>}
 
-{tavoli.map(tavoloData => {
-    const strutturaOrdine = processaTavolo(tavoloData.items);
-    
-    // --- CALCOLO CHI HA PRESO L'ORDINE ---
-const primoItem = tavoloData.items[0];
-const nomeChi = primoItem?.cameriere 
-    ? `👤 ${primoItem.cameriere}` 
-    : `📱 ${primoItem?.cliente || 'Cliente'}`;
-
-    return (
-        <div key={tavoloData.tavolo} className="ticket" style={{borderTop: '5px solid #d35400'}}>
-            <div className="ticket-header" style={{
-    display:'flex', justifyContent:'space-between', alignItems:'flex-start', 
-    background: '#d35400', // (Usa #c0392b se sei in Pizzeria)
-    color: 'white', padding: '10px'
-}}>
-    <div>
-        <span style={{fontSize:'1.8rem', display:'block'}}>Tavolo <strong>{tavoloData.tavolo}</strong></span>
-        
-        {/* --- BADGE CAMERIERE / CLIENTE --- */}
-        <span style={{
-            fontSize:'0.9rem', 
-            background:'rgba(255,255,255,0.2)', 
-            padding:'2px 8px', borderRadius:'4px', marginTop:'4px', 
-            display:'inline-block', fontWeight:'bold'
-        }}>
-            {nomeChi}
-        </span>
-    </div>
-    <span style={{fontSize:'0.9rem', color:'#fff', marginTop:'5px'}}>
-        {new Date(tavoloData.orarioMin).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
-    </span>
-</div>
+        {tavoli.map(tavoloData => {
+            const strutturaOrdine = processaTavolo(tavoloData.items);
             
-            <div className="ticket-body" style={{textAlign:'left', paddingBottom:'5px'}}>
-            {/* ... resto del codice ... */}
+            // Calcolo chi ha preso l'ordine
+            const primoItem = tavoloData.items[0];
+            const nomeChi = primoItem?.cameriere 
+                ? `👤 ${primoItem.cameriere}` 
+                : `📱 ${primoItem?.cliente || 'Cliente'}`;
+
+            return (
+                <div key={tavoloData.tavolo} className="ticket" style={{borderTop: '5px solid #d35400'}}>
+                    <div className="ticket-header" style={{
+                        display:'flex', justifyContent:'space-between', alignItems:'flex-start', 
+                        background: '#d35400', 
+                        color: 'white', padding: '10px'
+                    }}>
+                        <div>
+                            <span style={{fontSize:'1.8rem', display:'block'}}>Tavolo <strong>{tavoloData.tavolo}</strong></span>
+                            <span style={{
+                                fontSize:'0.9rem', 
+                                background:'rgba(255,255,255,0.2)', 
+                                padding:'2px 8px', borderRadius:'4px', marginTop:'4px', 
+                                display:'inline-block', fontWeight:'bold'
+                            }}>
+                                {nomeChi}
+                            </span>
+                        </div>
+                        <span style={{fontSize:'0.9rem', color:'#fff', marginTop:'5px'}}>
+                            {new Date(tavoloData.orarioMin).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+                        </span>
+                    </div>
+                    
+                    <div className="ticket-body" style={{textAlign:'left', paddingBottom:'5px'}}>
                         {strutturaOrdine.map(section => {
                             let headerColor = "#7f8c8d"; let headerBg = "#ecf0f1"; 
                             let title = `${section.courseNum}° STEP`; 
@@ -355,59 +378,56 @@ const nomeChi = primoItem?.cameriere
                                                     <span style={{background: isServito ? '#95a5a6' : (item.isMyStation ? '#d35400' : '#7f8c8d'), color:'white', padding:'2px 8px', borderRadius:'12px', fontWeight:'bold', fontSize:'0.9rem', minWidth:'25px', textAlign:'center'}}>
                                                         {item.count}x
                                                     </span>
-                                                   <div style={{flex:1}}>
-    <div style={{
-        fontSize:'1.1rem', 
-        fontWeight: isServito ? 'normal' : 'bold', 
-        textDecoration: isServito ? 'line-through' : 'none', 
-        color: isServito ? '#aaa' : '#000'
-    }}>
-        {item.nome}
-    </div>
-    
-    {/* --- NUOVA RIGA: REPARTO DI APPARTENENZA --- */}
-    <div style={{fontSize:'0.75rem', color:'#7f8c8d', fontStyle:'italic', marginTop:'2px'}}>
-        {item.is_pizzeria ? '🍕 Pizzeria' : '👨‍🍳 Cucina'}
-    </div>
+                                                    <div style={{flex:1}}>
+                                                        <div style={{
+                                                            fontSize:'1.1rem', 
+                                                            fontWeight: isServito ? 'normal' : 'bold', 
+                                                            textDecoration: isServito ? 'line-through' : 'none', 
+                                                            color: isServito ? '#aaa' : '#000'
+                                                        }}>
+                                                            {item.nome}
+                                                        </div>
+                                                        
+                                                        <div style={{fontSize:'0.75rem', color:'#7f8c8d', fontStyle:'italic', marginTop:'2px'}}>
+                                                            {item.is_pizzeria ? '🍕 Pizzeria' : '👨‍🍳 Cucina'}
+                                                        </div>
 
-    {/* VARIANTI (Rimangono i badge colorati, ma il testo sopra è pulito) */}
-    {item.varianti_scelte && (
-        <div style={{marginTop:'4px'}}>
-            {item.varianti_scelte.rimozioni?.map((ing, i) => (
-                <span key={i} style={{background:'#c0392b', color:'white', fontSize:'0.75rem', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold', marginRight:'5px', display:'inline-block'}}>
-                    NO {ing}
-                </span>
-            ))}
-            {item.varianti_scelte.aggiunte?.map((ing, i) => (
-                <span key={i} style={{background:'#27ae60', color:'white', fontSize:'0.75rem', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold', marginRight:'5px', display:'inline-block'}}>
-                    + {ing.nome}
-                </span>
-            ))}
-        </div>
-    )}
+                                                        {item.varianti_scelte && (
+                                                            <div style={{marginTop:'4px'}}>
+                                                                {item.varianti_scelte.rimozioni?.map((ing, i) => (
+                                                                    <span key={i} style={{background:'#c0392b', color:'white', fontSize:'0.75rem', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold', marginRight:'5px', display:'inline-block'}}>
+                                                                        NO {ing}
+                                                                    </span>
+                                                                ))}
+                                                                {item.varianti_scelte.aggiunte?.map((ing, i) => (
+                                                                    <span key={i} style={{background:'#27ae60', color:'white', fontSize:'0.75rem', padding:'2px 6px', borderRadius:'4px', fontWeight:'bold', marginRight:'5px', display:'inline-block'}}>
+                                                                        + {ing.nome}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        )}
 
-    {/* --- INSERISCI QUI LA MODIFICA PER LA CASSA --- */}
-{item.chiuso_da_cassa && item.stato === 'servito' && (
-    <div style={{
-        display:'inline-block', 
-        marginTop:'4px', 
-        background:'#27ae60', 
-        color:'white', 
-        padding:'2px 6px', 
-        borderRadius:'4px', 
-        fontSize:'0.7rem', 
-        fontWeight:'bold'
-    }}>
-        ✅ FATTO DALLA CASSA
-    </div>
-)}
-    
-            {item.riaperto && item.stato === 'in_attesa' && (
-             <div style={{display:'inline-block', marginTop:'2px', background:'#f39c12', color:'white', padding:'2px 5px', borderRadius:'3px', fontSize:'0.7rem', fontWeight:'bold'}}>
-                  ⚠️ RIAPERTO
-             </div>
-    )}
-</div>
+                                                        {item.chiuso_da_cassa && item.stato === 'servito' && (
+                                                            <div style={{
+                                                                display:'inline-block', 
+                                                                marginTop:'4px', 
+                                                                background:'#27ae60', 
+                                                                color:'white', 
+                                                                padding:'2px 6px', 
+                                                                borderRadius:'4px', 
+                                                                fontSize:'0.7rem', 
+                                                                fontWeight:'bold'
+                                                            }}>
+                                                                ✅ FATTO DALLA CASSA
+                                                            </div>
+                                                        )}
+                                                            
+                                                        {item.riaperto && item.stato === 'in_attesa' && (
+                                                            <div style={{display:'inline-block', marginTop:'2px', background:'#f39c12', color:'white', padding:'2px 5px', borderRadius:'3px', fontSize:'0.7rem', fontWeight:'bold'}}>
+                                                                  ⚠️ RIAPERTO
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
 
                                                 <div style={{textAlign:'right'}}>

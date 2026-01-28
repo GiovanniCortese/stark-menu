@@ -1,4 +1,4 @@
-// server/server.js - VERSIONE JARVIS V69 (TIMEZONE FIX & SUITE LOGIC) 🚀
+// server/server.js - VERSIONE JARVIS V70 (ITALIAN TIME FIX) 🇮🇹
 
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
@@ -10,8 +10,8 @@ const { Server } = require("socket.io");
 const pool = require('./config/db'); 
 
 // --- IMPORTIAMO IL GESTORE ORARIO ITALIANO ---
-// ✅ FIX: Percorso aggiornato come richiesto
-const { getNowItaly, getTimeItaly } = require('./utils/time'); 
+// Assicurati che utils/time.js esista e contenga getItalyDateComponents
+const { getNowItaly, getTimeItaly, getItalyDateComponents } = require('./utils/time'); 
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -41,22 +41,30 @@ io.on('connection', (socket) => {
     });
 });
 
-// --- LOGICA AUTO-PAUSA (SaaS Mode - Ora Italiana) ---
+// --- LOGICA AUTO-PAUSA (SaaS Mode - ORA ITALIANA REALE) ---
 const checkExpirations = async () => {
-    console.log(`🔍 [J.A.R.V.I.S. - ${getNowItaly()}] Controllo scadenze abbonamenti...`);
+    // 1. Calcoliamo la data di OGGI in Italia (YYYY-MM-DD)
+    const { year, month, day } = getItalyDateComponents();
+    const todayItaly = `${year}-${month}-${day}`;
+
+    console.log(`🔍 [J.A.R.V.I.S. - ${getNowItaly()}] Controllo scadenze (Data Italia: ${todayItaly})...`);
+    
     try {
+        // 2. Confrontiamo data_scadenza con la data italiana passata come parametro ($1)
+        // Se data_scadenza < todayItaly, allora è scaduto.
         const res = await pool.query(`
             UPDATE ristoranti 
             SET account_attivo = FALSE 
-            WHERE data_scadenza < CURRENT_DATE 
+            WHERE data_scadenza < $1 
             AND account_attivo = TRUE
             RETURNING nome
-        `);
+        `, [todayItaly]);
+
         if (res.rowCount > 0) {
-            console.log(`⚠️  AUTO-PAUSA: Disattivati ${res.rowCount} locali per scadenza pagamenti.`);
+            console.log(`⚠️  AUTO-PAUSA: Disattivati ${res.rowCount} locali per scadenza (Data ref: ${todayItaly}).`);
             res.rows.forEach(r => console.log(`   - ${r.nome}`));
         } else {
-            console.log("✅ Tutte le licenze sono in regola.");
+            console.log("✅ Nessuna nuova scadenza rilevata oggi.");
         }
     } catch (e) {
         console.error("❌ Errore critico nel controllo scadenze:", e.message);
@@ -107,12 +115,12 @@ app.use('/', adminRoutes);
 app.use((err, req, res, next) => {
     console.error(`🔥 [${getNowItaly()}] ERRORE SERVER:`, err.stack);
     if (!res.headersSent) {
-        res.status(500).json({ error: "Errore V69: " + err.message });
+        res.status(500).json({ error: "Errore V70: " + err.message });
     }
 });
 
 // --- AVVIO ---
 server.listen(port, () => {
-    console.log(`🚀 JARVIS SERVER V69 pronto su porta ${port}`);
-    console.log(`🕒 Orario Server: ${getNowItaly()}`);
+    console.log(`🚀 JARVIS SERVER V70 pronto su porta ${port}`);
+    console.log(`🕒 Orario Server Italia: ${getNowItaly()}`);
 });
