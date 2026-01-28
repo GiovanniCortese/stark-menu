@@ -142,50 +142,62 @@ router.put('/api/super/ristoranti/:id', async (req, res) => {
         const { id } = req.params;
         const b = req.body;
         
-        // Query SQL massiva che include TUTTI i campi nuovi
         const sql = `
             UPDATE ristoranti SET 
+                -- Account Base
                 nome = COALESCE($1, nome),
                 email = COALESCE($2, email),
                 password = CASE WHEN $3::text IS NOT NULL AND $3::text <> '' THEN $3 ELSE password END,
                 slug = COALESCE($4, slug),
+                telefono = COALESCE($5, telefono),
                 
-                -- Moduli Base
-                modulo_menu_digitale = COALESCE($5, modulo_menu_digitale),
-                scadenza_menu_digitale = COALESCE($6, scadenza_menu_digitale),
+                -- Dati Fiscali & Sedi (NUOVI)
+                piva = COALESCE($6, piva),
+                codice_fiscale = COALESCE($7, codice_fiscale),
+                pec = COALESCE($8, pec),
+                codice_sdi = COALESCE($9, codice_sdi),
+                sede_legale = COALESCE($10, sede_legale),
+                sede_operativa = COALESCE($11, sede_operativa),
+                referente = COALESCE($12, referente),
+                note_interne = COALESCE($13, note_interne),
 
-                modulo_ordini_clienti = COALESCE($7, modulo_ordini_clienti),
-                scadenza_ordini_clienti = COALESCE($8, scadenza_ordini_clienti),
+                -- Moduli & Scadenze
+                modulo_menu_digitale = COALESCE($14, modulo_menu_digitale),
+                scadenza_menu_digitale = COALESCE($15, scadenza_menu_digitale),
 
-                modulo_magazzino = COALESCE($9, modulo_magazzino),
-                scadenza_magazzino = COALESCE($10, scadenza_magazzino),
+                modulo_ordini_clienti = COALESCE($16, modulo_ordini_clienti),
+                scadenza_ordini_clienti = COALESCE($17, scadenza_ordini_clienti),
 
-                modulo_haccp = COALESCE($11, modulo_haccp),
-                scadenza_haccp = COALESCE($12, scadenza_haccp),
+                modulo_magazzino = COALESCE($18, modulo_magazzino),
+                scadenza_magazzino = COALESCE($19, scadenza_magazzino),
+
+                modulo_haccp = COALESCE($20, modulo_haccp),
+                scadenza_haccp = COALESCE($21, scadenza_haccp),
                 
-                modulo_cassa = COALESCE($13, modulo_cassa),
-                scadenza_cassa = COALESCE($14, scadenza_cassa),
+                modulo_cassa = COALESCE($22, modulo_cassa),
+                scadenza_cassa = COALESCE($23, scadenza_cassa),
 
-                -- NUOVI CAMPI MANCANTI (Il problema era qui)
-                modulo_utenti = COALESCE($15, modulo_utenti),
-                scadenza_utenti = COALESCE($16, scadenza_utenti),
-                cassa_full_suite = COALESCE($17, cassa_full_suite),
+                modulo_utenti = COALESCE($24, modulo_utenti),
+                scadenza_utenti = COALESCE($25, scadenza_utenti),
+                
+                cassa_full_suite = COALESCE($26, cassa_full_suite),
+                account_attivo = COALESCE($27, account_attivo)
 
-                account_attivo = COALESCE($18, account_attivo)
-            WHERE id = $19
+            WHERE id = $28
         `;
 
         const params = [
-            b.nome, b.email, b.password, b.slug, // 1-4
-            b.modulo_menu_digitale, b.scadenza_menu_digitale, // 5-6
-            b.modulo_ordini_clienti, b.scadenza_ordini_clienti, // 7-8
-            b.modulo_magazzino, b.scadenza_magazzino, // 9-10
-            b.modulo_haccp, b.scadenza_haccp, // 11-12
-            b.modulo_cassa, b.scadenza_cassa, // 13-14
-            b.modulo_utenti, b.scadenza_utenti, // 15-16 (NUOVI)
-            b.cassa_full_suite, // 17 (NUOVO)
-            b.account_attivo, // 18
-            id // 19
+            b.nome, b.email, b.password, b.slug, b.telefono, // 1-5
+            b.piva, b.codice_fiscale, b.pec, b.codice_sdi, b.sede_legale, b.sede_operativa, b.referente, b.note_interne, // 6-13
+            b.modulo_menu_digitale, b.scadenza_menu_digitale, // 14-15
+            b.modulo_ordini_clienti, b.scadenza_ordini_clienti, // 16-17
+            b.modulo_magazzino, b.scadenza_magazzino, // 18-19
+            b.modulo_haccp, b.scadenza_haccp, // 20-21
+            b.modulo_cassa, b.scadenza_cassa, // 22-23
+            b.modulo_utenti, b.scadenza_utenti, // 24-25
+            b.cassa_full_suite, // 26
+            b.account_attivo, // 27
+            id // 28
         ];
         
         await pool.query(sql, params);

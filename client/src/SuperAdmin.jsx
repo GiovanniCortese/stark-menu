@@ -1,4 +1,4 @@
-// client/src/SuperAdmin.jsx - VERSIONE V76 (SEARCH & SORT) 🦇
+// client/src/SuperAdmin.jsx - VERSIONE V77 (FULL CRM DATA) 🗂️
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
@@ -14,16 +14,30 @@ function SuperAdmin() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null); 
   
-  // STATO CONFIGURAZIONE FORM
+  // STATO CONFIGURAZIONE FORM (ESTESO PER CRM)
   const [formData, setFormData] = useState({ 
+      // 1. Accesso & Base
       nome: '', 
       slug: '', 
       email: '', 
-      telefono: '', 
       password: '', 
       account_attivo: true,
       data_scadenza: new Date().toISOString().split('T')[0], 
       
+      // 2. Contatti & Sedi
+      telefono: '', 
+      referente: '',
+      sede_legale: '', 
+      sede_operativa: '', // Importante per Mappe
+      
+      // 3. Dati Fiscali
+      piva: '', 
+      codice_fiscale: '', 
+      pec: '', 
+      codice_sdi: '',
+      note_interne: '',
+
+      // Moduli (Hidden in modal, managed in table)
       modulo_cassa: true,           
       modulo_menu_digitale: true,   
       modulo_ordini_clienti: true,  
@@ -121,7 +135,9 @@ function SuperAdmin() {
             (r.nome && r.nome.toLowerCase().includes(term)) ||
             (r.slug && r.slug.toLowerCase().includes(term)) ||
             (r.email && r.email.toLowerCase().includes(term)) ||
-            (r.telefono && r.telefono.includes(term))
+            (r.telefono && r.telefono.includes(term)) ||
+            (r.piva && r.piva.includes(term)) ||
+            (r.sede_operativa && r.sede_operativa.toLowerCase().includes(term))
         );
     }
 
@@ -131,7 +147,6 @@ function SuperAdmin() {
             let valA = a[restaurantSortConfig.key];
             let valB = b[restaurantSortConfig.key];
 
-            // Gestione stringhe case-insensitive
             if (typeof valA === 'string') valA = valA.toLowerCase();
             if (typeof valB === 'string') valB = valB.toLowerCase();
 
@@ -169,21 +184,34 @@ function SuperAdmin() {
   };
 
   const handleElimina = async (id, nome) => { 
-      if(!confirm(`⚠️ ATTENZIONE: Eliminare definitivamente "${nome}"?`)) return; 
+      if(!confirm(`⚠️ ATTENZIONE: Eliminare definitivamente "${nome}" e tutti i suoi dati?`)) return; 
       try { await fetch(`${API_URL}/api/super/ristoranti/${id}`, { method: 'DELETE' }); caricaDati(); } catch(err) { alert("Errore cancellazione"); } 
   };
 
-  // --- GESTIONE MODALE CONFIGURAZIONE (EDIT) ---
+  // --- GESTIONE MODALE CONFIGURAZIONE (CRM & EDIT) ---
   const avviaModifica = (r) => {
       setEditingId(r.id);
       setFormData({
-          nome: r.nome,
-          slug: r.slug,
+          // Base
+          nome: r.nome || '',
+          slug: r.slug || '',
           email: r.email || '',
-          telefono: r.telefono || '',
           password: '',
           account_attivo: r.account_attivo,
           data_scadenza: r.data_scadenza ? r.data_scadenza.split('T')[0] : '',
+          
+          // CRM Data
+          telefono: r.telefono || '',
+          referente: r.referente || '',
+          piva: r.piva || '',
+          codice_fiscale: r.codice_fiscale || '',
+          pec: r.pec || '',
+          codice_sdi: r.codice_sdi || '',
+          sede_legale: r.sede_legale || '',
+          sede_operativa: r.sede_operativa || '',
+          note_interne: r.note_interne || '',
+
+          // Moduli (Hidden but preserved)
           modulo_cassa: r.modulo_cassa,
           modulo_menu_digitale: r.modulo_menu_digitale,
           modulo_ordini_clienti: r.modulo_ordini_clienti,
@@ -203,9 +231,12 @@ function SuperAdmin() {
   const apriModaleNuovo = () => { 
       setEditingId(null); 
       setFormData({ 
-          nome: '', slug: '', email: '', telefono: '', password: '', 
+          nome: '', slug: '', email: '', password: '', 
+          telefono: '', referente: '', piva: '', codice_fiscale: '', pec: '', codice_sdi: '',
+          sede_legale: '', sede_operativa: '', note_interne: '',
           account_attivo: true,
           data_scadenza: new Date(new Date().setMonth(new Date().getMonth() + 12)).toISOString().split('T')[0],
+          // Default modules
           modulo_cassa: true, modulo_menu_digitale: true, modulo_ordini_clienti: true,
           modulo_magazzino: false, modulo_haccp: false, modulo_utenti: false, cassa_full_suite: true
       }); 
@@ -218,7 +249,7 @@ function SuperAdmin() {
       const method = editingId ? 'PUT' : 'POST'; 
       try { 
           const res = await fetch(endpoint, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formData) }); 
-          if(res.ok) { alert("✅ Operazione riuscita!"); setShowModal(false); caricaDati(); } 
+          if(res.ok) { alert("✅ Dati CRM Salvati!"); setShowModal(false); caricaDati(); } 
           else { const data = await res.json(); alert("❌ Errore: " + (data.error || "Sconosciuto")); }
       } catch(err) { alert("❌ Errore di connessione"); } 
   };
@@ -287,7 +318,10 @@ function SuperAdmin() {
   const handleImportTrigger = () => document.getElementById('file-upload-users').click();
   const handleImportUsers = async (e) => { const file = e.target.files[0]; if(!file) return; setUploading(true); const fd = new FormData(); fd.append('file', file); try { const res = await fetch(`${API_URL}/api/utenti/import/excel`, { method: 'POST', body: fd }); if(res.ok) { alert("Importazione completata!"); caricaDati(); } } catch(err) { alert("Errore"); } finally { setUploading(false); e.target.value = null; } };
 
+  // STILI E LAYOUT
   const inputStyle = { width: '100%', padding: '12px', marginTop: '5px', border: '1px solid #444', background: '#222', color: 'white', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' };
+  const labelStyle = {fontSize:11, fontWeight:'bold', color:'#e74c3c', textTransform:'uppercase', marginTop:10, display:'block'};
+  const sectionTitleStyle = {fontSize:16, fontWeight:'bold', color:'#3498db', borderBottom:'1px solid #444', paddingBottom:5, marginTop:20, marginBottom:10};
 
   if (!authorized) return (
     <div style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', background:'#000'}}>
@@ -322,11 +356,11 @@ function SuperAdmin() {
               </div>
           </div>
 
-          {/* BARRA DI RICERCA RISTORANTI (NUOVA) */}
+          {/* BARRA DI RICERCA RISTORANTI */}
           <div style={{marginBottom: 20, display:'flex', gap:15}}>
               <input 
                   type="text" 
-                  placeholder="🔍 Cerca Attività (Nome, Email, Telefono, Slug)..." 
+                  placeholder="🔍 Cerca Attività (Nome, P.IVA, Città, Email)..." 
                   value={restaurantSearchTerm}
                   onChange={(e) => setRestaurantSearchTerm(e.target.value)}
                   style={{
@@ -361,7 +395,7 @@ function SuperAdmin() {
                                   </th>
                               ))}
                               
-                              <th style={{padding:15, textAlign:'center'}}>Stato Globale</th>
+                              <th style={{padding:15, textAlign:'center'}}>Stato</th>
                               <th style={{padding:15, textAlign:'center'}}>Azioni</th>
                           </tr>
                       </thead>
@@ -375,10 +409,16 @@ function SuperAdmin() {
                                   <td style={{padding:15}}>
                                       <div style={{fontWeight:'bold', color:'white', fontSize:'15px'}}>{r.nome}</div>
                                       <div style={{fontSize:11, color:'#7f8c8d', fontFamily:'monospace'}}>{r.slug}</div>
+                                      {r.sede_operativa && (
+                                          <div style={{fontSize:10, color:'#aaa', marginTop:4}}>📍 {r.sede_operativa}</div>
+                                      )}
                                   </td>
                                   <td style={{padding:15}}>
                                       <div style={{fontSize:12, color:'#bdc3c7'}}>{r.email}</div>
                                       <div style={{fontSize:11, color:'#7f8c8d'}}>{r.telefono}</div>
+                                      {r.piva && (
+                                          <div style={{fontSize:10, color:'#555', marginTop:4}}>P.IVA: {r.piva}</div>
+                                      )}
                                   </td>
 
                                   {/* LOOP MODULI GRANULARI + KDS SUITE */}
@@ -387,7 +427,6 @@ function SuperAdmin() {
                                       const fieldDate = m.dateField;
                                       const isActive = r[fieldBool];
                                       
-                                      // Gestione sicura della data
                                       let dateVal = "";
                                       if (fieldDate && r[fieldDate]) {
                                           try { dateVal = new Date(r[fieldDate]).toISOString().split('T')[0]; } catch (e) {}
@@ -397,7 +436,6 @@ function SuperAdmin() {
                                           <td key={m.dbField} style={{padding:10, textAlign:'center', borderLeft:'1px solid #333'}}>
                                               <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:6}}>
                                                   
-                                                  {/* SWITCH ATTIVO/DISATTIVO */}
                                                   <div 
                                                       onClick={() => toggleModulo(r.id, fieldBool, isActive)}
                                                       title={isActive ? "Disattiva" : "Attiva"}
@@ -418,7 +456,6 @@ function SuperAdmin() {
                                                       }} />
                                                   </div>
 
-                                                  {/* DATE PICKER (Solo se attivo e se ha una data associata) */}
                                                   {isActive && fieldDate ? (
                                                       <input 
                                                           type="date" 
@@ -433,7 +470,7 @@ function SuperAdmin() {
                                                       />
                                                   ) : (
                                                       <span style={{fontSize:10, color:'#555', fontStyle:'italic'}}>
-                                                          {isActive ? "Sempre Attivo" : "Off"}
+                                                          {isActive ? "On" : "Off"}
                                                       </span>
                                                   )}
                                               </div>
@@ -482,39 +519,59 @@ function SuperAdmin() {
           </div>
       </div>
 
-      {/* MODALE RISTORANTE (EDIT/CREATE) */}
+      {/* MODALE COMPLETA (CRM MODE) */}
+      
       {showModal && (
           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.9)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-              <div style={{background: '#222', padding: '0', borderRadius: '15px', width: '600px', maxWidth:'95%', maxHeight:'90vh', overflowY:'auto', display:'flex', flexDirection:'column', border:'1px solid #444', boxShadow:'0 0 30px rgba(0,0,0,0.5)'}}>
+              <div style={{background: '#1a1a1a', borderRadius: '15px', width: '900px', maxWidth:'98%', maxHeight:'90vh', overflowY:'auto', display:'flex', flexDirection:'column', border:'1px solid #444', boxShadow:'0 0 50px rgba(0,0,0,0.8)', color:'white'}}>
                   
                   {/* HEADER MODALE */}
-                  <div style={{padding:'20px', background:'#111', color:'white', borderRadius:'15px 15px 0 0', borderBottom:'1px solid #333'}}>
-                      <h2 style={{margin:0, color:'#e74c3c'}}>{editingId ? `Configura: ${formData.nome}` : "Nuovo Ristorante"}</h2>
+                  <div style={{padding:'20px', background:'#111', borderBottom:'1px solid #333', display:'flex', justifyItems:'space-between'}}>
+                      <h2 style={{margin:0, color:'#e74c3c', flex:1}}>{editingId ? `Modifica: ${formData.nome}` : "Nuova Attività"}</h2>
+                      <div style={{fontSize:12, color:'#888'}}>CRM Mode</div>
                   </div>
 
-                  <form onSubmit={handleSalva} style={{padding:'20px', display:'flex', flexDirection:'column', gap:20}}>
+                  <form onSubmit={handleSalva} style={{padding:'25px', display:'flex', flexDirection:'column', gap:10}}>
+                      
+                      {/* SEZIONE 1: ANAGRAFICA BASE */}
+                      <div style={sectionTitleStyle}>1. ANAGRAFICA & ACCESSO</div>
                       <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:15}}>
-                        <div><label style={{fontSize:11, fontWeight:'bold', color:'#aaa'}}>NOME ATTIVITÀ</label><input required name="nome" value={formData.nome} onChange={handleInputChange} style={inputStyle} /></div>
-                        <div><label style={{fontSize:11, fontWeight:'bold', color:'#aaa'}}>SLUG (URL)</label><input required name="slug" value={formData.slug} onChange={handleInputChange} style={inputStyle} /></div>
-                        <div><label style={{fontSize:11, fontWeight:'bold', color:'#aaa'}}>EMAIL</label><input name="email" value={formData.email} onChange={handleInputChange} style={inputStyle} /></div>
-                        <div><label style={{fontSize:11, fontWeight:'bold', color:'#aaa'}}>PASSWORD (Reset)</label><input name="password" type="password" value={formData.password} onChange={handleInputChange} style={inputStyle} placeholder="Opzionale" /></div>
+                        <div><label style={labelStyle}>RAGIONE SOCIALE *</label><input required name="nome" value={formData.nome} onChange={handleInputChange} style={inputStyle} placeholder="Es. Pizzeria Da Mario Srl" /></div>
+                        <div><label style={labelStyle}>SLUG (URL) *</label><input required name="slug" value={formData.slug} onChange={handleInputChange} style={inputStyle} placeholder="pizzeria-da-mario" /></div>
+                        <div><label style={labelStyle}>EMAIL AMMINISTRAZIONE *</label><input name="email" value={formData.email} onChange={handleInputChange} style={inputStyle} placeholder="admin@locale.it" /></div>
+                        <div><label style={labelStyle}>PASSWORD (Lascia vuoto per non cambiare)</label><input name="password" type="password" value={formData.password} onChange={handleInputChange} style={inputStyle} placeholder="Nuova Password..." /></div>
                       </div>
 
-                      <div style={{background:'#333', padding:15, borderRadius:8, border:'1px solid #444'}}>
-                          <h4 style={{margin:'0 0 10px 0', color:'#fff'}}>Attivazione Rapida Moduli</h4>
-                          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, color:'#ddd'}}>
-                             <label style={{display:'flex', alignItems:'center', gap:5}}><input type="checkbox" name="modulo_menu_digitale" checked={formData.modulo_menu_digitale} onChange={handleInputChange} /> Menu Digitale</label>
-                             <label style={{display:'flex', alignItems:'center', gap:5}}><input type="checkbox" name="modulo_ordini_clienti" checked={formData.modulo_ordini_clienti} onChange={handleInputChange} /> Ordini Tavolo</label>
-                             <label style={{display:'flex', alignItems:'center', gap:5}}><input type="checkbox" name="modulo_cassa" checked={formData.modulo_cassa} onChange={handleInputChange} /> Sistema Cassa</label>
-                             <label style={{display:'flex', alignItems:'center', gap:5}}><input type="checkbox" name="modulo_magazzino" checked={formData.modulo_magazzino} onChange={handleInputChange} /> Magazzino</label>
-                             <label style={{display:'flex', alignItems:'center', gap:5}}><input type="checkbox" name="modulo_haccp" checked={formData.modulo_haccp} onChange={handleInputChange} /> HACCP</label>
-                             <label style={{display:'flex', alignItems:'center', gap:5}}><input type="checkbox" name="cassa_full_suite" checked={formData.cassa_full_suite} onChange={handleInputChange} /> Full Suite (KDS)</label>
-                          </div>
+                      {/* SEZIONE 2: DATI FISCALI */}
+                      <div style={sectionTitleStyle}>2. DATI FISCALI & LEGALI</div>
+                      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:15}}>
+                        <div><label style={labelStyle}>PARTITA IVA</label><input name="piva" value={formData.piva} onChange={handleInputChange} style={inputStyle} placeholder="IT00000000000" /></div>
+                        <div><label style={labelStyle}>CODICE FISCALE</label><input name="codice_fiscale" value={formData.codice_fiscale} onChange={handleInputChange} style={inputStyle} placeholder="Codice Fiscale" /></div>
+                        <div><label style={labelStyle}>CODICE SDI / UNIVOCO</label><input name="codice_sdi" value={formData.codice_sdi} onChange={handleInputChange} style={inputStyle} placeholder="XXXXXXX" /></div>
+                      </div>
+                      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:15}}>
+                         <div><label style={labelStyle}>PEC</label><input name="pec" value={formData.pec} onChange={handleInputChange} style={inputStyle} placeholder="azienda@pec.it" /></div>
+                         <div><label style={labelStyle}>REFERENTE / TITOLARE</label><input name="referente" value={formData.referente} onChange={handleInputChange} style={inputStyle} placeholder="Nome e Cognome" /></div>
+                      </div>
+                      <div>
+                          <label style={labelStyle}>SEDE LEGALE COMPLETA</label>
+                          <input name="sede_legale" value={formData.sede_legale} onChange={handleInputChange} style={inputStyle} placeholder="Via Roma 1, 00100 Roma (RM)" />
                       </div>
 
-                      <div style={{display:'flex', gap:10}}>
-                          <button type="submit" style={{flex:1, background:'#27ae60', color:'white', padding:15, borderRadius:8, border:'none', fontWeight:'bold', cursor:'pointer'}}>SALVA</button>
-                          <button type="button" onClick={() => setShowModal(false)} style={{flex:1, background:'#555', color:'white', padding:15, borderRadius:8, border:'none', fontWeight:'bold', cursor:'pointer'}}>ANNULLA</button>
+                      {/* SEZIONE 3: OPERATIVITÀ & GEOLOCALIZZAZIONE */}
+                      <div style={sectionTitleStyle}>3. OPERATIVITÀ & MAPPA</div>
+                      <div style={{display:'grid', gridTemplateColumns:'1fr 2fr', gap:15}}>
+                         <div><label style={labelStyle}>TELEFONO PUBBLICO</label><input name="telefono" value={formData.telefono} onChange={handleInputChange} style={inputStyle} placeholder="+39 ..." /></div>
+                         <div><label style={labelStyle}>SEDE OPERATIVA (Per Mappa)</label><input name="sede_operativa" value={formData.sede_operativa} onChange={handleInputChange} style={inputStyle} placeholder="Via Operativa 10, Milano (MI) - Usato per geolocalizzazione" /></div>
+                      </div>
+                      <div>
+                          <label style={labelStyle}>NOTE INTERNE (Non visibili al cliente)</label>
+                          <textarea name="note_interne" value={formData.note_interne} onChange={handleInputChange} style={{...inputStyle, height:60}} placeholder="Note su pagamenti, accordi particolari..." />
+                      </div>
+
+                      <div style={{marginTop:20, display:'flex', gap:15}}>
+                          <button type="submit" style={{flex:1, background:'#27ae60', color:'white', padding:15, borderRadius:8, border:'none', fontWeight:'bold', cursor:'pointer', fontSize:16}}>SALVA SCHEDA COMPLETA</button>
+                          <button type="button" onClick={() => setShowModal(false)} style={{flex:0.3, background:'#555', color:'white', padding:15, borderRadius:8, border:'none', fontWeight:'bold', cursor:'pointer'}}>ANNULLA</button>
                       </div>
                   </form>
               </div>
