@@ -106,7 +106,7 @@ function AdminMenu({ user, menu, setMenu, categorie, config, setConfig, API_URL,
   if (!isModuloOrdiniAttivo) {
       headerBg = 'linear-gradient(135deg, #7f8c8d 0%, #34495e 100%)'; 
       headerTitle = "⚖️ MODULO ORDINI DISABILITATO";
-      headerDesc = "La funzione ordini è stata disattivata dal SuperAdmin o non è prevista nel piano.";
+      headerDesc = "La funzione ordini non è prevista nel piano scelto.";
   }
 
   const handleSaveStyle = async () => {
