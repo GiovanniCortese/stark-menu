@@ -142,46 +142,56 @@ router.put('/api/super/ristoranti/:id', async (req, res) => {
         const { id } = req.params;
         const b = req.body;
         
-        // Costruisci la query dinamica includendo le nuove date
+        // Query SQL massiva che include TUTTI i campi nuovi
         const sql = `
             UPDATE ristoranti SET 
                 nome = COALESCE($1, nome),
                 email = COALESCE($2, email),
                 password = CASE WHEN $3::text IS NOT NULL AND $3::text <> '' THEN $3 ELSE password END,
+                slug = COALESCE($4, slug),
                 
-                modulo_menu_digitale = COALESCE($4, modulo_menu_digitale),
-                scadenza_menu_digitale = COALESCE($5, scadenza_menu_digitale),
+                -- Moduli Base
+                modulo_menu_digitale = COALESCE($5, modulo_menu_digitale),
+                scadenza_menu_digitale = COALESCE($6, scadenza_menu_digitale),
 
-                modulo_ordini_clienti = COALESCE($6, modulo_ordini_clienti),
-                scadenza_ordini_clienti = COALESCE($7, scadenza_ordini_clienti),
+                modulo_ordini_clienti = COALESCE($7, modulo_ordini_clienti),
+                scadenza_ordini_clienti = COALESCE($8, scadenza_ordini_clienti),
 
-                modulo_magazzino = COALESCE($8, modulo_magazzino),
-                scadenza_magazzino = COALESCE($9, scadenza_magazzino),
+                modulo_magazzino = COALESCE($9, modulo_magazzino),
+                scadenza_magazzino = COALESCE($10, scadenza_magazzino),
 
-                modulo_haccp = COALESCE($10, modulo_haccp),
-                scadenza_haccp = COALESCE($11, scadenza_haccp),
+                modulo_haccp = COALESCE($11, modulo_haccp),
+                scadenza_haccp = COALESCE($12, scadenza_haccp),
                 
-                modulo_cassa = COALESCE($12, modulo_cassa),
-                scadenza_cassa = COALESCE($13, scadenza_cassa),
+                modulo_cassa = COALESCE($13, modulo_cassa),
+                scadenza_cassa = COALESCE($14, scadenza_cassa),
 
-                account_attivo = COALESCE($14, account_attivo)
-            WHERE id = $15
+                -- NUOVI CAMPI MANCANTI (Il problema era qui)
+                modulo_utenti = COALESCE($15, modulo_utenti),
+                scadenza_utenti = COALESCE($16, scadenza_utenti),
+                cassa_full_suite = COALESCE($17, cassa_full_suite),
+
+                account_attivo = COALESCE($18, account_attivo)
+            WHERE id = $19
         `;
 
         const params = [
-            b.nome, b.email, b.password,
-            b.modulo_menu_digitale, b.scadenza_menu_digitale, // $4, $5
-            b.modulo_ordini_clienti, b.scadenza_ordini_clienti, // $6, $7
-            b.modulo_magazzino, b.scadenza_magazzino, // $8, $9
-            b.modulo_haccp, b.scadenza_haccp, // $10, $11
-            b.modulo_cassa, b.scadenza_cassa, // $12, $13
-            b.account_attivo, // $14
-            id // $15
+            b.nome, b.email, b.password, b.slug, // 1-4
+            b.modulo_menu_digitale, b.scadenza_menu_digitale, // 5-6
+            b.modulo_ordini_clienti, b.scadenza_ordini_clienti, // 7-8
+            b.modulo_magazzino, b.scadenza_magazzino, // 9-10
+            b.modulo_haccp, b.scadenza_haccp, // 11-12
+            b.modulo_cassa, b.scadenza_cassa, // 13-14
+            b.modulo_utenti, b.scadenza_utenti, // 15-16 (NUOVI)
+            b.cassa_full_suite, // 17 (NUOVO)
+            b.account_attivo, // 18
+            id // 19
         ];
         
         await pool.query(sql, params);
         res.json({ success: true });
     } catch (e) {
+        console.error("Errore Update SuperAdmin:", e);
         res.status(500).json({ error: e.message });
     }
 });

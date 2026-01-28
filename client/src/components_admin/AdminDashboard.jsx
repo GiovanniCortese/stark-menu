@@ -14,13 +14,12 @@ function AdminDashboard({ user, API_URL, config, setConfig }) {
             .then(data => { setStats(data); setLoading(false); })
             .catch(err => { console.error(err); setLoading(false); });
         
-        // Carica config aggiornata per scadenze e dati fiscali
+        // Carica config aggiornata
         fetch(`${API_URL}/api/ristorante/config/${user.id}`)
             .then(r => r.json())
             .then(d => { 
                 if (d.dati_fiscali) setDatiForm(prev => ({...prev, rawText: d.dati_fiscali})); 
-                // Aggiorniamo anche la config globale se ci sono nuove date
-                if(setConfig) setConfig(d);
+                if(setConfig) setConfig(d); // Aggiorna lo stato globale con i nuovi permessi
             });
     }, [user.id, API_URL, setConfig]);
 
@@ -40,34 +39,34 @@ function AdminDashboard({ user, API_URL, config, setConfig }) {
     const cardStyle = { background: 'white', padding: '25px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #eff0f1' };
     const inputStyle = { width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '14px', boxSizing:'border-box' };
 
-    // Helper per formattare date
     const formatDate = (dateStr) => {
         if (!dateStr) return 'N/D';
         return new Date(dateStr).toLocaleDateString('it-IT');
     };
 
-    // --- CONFIGURAZIONE VISUALIZZAZIONE ABBONAMENTI ---
-    // Qui mappiamo ogni modulo alla sua variabile di configurazione e alla sua data specifica
+    // --- MAPPATURA CORRETTA DEI MODULI ---
+    // Qui colleghiamo i flag del DB (cassa_full_suite, modulo_utenti) alle card visuali
     const moduliList = [
         { 
             label: "Menu Digitale 📱", 
             active: config.modulo_menu_digitale, 
-            scadenza: config.scadenza_menu_digitale || config.data_scadenza // Fallback su globale se manca specifica
+            scadenza: config.scadenza_menu_digitale 
         },
         { 
             label: "Ordini al Tavolo 🍽️", 
             active: config.modulo_ordini_clienti, 
-            scadenza: config.scadenza_ordini_clienti || config.data_scadenza 
+            scadenza: config.scadenza_ordini_clienti 
         },
         { 
             label: "Sistema Cassa 💶", 
             active: config.modulo_cassa, 
-            scadenza: config.scadenza_cassa || config.data_scadenza 
+            scadenza: config.scadenza_cassa 
         },
         { 
-            label: "Suite KDS (Cucina/Bar) 👨‍🍳", 
+            // FIX: Collegamento corretto a cassa_full_suite
+            label: "KDS Suite (Cucina) 👨‍🍳", 
             active: config.cassa_full_suite, 
-            scadenza: config.scadenza_cassa || config.data_scadenza // La suite segue la scadenza cassa solitamente
+            scadenza: config.scadenza_cassa // Usa la stessa scadenza della cassa
         },
         { 
             label: "Magazzino & Costi 📦", 
@@ -80,6 +79,7 @@ function AdminDashboard({ user, API_URL, config, setConfig }) {
             scadenza: config.scadenza_haccp 
         },
         { 
+            // FIX: Collegamento corretto a modulo_utenti
             label: "CRM & Utenti 👥", 
             active: config.modulo_utenti, 
             scadenza: config.scadenza_utenti 
@@ -114,7 +114,8 @@ function AdminDashboard({ user, API_URL, config, setConfig }) {
                             borderRadius:'10px', 
                             border: mod.active ? '1px solid #d1f2eb' : '1px dashed #ccc',
                             background: mod.active ? '#f4fbf9' : '#fafafa',
-                            transition: 'all 0.2s'
+                            transition: 'all 0.2s',
+                            opacity: mod.active ? 1 : 0.6
                         }}>
                             <div style={{display:'flex', justifyContent:'space-between', marginBottom:'8px'}}>
                                 <span style={{fontWeight:'bold', color: mod.active ? '#16a085' : '#7f8c8d', fontSize:'13px'}}>
