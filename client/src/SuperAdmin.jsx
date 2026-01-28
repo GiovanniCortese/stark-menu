@@ -1,4 +1,4 @@
-// client/src/SuperAdmin.jsx - VERSIONE V77 (FULL CRM DATA) 🗂️
+// client/src/SuperAdmin.jsx - VERSIONE V78 (RESTORED "ENTER" BUTTON) 🚀
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
@@ -28,7 +28,7 @@ function SuperAdmin() {
       telefono: '', 
       referente: '',
       sede_legale: '', 
-      sede_operativa: '', // Importante per Mappe
+      sede_operativa: '', 
       
       // 3. Dati Fiscali
       piva: '', 
@@ -186,6 +186,13 @@ function SuperAdmin() {
   const handleElimina = async (id, nome) => { 
       if(!confirm(`⚠️ ATTENZIONE: Eliminare definitivamente "${nome}" e tutti i suoi dati?`)) return; 
       try { await fetch(`${API_URL}/api/super/ristoranti/${id}`, { method: 'DELETE' }); caricaDati(); } catch(err) { alert("Errore cancellazione"); } 
+  };
+
+  // Funzione per entrare nel pannello admin (Impersonificazione)
+  const entraNelPannello = (slug) => {
+      // Opzionale: Salva un flag in localStorage se il frontend richiede auth locale
+      // localStorage.setItem(`stark_session_${slug}`, "true"); 
+      window.open(`/admin/${slug}`, '_blank');
   };
 
   // --- GESTIONE MODALE CONFIGURAZIONE (CRM & EDIT) ---
@@ -492,9 +499,16 @@ function SuperAdmin() {
                                       </button>
                                   </td>
 
-                                  {/* AZIONI (MATITA + CESTINO) */}
+                                  {/* AZIONI (ENTRA, MODIFICA, ELIMINA) */}
                                   <td style={{padding:15, textAlign:'center'}}>
                                       <div style={{display:'flex', gap:5, justifyContent:'center'}}>
+                                          <button 
+                                              onClick={() => entraNelPannello(r.slug)}
+                                              style={{background:'#3498db', color:'white', border:'none', width:30, height:30, borderRadius:5, cursor:'pointer', fontSize:14}}
+                                              title="Entra nel Pannello"
+                                          >
+                                              🚀
+                                          </button>
                                           <button 
                                               onClick={() => avviaModifica(r)} 
                                               style={{background:'#f39c12', color:'white', border:'none', width:30, height:30, borderRadius:5, cursor:'pointer', fontSize:14}}
@@ -520,7 +534,6 @@ function SuperAdmin() {
       </div>
 
       {/* MODALE COMPLETA (CRM MODE) */}
-      
       {showModal && (
           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.9)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
               <div style={{background: '#1a1a1a', borderRadius: '15px', width: '900px', maxWidth:'98%', maxHeight:'90vh', overflowY:'auto', display:'flex', flexDirection:'column', border:'1px solid #444', boxShadow:'0 0 50px rgba(0,0,0,0.8)', color:'white'}}>
