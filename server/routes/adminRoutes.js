@@ -222,25 +222,64 @@ router.delete('/api/super/ristoranti/:id', async (req, res) => {
 });
 
 // ==========================================
-// 3. LOGIN & AUTH GENERICA
+// 3. LOGIN & AUTH GENERICA (UNIFICATO SU UTENTI)
 // ==========================================
 
-// Login Ristorante Owner
+// Login Ristorante Owner (ORA BASATO SU TABELLA UTENTI)
 router.post('/api/login', async (req, res) => { 
     const { email, password } = req.body; 
     try { 
-        const result = await pool.query("SELECT * FROM ristoranti WHERE email = $1", [email]); 
+        // 1. Cerchiamo l'utente nella tabella UTENTI (non più in ristoranti)
+        // Facciamo anche una JOIN per prendere subito il nome e lo slug del ristorante collegato
+        const query = `
+            SELECT u.*, r.nome as nome_ristorante, r.slug as slug_ristorante, r.id as real_ristorante_id
+            FROM utenti u
+            LEFT JOIN ristoranti r ON u.ristorante_id = r.id
+            WHERE u.email = $1
+        `;
+        
+        const result = await pool.query(query, [email]); 
+
         if (result.rows.length > 0) { 
-            const ristorante = result.rows[0]; 
-            if (ristorante.password === password) { 
-                return res.json({ success: true, user: { id: ristorante.id, nome: ristorante.nome, slug: ristorante.slug } }); 
+            const user = result.rows[0]; 
+
+            // 2. Controllo Password (attualmente in chiaro come da tua richiesta)
+            // Se in futuro userai l'hash, qui userai bcrypt.compare()
+            if (user.password === password) { 
+                
+                // 3. Controllo Ruolo (Opzionale: blocca se non è admin/titolare)
+                // Se vuoi che solo i capi accedano a questa rotta:
+                if (['admin', 'titolare', 'manager'].includes(user.ruolo)) {
+                    
+                    // Manteniamo la struttura di risposta che il frontend si aspetta
+                    // Il frontend vecchio potrebbe aspettarsi "id" come ID del ristorante, 
+                    // quindi passiamo sia i dati utente che quelli ristorante.
+                    return res.json({ 
+                        success: true, 
+                        user: { 
+                            id: user.real_ristorante_id, // ID Ristorante (per compatibilità dashboard)
+                            user_id: user.id,            // ID Utente reale
+                            nome: user.nome_ristorante || user.nome, 
+                            slug: user.slug_ristorante,
+                            ruolo: user.ruolo,
+                            email: user.email
+                        } 
+                    }); 
+                } else {
+                    return res.status(403).json({ success: false, error: "Accesso non autorizzato per questo ruolo." });
+                }
             } 
         } 
-        res.status(401).json({ success: false, error: "Credenziali errate" }); 
-    } catch (e) { res.status(500).json({ success: false, error: "Errore interno" }); } 
+        
+        res.status(401).json({ success: false, error: "Credenziali errate o utente non trovato" }); 
+    } catch (e) { 
+        console.error("Errore Login:", e);
+        res.status(500).json({ success: false, error: "Errore interno server" }); 
+    } 
 });
 
 // Auth Station (Cassa, Cucina, Magazzino, ecc.)
+// NOTA: Questo rimane invariato perché usa le password di reparto condivise nella tabella ristoranti
 router.post('/api/auth/station', async (req, res) => { 
     try { 
         const { ristorante_id, role, password } = req.body; 

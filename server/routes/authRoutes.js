@@ -4,8 +4,25 @@ const pool = require('../config/db');
 const { uploadFile } = require('../config/storage'); // Importa se serve uploadFile qui, altrimenti rimuovi
 const xlsx = require('xlsx');
 
-// Login Utente
-router.post('/api/auth/login', async (req, res) => { try { const { email, password } = req.body; const r = await pool.query('SELECT * FROM utenti WHERE email = $1 AND password = $2', [email, password]); if (r.rows.length > 0) res.json({ success: true, user: r.rows[0] }); else res.json({ success: false, error: "Credenziali errate" }); } catch (e) { res.status(500).json({ error: "Errore login" }); } });
+// Login Utente (Staff e Clienti)
+router.post('/api/auth/login', async (req, res) => { 
+    try { 
+        const { email, password } = req.body; 
+        // Recuperiamo tutto l'utente
+        const r = await pool.query('SELECT * FROM utenti WHERE email = $1 AND password = $2', [email, password]); 
+        
+        if (r.rows.length > 0) {
+            const utente = r.rows[0];
+            // Risposta pulita
+            res.json({ success: true, user: utente }); 
+        } else {
+            res.json({ success: false, error: "Credenziali errate" }); 
+        }
+    } catch (e) { 
+        console.error(e);
+        res.status(500).json({ error: "Errore login" }); 
+    } 
+});
 
 // Registrazione
 router.post('/api/register', async (req, res) => { try { const { nome, email, password, telefono, indirizzo, ruolo, ristorante_id } = req.body; const check = await pool.query('SELECT * FROM utenti WHERE email = $1', [email]); if (check.rows.length > 0) return res.json({ success: false, error: "Email già registrata" }); const r_id = ristorante_id ? ristorante_id : null; const r = await pool.query('INSERT INTO utenti (nome, email, password, telefono, indirizzo, ruolo, ristorante_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *', [nome, email, password, telefono, indirizzo, ruolo || 'cliente', r_id]); res.json({ success: true, user: r.rows[0] }); } catch (e) { res.status(500).json({ error: e.message }); } });
