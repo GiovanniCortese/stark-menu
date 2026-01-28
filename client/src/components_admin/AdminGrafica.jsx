@@ -80,16 +80,18 @@ function AdminGrafica({ user, config, setConfig, API_URL }) {
                     <input 
                         type="color" 
                         value={isTransparent ? '#ffffff' : val} 
-                        onChange={e => setConfig({...config, [field]: e.target.value})} 
+                        onChange={e => setConfig(prev => ({...prev, [field]: e.target.value}))}
+onInput={e => setConfig(prev => ({...prev, [field]: e.target.value}))} // ✅ live mentre trascini
                         style={{opacity:0, width:'100%', height:'100%', cursor:'pointer'}}
                     />
                 </div>
                 <input 
-                    type="text" 
-                    value={val} 
-                    onChange={e => setConfig({...config, [field]: e.target.value})}
-                    style={{flex:1, padding:'8px', borderRadius:'5px', border:'1px solid #ddd', fontSize:'12px', fontFamily:'monospace'}} 
-                />
+  type="color" 
+  value={isTransparent ? '#ffffff' : val} 
+  onChange={e => setConfig(prev => ({...prev, [field]: e.target.value}))}
+  onInput={e => setConfig(prev => ({...prev, [field]: e.target.value}))}
+  style={{opacity:0, width:'100%', height:'100%', cursor:'pointer'}}
+/>
                 <button 
                     onClick={() => setConfig({...config, [field]: 'transparent'})}
                     title="Rendi Trasparente"
@@ -150,6 +152,55 @@ function AdminGrafica({ user, config, setConfig, API_URL }) {
                       <SmartColorPicker label="Icona Tasto +" value={config.colore_btn_text} field="colore_btn_text" def="#ffffff" />
                   </div>
               </div>
+              <div style={styles.card}>
+  <h4 style={styles.sectionTitle}>📌 Categorie & Layout</h4>
+
+  <div style={styles.grid}>
+    <SmartColorPicker
+      label="Sfondo Categorie (Primi, Secondi...)"
+      value={config.colore_categoria_bg}
+      field="colore_categoria_bg"
+      def="#2a2a2a"
+    />
+  </div>
+
+  <div style={{ marginTop: 15 }}>
+    <label style={styles.label}>Posizione Foto Piatti</label>
+    <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+      <button
+        onClick={() => setConfig(prev => ({ ...prev, posizione_immagine_piatto: "left" }))}
+        style={{
+          flex: 1,
+          padding: "10px",
+          borderRadius: "8px",
+          border: "1px solid #ddd",
+          cursor: "pointer",
+          background: (config.posizione_immagine_piatto || "left") === "left" ? "#333" : "white",
+          color: (config.posizione_immagine_piatto || "left") === "left" ? "white" : "#333",
+          fontWeight: "bold",
+        }}
+      >
+        ⬅️ Sinistra
+      </button>
+
+      <button
+        onClick={() => setConfig(prev => ({ ...prev, posizione_immagine_piatto: "right" }))}
+        style={{
+          flex: 1,
+          padding: "10px",
+          borderRadius: "8px",
+          border: "1px solid #ddd",
+          cursor: "pointer",
+          background: config.posizione_immagine_piatto === "right" ? "#333" : "white",
+          color: config.posizione_immagine_piatto === "right" ? "white" : "#333",
+          fontWeight: "bold",
+        }}
+      >
+        ➡️ Destra
+      </button>
+    </div>
+  </div>
+</div>
 
               {/* 5. CARRELLO & CHECKOUT */}
               <div style={styles.card}>

@@ -51,10 +51,29 @@ export default function ProductCard({
   const nomeProdotto = getContent(prodotto, "nome", lang);
   const descProdotto = getContent(prodotto, "descrizione", lang);
 
-  const simboloEuro = style.nascondi_euro ? "" : "€";
+  const simboloEuro = style?.nascondi_euro ? "" : "€";
   const unitaMisura = prodotto.unita_misura ? ` ${prodotto.unita_misura}` : "";
 
   const hasImage = !!prodotto.immagine_url;
+
+  // ✅ nuova opzione: immagine a sinistra o a destra
+  // valori attesi: "left" | "right"
+  const imgPos = style?.posizione_immagine_piatto || style?.dish_image_position || "left";
+
+  const dishImg = hasImage ? (
+    <img
+      src={prodotto.immagine_url}
+      style={{
+        width: "70px",
+        height: "70px",
+        objectFit: "cover",
+        borderRadius: "5px",
+        flexShrink: 0,
+        border: "1px solid #ddd",
+      }}
+      alt={nomeProdotto}
+    />
+  ) : null;
 
   return (
     <div
@@ -74,23 +93,11 @@ export default function ProductCard({
         borderBottom: `1px solid ${cardBorder}`,
       }}
     >
-      {prodotto.immagine_url && (
-        <img
-          src={prodotto.immagine_url}
-          style={{
-            width: "70px",
-            height: "70px",
-            objectFit: "cover",
-            borderRadius: "5px",
-            flexShrink: 0,
-            border: "1px solid #ddd",
-          }}
-          alt={nomeProdotto}
-        />
-      )}
+      {/* ✅ Immagine a sinistra */}
+      {imgPos !== "right" && dishImg}
 
       <div className="info" style={{ flex: 1 }}>
-        <h3 style={{ margin: "0 0 2px 0", fontSize: "16px", color: style.text || "#222", lineHeight: 1.2 }}>
+        <h3 style={{ margin: "0 0 2px 0", fontSize: "16px", color: style?.text || "#222", lineHeight: 1.2 }}>
           {nomeProdotto}
         </h3>
 
@@ -138,20 +145,44 @@ export default function ProductCard({
         {allergeniSafe.length > 0 && (
           <div style={{ marginTop: "2px", display: "flex", flexDirection: "column", gap: "1px" }}>
             {allergeniSafe.filter((a) => !a.includes("❄️") && !a.includes("Surgelato")).length > 0 && (
-              <div className="notranslate" style={{ fontSize: "10px", color: "#e74c3c", fontWeight: "bold", textTransform: "uppercase" }}>
+              <div
+                className="notranslate"
+                style={{
+                  fontSize: "10px",
+                  color: "#e74c3c",
+                  fontWeight: "bold",
+                  textTransform: "uppercase",
+                }}
+              >
                 ⚠️ {t?.allergens || "Allergeni"}:{" "}
                 {allergeniSafe.filter((a) => !a.includes("❄️") && !a.includes("Surgelato")).join(", ")}
               </div>
             )}
             {allergeniSafe.some((a) => a.includes("❄️") || a.includes("Surgelato")) && (
-              <div className="notranslate" style={{ fontSize: "10px", color: "#3498db", fontWeight: "bold", textTransform: "uppercase" }}>
+              <div
+                className="notranslate"
+                style={{
+                  fontSize: "10px",
+                  color: "#3498db",
+                  fontWeight: "bold",
+                  textTransform: "uppercase",
+                }}
+              >
                 ❄️ {t?.frozen || "Surgelato"}
               </div>
             )}
           </div>
         )}
 
-        <div className="notranslate" style={{ fontSize: "14px", fontWeight: "bold", color: priceColor, marginTop: "4px" }}>
+        <div
+          className="notranslate"
+          style={{
+            fontSize: "14px",
+            fontWeight: "bold",
+            color: priceColor,
+            marginTop: "4px",
+          }}
+        >
           {Number(prodotto.prezzo).toFixed(2)}
           {simboloEuro}
           {unitaMisura}
@@ -202,6 +233,9 @@ export default function ProductCard({
           +
         </button>
       </div>
+
+      {/* ✅ Immagine a destra */}
+      {imgPos === "right" && dishImg}
     </div>
   );
 }

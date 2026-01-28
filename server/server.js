@@ -69,6 +69,25 @@ const checkExpirations = async () => {
     }
 };
 
+const ensureDesignColumns = async () => {
+  try {
+    await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS colore_categoria_bg VARCHAR(30)`);
+    await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS colore_categoria_bg_active VARCHAR(30)`);
+    await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS posizione_immagine_piatto VARCHAR(10)`);
+
+    await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS colore_footer_text VARCHAR(30)`);
+    await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS dimensione_footer INTEGER`);
+    await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS allineamento_footer VARCHAR(10)`);
+
+    console.log("✅ Design columns OK");
+  } catch (e) {
+    console.error("❌ ensureDesignColumns:", e.message);
+  }
+};
+
+ensureDesignColumns();
+
+
 // Esegui il controllo all'avvio
 checkExpirations();
 

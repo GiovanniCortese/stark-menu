@@ -24,23 +24,27 @@ export default function MenuHeaderCover({
   if (showCheckout) return null;
 
   return (
-    <div
-      style={{
-        width: "100%",
-        minHeight: "260px",
-        backgroundImage: style.cover ? `url(${style.cover})` : "none",
-        backgroundColor: "#333",
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        position: "relative",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "flex-end",
-        padding: "30px 20px",
-        overflow: "visible",
-      }}
-    >
+<div
+  style={{
+    width: "100%",
+    maxWidth: "600px",          // ✅ uguale al MenuAccordion
+    margin: "0 auto",           // ✅ centrato
+    minHeight: "260px",
+    backgroundImage: style.cover ? `url(${style.cover})` : "none",
+    backgroundColor: "#333",
+    backgroundSize: "cover",
+    backgroundPosition: "center",
+    position: "relative",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    padding: "30px 20px",
+    borderRadius: "12px",       // ✅ look “card”
+    overflow: "hidden",         // ✅ niente immagine che sborda
+    boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+  }}
+>
       <div
         style={{
           position: "absolute",

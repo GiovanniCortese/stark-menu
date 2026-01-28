@@ -38,22 +38,19 @@ router.get('/api/menu/:slug', async (req, res) => {
             ristorante: data.nome, 
             ruolo: 'admin', // Default role per frontend check
 style: {
-  // immagini
- logo: data.logo_url,
+  logo: data.logo_url,
   cover: data.cover_url,
 
-  // retrocompatibilità:
+  // retrocompat SEO
   logo_url: data.logo_url,
   cover_url: data.cover_url,
-  
-  // colori base (frontend li usa così)
+
   bg: data.colore_sfondo,
   title: data.colore_titolo,
   text: data.colore_testo,
   price: data.colore_prezzo,
   font: data.font_style,
 
-  // mapping per i component che leggono style.card_bg / style.btn_bg ecc
   card_bg: data.colore_card,
   card_border: data.colore_border,
   btn_bg: data.colore_btn,
@@ -61,32 +58,31 @@ style: {
 
   tavolo_bg: data.colore_tavolo_bg,
   tavolo_text: data.colore_tavolo_text,
-
   carrello_bg: data.colore_carrello_bg,
   carrello_text: data.colore_carrello_text,
-
   checkout_bg: data.colore_checkout_bg,
   checkout_text: data.colore_checkout_text,
-
-  // questi nel frontend sono già letti come "colore_modal_*"
   colore_modal_bg: data.colore_modal_bg,
   colore_modal_text: data.colore_modal_text,
 
-  // footer / documenti
+  // footer/doc
   info_footer: data.info_footer,
   url_allergeni: data.url_allergeni,
   url_menu_giorno: data.url_menu_giorno,
   url_menu_pdf: data.url_menu_pdf,
-
-  // stile footer
   colore_footer_text: data.colore_footer_text,
   dimensione_footer: data.dimensione_footer,
   allineamento_footer: data.allineamento_footer,
 
-  // extra
+  // ✅ nuove
+  colore_categoria_bg: data.colore_categoria_bg,
+  colore_categoria_bg_active: data.colore_categoria_bg_active,
+  posizione_immagine_piatto: data.posizione_immagine_piatto,
+
   nascondi_euro: data.nascondi_euro,
   prezzo_coperto: data.prezzo_coperto
 },
+
 
             
             // --- STATI FONDAMENTALI ---

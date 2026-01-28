@@ -23,6 +23,10 @@ export default function MenuAccordion({
 }) {
   const categorieUniche = [...new Set(menu.map((p) => p.categoria_nome || p.categoria))];
 
+  const categoryBg = style?.colore_categoria_bg || "rgba(255,255,255,0.1)";
+  const categoryBgActive = style?.colore_categoria_bg_active || categoryBg;
+
+
   const toggleAccordion = (catNome) => {
     if (activeCategory === catNome) {
       setActiveCategory(null);
@@ -62,7 +66,7 @@ export default function MenuAccordion({
           <div
             onClick={() => toggleAccordion(catNome)}
             style={{
-              background: activeCategory === catNome ? "rgba(0,0,0,0.4)" : "rgba(255,255,255,0.1)",
+              background: activeCategory === catNome ? categoryBgActive : categoryBg,
               color: titleColor,
               padding: "15px",
               cursor: "pointer",
