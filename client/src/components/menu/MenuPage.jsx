@@ -1,4 +1,4 @@
-// client/src/components/menu/MenuPage.jsx - VERSIONE V86 (SINGLE QR & PIN LOGIN) 🔑
+// client/src/components/menu/MenuPage.jsx - VERSIONE V87 (FLUSSO PIN FLUIDO) 🌊
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { dictionary, getContent, flags } from "../../translations";
@@ -19,22 +19,23 @@ const PinLoginModal = ({ show, onClose, onVerify, errorMsg }) => {
     if (!show) return null;
 
     return (
-        <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.9)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', padding:20}}>
+        <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.95)', zIndex:99999, display:'flex', alignItems:'center', justifyContent:'center', padding:20}}>
             <div style={{background:'white', padding:30, borderRadius:15, width:'100%', maxWidth:350, textAlign:'center', boxShadow:'0 10px 40px rgba(0,0,0,0.5)'}}>
-                <div style={{fontSize:40, marginBottom:10}}>🔐</div>
-                <h2 style={{margin:0, color:'#2c3e50'}}>Codice Tavolo</h2>
-                <p style={{color:'#7f8c8d', fontSize:14, marginBottom:20}}>Inserisci il codice che ti ha fornito lo staff per sbloccare l'ordine.</p>
+                <div style={{fontSize:40, marginBottom:10}}>🔒</div>
+                <h2 style={{margin:0, color:'#2c3e50'}}>Sblocco Tavolo</h2>
+                <p style={{color:'#7f8c8d', fontSize:14, marginBottom:20}}>Inserisci il codice PIN del tavolo per confermare l'ordine.</p>
                 
                 <input 
                     type="tel" 
                     maxLength="4"
                     value={code}
                     onChange={(e) => setCode(e.target.value)}
-                    placeholder="____"
+                    placeholder="PIN"
                     style={{
-                        fontSize: '30px', letterSpacing: '10px', textAlign: 'center', 
-                        width: '100%', padding: '10px', borderRadius: '8px', 
-                        border: '2px solid #3498db', marginBottom: '20px', fontWeight:'bold'
+                        fontSize: '30px', letterSpacing: '5px', textAlign: 'center', 
+                        width: '100%', padding: '15px', borderRadius: '10px', 
+                        border: '2px solid #3498db', marginBottom: '20px', fontWeight:'bold',
+                        background: '#f8f9fa'
                     }}
                     autoFocus
                 />
@@ -43,15 +44,15 @@ const PinLoginModal = ({ show, onClose, onVerify, errorMsg }) => {
 
                 <button 
                     onClick={() => onVerify(code)}
-                    style={{width:'100%', padding:15, background:'#27ae60', color:'white', border:'none', borderRadius:8, fontSize:16, fontWeight:'bold', cursor:'pointer'}}
+                    style={{width:'100%', padding:15, background:'#27ae60', color:'white', border:'none', borderRadius:10, fontSize:16, fontWeight:'bold', cursor:'pointer', boxShadow:'0 4px 10px rgba(39, 174, 96, 0.3)'}}
                 >
-                    SBLOCCA TAVOLO 🔓
+                    SBLOCCA E CONTINUA 🔓
                 </button>
                 <button 
                     onClick={onClose}
-                    style={{marginTop:15, background:'transparent', border:'none', color:'#999', textDecoration:'underline', cursor:'pointer'}}
+                    style={{marginTop:20, background:'transparent', border:'none', color:'#999', textDecoration:'underline', cursor:'pointer', fontSize:12}}
                 >
-                    Chiudi e guarda solo il menu
+                    Annulla
                 </button>
             </div>
         </div>
@@ -63,8 +64,6 @@ export default function MenuPage() {
   const { slug } = useParams();
   const currentSlug = slug || "pizzeria-stark";
   const [searchParams] = useSearchParams();
-  
-  // Tavolo URL (Opzionale se usiamo Single QR)
   const numeroTavoloUrl = searchParams.get("tavolo"); 
 
   const API_URL = "https://stark-backend-gg17.onrender.com";
@@ -77,8 +76,8 @@ export default function MenuPage() {
   
   // --- STATI PIN & SICUREZZA ---
   const [pinMode, setPinMode] = useState(false);
-  const [activeTableSession, setActiveTableSession] = useState(null); // Tavolo sbloccato col PIN
-  const [activePinSession, setActivePinSession] = useState(null);     // PIN sbloccato
+  const [activeTableSession, setActiveTableSession] = useState(null);
+  const [activePinSession, setActivePinSession] = useState(null);
   const [showPinModal, setShowPinModal] = useState(false);
   const [pinError, setPinError] = useState("");
 
@@ -90,7 +89,6 @@ export default function MenuPage() {
   const [titoloFile, setTitoloFile] = useState("");
   const [showFileModal, setShowFileModal] = useState(false);
 
-  // STATI DI BLOCCO
   const [isSuspended, setIsSuspended] = useState(false);
   const [isMenuDisabled, setIsMenuDisabled] = useState(false);
   const [canOrder, setCanOrder] = useState(true);
@@ -103,7 +101,6 @@ export default function MenuPage() {
   const [showCheckout, setShowCheckout] = useState(false);
   const [numCoperti, setNumCoperti] = useState(1);
 
-  // Auth & Staff check
   const [user, setUser] = useState(null);
   const isStaffQui = user && ["cameriere","admin","editor"].includes(user.ruolo) && parseInt(user.ristorante_id) === parseInt(ristoranteId);
   const isStaff = isStaffQui;
@@ -116,7 +113,7 @@ export default function MenuPage() {
     const savedUser = localStorage.getItem("stark_user");
     if (savedUser) setUser(JSON.parse(savedUser));
     
-    // Recupera sessione tavolo salvata (Se l'utente ricarica la pagina)
+    // Ripristina sessione
     const savedTable = localStorage.getItem("session_table");
     const savedPin = localStorage.getItem("session_pin");
     if(savedTable && savedPin) {
@@ -137,19 +134,16 @@ export default function MenuPage() {
         if (data.subscription_active === false) setIsSuspended(true);
         if (data.moduli && data.moduli.menu_digitale === false) setIsMenuDisabled(true);
 
-        // 2. Impostazioni PIN
+        // Attiva modalità PIN
         if (data.pin_mode === true) setPinMode(true);
 
-        // 3. Permessi Ordine
         const moduloSaaSAttivo = data.moduli ? (data.moduli.ordini_clienti !== false) : true;
         let switchLocaleAttivo = data.ordini_abilitati;
         if (switchLocaleAttivo === null || switchLocaleAttivo === undefined) switchLocaleAttivo = (data.cucina_super_active !== false);
         setCanOrder(moduloSaaSAttivo && switchLocaleAttivo);
         
         setActiveCategory(null);
-        
-        const pageTitle = `${data.ristorante} | Menu Digitale`;
-        updateMetaTags(pageTitle, data?.style?.logo || "", "Menu Digitale");
+        updateMetaTags(`${data.ristorante} | Menu`, data?.style?.logo || "", "Menu Digitale");
 
         const foundLangs = new Set(["it"]);
         if (data.menu && data.menu.length > 0) {
@@ -198,7 +192,7 @@ export default function MenuPage() {
     );
   };
 
-  // --- FUNZIONE DI VERIFICA PIN ---
+  // --- VERIFICA PIN ---
   const handleVerifyPin = async (inputPin) => {
       setPinError("");
       try {
@@ -210,32 +204,24 @@ export default function MenuPage() {
           const data = await res.json();
           
           if (data.success) {
-              // PIN CORRETTO! SALVA SESSIONE
               setActiveTableSession(data.tavolo);
               setActivePinSession(inputPin);
-              
               localStorage.setItem("session_table", data.tavolo);
               localStorage.setItem("session_pin", inputPin);
-              
               setShowPinModal(false);
-              alert(`✅ Benvenuto al Tavolo ${data.tavolo}! Ora puoi ordinare.`);
+              alert(`✅ Tavolo ${data.tavolo} Sbloccato! Premi di nuovo "Conferma" per inviare l'ordine.`);
           } else {
-              setPinError(data.error || "Codice non valido.");
+              setPinError("PIN non valido o scaduto.");
           }
       } catch (e) {
-          setPinError("Errore di connessione.");
+          setPinError("Errore connessione.");
       }
   };
 
   const inviaOrdine = async () => {
-    if (!canOrder && !isStaff) { alert("Gli ordini sono disabilitati. Mostra questa lista al cameriere."); return; }
+    if (!canOrder && !isStaff) { alert("Gli ordini sono disabilitati."); return; }
     if (carrello.length === 0) return;
 
-    // --- LOGICA GESTIONE TAVOLO ---
-    // 1. Se Staff: Chiede sempre o usa staff table
-    // 2. Se Cliente + PinMode: Usa activeTableSession
-    // 3. Se Cliente + URL: Usa numeroTavoloUrl
-    
     let tavoloFinale = null;
     let pinFinale = null;
 
@@ -246,16 +232,15 @@ export default function MenuPage() {
         setTavoloStaff(tPrompt);
     } 
     else if (pinMode) {
-        // Se siamo in PIN MODE, dobbiamo avere una sessione attiva
-        if (!activeTableSession) {
-            setShowPinModal(true); // Apri modale e FERMATI
-            return;
+        // --- BLOCCO PIN: SE MANCA, APRI MODALE E STOP ---
+        if (!activeTableSession || !activePinSession) {
+            setShowPinModal(true); // Apre la modale
+            return; // Ferma tutto qui! Niente alert di errore.
         }
         tavoloFinale = activeTableSession;
         pinFinale = activePinSession;
     } 
     else {
-        // Modo Classico (QR univoco)
         tavoloFinale = numeroTavoloUrl || "Banco/Asporto";
     }
 
@@ -294,19 +279,26 @@ export default function MenuPage() {
       const risp = await res.json();
 
       if (res.ok && risp.success) { 
-          alert(isStaff ? `✅ Ordine inviato (Tavolo ${tavoloFinale})` : "✅ Ordine Inviato con Successo! 🚀"); 
+          alert(isStaff ? `✅ Ordine inviato (Tavolo ${tavoloFinale})` : "✅ Ordine Inviato! 🚀"); 
           setCarrello([]); setShowCheckout(false); 
       } 
       else { 
-          // Se l'errore è "PIN Scaduto", resettiamo la sessione
-          if (risp.error && risp.error.includes("PIN")) {
+          // --- GESTIONE ERRORE BACKEND ---
+          // Se il backend risponde che il PIN è errato/scaduto (es. cambiato nel frattempo)
+          if (risp.error && (risp.error.includes("PIN") || risp.error.includes("Scaduto") || risp.error.includes("Errato"))) {
+              // Resetta sessione
               setActiveTableSession(null);
               setActivePinSession(null);
               localStorage.removeItem("session_table");
               localStorage.removeItem("session_pin");
-              setShowPinModal(true); // Riapri modale
+              
+              // RIAPRI MODALE (Senza alert fastidiosi prima)
+              setPinError("Il PIN sembra scaduto o errato. Reinseriscilo.");
+              setShowPinModal(true); 
+          } else {
+              // Errore generico (es. Database down)
+              alert("❌ ERRORE: " + (risp.error || "Impossibile inviare ordine."));
           }
-          alert("❌ ERRORE: " + (risp.error || "Impossibile inviare ordine.")); 
       }
     } catch (e) { alert("Errore connessione server."); }
   };
@@ -335,7 +327,7 @@ export default function MenuPage() {
     <div style={{ minHeight: "100vh", background: bg, color: text, fontFamily: font, paddingBottom: 80 }}>
       <style>{`:root { color-scheme: light; } * { box-sizing: border-box; margin: 0; padding: 0; } body, html { background-color: ${bg} !important; color: ${text} !important; overflow-x: hidden; width: 100%; top: 0 !important; }`}</style>
 
-      {/* --- PIN MODAL --- */}
+      {/* MODALE PIN (Sempre in primo piano se showPinModal è true) */}
       <PinLoginModal show={showPinModal} onClose={()=>setShowPinModal(false)} onVerify={handleVerifyPin} errorMsg={pinError} />
 
       <MenuHeaderCover showCheckout={showCheckout} style={style} ristorante={ristorante} numeroTavolo={activeTableSession || numeroTavoloUrl} user={user} navigateToDashboard={() => navigate("/dashboard")} onShowAuth={() => setShowAuthModal(true)} lang={lang} t={t} priceColor={priceColor} tavoloBg={tavoloBg} tavoloText={tavoloText} showLangMenu={showLangMenu} setShowLangMenu={setShowLangMenu} availableLangs={availableLangs} cambiaLingua={cambiaLingua} flags={flags} dictionary={dictionary} />
