@@ -1,4 +1,4 @@
-// client/src/Admin.jsx - VERSIONE V52 (NO LOGIN FORM & AUTO REDIRECT) 🛠️
+// client/src/Admin.jsx - VERSIONE V53 (MAPPA SALA INTEGRATA) 🛠️
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -9,6 +9,7 @@ import AdminGrafica from './components_admin/AdminGrafica';
 import AdminUsers from './components_admin/AdminUsers';
 import AdminSicurezza from './components_admin/AdminSicurezza';
 import AdminDashboard from './components_admin/AdminDashboard';
+import AdminSala from './components_admin/AdminSala'; // <--- NUOVO COMPONENTE
 
 function Admin() {
   const { slug } = useParams(); 
@@ -16,8 +17,7 @@ function Admin() {
 
   // --- STATI LOGIN ADMIN ---
   const [isAuthorized, setIsAuthorized] = useState(false);
-  // NOTA: Rimossi input login locale (identifierInput, passwordInput, ecc)
-
+  
   // --- STATI GLOBALI ---
   const [user, setUser] = useState(null); 
   const [loading, setLoading] = useState(true); 
@@ -30,8 +30,8 @@ function Admin() {
   // CONFIGURAZIONE COMPLETA
   const [config, setConfig] = useState({ 
       account_attivo: true, 
-      cucina_super_active: true, // Questo flag controllerà il pulsante ordini nella Dashboard
-      cassa_full_suite: true,    // Questo flag controllerà i pulsanti Cucina/Bar/Pizzeria nell'header
+      cucina_super_active: true,
+      cassa_full_suite: true,
       ordini_abilitati: true, 
       
       // --- MODULI ---
@@ -45,7 +45,11 @@ function Admin() {
       logo_url: '', cover_url: '',
       colore_sfondo: '#222222', colore_titolo: '#ffffff',
       colore_testo: '#cccccc', colore_prezzo: '#27ae60',
-      font_style: 'sans-serif'
+      font_style: 'sans-serif',
+
+      // NUOVI CAMPI
+      tipo_business: 'ristorante',
+      pin_mode: false
   });
 
   const API_URL = "https://stark-backend-gg17.onrender.com";
@@ -71,7 +75,6 @@ function Admin() {
                 // Se lo slug corrisponde o è un super admin in god mode
                 if (u.slug === slug || u.is_god_mode) {
                     authorized = true;
-                    // Rigeneriamo la sessione locale per sicurezza futura
                     localStorage.setItem(sessionKey, "true");
                 }
             } catch(e) {
@@ -79,13 +82,10 @@ function Admin() {
             }
         }
 
-        if (hasSession === "true") {
-            authorized = true;
-        }
+        if (hasSession === "true") authorized = true;
 
         // --- PUNTO DI SNODO: SE NON AUTORIZZATO -> REDIRECT ---
         if (!authorized) {
-            // Nessuna UI di login qui, rimandiamo al login principale
             navigate('/login');
             setLoading(false);
             return;
@@ -99,7 +99,13 @@ function Admin() {
             const data = await res.json();
 
             if (data && data.id) {
-                setUser({ id: data.id, nome: data.ristorante, slug: slug, ruolo: data.ruolo || 'admin' });
+                setUser({ 
+                    id: data.id, 
+                    nome: data.ristorante, 
+                    slug: slug, 
+                    ruolo: data.ruolo || 'admin',
+                    layout_sala: data.layout_sala // Assicuriamoci che arrivi anche questo se presente
+                });
                 setMenu(data.menu || []);
                 
                 // Mappatura Configurazione Backend -> Frontend
@@ -108,8 +114,6 @@ function Admin() {
                 setConfig(prev => ({
                     ...prev, 
                     ...data.style,
-                    
-                    // --- Passo la data scadenza al config ---
                     data_scadenza: data.data_scadenza,
 
                     // Mappatura Moduli
@@ -124,7 +128,11 @@ function Admin() {
                     cassa_full_suite: data.cassa_full_suite ?? data.cucina_super_active ?? true, 
 
                     ordini_abilitati: data.ordini_abilitati,
-                    account_attivo: data.subscription_active
+                    account_attivo: data.subscription_active,
+                    
+                    // NUOVI
+                    tipo_business: data.tipo_business || 'ristorante',
+                    pin_mode: data.pin_mode || false
                 }));
                 
                 caricaConfigurazioniExtra(data.id);
@@ -145,7 +153,11 @@ function Admin() {
   const caricaConfigurazioniExtra = (id) => {
     fetch(`${API_URL}/api/ristorante/config/${id}`)
         .then(r=>r.json())
-        .then(d => setConfig(prev => ({...prev, ...d}))); 
+        .then(d => {
+            setConfig(prev => ({...prev, ...d}));
+            // Aggiorniamo anche lo user locale con il layout sala se presente nel config fetch
+            if(d.layout_sala) setUser(u => ({...u, layout_sala: d.layout_sala}));
+        }); 
     
     fetch(`${API_URL}/api/categorie/${id}`)
         .then(res => res.json())
@@ -167,34 +179,21 @@ function Admin() {
       });
   };
 
-  // --- LOGOUT AGGIORNATO ---
   const handleLogout = () => { 
       if(confirm("Uscire dal pannello?")) { 
-          // 1. Rimuove la sessione di questo specifico ristorante
           localStorage.removeItem(`stark_admin_session_${slug}`); 
-          // 2. Rimuove l'utente globale
           localStorage.removeItem("user");
-          // 3. Rimuove eventuali token God Mode
           localStorage.removeItem("admin_token");
-          
-          // 4. Redirect alla pagina di Login
           navigate('/login'); 
       } 
   };
   
   const apriLink = (path) => window.open(path, '_blank');
 
-  // --- LOADING SCREEN ---
   if (loading) return <div style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', fontSize:'1.2rem', color:'#666'}}>🔄 Caricamento Admin...</div>;
 
-  // --- SECURITY CHECK (Se per caso il loading finisce ma non è autorizzato, non mostrare nulla o redirect) ---
-  if (!isAuthorized) {
-      // Questo stato teoricamente non si raggiunge grazie al redirect in useEffect, 
-      // ma per sicurezza restituiamo null o un div vuoto
-      return null;
-  }
+  if (!isAuthorized) return null;
 
-  // --- BLOCCO ABBONAMENTO SCADUTO ---
   if (config.account_attivo === false) {
       return (
           <div style={{display:'flex', justifyContent:'center', alignItems:'center', minHeight:'100vh', flexDirection:'column', padding:'20px', textAlign:'center'}}>
@@ -207,14 +206,11 @@ function Admin() {
   }
 
   // --- VARIABILI VISIBILITÀ ---
-  // 1. Moduli
   const showCassa = config.modulo_cassa === true; 
   const showMenu = config.modulo_menu_digitale !== false;
   const showUtenti = config.modulo_utenti === true;
   const showMagazzino = config.modulo_magazzino === true;
   const showHaccp = config.modulo_haccp === true;
-  
-  // 2. SUITE (Cucina/Bar/Pizzeria)
   const showFullSuite = config.cassa_full_suite === true; 
 
   return (
@@ -240,17 +236,9 @@ function Admin() {
         <div className="header-title"><h1>⚙️ {user.nome}</h1></div>
         
         <div className="header-actions">
-            {/* 👁️ MENU: Visibile SOLO se modulo attivo */}
-            {showMenu && (
-                <button onClick={() => apriLink(`/${slug}`)} className="action-btn" style={{background:'#3498db'}}>👁️ Menu</button>
-            )}
+            {showMenu && <button onClick={() => apriLink(`/${slug}`)} className="action-btn" style={{background:'#3498db'}}>👁️ Menu</button>}
+            {showCassa && <button onClick={() => apriLink(`/cassa/${slug}`)} className="action-btn" style={{background:'#9b59b6'}}>💰 Cassa</button>}
             
-            {/* 🟢 CASSA: Visibile SOLO se modulo attivo */}
-            {showCassa && (
-                <button onClick={() => apriLink(`/cassa/${slug}`)} className="action-btn" style={{background:'#9b59b6'}}>💰 Cassa</button>
-            )}
-            
-            {/* 🔴 SUITE (Cucina/Bar/Pizzeria): Visibile SOLO se SUITE ATTIVA */}
             {showFullSuite && (
                 <>
                     <button onClick={() => apriLink(`/cucina/${slug}`)} className="action-btn" style={{background:'#e67e22'}}>👨‍🍳 Cucina</button>
@@ -268,8 +256,6 @@ function Admin() {
       
       {/* NAVIGAZIONE TAB */}
       <div className="admin-nav">
-        
-        {/* DASHBOARD SEMPRE VISIBILE */}
         {user.ruolo !== 'editor' && (
             <button onClick={() => setTab('dashboard')} className="nav-btn" 
                 style={{background: tab==='dashboard'?'#2c3e50':'white', color: tab==='dashboard'?'white':'#444'}}>
@@ -277,13 +263,15 @@ function Admin() {
             </button>
         )}
 
-        {/* MENU e CATEGORIE: Visibili SOLO se showMenu è true */}
         {showMenu && <button onClick={() => setTab('menu')} className="nav-btn" style={{background: tab==='menu'?'#333':'white', color: tab==='menu'?'white':'#444'}}>🍔 Menu</button>}
         {showMenu && <button onClick={() => setTab('categorie')} className="nav-btn" style={{background: tab==='categorie'?'#333':'white', color: tab==='categorie'?'white':'#444'}}>📂 Categorie</button>}
+        {showMenu && <button onClick={() => setTab('style')} className="nav-btn" style={{background: tab==='style'?'#9b59b6':'white', color: tab==='style'?'white':'#444'}}>🎨 Grafica</button>}
         
-        {/* GRAFICA: Visibile SOLO se showMenu è true */}
-        {showMenu && (
-             <button onClick={() => setTab('style')} className="nav-btn" style={{background: tab==='style'?'#9b59b6':'white', color: tab==='style'?'white':'#444'}}>🎨 Grafica</button>
+        {/* --- NUOVO TAB SALA --- */}
+        {user.ruolo !== 'editor' && (
+            <button onClick={() => setTab('sala')} className="nav-btn" style={{background: tab==='sala'?'#c0392b':'white', color: tab==='sala'?'white':'#444'}}>
+                📐 Sala & Mappa
+            </button>
         )}
         
         {user.ruolo !== 'editor' && showUtenti && (
@@ -298,19 +286,17 @@ function Admin() {
       {/* CONTENUTO */}
       <div style={{background:'white', borderRadius:'12px', padding:'20px', boxShadow:'0 2px 10px rgba(0,0,0,0.05)', minHeight:'500px'}}>
         
-        {/* --- MODIFICA CHIAVE: Passo config alla Dashboard così può leggere 'cucina_super_active' --- */}
         {tab === 'dashboard' && user.ruolo !== 'editor' && (
-            <AdminDashboard 
-                user={user} 
-                API_URL={API_URL} 
-                config={config}       
-                setConfig={setConfig} 
-            />
+            <AdminDashboard user={user} API_URL={API_URL} config={config} setConfig={setConfig} />
         )}
 
         {tab === 'menu' && showMenu && <AdminMenu user={user} menu={menu} setMenu={setMenu} categorie={categorie} config={config} setConfig={setConfig} API_URL={API_URL} ricaricaDati={ricaricaDati} />}
         {tab === 'categorie' && showMenu && <AdminCategorie user={user} categorie={categorie} setCategorie={setCategorie} API_URL={API_URL} ricaricaDati={ricaricaDati} />}
         {tab === 'style' && showMenu && <AdminGrafica user={user} config={config} setConfig={setConfig} API_URL={API_URL} />}
+        
+        {/* --- NUOVO RENDER SALA --- */}
+        {tab === 'sala' && <AdminSala user={user} API_URL={API_URL} />}
+        
         {tab === 'users' && showUtenti && <AdminUsers API_URL={API_URL} user={user} />}
         {tab === 'security' && <AdminSicurezza user={user} API_URL={API_URL} />}
       </div>

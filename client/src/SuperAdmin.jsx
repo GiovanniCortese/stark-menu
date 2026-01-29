@@ -1,4 +1,4 @@
-// client/src/SuperAdmin.jsx - VERSIONE V80 (TOTAL VISION & GOD MODE) 🚀
+// client/src/SuperAdmin.jsx - VERSIONE V81 (BUSINESS TYPES & PIN MODE) 🚀
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
@@ -14,7 +14,7 @@ function SuperAdmin() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null); 
   
-  // STATO CONFIGURAZIONE FORM (ESTESO PER CRM)
+  // STATO CONFIGURAZIONE FORM (ESTESO PER CRM + BUSINESS TYPE)
   const [formData, setFormData] = useState({ 
       // 1. Accesso & Base
       nome: '', 
@@ -24,13 +24,17 @@ function SuperAdmin() {
       account_attivo: true,
       data_scadenza: new Date().toISOString().split('T')[0], 
       
-      // 2. Contatti & Sedi
+      // 2. Configurazione Business (NUOVI CAMPI)
+      tipo_business: 'ristorante', // Default
+      pin_mode: false,             // Default sicurezza spenta
+
+      // 3. Contatti & Sedi
       telefono: '', 
       referente: '',
       sede_legale: '', 
       sede_operativa: '', 
       
-      // 3. Dati Fiscali
+      // 4. Dati Fiscali
       piva: '', 
       codice_fiscale: '', 
       pec: '', 
@@ -75,6 +79,15 @@ function SuperAdmin() {
       { label: '🛡️ HACCP', dbField: 'modulo_haccp', dateField: 'scadenza_haccp' },
       { label: '👥 Utenti', dbField: 'modulo_utenti', dateField: 'scadenza_utenti' },
   ];
+
+  // MAPPA ICONE BUSINESS
+  const businessIcons = {
+      ristorante: '🍽️',
+      discoteca: '🍾',
+      bar: '🍹',
+      padel: '🎾',
+      parrucchiere: '💇'
+  };
 
   useEffect(() => {
     const token = localStorage.getItem("super_admin_token");
@@ -188,18 +201,13 @@ function SuperAdmin() {
       try { await fetch(`${API_URL}/api/super/ristoranti/${id}`, { method: 'DELETE' }); caricaDati(); } catch(err) { alert("Errore cancellazione"); } 
   };
 
-  // --- GOD MODE BYPASS LOGIC 🚀 (Updated) ---
+  // --- GOD MODE BYPASS LOGIC 🚀 ---
   const entraNelPannello = (r) => {
-      // 1. Imposta il token di superpotere
       localStorage.setItem("admin_token", "SUPER_GOD_TOKEN_2026");
-
-      // 2. Salva il contesto del ristorante target
       localStorage.setItem("superadmin_target_id", String(r.id));
       localStorage.setItem("superadmin_target_slug", r.slug);
       localStorage.setItem("superadmin_target_nome", r.nome);
 
-      // 3. TRUCCO: Creiamo un user object temporaneo nel localStorage
-      // Questo aiuta se il redirect automatico di Login.jsx fallisce
       const godUser = {
           id: r.id,
           nome: r.nome,
@@ -209,8 +217,6 @@ function SuperAdmin() {
           is_god_mode: true
       };
       localStorage.setItem("user", JSON.stringify(godUser));
-
-      // 4. Apri la login
       window.open(`/login`, "_blank");
   };
 
@@ -226,6 +232,10 @@ function SuperAdmin() {
           account_attivo: r.account_attivo,
           data_scadenza: r.data_scadenza ? r.data_scadenza.split('T')[0] : '',
           
+          // NUOVI CAMPI BUSINESS
+          tipo_business: r.tipo_business || 'ristorante',
+          pin_mode: r.pin_mode || false,
+
           // CRM Data
           telefono: r.telefono || '',
           referente: r.referente || '',
@@ -262,6 +272,11 @@ function SuperAdmin() {
           sede_legale: '', sede_operativa: '', note_interne: '',
           account_attivo: true,
           data_scadenza: new Date(new Date().setMonth(new Date().getMonth() + 12)).toISOString().split('T')[0],
+          
+          // Default NUOVI
+          tipo_business: 'ristorante',
+          pin_mode: false,
+
           // Default modules
           modulo_cassa: true, modulo_menu_digitale: true, modulo_ordini_clienti: true,
           modulo_magazzino: false, modulo_haccp: false, modulo_utenti: false, cassa_full_suite: true
@@ -433,7 +448,9 @@ function SuperAdmin() {
 
                                   {/* INFO BASE */}
                                   <td style={{padding:15}}>
-                                      <div style={{fontWeight:'bold', color:'white', fontSize:'15px'}}>{r.nome}</div>
+                                      <div style={{fontWeight:'bold', color:'white', fontSize:'15px', display:'flex', alignItems:'center', gap:5}}>
+                                          {businessIcons[r.tipo_business] || '🏢'} {r.nome}
+                                      </div>
                                       <div style={{fontSize:11, color:'#7f8c8d', fontFamily:'monospace'}}>{r.slug}</div>
                                       {r.sede_operativa && (
                                           <div style={{fontSize:10, color:'#aaa', marginTop:4}}>📍 {r.sede_operativa}</div>
@@ -566,6 +583,34 @@ function SuperAdmin() {
                         <div><label style={labelStyle}>SLUG (URL) *</label><input required name="slug" value={formData.slug} onChange={handleInputChange} style={inputStyle} placeholder="pizzeria-da-mario" /></div>
                         <div><label style={labelStyle}>EMAIL AMMINISTRAZIONE *</label><input name="email" value={formData.email} onChange={handleInputChange} style={inputStyle} placeholder="admin@locale.it" /></div>
                         <div><label style={labelStyle}>PASSWORD (Lascia vuoto per non cambiare)</label><input name="password" type="password" value={formData.password} onChange={handleInputChange} style={inputStyle} placeholder="Nuova Password..." /></div>
+                      </div>
+
+                      {/* --- NUOVA SEZIONE: CONFIGURAZIONE BUSINESS --- */}
+                      <div style={{marginTop: 15, marginBottom: 15, padding: 15, background: '#2c3e50', borderRadius: 8}}>
+                          <label style={{...labelStyle, color: '#f1c40f', marginTop: 0}}>TIPOLOGIA BUSINESS & SICUREZZA</label>
+                          <div style={{display: 'flex', gap: 20, alignItems: 'center', marginTop: 10}}>
+                              <div style={{flex: 1}}>
+                                  <select name="tipo_business" value={formData.tipo_business} onChange={handleInputChange} style={inputStyle}>
+                                      <option value="ristorante">🍽️ Ristorante / Pizzeria</option>
+                                      <option value="discoteca">🍾 Discoteca / Club</option>
+                                      <option value="bar">🍹 Bar / Pub</option>
+                                      <option value="padel">🎾 Sport / Padel</option>
+                                      <option value="parrucchiere">💇 Parrucchiere / Estetista</option>
+                                  </select>
+                              </div>
+                              <div style={{flex: 1}}>
+                                  <label style={{display:'flex', alignItems:'center', gap:10, cursor:'pointer', color:'white'}}>
+                                      <input 
+                                          type="checkbox" 
+                                          name="pin_mode" 
+                                          checked={formData.pin_mode || false} 
+                                          onChange={handleInputChange}
+                                          style={{transform: 'scale(1.5)'}}
+                                      />
+                                      🛡️ Richiedi PIN Tavolo (Sicurezza Anti-Fake)
+                                  </label>
+                              </div>
+                          </div>
                       </div>
 
                       {/* SEZIONE 2: DATI FISCALI */}

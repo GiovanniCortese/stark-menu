@@ -23,7 +23,15 @@ const { getNowItaly } = require("../utils/time");
     // 2. User tracking columns
     await pool.query(`ALTER TABLE utenti ADD COLUMN IF NOT EXISTS ultimo_accesso TIMESTAMP`);
 
-    console.log(`✅ [${getNowItaly()}] DB Admin OK.`);
+    // 3. NUOVE COLONNE PER BUSINESS TYPE & SALA & SICUREZZA
+    // tipo_business: 'ristorante', 'discoteca', 'padel', 'parrucchiere'
+    await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS tipo_business VARCHAR(50) DEFAULT 'ristorante'`);
+    // layout_sala: conterrà il JSON con le coordinate dei tavoli
+    await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS layout_sala JSONB DEFAULT '[]'`);
+    // pin_mode: se TRUE, richiede il PIN per ordinare (Sicurezza Ristorante)
+    await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS pin_mode BOOLEAN DEFAULT FALSE`);
+
+    console.log(`✅ [${getNowItaly()}] DB Admin Aggiornato (Layout & Business Type OK).`);
   } catch (e) {
     console.error(`❌ DB Error:`, e.message);
   }
@@ -124,6 +132,21 @@ router.put("/api/ristorante/dati-fiscali/:id", async (req, res) => {
   } catch (e) { res.status(500).json({ error: "Err" }); }
 });
 
+// 🆕 ROUTE PER SALVARE IL LAYOUT DELLA SALA (Drag & Drop)
+router.put("/api/ristorante/layout/:id", async (req, res) => {
+    try {
+        const { layout_sala } = req.body;
+        // layout_sala deve essere un array JSON stringified o oggetto JSON
+        const safeLayout = typeof layout_sala === 'string' ? layout_sala : JSON.stringify(layout_sala);
+        
+        await pool.query("UPDATE ristoranti SET layout_sala = $1 WHERE id = $2", [safeLayout, req.params.id]);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: "Errore salvataggio sala: " + e.message });
+    }
+});
+
+
 // ==========================================
 // 2. SUPER ADMIN (LOG CON ORARIO ITALIANO & SYNC UTENTI)
 // ==========================================
@@ -217,8 +240,13 @@ router.put("/api/super/ristoranti/:id", async (req, res) => {
         modulo_haccp = COALESCE($20, modulo_haccp), scadenza_haccp = COALESCE($21, scadenza_haccp),
         modulo_cassa = COALESCE($22, modulo_cassa), scadenza_cassa = COALESCE($23, scadenza_cassa),
         modulo_utenti = COALESCE($24, modulo_utenti), scadenza_utenti = COALESCE($25, scadenza_utenti),
-        cassa_full_suite = COALESCE($26, cassa_full_suite), account_attivo = COALESCE($27, account_attivo)
-      WHERE id = $28
+        cassa_full_suite = COALESCE($26, cassa_full_suite), account_attivo = COALESCE($27, account_attivo),
+        
+        -- NUOVI CAMPI BUSINESS & SICUREZZA
+        tipo_business = COALESCE($28, tipo_business),
+        pin_mode = COALESCE($29, pin_mode)
+
+      WHERE id = $30
     `;
     const params = [
       b.nome, b.email, b.password, b.slug, b.telefono, b.piva, b.codice_fiscale, b.pec, b.codice_sdi,
@@ -226,7 +254,9 @@ router.put("/api/super/ristoranti/:id", async (req, res) => {
       b.modulo_menu_digitale, b.scadenza_menu_digitale, b.modulo_ordini_clienti, b.scadenza_ordini_clienti,
       b.modulo_magazzino, b.scadenza_magazzino, b.modulo_haccp, b.scadenza_haccp,
       b.modulo_cassa, b.scadenza_cassa, b.modulo_utenti, b.scadenza_utenti,
-      b.cassa_full_suite, b.account_attivo, id,
+      b.cassa_full_suite, b.account_attivo, 
+      b.tipo_business, b.pin_mode,
+      id,
     ];
     await client.query(sql, params);
 
