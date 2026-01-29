@@ -1,4 +1,4 @@
-// client/src/components/menu/MenuPage.jsx
+// client/src/components/menu/MenuPage.jsx - VERSIONE V83 (DEBUG ORDINI & STAFF BYPASS) 🛠️
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { dictionary, getContent, flags } from "../../translations";
@@ -105,6 +105,12 @@ export default function MenuPage() {
         const moduloOrdiniAttivo = data.moduli ? (data.moduli.ordini_clienti !== false) : true;
         const servizioAttivoLocale = data.ordini_abilitati === true; // Switch nel pannello admin ristorante
         
+        // Debug Log per capire perché vedi la lista desideri
+        console.log(`🔍 DEBUG ORDINI (${data.ristorante}):`);
+        console.log(`- Modulo SaaS Ordini: ${moduloOrdiniAttivo}`);
+        console.log(`- Switch Servizio Locale: ${servizioAttivoLocale}`);
+        console.log(`-> RISULTATO (canOrder): ${moduloOrdiniAttivo && servizioAttivoLocale}`);
+
         // Se uno dei due è spento, il cliente non può ordinare (solo Wishlist)
         setCanOrder(moduloOrdiniAttivo && servizioAttivoLocale);
         
@@ -193,7 +199,7 @@ export default function MenuPage() {
   };
 
   const inviaOrdine = async () => {
-    // Protezione finale: se non puoi ordinare e non sei staff, blocco.
+    // Protezione finale: se non puoi ordinare e NON sei staff, blocco.
     if (!canOrder && !isStaff) {
         alert("Gli ordini sono momentaneamente disabilitati. Mostra questa lista al cameriere.");
         return; 

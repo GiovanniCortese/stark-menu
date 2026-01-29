@@ -1,9 +1,54 @@
-// client/src/components_admin/AdminSala.jsx - FIX CRASH & SAFE STATE
+// client/src/components_admin/AdminSala.jsx - FIX REACT 18 STRICT MODE
 import React, { useState, useEffect, useRef } from 'react';
 import Draggable from 'react-draggable'; 
 
+// --- SOTTO-COMPONENTE PER GESTIRE IL REF SINGOLO ---
+// Questo è fondamentale per evitare l'errore "findDOMNode is not a function"
+const TavoloDraggable = ({ t, updatePosition, setSelectedId, selectedId, removeTable }) => {
+    const nodeRef = useRef(null); // Ref stabile per questo specifico tavolo
+
+    return (
+        <Draggable
+            nodeRef={nodeRef} // Passiamo il ref a Draggable
+            bounds="parent"
+            defaultPosition={{x: t.x || 0, y: t.y || 0}}
+            onStop={(e, data) => updatePosition(t.id, data.x, data.y)}
+        >
+            <div 
+                ref={nodeRef} // E lo colleghiamo al DIV reale
+                onClick={()=>setSelectedId(t.id)}
+                style={{
+                    position: 'absolute',
+                    cursor: 'move',
+                    width: t.shape === 'rect' ? 120 : (t.shape === 'round' ? 80 : 70),
+                    height: t.shape === 'round' ? 80 : 70,
+                    borderRadius: t.shape === 'round' ? '50%' : '8px',
+                    background: selectedId === t.id ? '#f1c40f' : (t.status === 'occupied' ? '#e74c3c' : '#2ecc71'),
+                    border: '2px solid #333',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    flexDirection: 'column',
+                    boxShadow: '0 4px 10px rgba(0,0,0,0.2)',
+                    zIndex: selectedId === t.id ? 10 : 1,
+                    touchAction: 'none' // Importante per touch screen
+                }}
+            >
+                <span style={{fontWeight:'bold', fontSize:14}}>{t.label}</span>
+                {selectedId === t.id && (
+                    <button 
+                        onClick={(e)=>{e.stopPropagation(); removeTable(t.id)}}
+                        style={{fontSize:10, background:'red', color:'white', border:'none', borderRadius:3, padding:'2px 4px', marginTop:4, cursor:'pointer'}}
+                    >
+                        X
+                    </button>
+                )}
+            </div>
+        </Draggable>
+    );
+};
+
 const AdminSala = ({ user, API_URL }) => {
-    // Inizializza SEMPRE come array vuoto
     const [tavoli, setTavoli] = useState([]);
     const [loading, setLoading] = useState(false);
     const [selectedId, setSelectedId] = useState(null);
@@ -15,12 +60,10 @@ const AdminSala = ({ user, API_URL }) => {
     useEffect(() => {
         if(user && user.layout_sala) {
             try {
-                // Parsing sicuro: se è stringa, parsa. Se è già oggetto/array, usa quello.
                 let parsed = user.layout_sala;
                 if (typeof parsed === 'string') {
                     parsed = JSON.parse(parsed);
                 }
-                // Check finale: è un array?
                 if (Array.isArray(parsed)) {
                     setTavoli(parsed);
                 } else {
@@ -36,9 +79,7 @@ const AdminSala = ({ user, API_URL }) => {
     }, [user]);
 
     const addTable = () => {
-        // Safe check
         const currentTables = Array.isArray(tavoli) ? tavoli : [];
-        
         const id = Date.now().toString(); 
         const nuovo = {
             id,
@@ -98,7 +139,7 @@ const AdminSala = ({ user, API_URL }) => {
             </div>
 
             {/* CONTROLLI AGGIUNTA */}
-            <div style={{background:'#f9f9f9', padding:15, borderRadius:8, marginBottom:20, display:'flex', gap:10, alignItems:'center'}}>
+            <div style={{background:'white', padding:15, borderRadius:8, marginBottom:20, display:'flex', gap:10, alignItems:'center', border:'1px solid #ddd'}}>
                 <input 
                     placeholder="Nome (es. T-1)" 
                     value={newTable.label} 
@@ -133,42 +174,14 @@ const AdminSala = ({ user, API_URL }) => {
                 }}
             >
                 {Array.isArray(tavoli) && tavoli.map(t => (
-                    <Draggable
-                        key={t.id}
-                        bounds="parent"
-                        defaultPosition={{x: t.x || 0, y: t.y || 0}}
-                        onStop={(e, data) => updatePosition(t.id, data.x, data.y)}
-                        nodeRef={React.createRef()} // FIX Warning React 18 strict mode
-                    >
-                        <div 
-                            onClick={()=>setSelectedId(t.id)}
-                            style={{
-                                position: 'absolute',
-                                cursor: 'move',
-                                width: t.shape === 'rect' ? 120 : (t.shape === 'round' ? 80 : 70),
-                                height: t.shape === 'round' ? 80 : 70,
-                                borderRadius: t.shape === 'round' ? '50%' : '8px',
-                                background: selectedId === t.id ? '#f1c40f' : '#2ecc71',
-                                border: '2px solid #333',
-                                display: 'flex',
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                                flexDirection: 'column',
-                                boxShadow: '0 4px 10px rgba(0,0,0,0.2)',
-                                zIndex: selectedId === t.id ? 10 : 1
-                            }}
-                        >
-                            <span style={{fontWeight:'bold', fontSize:14}}>{t.label}</span>
-                            {selectedId === t.id && (
-                                <button 
-                                    onClick={(e)=>{e.stopPropagation(); removeTable(t.id)}}
-                                    style={{fontSize:10, background:'red', color:'white', border:'none', borderRadius:3, padding:'2px 4px', marginTop:4, cursor:'pointer'}}
-                                >
-                                    X
-                                </button>
-                            )}
-                        </div>
-                    </Draggable>
+                    <TavoloDraggable 
+                        key={t.id} 
+                        t={t} 
+                        updatePosition={updatePosition}
+                        setSelectedId={setSelectedId}
+                        selectedId={selectedId}
+                        removeTable={removeTable}
+                    />
                 ))}
             </div>
         </div>
