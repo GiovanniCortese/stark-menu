@@ -1,8 +1,11 @@
-// client/src/components_admin/AdminGrafica.jsx - FULL WIDTH FIX
+// client/src/components_admin/AdminGrafica.jsx - FIXED & CRASH FREE
 import { useState } from 'react';
 
 function AdminGrafica({ user, config, setConfig, API_URL }) {
   const [loadingField, setLoadingField] = useState(null);
+
+  // PROTEZIONE ANTI-CRASH: Se config non è ancora caricato, mostra loading
+  if (!config) return <div style={{padding:20}}>🔄 Caricamento impostazioni grafiche...</div>;
 
   // --- UPLOAD IMMAGINI ---
   const handleUpload = async (e, type) => {
@@ -36,13 +39,13 @@ function AdminGrafica({ user, config, setConfig, API_URL }) {
       } catch (e) { alert("Errore di connessione"); }
   };
 
-  // --- COMPONENTE UPLOAD ---
+  // --- COMPONENTE UPLOAD (CORRETTO) ---
   const ImageUploader = ({ label, type, currentUrl, icon }) => (
       <div style={{flex:1}}>
           <label style={styles.label}>{label}</label>
           {currentUrl ? (
               <div style={{position:'relative', border:'2px solid #27ae60', borderRadius:'10px', overflow:'hidden', height:'100px', background:'#f9f9f9', display:'flex', alignItems:'center', justifyContent:'center'}}>
-                  <img src={currentUrl} style={{width:'100%', height:'100%', objectFit:'cover'}} />
+                  <img src={currentUrl} alt={label} style={{width:'100%', height:'100%', objectFit:'cover'}} />
                   <button onClick={() => removeImage(type)} style={styles.removeBtn}>🗑️ RIMUOVI</button>
               </div>
           ) : (
@@ -53,13 +56,13 @@ function AdminGrafica({ user, config, setConfig, API_URL }) {
                       <>
                         <span style={{fontSize:'24px'}}>{icon}</span>
                         <span style={{fontSize:'12px', color:'#555', marginTop:5}}>Carica {label}</span>
+                        {/* FIX: Input File Corretto */}
                         <input
-  type="color"
-  value={isTransparent ? "#ffffff" : val}
-  onChange={(e) => setConfig(prev => ({ ...prev, [field]: e.target.value }))}
-  onInput={(e) => setConfig(prev => ({ ...prev, [field]: e.target.value }))} // ✅ live mentre trascini
-  style={{ opacity: 0, width: "100%", height: "100%", cursor: "pointer" }}
-/>
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => handleUpload(e, type)}
+                          style={styles.fileInputHidden}
+                        />
                       </>
                   )}
               </div>
@@ -81,21 +84,17 @@ function AdminGrafica({ user, config, setConfig, API_URL }) {
                         type="color" 
                         value={isTransparent ? '#ffffff' : val} 
                         onChange={e => setConfig(prev => ({...prev, [field]: e.target.value}))}
-onInput={e => setConfig(prev => ({...prev, [field]: e.target.value}))} // ✅ live mentre trascini
+                        onInput={e => setConfig(prev => ({...prev, [field]: e.target.value}))} 
                         style={{opacity:0, width:'100%', height:'100%', cursor:'pointer'}}
                     />
                 </div>
-                <input 
-  type="color" 
-  value={isTransparent ? '#ffffff' : val} 
-  onChange={e => setConfig(prev => ({...prev, [field]: e.target.value}))}
-  onInput={e => setConfig(prev => ({...prev, [field]: e.target.value}))}
-  style={{opacity:0, width:'100%', height:'100%', cursor:'pointer'}}
-/>
+                {/* Input testuale esadecimale (opzionale, per precisione) */}
+                <span style={{fontSize:'12px', fontFamily:'monospace', color:'#666'}}>{isTransparent ? 'Trasp.' : val}</span>
+                
                 <button 
                     onClick={() => setConfig({...config, [field]: 'transparent'})}
                     title="Rendi Trasparente"
-                    style={{background:'transparent', border:'1px solid #ccc', borderRadius:'5px', cursor:'pointer', padding:'5px', fontSize:'16px'}}
+                    style={{background:'transparent', border:'1px solid #ccc', borderRadius:'5px', cursor:'pointer', padding:'5px', fontSize:'16px', marginLeft:'auto'}}
                 >
                     🚫
                 </button>
@@ -152,57 +151,59 @@ onInput={e => setConfig(prev => ({...prev, [field]: e.target.value}))} // ✅ li
                       <SmartColorPicker label="Icona Tasto +" value={config.colore_btn_text} field="colore_btn_text" def="#ffffff" />
                   </div>
               </div>
+
+              {/* 5. CATEGORIE & LAYOUT */}
               <div style={styles.card}>
-  <h4 style={styles.sectionTitle}>📌 Categorie & Layout</h4>
+                  <h4 style={styles.sectionTitle}>📌 Categorie & Layout</h4>
 
-  <div style={styles.grid}>
-    <SmartColorPicker
-      label="Sfondo Categorie (Primi, Secondi...)"
-      value={config.colore_categoria_bg}
-      field="colore_categoria_bg"
-      def="#2a2a2a"
-    />
-  </div>
+                  <div style={styles.grid}>
+                    <SmartColorPicker
+                      label="Sfondo Categorie (Primi, Secondi...)"
+                      value={config.colore_categoria_bg}
+                      field="colore_categoria_bg"
+                      def="#2a2a2a"
+                    />
+                  </div>
 
-  <div style={{ marginTop: 15 }}>
-    <label style={styles.label}>Posizione Foto Piatti</label>
-    <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
-      <button
-        onClick={() => setConfig(prev => ({ ...prev, posizione_immagine_piatto: "left" }))}
-        style={{
-          flex: 1,
-          padding: "10px",
-          borderRadius: "8px",
-          border: "1px solid #ddd",
-          cursor: "pointer",
-          background: (config.posizione_immagine_piatto || "left") === "left" ? "#333" : "white",
-          color: (config.posizione_immagine_piatto || "left") === "left" ? "white" : "#333",
-          fontWeight: "bold",
-        }}
-      >
-        ⬅️ Sinistra
-      </button>
+                  <div style={{ marginTop: 15 }}>
+                    <label style={styles.label}>Posizione Foto Piatti</label>
+                    <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+                      <button
+                        onClick={() => setConfig(prev => ({ ...prev, posizione_immagine_piatto: "left" }))}
+                        style={{
+                          flex: 1,
+                          padding: "10px",
+                          borderRadius: "8px",
+                          border: "1px solid #ddd",
+                          cursor: "pointer",
+                          background: (config.posizione_immagine_piatto || "left") === "left" ? "#333" : "white",
+                          color: (config.posizione_immagine_piatto || "left") === "left" ? "white" : "#333",
+                          fontWeight: "bold",
+                        }}
+                      >
+                        ⬅️ Sinistra
+                      </button>
 
-      <button
-        onClick={() => setConfig(prev => ({ ...prev, posizione_immagine_piatto: "right" }))}
-        style={{
-          flex: 1,
-          padding: "10px",
-          borderRadius: "8px",
-          border: "1px solid #ddd",
-          cursor: "pointer",
-          background: config.posizione_immagine_piatto === "right" ? "#333" : "white",
-          color: config.posizione_immagine_piatto === "right" ? "white" : "#333",
-          fontWeight: "bold",
-        }}
-      >
-        ➡️ Destra
-      </button>
-    </div>
-  </div>
-</div>
+                      <button
+                        onClick={() => setConfig(prev => ({ ...prev, posizione_immagine_piatto: "right" }))}
+                        style={{
+                          flex: 1,
+                          padding: "10px",
+                          borderRadius: "8px",
+                          border: "1px solid #ddd",
+                          cursor: "pointer",
+                          background: config.posizione_immagine_piatto === "right" ? "#333" : "white",
+                          color: config.posizione_immagine_piatto === "right" ? "white" : "#333",
+                          fontWeight: "bold",
+                        }}
+                      >
+                        ➡️ Destra
+                      </button>
+                    </div>
+                  </div>
+              </div>
 
-              {/* 5. CARRELLO & CHECKOUT */}
+              {/* 6. CARRELLO & CHECKOUT */}
               <div style={styles.card}>
                   <h4 style={styles.sectionTitle}>🛒 Carrello & Riepilogo</h4>
                   <div style={styles.grid}>
@@ -213,7 +214,7 @@ onInput={e => setConfig(prev => ({...prev, [field]: e.target.value}))} // ✅ li
                   </div>
               </div>
 
-              {/* 6. MODALE PRODOTTO */}
+              {/* 7. MODALE PRODOTTO */}
               <div style={styles.card}>
                   <h4 style={styles.sectionTitle}>⚙️ Configuratore (Tasto +)</h4>
                   <div style={styles.grid}>
@@ -222,13 +223,12 @@ onInput={e => setConfig(prev => ({...prev, [field]: e.target.value}))} // ✅ li
                   </div>
               </div>
 
-             {/* 7. STILE FOOTER (SOLO GRAFICA) */}
+             {/* 8. STILE FOOTER */}
               <div style={styles.card}>
                   <h4 style={styles.sectionTitle}>ℹ️ Stile Info Legali & Footer</h4>
                   
                   <div style={{display:'flex', flexDirection:'column', gap:'20px'}}>
                       
-                      {/* COLORE */}
                       <SmartColorPicker 
                           label="Colore Testo Footer" 
                           value={config.colore_footer_text} 
@@ -236,7 +236,6 @@ onInput={e => setConfig(prev => ({...prev, [field]: e.target.value}))} // ✅ li
                           def="#888888" 
                       />
 
-                      {/* DIMENSIONE E ALLINEAMENTO (Affiancati) */}
                       <div style={{display:'flex', gap:'15px'}}>
                           <div style={{flex:1}}>
                               <label style={styles.label}>Dimensione (px)</label>
@@ -274,7 +273,7 @@ onInput={e => setConfig(prev => ({...prev, [field]: e.target.value}))} // ✅ li
                   </p>
               </div>
 
-              {/* 8. FONT */}
+              {/* 9. FONT */}
               <div style={styles.card}>
                   <h4 style={styles.sectionTitle}>🔤 Font</h4>
                   <select value={config.font_style} onChange={e => setConfig({...config, font_style: e.target.value})} style={styles.select}>
@@ -309,7 +308,7 @@ onInput={e => setConfig(prev => ({...prev, [field]: e.target.value}))} // ✅ li
                           paddingBottom:'10px', flexShrink: 0
                       }}>
                           {config.logo_url && (
-                              <img src={config.logo_url} style={{
+                              <img src={config.logo_url} alt="Logo" style={{
                                   width:60, height:60, borderRadius:'50%', border:'3px solid white', 
                                   position:'absolute', bottom:-30, objectFit:'cover', zIndex:10
                               }}/>
@@ -341,7 +340,7 @@ onInput={e => setConfig(prev => ({...prev, [field]: e.target.value}))} // ✅ li
                           }}>+</button>
                       </div>
 
-                      {/* SPACER PER SPINGERE IL FOOTER */}
+                      {/* SPACER */}
                       <div style={{flex:1}}></div>
 
                       {/* FOOTER ANTEPRIMA */}
@@ -390,7 +389,6 @@ onInput={e => setConfig(prev => ({...prev, [field]: e.target.value}))} // ✅ li
 }
 
 const styles = {
-    // MODIFICATO QUI: maxWidth 100%
     container: { display: 'flex', flexWrap: 'wrap', gap: '40px', width: '100%', margin: '0 auto', fontFamily: "'Inter', sans-serif", alignItems: 'flex-start' },
     editorColumn: { flex: '1 1 500px', paddingBottom:'50px' },
     previewColumn: { flex: '0 0 320px', display: 'flex', flexDirection: 'column', alignItems: 'center', position:'sticky', top:'20px' },

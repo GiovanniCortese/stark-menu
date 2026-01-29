@@ -44,7 +44,7 @@ export default function MenuPage() {
   const [isSuspended, setIsSuspended] = useState(false);
   const [isMenuDisabled, setIsMenuDisabled] = useState(false);
   
-  // Se ordini disabilitati, canOrder diventa false, ma la Wishlist funziona
+  // Se canOrder è false, attiva modalità Wishlist (Lista Desideri)
   const [canOrder, setCanOrder] = useState(true);
   const [error, setError] = useState(false);
   
@@ -100,21 +100,21 @@ export default function MenuPage() {
             setIsMenuDisabled(true);
         }
 
-        // 3. Controllo Ordini (Modulo SuperAdmin + Interruttore Ristoratore + Cucina)
-        // Se false, attiva modalità Wishlist
+        // 3. Controllo Ordini (Logica combinata)
+        // Deve essere attivo il MODULO SaaS (SuperAdmin) E l'INTERRUTTORE SERVIZIO (Ristoratore)
         const moduloOrdiniAttivo = data.moduli ? (data.moduli.ordini_clienti !== false) : true;
-        const adminLocaleAttivo = data.ordini_abilitati; // Flag del ristoratore
-        const kitchenAttiva = data.kitchen_active; // Flag storico
+        const servizioAttivoLocale = data.ordini_abilitati === true; // Switch nel pannello admin ristorante
         
-        setCanOrder(moduloOrdiniAttivo && adminLocaleAttivo && kitchenAttiva);
+        // Se uno dei due è spento, il cliente non può ordinare (solo Wishlist)
+        setCanOrder(moduloOrdiniAttivo && servizioAttivoLocale);
         
         setActiveCategory(null);
 
-        // SEO
+        // SEO Update
         const pageTitle = `${data.ristorante} | Menu Digitale`;
         const pageDesc = "Sfoglia il nostro menu, ordina comodamente dal tavolo e scopri le nostre specialità!";
-       const pageImage = data?.style?.logo || data?.style?.cover || "";
-updateMetaTags(pageTitle, pageImage, pageDesc);
+        const pageImage = data?.style?.logo || data?.style?.cover || "";
+        updateMetaTags(pageTitle, pageImage, pageDesc);
 
         // Lingue disponibili
         const foundLangs = new Set(["it"]);
@@ -148,9 +148,8 @@ updateMetaTags(pageTitle, pageImage, pageDesc);
   };
 
   const aggiungiAlCarrello = (piatto, override = null) => {
-    // MODIFICA CRUCIALE: Rimosso il blocco if (!canOrder) return;
-    // Ora permettiamo di aggiungere al carrello anche se è solo una Wishlist.
-
+    // NOTA: Permettiamo l'aggiunta anche se canOrder è false (Funzione Wishlist)
+    
     const qtySpecific = override?.qty ?? 1;
     let finalQty = qtySpecific;
     if (qtySpecific === 1 && piatto.qta_minima > 1) finalQty = parseFloat(piatto.qta_minima);
@@ -194,7 +193,7 @@ updateMetaTags(pageTitle, pageImage, pageDesc);
   };
 
   const inviaOrdine = async () => {
-    // Protezione finale: se non puoi ordinare e non sei staff, non invia nulla.
+    // Protezione finale: se non puoi ordinare e non sei staff, blocco.
     if (!canOrder && !isStaff) {
         alert("Gli ordini sono momentaneamente disabilitati. Mostra questa lista al cameriere.");
         return; 
@@ -378,7 +377,7 @@ updateMetaTags(pageTitle, pageImage, pageDesc);
         cardBorder={cardBorder}
         btnBg={btnBg}
         btnText={btnText}
-        canOrder={canOrder} // Passiamo lo stato per cambiare icona (Razzo vs Lista)
+        canOrder={canOrder} 
       />
 
       <MenuFooter

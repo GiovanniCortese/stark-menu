@@ -1,4 +1,4 @@
-// client/src/SuperAdmin.jsx - VERSIONE V81 (BUSINESS TYPES & PIN MODE) 🚀
+// client/src/SuperAdmin.jsx - VERSIONE V82 (LIDI ADDED & PIN MODE) 🚀
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
@@ -14,7 +14,7 @@ function SuperAdmin() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null); 
   
-  // STATO CONFIGURAZIONE FORM (ESTESO PER CRM + BUSINESS TYPE)
+  // STATO CONFIGURAZIONE FORM
   const [formData, setFormData] = useState({ 
       // 1. Accesso & Base
       nome: '', 
@@ -24,9 +24,9 @@ function SuperAdmin() {
       account_attivo: true,
       data_scadenza: new Date().toISOString().split('T')[0], 
       
-      // 2. Configurazione Business (NUOVI CAMPI)
-      tipo_business: 'ristorante', // Default
-      pin_mode: false,             // Default sicurezza spenta
+      // 2. Configurazione Business
+      tipo_business: 'ristorante', 
+      pin_mode: false,             
 
       // 3. Contatti & Sedi
       telefono: '', 
@@ -41,7 +41,7 @@ function SuperAdmin() {
       codice_sdi: '',
       note_interne: '',
 
-      // Moduli (Hidden in modal, managed in table)
+      // Moduli
       modulo_cassa: true,           
       modulo_menu_digitale: true,   
       modulo_ordini_clienti: true,  
@@ -57,11 +57,9 @@ function SuperAdmin() {
   const [editingUser, setEditingUser] = useState(null); 
   const [userFormData, setUserFormData] = useState({ nome: '', email: '', password: '', telefono: '', indirizzo: '', ruolo: 'cliente', ristorante_id: '' });
 
-  // --- STATI RICERCA E ORDINAMENTO (RISTORANTI) ---
+  // --- STATI RICERCA E ORDINAMENTO ---
   const [restaurantSearchTerm, setRestaurantSearchTerm] = useState("");
   const [restaurantSortConfig, setRestaurantSortConfig] = useState({ key: 'id', direction: 'desc' });
-
-  // --- STATI RICERCA E ORDINAMENTO (UTENTI) ---
   const [searchTerm, setSearchTerm] = useState("");
   const [sortConfig, setSortConfig] = useState({ key: 'id', direction: 'desc' });
   const [uploading, setUploading] = useState(false);
@@ -80,13 +78,14 @@ function SuperAdmin() {
       { label: '👥 Utenti', dbField: 'modulo_utenti', dateField: 'scadenza_utenti' },
   ];
 
-  // MAPPA ICONE BUSINESS
+  // MAPPA ICONE BUSINESS (Con Lido)
   const businessIcons = {
       ristorante: '🍽️',
       discoteca: '🍾',
       bar: '🍹',
       padel: '🎾',
-      parrucchiere: '💇'
+      parrucchiere: '💇',
+      lido: '🏖️' // <--- NUOVO
   };
 
   useEffect(() => {
@@ -129,7 +128,7 @@ function SuperAdmin() {
       } catch (err) { setError("Errore di connessione"); }
   };
 
-  // --- LOGICA FILTRO E ORDINAMENTO RISTORANTI ---
+  // --- LOGICA FILTRO E ORDINAMENTO ---
   const handleRestaurantSort = (key) => {
     let direction = 'asc';
     if (restaurantSortConfig.key === key && restaurantSortConfig.direction === 'asc') {
@@ -140,29 +139,20 @@ function SuperAdmin() {
 
   const filteredRistoranti = useMemo(() => {
     let data = [...ristoranti];
-    
-    // 1. Filtro Ricerca
     if (restaurantSearchTerm) {
         const term = restaurantSearchTerm.toLowerCase();
         data = data.filter(r => 
             (r.nome && r.nome.toLowerCase().includes(term)) ||
             (r.slug && r.slug.toLowerCase().includes(term)) ||
-            (r.email && r.email.toLowerCase().includes(term)) ||
-            (r.telefono && r.telefono.includes(term)) ||
-            (r.piva && r.piva.includes(term)) ||
-            (r.sede_operativa && r.sede_operativa.toLowerCase().includes(term))
+            (r.email && r.email.toLowerCase().includes(term))
         );
     }
-
-    // 2. Ordinamento
     if (restaurantSortConfig.key) {
         data.sort((a, b) => {
             let valA = a[restaurantSortConfig.key];
             let valB = b[restaurantSortConfig.key];
-
             if (typeof valA === 'string') valA = valA.toLowerCase();
             if (typeof valB === 'string') valB = valB.toLowerCase();
-
             if (valA < valB) return restaurantSortConfig.direction === 'asc' ? -1 : 1;
             if (valA > valB) return restaurantSortConfig.direction === 'asc' ? 1 : -1;
             return 0;
@@ -171,8 +161,6 @@ function SuperAdmin() {
     return data;
   }, [ristoranti, restaurantSearchTerm, restaurantSortConfig]);
 
-
-  // --- AZIONI SUI RISTORANTI ---
   const toggleModulo = async (id, field, currentValue) => {
     const newValue = !currentValue;
     setRistoranti(prev => prev.map(r => r.id === id ? { ...r, [field]: newValue } : r));
@@ -201,60 +189,28 @@ function SuperAdmin() {
       try { await fetch(`${API_URL}/api/super/ristoranti/${id}`, { method: 'DELETE' }); caricaDati(); } catch(err) { alert("Errore cancellazione"); } 
   };
 
-  // --- GOD MODE BYPASS LOGIC 🚀 ---
   const entraNelPannello = (r) => {
       localStorage.setItem("admin_token", "SUPER_GOD_TOKEN_2026");
       localStorage.setItem("superadmin_target_id", String(r.id));
       localStorage.setItem("superadmin_target_slug", r.slug);
       localStorage.setItem("superadmin_target_nome", r.nome);
-
-      const godUser = {
-          id: r.id,
-          nome: r.nome,
-          slug: r.slug,
-          email: r.email,
-          ruolo: 'admin',
-          is_god_mode: true
-      };
-      localStorage.setItem("user", JSON.stringify(godUser));
+      localStorage.setItem("user", JSON.stringify({
+          id: r.id, nome: r.nome, slug: r.slug, email: r.email, ruolo: 'admin', is_god_mode: true
+      }));
       window.open(`/login`, "_blank");
   };
 
-  // --- GESTIONE MODALE CONFIGURAZIONE (CRM & EDIT) ---
   const avviaModifica = (r) => {
       setEditingId(r.id);
       setFormData({
-          // Base
-          nome: r.nome || '',
-          slug: r.slug || '',
-          email: r.email || '',
-          password: '',
-          account_attivo: r.account_attivo,
+          nome: r.nome || '', slug: r.slug || '', email: r.email || '', password: '', account_attivo: r.account_attivo,
           data_scadenza: r.data_scadenza ? r.data_scadenza.split('T')[0] : '',
-          
-          // NUOVI CAMPI BUSINESS
           tipo_business: r.tipo_business || 'ristorante',
           pin_mode: r.pin_mode || false,
-
-          // CRM Data
-          telefono: r.telefono || '',
-          referente: r.referente || '',
-          piva: r.piva || '',
-          codice_fiscale: r.codice_fiscale || '',
-          pec: r.pec || '',
-          codice_sdi: r.codice_sdi || '',
-          sede_legale: r.sede_legale || '',
-          sede_operativa: r.sede_operativa || '',
-          note_interne: r.note_interne || '',
-
-          // Moduli (Hidden but preserved)
-          modulo_cassa: r.modulo_cassa,
-          modulo_menu_digitale: r.modulo_menu_digitale,
-          modulo_ordini_clienti: r.modulo_ordini_clienti,
-          modulo_magazzino: r.modulo_magazzino,
-          modulo_haccp: r.modulo_haccp,
-          modulo_utenti: r.modulo_utenti,
-          cassa_full_suite: r.cassa_full_suite
+          telefono: r.telefono || '', referente: r.referente || '', piva: r.piva || '', codice_fiscale: r.codice_fiscale || '',
+          pec: r.pec || '', codice_sdi: r.codice_sdi || '', sede_legale: r.sede_legale || '', sede_operativa: r.sede_operativa || '', note_interne: r.note_interne || '',
+          modulo_cassa: r.modulo_cassa, modulo_menu_digitale: r.modulo_menu_digitale, modulo_ordini_clienti: r.modulo_ordini_clienti,
+          modulo_magazzino: r.modulo_magazzino, modulo_haccp: r.modulo_haccp, modulo_utenti: r.modulo_utenti, cassa_full_suite: r.cassa_full_suite
       });
       setShowModal(true);
   };
@@ -267,19 +223,11 @@ function SuperAdmin() {
   const apriModaleNuovo = () => { 
       setEditingId(null); 
       setFormData({ 
-          nome: '', slug: '', email: '', password: '', 
-          telefono: '', referente: '', piva: '', codice_fiscale: '', pec: '', codice_sdi: '',
-          sede_legale: '', sede_operativa: '', note_interne: '',
-          account_attivo: true,
+          nome: '', slug: '', email: '', password: '', telefono: '', referente: '', piva: '', codice_fiscale: '', pec: '', codice_sdi: '',
+          sede_legale: '', sede_operativa: '', note_interne: '', account_attivo: true,
           data_scadenza: new Date(new Date().setMonth(new Date().getMonth() + 12)).toISOString().split('T')[0],
-          
-          // Default NUOVI
-          tipo_business: 'ristorante',
-          pin_mode: false,
-
-          // Default modules
-          modulo_cassa: true, modulo_menu_digitale: true, modulo_ordini_clienti: true,
-          modulo_magazzino: false, modulo_haccp: false, modulo_utenti: false, cassa_full_suite: true
+          tipo_business: 'ristorante', pin_mode: false,
+          modulo_cassa: true, modulo_menu_digitale: true, modulo_ordini_clienti: true, modulo_magazzino: false, modulo_haccp: false, modulo_utenti: false, cassa_full_suite: true
       }); 
       setShowModal(true); 
   };
@@ -290,7 +238,7 @@ function SuperAdmin() {
       const method = editingId ? 'PUT' : 'POST'; 
       try { 
           const res = await fetch(endpoint, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formData) }); 
-          if(res.ok) { alert("✅ Dati CRM Salvati!"); setShowModal(false); caricaDati(); } 
+          if(res.ok) { alert("✅ Salvato!"); setShowModal(false); caricaDati(); } 
           else { const data = await res.json(); alert("❌ Errore: " + (data.error || "Sconosciuto")); }
       } catch(err) { alert("❌ Errore di connessione"); } 
   };
@@ -306,7 +254,7 @@ function SuperAdmin() {
       if (confirm("Uscire dal J.A.R.V.I.S.?")) { localStorage.removeItem("super_admin_token"); setAuthorized(false); } 
   };
 
-  // --- LOGICA UTENTI GLOBALI ---
+  // --- LOGICA UTENTI ---
   const handleOpenUserForm = (user = null) => {
       if (user) {
           setEditingUser(user);
@@ -446,7 +394,7 @@ function SuperAdmin() {
                                   
                                   <td style={{padding:15, color:'#666'}}>#{r.id}</td>
 
-                                  {/* INFO BASE */}
+                                  {/* INFO BASE (CON ICONA DINAMICA) */}
                                   <td style={{padding:15}}>
                                       <div style={{fontWeight:'bold', color:'white', fontSize:'15px', display:'flex', alignItems:'center', gap:5}}>
                                           {businessIcons[r.tipo_business] || '🏢'} {r.nome}
@@ -596,6 +544,7 @@ function SuperAdmin() {
                                       <option value="bar">🍹 Bar / Pub</option>
                                       <option value="padel">🎾 Sport / Padel</option>
                                       <option value="parrucchiere">💇 Parrucchiere / Estetista</option>
+                                      <option value="lido">🏖️ Lido / Ombrelloni</option> {/* NUOVO */}
                                   </select>
                               </div>
                               <div style={{flex: 1}}>

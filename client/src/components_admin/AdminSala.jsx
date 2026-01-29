@@ -1,48 +1,67 @@
-// client/src/components_admin/AdminSala.jsx
+// client/src/components_admin/AdminSala.jsx - FIX CRASH & SAFE STATE
 import React, { useState, useEffect, useRef } from 'react';
-import Draggable from 'react-draggable'; // Assicurati di avere: npm install react-draggable
+import Draggable from 'react-draggable'; 
 
 const AdminSala = ({ user, API_URL }) => {
+    // Inizializza SEMPRE come array vuoto
     const [tavoli, setTavoli] = useState([]);
     const [loading, setLoading] = useState(false);
     const [selectedId, setSelectedId] = useState(null);
-    
-    // Configurazione nuovo tavolo
     const [newTable, setNewTable] = useState({ label: '', shape: 'square', seats: 4 });
 
     const containerRef = useRef(null);
 
-    // Caricamento Dati
+    // Caricamento Dati Sicuro
     useEffect(() => {
         if(user && user.layout_sala) {
             try {
-                const parsed = typeof user.layout_sala === 'string' ? JSON.parse(user.layout_sala) : user.layout_sala;
-                setTavoli(Array.isArray(parsed) ? parsed : []);
-            } catch(e) { setTavoli([]); }
+                // Parsing sicuro: se è stringa, parsa. Se è già oggetto/array, usa quello.
+                let parsed = user.layout_sala;
+                if (typeof parsed === 'string') {
+                    parsed = JSON.parse(parsed);
+                }
+                // Check finale: è un array?
+                if (Array.isArray(parsed)) {
+                    setTavoli(parsed);
+                } else {
+                    setTavoli([]);
+                }
+            } catch(e) { 
+                console.error("Errore parsing sala:", e);
+                setTavoli([]); 
+            }
+        } else {
+            setTavoli([]);
         }
     }, [user]);
 
     const addTable = () => {
-        const id = Date.now().toString(); // ID univoco semplice
+        // Safe check
+        const currentTables = Array.isArray(tavoli) ? tavoli : [];
+        
+        const id = Date.now().toString(); 
         const nuovo = {
             id,
-            label: newTable.label || `T-${tavoli.length + 1}`,
-            shape: newTable.shape, // 'square', 'round', 'rect'
+            label: newTable.label || `T-${currentTables.length + 1}`,
+            shape: newTable.shape, 
             seats: newTable.seats,
-            x: 50, // Posizione default
+            x: 50, 
             y: 50,
-            status: 'free' // 'free', 'occupied', 'reserved'
+            status: 'free' 
         };
-        setTavoli([...tavoli, nuovo]);
+        setTavoli([...currentTables, nuovo]);
     };
 
     const updatePosition = (id, x, y) => {
-        setTavoli(prev => prev.map(t => t.id === id ? { ...t, x, y } : t));
+        setTavoli(prev => {
+            const safePrev = Array.isArray(prev) ? prev : [];
+            return safePrev.map(t => t.id === id ? { ...t, x, y } : t);
+        });
     };
 
     const removeTable = (id) => {
         if(confirm("Eliminare questo tavolo?")) {
-            setTavoli(prev => prev.filter(t => t.id !== id));
+            setTavoli(prev => (Array.isArray(prev) ? prev : []).filter(t => t.id !== id));
             setSelectedId(null);
         }
     };
@@ -57,7 +76,7 @@ const AdminSala = ({ user, API_URL }) => {
             });
             alert("✅ Layout Sala Salvato!");
         } catch(e) {
-            alert("Errore salvataggio");
+            alert("Errore salvataggio: " + e.message);
         } finally {
             setLoading(false);
         }
@@ -113,22 +132,23 @@ const AdminSala = ({ user, API_URL }) => {
                     border: '2px solid #bdc3c7'
                 }}
             >
-                {tavoli.map(t => (
+                {Array.isArray(tavoli) && tavoli.map(t => (
                     <Draggable
                         key={t.id}
                         bounds="parent"
-                        defaultPosition={{x: t.x, y: t.y}}
+                        defaultPosition={{x: t.x || 0, y: t.y || 0}}
                         onStop={(e, data) => updatePosition(t.id, data.x, data.y)}
+                        nodeRef={React.createRef()} // FIX Warning React 18 strict mode
                     >
                         <div 
                             onClick={()=>setSelectedId(t.id)}
                             style={{
                                 position: 'absolute',
                                 cursor: 'move',
-                                width: t.shape === 'rect' ? 120 : 70,
-                                height: 70,
+                                width: t.shape === 'rect' ? 120 : (t.shape === 'round' ? 80 : 70),
+                                height: t.shape === 'round' ? 80 : 70,
                                 borderRadius: t.shape === 'round' ? '50%' : '8px',
-                                background: selectedId === t.id ? '#f1c40f' : (t.status === 'occupied' ? '#e74c3c' : '#2ecc71'),
+                                background: selectedId === t.id ? '#f1c40f' : '#2ecc71',
                                 border: '2px solid #333',
                                 display: 'flex',
                                 justifyContent: 'center',
