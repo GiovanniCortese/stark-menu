@@ -9,6 +9,7 @@ function SuperAdmin() {
   const [authorized, setAuthorized] = useState(false);
   const [loginData, setLoginData] = useState({ email: '', password: '', code2fa: '' });
   const [error, setError] = useState("");
+  const [stats, setStats] = useState({ totalRevenue: 0, activeClients: 0 });
   
   // STATI MODALE RISTORANTE
   const [showModal, setShowModal] = useState(false);
@@ -99,7 +100,15 @@ function SuperAdmin() {
   const caricaDati = () => {
     fetch(`${API_URL}/api/super/ristoranti`)
       .then(res => res.json())
-      .then(data => { if(Array.isArray(data)) setRistoranti(data); })
+      .then(data => { 
+          if(Array.isArray(data)) {
+              setRistoranti(data); 
+              setStats({
+                  totalRevenue: data.length * 500, 
+                  activeClients: data.filter(r => r.account_attivo).length
+              });
+          }
+      })
       .catch(err => console.error(err));
 
     fetch(`${API_URL}/api/utenti?mode=super`)
