@@ -1,25 +1,29 @@
-// client/src/Cassa.jsx - VERSIONE V46 (MODULE PROTECTION) 💶
+// client/src/Cassa.jsx - VERSIONE V50 (PIN MANAGER INTEGRATED) 💶
 import { io } from "socket.io-client";
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 
 function Cassa() {
   const { slug } = useParams();
-  const navigate = useNavigate(); // Hook per navigazione
+  const navigate = useNavigate(); 
   
   const [selectedUserData, setSelectedUserData] = useState(null);
   const [loadingUser, setLoadingUser] = useState(false);
   
   // STATI DATI
-  const [tab, setTab] = useState('attivi'); 
-  const [tavoliAttivi, setTavoliAttivi] = useState([]); // Array ordinato
+  const [tab, setTab] = useState('attivi'); // 'attivi', 'storico', 'pin' <--- NUOVO TAB
+  const [tavoliAttivi, setTavoliAttivi] = useState([]); 
   const [storico, setStorico] = useState([]);
   const [infoRistorante, setInfoRistorante] = useState(null);
   const [selectedLog, setSelectedLog] = useState(null); 
+  
+  // STATI PIN & SALA
+  const [layoutSala, setLayoutSala] = useState([]); // Tavoli disegnati
+  const [tavoliStatus, setTavoliStatus] = useState([]); // PIN attivi dal DB
 
-  // STATI AUTH & SICUREZZA
+  // STATI AUTH
   const [isAuthorized, setIsAuthorized] = useState(false);
-  const [isModuleDisabled, setIsModuleDisabled] = useState(false); // NUOVO STATO BLOCCO
+  const [isModuleDisabled, setIsModuleDisabled] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
   const [loginError, setLoginError] = useState(false);
   const [loadingLogin, setLoadingLogin] = useState(false);
@@ -27,51 +31,125 @@ function Cassa() {
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
   useEffect(() => {
-    // 1. Fetch Info Ristorante e controllo Modulo
     fetch(`${API_URL}/api/menu/${slug}`)
       .then(res => res.json())
       .then(data => {
           setInfoRistorante(data);
           
-          // --- 🔒 CONTROLLO DI SICUREZZA: MODULO CASSA ATTIVO? ---
-          // Se il modulo cassa è false, blocchiamo l'accesso
-          if (data.moduli && data.moduli.cassa === false) {
-              setIsModuleDisabled(true);
+          // Carica Layout Sala (se esiste)
+          if (data.layout_sala) {
+              try {
+                  const parsed = typeof data.layout_sala === 'string' ? JSON.parse(data.layout_sala) : data.layout_sala;
+                  setLayoutSala(Array.isArray(parsed) ? parsed : []);
+              } catch(e) { setLayoutSala([]); }
           }
-      })
-      .catch(err => console.error("Errore fetch info:", err));
 
-    // 2. Controllo Sessione
+          if (data.moduli && data.moduli.cassa === false) setIsModuleDisabled(true);
+      })
+      .catch(err => console.error(err));
+
     const sessionKey = `cassa_session_${slug}`;
-    if (localStorage.getItem(sessionKey) === "true") setIsAuthorized(true);
+    if (localStorage.getItem(sessionKey)) setIsAuthorized(true);
   }, [slug]);
 
-  // --- LOGIN ---
+  // POLLING DATI (Ogni 5 sec)
+  useEffect(() => {
+    if (!isAuthorized || !infoRistorante) return;
+    
+    const fetchData = () => {
+        // Ordini
+        fetch(`${API_URL}/api/ordini/${infoRistorante.id}`)
+            .then(r => r.json())
+            .then(data => {
+                const grouped = {};
+                data.forEach(o => {
+                    if (!grouped[o.tavolo_numero]) grouped[o.tavolo_numero] = { 
+                        tavolo: o.tavolo_numero, 
+                        ordini: [], 
+                        totale: 0, 
+                        coperti: 0,
+                        fullLog: "",
+                        orarioMin: o.data_ora
+                    };
+                    grouped[o.tavolo_numero].ordini.push(o);
+                    grouped[o.tavolo_numero].totale += parseFloat(o.totale);
+                    if(o.coperti > grouped[o.tavolo_numero].coperti) grouped[o.tavolo_numero].coperti = o.coperti; 
+                });
+                
+                // Ordina per orario
+                const lista = Object.values(grouped).sort((a,b) => new Date(a.orarioMin) - new Date(b.orarioMin));
+                
+                // Crea Log
+                lista.forEach(t => {
+                    t.fullLog = t.ordini.map(o => (o.dettagli || "").trim()).filter(d=>d).join("\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n");
+                });
+
+                setTavoliAttivi(lista);
+            });
+
+        // Stato PIN (Nuovo)
+        fetch(`${API_URL}/api/cassa/tavoli/status/${infoRistorante.id}`)
+            .then(r => r.json())
+            .then(data => setTavoliStatus(data)); // Array [{numero: 'T-1', active_pin: '1234', ...}]
+    };
+
+    fetchData();
+    const interval = setInterval(fetchData, 5000); 
+    const socket = io(API_URL);
+    socket.emit('join_room', String(infoRistorante.id));
+    socket.on('refresh_ordini', fetchData);
+    socket.on('refresh_tavoli', fetchData); // Ascolta cambi PIN
+
+    return () => { clearInterval(interval); socket.disconnect(); };
+  }, [isAuthorized, infoRistorante]);
+
   const handleLogin = async (e) => {
     e.preventDefault();
-    if(!infoRistorante?.id) return;
     setLoadingLogin(true);
-    setLoginError(false);
     try {
         const res = await fetch(`${API_URL}/api/auth/station`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ristorante_id: infoRistorante.id, role: 'cassa', password: passwordInput })
         });
         const data = await res.json();
-        if(data.success) {
+        if (data.success) {
             setIsAuthorized(true);
             localStorage.setItem(`cassa_session_${slug}`, "true");
-        } else { setLoginError(true); }
-    } catch(err) { alert("Errore connessione al server"); } finally { setLoadingLogin(false); }
+        } else {
+            setLoginError(true);
+        }
+    } catch (err) { alert("Errore connessione"); } 
+    finally { setLoadingLogin(false); }
   };
 
-  const handleLogout = () => {
-      if(confirm("Vuoi uscire dalla Cassa?")) {
-          localStorage.removeItem(`cassa_session_${slug}`);
-          setIsAuthorized(false);
-          setPasswordInput("");
-      }
+  // --- AZIONE: GENERA PIN ---
+  const generaPinTavolo = async (tavoloNome) => {
+      if(!confirm(`Generare NUOVO PIN per ${tavoloNome}?`)) return;
+      try {
+          const res = await fetch(`${API_URL}/api/cassa/tavolo/open`, {
+              method: 'POST', headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ ristorante_id: infoRistorante.id, tavolo: tavoloNome })
+          });
+          const data = await res.json();
+          if(data.success) {
+              alert(`✅ PIN GENERATO: ${data.pin}`);
+              // Refresh immediato stato locale
+              setTavoliStatus(prev => {
+                  const exists = prev.find(p => p.numero === tavoloNome);
+                  if(exists) return prev.map(p => p.numero === tavoloNome ? {...p, active_pin: data.pin} : p);
+                  return [...prev, { numero: tavoloNome, active_pin: data.pin }];
+              });
+          }
+      } catch(e) { alert("Errore generazione"); }
+  };
+
+  const getLivello = (n) => {
+      const num = parseInt(n || 0);
+      if (num >= 100) return { label: "Legend 💎", color: "#3498db", bg: "#eafaf1" };
+      if (num >= 30) return { label: "VIP 🥇", color: "#f1c40f", bg: "#fef9e7" };
+      if (num >= 15) return { label: "Cliente Top 🥈", color: "#7f8c8d", bg: "#f4f6f7" };
+      if (num >= 5) return { label: "Buongustaio 🥉", color: "#cd7f32", bg: "#fdf2e9" };
+      return { label: "Novizio 🌱", color: "#27ae60", bg: "#e8f8f5" };
   };
 
   const apriDettagliUtente = async (id) => {
@@ -85,15 +163,6 @@ function Cassa() {
     } catch(e) { alert("Errore caricamento dati utente"); } finally { setLoadingUser(false); }
   };
 
-  const getLivello = (n) => {
-      const num = parseInt(n || 0);
-      if (num >= 100) return { label: "Legend 💎", color: "#3498db", bg: "#eafaf1" };
-      if (num >= 30) return { label: "VIP 🥇", color: "#f1c40f", bg: "#fef9e7" };
-      if (num >= 15) return { label: "Cliente Top 🥈", color: "#7f8c8d", bg: "#f4f6f7" };
-      if (num >= 5) return { label: "Buongustaio 🥉", color: "#cd7f32", bg: "#fdf2e9" };
-      return { label: "Novizio 🌱", color: "#27ae60", bg: "#e8f8f5" };
-  };
-
   const inviaInProduzione = async (ordiniDaInviare) => {
       if(!confirm(`Confermi di inviare ${ordiniDaInviare.length} ordini in cucina?`)) return;
       try {
@@ -104,105 +173,9 @@ function Cassa() {
                   body: JSON.stringify({ id_ordine: ord.id })
               })
           ));
-          aggiornaDati(); 
+          // Refresh gestito dal socket
       } catch(e) { alert("Errore invio ordine"); }
   };
-
-  const aggiornaDati = () => {
-    if (!infoRistorante?.id) return;
-    fetch(`${API_URL}/api/polling/${infoRistorante.id}`)
-      .then(res => res.json())
-      .then(data => {
-        const ordini = Array.isArray(data.nuovi_ordini) ? data.nuovi_ordini : [];
-        const raggruppati = {};
-        
-        // 1. RAGGRUPPA ORDINI PER TAVOLO
-        ordini.forEach(ord => {
-            const t = ord.tavolo;
-            if(!raggruppati[t]) {
-                raggruppati[t] = { 
-                    tavolo: t, 
-                    ordini: [], 
-                    totale: 0,
-                    fullLog: "", 
-                    cameriere: ord.cameriere,
-                    cliente: ord.cliente, 
-                    storico_ordini: ord.storico_ordini || 0,
-                    utente_id: ord.utente_id,
-                    hasPending: false,
-                    orarioMin: ord.data_ora 
-                };
-            }
-            if (ord.stato === 'in_arrivo') raggruppati[t].hasPending = true;
-            raggruppati[t].ordini.push(ord);
-            raggruppati[t].totale += Number(ord.totale || 0);
-        });
-
-        // 2. CONVERTI IN ARRAY E ORDINA TAVOLI (FIFO)
-        const listaOrdinata = Object.values(raggruppati);
-        listaOrdinata.sort((a, b) => new Date(a.orarioMin).getTime() - new Date(b.orarioMin).getTime());
-
-        // 3. ORDINA GLI ORDINI DENTRO OGNI TAVOLO E COSTRUISCI IL LOG
-        listaOrdinata.forEach(tavolo => {
-            tavolo.ordini.sort((a,b) => new Date(a.data_ora) - new Date(b.data_ora));
-            tavolo.fullLog = tavolo.ordini
-                .map(o => (o.dettagli || "").trim())
-                .filter(d => d !== "")
-                .join("\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"); 
-        });
-
-        setTavoliAttivi(listaOrdinata);
-      })
-      .catch(e => console.error("Errore polling:", e));
-  };
-
-  const caricaStorico = () => {
-      if(!infoRistorante?.id) return;
-      fetch(`${API_URL}/api/cassa/storico/${infoRistorante.id}`)
-        .then(r=>r.json())
-        .then(data => setStorico(Array.isArray(data) ? data : []))
-        .catch(e => console.error("Errore storico:", e));
-  };
-
-  useEffect(() => {
-    // 1. Controllo di sicurezza
-    if (!isAuthorized || !infoRistorante?.id || isModuleDisabled) return;
-
-    if (tab === 'attivi') {
-        console.log("🔌 Cassa Live: Inizializzazione Socket...");
-        aggiornaDati();
-
-        const socket = io(API_URL, {
-            reconnectionAttempts: 5,  
-            reconnectionDelay: 1000,  
-            autoConnect: true
-        });
-
-        socket.on('connect', () => {
-            console.log("✅ Cassa Connessa! ID:", socket.id);
-            socket.emit('join_room', String(infoRistorante.id));
-        });
-
-        socket.on('connect_error', (err) => {
-            console.error("❌ Errore connessione Socket:", err.message);
-        });
-
-        socket.on('refresh_ordini', () => {
-            console.log("🔥 UPDATE RICEVUTO IN CASSA");
-            aggiornaDati(); 
-            if(navigator.vibrate) navigator.vibrate([50, 50, 50]);
-        });
-
-        return () => {
-            console.log("❌ Chiusura Socket Cassa");
-            socket.off('connect');
-            socket.off('refresh_ordini');
-            socket.disconnect();
-        };
-    } else {
-        caricaStorico();
-    }
-  }, [isAuthorized, infoRistorante?.id, tab, isModuleDisabled]);
 
   // --- AZIONI SUI PRODOTTI ---
   const modificaStatoProdotto = async (ord, indexDaModificare) => {
@@ -215,7 +188,6 @@ function Cassa() {
     
     const logMsg = nuovoStato === 'in_attesa' ? `[CASSA 💶] ⚠️ RIAPERTO: ${item.nome}` : `[CASSA 💶] ✅ FATTO: ${item.nome}`;
     await fetch(`${API_URL}/api/ordine/${ord.id}/update-items`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ prodotti: nuoviProdotti, logMsg }) });
-    aggiornaDati();
   };
 
   const eliminaProdotto = async (ord, indexDaEliminare) => {
@@ -225,183 +197,169 @@ function Cassa() {
       const nuovoTotale = Number(ord.totale) - Number(itemEliminato.prezzo || 0);
       const logMsg = `[CASSA 💶] HA ELIMINATO: ${itemEliminato.nome} (${itemEliminato.prezzo}€). Nuovo Totale: ${nuovoTotale.toFixed(2)}€`;
       await fetch(`${API_URL}/api/ordine/${ord.id}/update-items`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ prodotti: nuoviProdotti, totale: nuovoTotale, logMsg }) });
-      aggiornaDati();
   };
 
   const chiudiTavolo = async (t) => {
       if(!confirm(`Incassare Tavolo ${t}?`)) return;
       await fetch(`${API_URL}/api/cassa/paga-tavolo`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ ristorante_id: infoRistorante.id, tavolo: t }) });
-      aggiornaDati();
   };
 
-  // --- BLOCCO 1: SCHERMATA "NON ATTIVO" ---
-  if (isModuleDisabled) {
+  // HELPER PIN
+  const getPinForTable = (nomeTavolo) => {
+      const found = tavoliStatus.find(t => t.numero === nomeTavolo);
+      return found ? found.active_pin : null;
+  };
+
+  if (isModuleDisabled) return <div style={{padding:50, textAlign:'center'}}><h1>⛔ MODULO CASSA NON ATTIVO</h1></div>;
+
+  if (!isAuthorized) {
       return (
-          <div style={{display:'flex', justifyContent:'center', alignItems:'center', minHeight:'100vh', flexDirection:'column', padding:'20px', textAlign:'center', background:'#ecf0f1', color:'#2c3e50'}}>
-              <h1 style={{fontSize:'4rem', margin:0}}>⛔</h1>
-              <h2 style={{color:'#9b59b6', textTransform:'uppercase'}}>CASSA NON ATTIVA</h2>
-              <p style={{fontSize:'1.2rem', opacity:0.8}}>Il modulo Cassa è disabilitato per questo locale.</p>
-              <button onClick={() => navigate('/')} style={{marginTop:20, padding:'10px 20px', background:'#3498db', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Torna alla Home</button>
+          <div style={{height:'100vh', display:'flex', justifyContent:'center', alignItems:'center', background:'#2c3e50'}}>
+              <div style={{background:'white', padding:40, borderRadius:10, textAlign:'center', width:300}}>
+                  <h2>💰 Accesso Cassa</h2>
+                  <p>{infoRistorante?.ristorante}</p>
+                  <form onSubmit={handleLogin}>
+                      <input type="password" value={passwordInput} onChange={e=>setPasswordInput(e.target.value)} placeholder="PIN Cassa" style={{padding:10, fontSize:18, width:'100%', marginBottom:10, textAlign:'center'}} autoFocus />
+                      {loginError && <p style={{color:'red'}}>PIN Errato</p>}
+                      <button type="submit" style={{width:'100%', padding:10, background:'#27ae60', color:'white', border:'none', borderRadius:5, fontWeight:'bold'}}>{loadingLogin ? "..." : "ENTRA"}</button>
+                  </form>
+              </div>
           </div>
       );
   }
 
-  // --- BLOCCO 2: CARICAMENTO ---
-  if (!infoRistorante) return <div style={{padding:50, textAlign:'center', color:'#fff'}}><h1>⏳ Caricamento...</h1></div>;
-
-  // --- BLOCCO 3: LOGIN ---
-  if (!isAuthorized) return (
-      <div style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', background:'#2c3e50', flexDirection:'column'}}>
-          <div style={{background:'white', color:'black', padding:40, borderRadius:10, textAlign:'center', maxWidth:'400px', width:'90%', boxShadow:'0 10px 25px rgba(0,0,0,0.5)'}}>
-              <h1 style={{margin:0, fontSize:'3rem'}}>💶</h1>
-              <h2 style={{margin:'10px 0', color:'#2c3e50'}}>Accesso Cassa</h2>
-              <h3 style={{margin:'0 0 20px 0', color:'#7f8c8d', fontWeight:'normal'}}>{infoRistorante.ristorante}</h3>
-              <form onSubmit={handleLogin}>
-                  <input type="password" placeholder="Password Cassa" value={passwordInput} onChange={e=>setPasswordInput(e.target.value)} style={{width:'100%', padding:15, marginBottom:15, fontSize:'18px', boxSizing:'border-box', border: loginError ? '2px solid red' : '1px solid #ccc', borderRadius:5, textAlign:'center'}} />
-                  {loginError && <div style={{color:'red', marginBottom:'10px', fontWeight:'bold'}}>Password Errata! ⛔</div>}
-                  <button className="btn-invia" style={{width:'100%', padding:15, background:'#27ae60', color:'white', border:'none', borderRadius:5, fontWeight:'bold', cursor:'pointer', fontSize:'18px'}}>{loadingLogin ? "Verifica..." : "ENTRA"}</button>
-              </form>
+  return (
+    <div style={{minHeight:'100vh', background:'#ecf0f1', display:'flex', flexDirection:'column'}}>
+      {/* HEADER */}
+      <div style={{background:'#34495e', padding:'10px 20px', color:'white', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+          <h2 style={{margin:0}}>💰 Cassa: {infoRistorante?.ristorante}</h2>
+          <div>
+              <button onClick={()=>setTab('attivi')} style={{marginRight:10, padding:'8px 15px', background: tab==='attivi'?'#f1c40f':'#2c3e50', color: tab==='attivi'?'black':'white', border:'1px solid #fff', borderRadius:5}}>In Corso</button>
+              <button onClick={()=>setTab('pin')} style={{marginRight:10, padding:'8px 15px', background: tab==='pin'?'#e67e22':'#2c3e50', color: 'white', border:'1px solid #fff', borderRadius:5}}>🔑 Gestione PIN</button>
+              <button onClick={()=>setTab('storico')} style={{marginRight:10, padding:'8px 15px', background: tab==='storico'?'#2980b9':'#2c3e50', color: 'white', border:'1px solid #fff', borderRadius:5}}>Storico</button>
+              <button onClick={()=>{localStorage.removeItem(`cassa_session_${slug}`); setIsAuthorized(false);}} style={{padding:'8px 15px', background:'#c0392b', color:'white', border:'none', borderRadius:5}}>Esci</button>
           </div>
       </div>
-  );
 
-  // --- BLOCCO 4: INTERFACCIA CASSA ---
-  return (
-    <div style={{background:'#eee', minHeight:'100vh', padding:20}}>
-      <header style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20}}>
-          <h1 style={{margin:0, color:'#333'}}>💶 Cassa: {infoRistorante.ristorante}</h1>
-          <div style={{display:'flex', gap:10}}>
-            <button onClick={() => setTab('attivi')} style={{padding:'10px 20px', background: tab==='attivi'?'#2980b9':'#ccc', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Tavoli Attivi</button>
-            <button onClick={() => setTab('storico')} style={{padding:'10px 20px', background: tab==='storico'?'#2980b9':'#ccc', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Storico</button>
-            <button onClick={handleLogout} style={{padding:'10px 20px', background:'#333', color:'white', border:'none', borderRadius:5, cursor:'pointer', marginLeft:10, fontWeight:'bold'}}>ESCI</button>
-          </div>
-      </header>
+      {/* CONTENUTO */}
+      <div style={{padding:20, flex:1, overflowY:'auto'}}>
+          
+          {/* VISTA 1: ORDINI ATTIVI */}
+          {tab === 'attivi' && (
+              <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(300px, 1fr))', gap:20}}>
+                  {tavoliAttivi.length === 0 && <p style={{textAlign:'center', width:'100%', color:'#888'}}>Nessun ordine attivo.</p>}
+                  
+                  {tavoliAttivi.map((info, i) => {
+                      const tavolo = info.tavolo;
+                      const ordiniDaInviare = info.ordini.filter(o => o.stato === 'in_arrivo');
+                      const richiedeApprovazione = ordiniDaInviare.length > 0;
+                      const borderColor = richiedeApprovazione ? '#e67e22' : 'transparent';
 
-      {tab === 'attivi' && (
-          <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(350px, 1fr))', gap:20}}>
-            {tavoliAttivi.length === 0 && <p style={{gridColumn:'1/-1', textAlign:'center', fontSize:20, color:'#888'}}>Nessun tavolo attivo.</p>}
-            
-            {tavoliAttivi.map(info => {
-                    const tavolo = info.tavolo;
-                    const ordiniDaInviare = info.ordini.filter(o => o.stato === 'in_arrivo');
-                    const richiedeApprovazione = ordiniDaInviare.length > 0;
-                    const borderColor = richiedeApprovazione ? '#e67e22' : 'transparent';
-
-                    return (
-                        <div key={tavolo} style={{background:'white', padding:20, borderRadius:10, boxShadow:'0 4px 10px rgba(0,0,0,0.1)', border: `4px solid ${borderColor}`}}>
-                            
-                            {richiedeApprovazione && (
-                                <div style={{
-                                    background:'#e67e22', color:'white', padding:'15px', 
-                                    borderRadius:'8px', marginBottom:'20px', textAlign:'center',
-                                    animation: 'pulse 1.5s infinite' 
-                                }}>
-                                    <h3 style={{margin:'0 0 10px 0', fontSize:'18px'}}>🔔 {ordiniDaInviare.length} ORDINI DA CLIENTE</h3>
-                                    <button onClick={() => inviaInProduzione(ordiniDaInviare)} style={{background:'white', color:'#e67e22', border:'none', padding:'10px 20px', borderRadius:'30px', fontWeight:'bold', cursor:'pointer', fontSize:'16px', boxShadow:'0 2px 5px rgba(0,0,0,0.2)'}}>✅ ACCETTA E INVIA IN CUCINA</button>
+                      return (
+                      <div key={i} style={{background:'white', borderRadius:10, padding:15, boxShadow:'0 2px 5px rgba(0,0,0,0.1)', border: `4px solid ${borderColor}`}}>
+                          {richiedeApprovazione && (
+                                <div style={{background:'#e67e22', color:'white', padding:'10px', borderRadius:'8px', marginBottom:'10px', textAlign:'center', animation: 'pulse 1.5s infinite'}}>
+                                    <h3 style={{margin:0}}>🔔 {ordiniDaInviare.length} NUOVI ORDINI</h3>
+                                    <button onClick={() => inviaInProduzione(ordiniDaInviare)} style={{marginTop:10, background:'white', color:'#e67e22', border:'none', padding:'8px 15px', borderRadius:'20px', fontWeight:'bold', cursor:'pointer'}}>ACCETTA E INVIA</button>
                                 </div>
-                            )}
+                          )}
 
-                            <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', borderBottom:'2px solid #ddd', paddingBottom:10, marginBottom:10}}>
-                                <div>
-                                    <h2 style={{margin:0, color:'#000', fontSize:'1.6rem'}}>Tavolo {tavolo}</h2>
-                                    <div style={{fontSize:'0.8rem', color:'#888', marginTop:5}}>
-                                        1° Ordine: {new Date(info.orarioMin).toLocaleTimeString()}
-                                    </div>
-                                </div>
-                                <div style={{textAlign:'right'}}>
-                                    <h2 style={{margin:0, color: richiedeApprovazione ? '#e67e22' : '#27ae60', marginBottom:'5px'}}>{info.totale.toFixed(2)}€</h2>
-                                    <button onClick={() => setSelectedLog({ id: `Tavolo ${tavolo} (LIVE)`, dettagli: info.fullLog })} style={{background:'#27ae60', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:11, fontWeight:'bold'}}>🟢 LOG LIVE</button>
-                                </div>
-                            </div>
+                          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom:'1px solid #eee', paddingBottom:10, marginBottom:10}}>
+                              <h3 style={{margin:0, fontSize:22}}>{tavolo}</h3>
+                              <div style={{textAlign:'right'}}>
+                                  <div style={{fontSize:18, fontWeight:'bold', color:'#27ae60'}}>€ {info.totale.toFixed(2)}</div>
+                                  <div style={{fontSize:12, color:'#7f8c8d'}}>Coperti: {info.coperti}</div>
+                              </div>
+                          </div>
+                          
+                          {/* LISTA PRODOTTI VELOCE */}
+                          <div style={{maxHeight:250, overflowY:'auto', fontSize:13, marginBottom:15}}>
+                              {info.ordini.map(ord => renderProdotti(ord, modificaStatoProdotto, eliminaProdotto))}
+                          </div>
 
-                            {info.ordini.map(ord => {
-                                const isStaffOrder = !!ord.cameriere; 
-                                const nomeAutore = isStaffOrder ? `Staff: ${ord.cameriere}` : (ord.cliente || "Ospite");
-                                const isUser = !ord.cameriere && ord.utente_id; 
-                                const iconaAutore = isStaffOrder ? '👤' : '📱';
-                                const livelloInfo = isUser ? getLivello(ord.storico_ordini) : null;
+                          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', background:'#f9f9f9', padding:10, borderRadius:5}}>
+                              <div>
+                                  <span style={{fontSize:10, color:'#999'}}>PIN ATTUALE:</span><br/>
+                                  <strong style={{fontSize:16, color:'#e67e22'}}>{getPinForTable(tavolo) || "---"}</strong>
+                              </div>
+                              <button onClick={() => setSelectedLog({ id: `Tavolo ${tavolo} (LIVE)`, dettagli: info.fullLog })} style={{background:'#3498db', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:11, fontWeight:'bold', marginRight:5}}>LOG</button>
+                              <button onClick={()=>chiudiTavolo(tavolo)} style={{background:'#2c3e50', color:'white', border:'none', padding:'8px 15px', borderRadius:5, cursor:'pointer'}}>Chiudi & Paga</button>
+                          </div>
+                      </div>
+                  )})}
+              </div>
+          )}
 
-                                return (
-                                    <div key={ord.id} style={{
-                                        marginBottom:20, 
-                                        borderLeft:`4px solid ${ord.stato === 'in_arrivo' ? '#e67e22' : '#eee'}`, 
-                                        paddingLeft:10,
-                                        opacity: ord.stato === 'in_arrivo' ? 0.6 : 1
-                                    }}>
-                                        {ord.stato === 'in_arrivo' && <div style={{color:'#e67e22', fontWeight:'bold', fontSize:'0.8rem', marginBottom:5}}>⚠️ IN ATTESA DI CONFERMA</div>}
-                                        
-                                        <div style={{fontSize:12, color:'#888', marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                                            <span>Ord #{ord.id} - {new Date(ord.data_ora).toLocaleTimeString()}</span>
-                                            
-                                            <div style={{display:'flex', alignItems:'center', gap:'5px'}}>
-                                                <span 
-                                                    onClick={(e) => {
-                                                        if(isUser) { e.stopPropagation(); apriDettagliUtente(ord.utente_id); }
-                                                    }}
-                                                    style={{
-                                                        color: isUser ? '#2980b9' : '#555',
-                                                        fontWeight: 'bold',
-                                                        cursor: isUser ? 'pointer' : 'default',
-                                                        textDecoration: isUser ? 'underline' : 'none',
-                                                        background: '#f0f0f0',
-                                                        padding: '2px 8px',
-                                                        borderRadius: '4px',
-                                                        fontSize: '11px'
-                                                    }}
-                                                >
-                                                    {iconaAutore} {nomeAutore}
-                                                </span>
-                                                {isUser && livelloInfo && (
-                                                    <span style={{
-                                                        fontSize: '10px', 
-                                                        background: livelloInfo.bg, 
-                                                        color: livelloInfo.color, 
-                                                        padding: '2px 6px', 
-                                                        borderRadius: '4px', 
-                                                        fontWeight: 'bold',
-                                                        border: `1px solid ${livelloInfo.color}`
-                                                    }}>
-                                                        {livelloInfo.label}
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
+          {/* VISTA 2: GESTIONE PIN & SALA */}
+          {tab === 'pin' && (
+              <div>
+                  <h3 style={{color:'#34495e'}}>Generazione Codici Tavolo</h3>
+                  <p>Clicca su un tavolo per generare un nuovo codice univoco.</p>
+                  
+                  <div style={{display:'flex', flexWrap:'wrap', gap:15}}>
+                      {/* Se abbiamo il layout grafico, usiamo i nomi da lì. Altrimenti una lista standard o vuota */}
+                      {(layoutSala.length > 0 ? layoutSala : tavoliStatus).map((t, i) => {
+                          const nome = t.label || t.numero; // label da layout, numero da status
+                          const currentPin = getPinForTable(nome);
+                          
+                          return (
+                              <div key={i} onClick={()=>generaPinTavolo(nome)} 
+                                   style={{
+                                       width:120, height:120, 
+                                       background: currentPin ? '#2ecc71' : '#ecf0f1', 
+                                       borderRadius:10, 
+                                       display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                                       cursor:'pointer', border:'2px solid #bdc3c7',
+                                       boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                                   }}>
+                                  <div style={{fontWeight:'bold', fontSize:18, marginBottom:5}}>{nome}</div>
+                                  {currentPin ? (
+                                      <div style={{background:'white', padding:'2px 8px', borderRadius:4, fontWeight:'bold', fontSize:20, color:'#27ae60'}}>
+                                          {currentPin}
+                                      </div>
+                                  ) : (
+                                      <div style={{fontSize:10, color:'#7f8c8d'}}>Nessun PIN</div>
+                                  )}
+                                  <div style={{fontSize:10, marginTop:5, color:'#555'}}>Genera Nuovo ↻</div>
+                              </div>
+                          );
+                      })}
 
-                                        {renderProdotti(ord, modificaStatoProdotto, eliminaProdotto)}
-                                    </div>
-                                );
-                            })}
+                      {/* Tasto per generare tavolo manuale (se non c'è layout) */}
+                      <div onClick={() => {
+                          const nome = prompt("Nome Tavolo (es. T-99):");
+                          if(nome) generaPinTavolo(nome);
+                      }} style={{width:120, height:120, border:'2px dashed #95a5a6', borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:'#7f8c8d'}}>
+                          + Manuale
+                      </div>
+                  </div>
+              </div>
+          )}
 
-                            <button onClick={() => chiudiTavolo(tavolo)} style={{width:'100%', padding:15, background:'#2c3e50', color:'white', border:'none', fontSize:18, marginTop:5, cursor:'pointer', borderRadius:5, fontWeight:'bold'}}>💰 CHIUDI CONTO</button>
-                        </div>
-                    );
-                })
-            }
-          </div>
-      )}
+          {/* VISTA 3: STORICO */}
+          {tab === 'storico' && (
+              <div style={{background:'white', color:'#0b0b0bff', padding:20, borderRadius:10}}>
+                  <h2 style={{color:'#191e22ff', marginTop:0}}>📜 Storico Ordini Conclusi</h2>
+                  <table style={{width:'100%', borderCollapse:'collapse'}}>
+                      <thead>
+                          <tr style={{background:'#f9f9f9', textAlign:'left'}}><th style={{padding:10}}>Data</th><th style={{padding:10}}>Tavolo</th><th style={{padding:10}}>Prodotti</th><th style={{padding:10}}>Totale</th><th style={{padding:10}}>Log</th></tr>
+                      </thead>
+                      <tbody>
+                          {storico.map(ord => (
+                              <tr key={ord.id} style={{borderBottom:'1px solid #eee'}}>
+                                  <td style={{padding:10}}>{new Date(ord.data_ora).toLocaleString()}</td>
+                                  <td style={{padding:10}}>Tavolo {ord.tavolo}</td>
+                                  <td style={{padding:10, fontSize:13}}>{ord.prodotti.map(p=>p.nome).join(', ')}</td>
+                                  <td style={{padding:10, fontWeight:'bold'}}>{ord.totale}€</td>
+                                  <td style={{padding:10}}><button onClick={() => setSelectedLog(ord)} style={{padding:'5px 10px', background:'#3498db', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>📝 LOG</button></td>
+                              </tr>
+                          ))}
+                      </tbody>
+                  </table>
+              </div>
+          )}
 
-      {/* --- TAB STORICO --- */}
-      {tab === 'storico' && (
-          <div style={{background:'white', color:'#0b0b0bff', padding:20, borderRadius:10}}>
-              <h2 style={{color:'#191e22ff', marginTop:0}}>📜 Storico Ordini Conclusi</h2>
-              <table style={{width:'100%', borderCollapse:'collapse'}}>
-                  <thead>
-                      <tr style={{background:'#f9f9f9', textAlign:'left'}}><th style={{padding:10}}>Data</th><th style={{padding:10}}>Tavolo</th><th style={{padding:10}}>Prodotti</th><th style={{padding:10}}>Totale</th><th style={{padding:10}}>Log</th></tr>
-                  </thead>
-                  <tbody>
-                      {storico.map(ord => (
-                          <tr key={ord.id} style={{borderBottom:'1px solid #eee'}}>
-                              <td style={{padding:10}}>{new Date(ord.data_ora).toLocaleString()}</td>
-                              <td style={{padding:10}}>Tavolo {ord.tavolo}</td>
-                              <td style={{padding:10, fontSize:13}}>{ord.prodotti.map(p=>p.nome).join(', ')}</td>
-                              <td style={{padding:10, fontWeight:'bold'}}>{ord.totale}€</td>
-                              <td style={{padding:10}}><button onClick={() => setSelectedLog(ord)} style={{padding:'5px 10px', background:'#3498db', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>📝 LOG</button></td>
-                          </tr>
-                      ))}
-                  </tbody>
-              </table>
-          </div>
-      )}
+      </div>
 
       {selectedLog && (
         <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999}} onClick={()=>setSelectedLog(null)}>
@@ -437,39 +395,24 @@ function Cassa() {
 
 const renderProdotti = (ord, modificaStatoProdotto, eliminaProdotto) => {
     const prods = ord.prodotti.map((p, i) => ({...p, originalIdx: i}));
-    const getCourse = (p) => { if (p.course !== undefined) return p.course === 0 ? 5 : p.course; if (p.is_bar) return 5; if (p.is_pizzeria) return 3; return 2; };
-    const courses = [...new Set(prods.map(p => getCourse(p)))].sort((a,b)=>a-b);
-    const styles = { 1: { label: '🟢 1ª PORTATA (Antipasti)', bg: '#eafaf1', border: '#27ae60' }, 2: { label: '🟡 2ª PORTATA (Primi)', bg: '#fef5e7', border: '#f1c40f' }, 3: { label: '🔴 3ª PORTATA (Secondi/Pizze)', bg: '#fdf2e9', border: '#e67e22' }, 4: { label: '🍰 DESSERT', bg: '#fceceb', border: '#c0392b' }, 5: { label: '🍹 BAR', bg: '#eef6fb', border: '#3498db' } };
-
-    return courses.map(course => {
-        const st = styles[course] || { label: 'ALTRO', bg: '#f9f9f9', border: '#ccc' };
-        const items = prods.filter(p => getCourse(p) === course);
-        return (
-            <div key={course} style={{marginBottom: 8, background: st.bg, borderRadius: 6, border: `1px solid ${st.border}`, overflow:'hidden'}}>
-                <div style={{padding:'4px 8px', background: st.border, color:'white', fontSize:11, fontWeight:'bold'}}>{st.label}</div>
-                <div style={{padding:'0 8px'}}>
-                    {items.map(p => (
-                        <div key={p.originalIdx} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px dashed #ddd'}}>
-                            <div style={{flex:1}}>
-                                <div style={{fontWeight: p.stato === 'servito'?'normal':'bold', textDecoration: p.stato==='servito'?'line-through':'none', color: p.stato==='servito'?'#aaa':'#000', fontSize:14}}>{p.nome}</div>
-                                {p.varianti_scelte && (<div style={{marginTop:'2px', display:'flex', flexWrap:'wrap', gap:'4px'}}>{p.varianti_scelte.rimozioni?.map((ing, i)=><span key={i} style={{background:'#fceaea', color:'#c0392b', fontSize:'10px', padding:'1px 5px', borderRadius:'3px'}}>NO {ing}</span>)}{p.varianti_scelte.aggiunte?.map((ing, i)=><span key={i} style={{background:'#e8f5e9', color:'#27ae60', fontSize:'10px', padding:'1px 5px', borderRadius:'3px'}}>+ {ing.nome}</span>)}</div>)}
-                                <div style={{fontSize:'0.75rem', color:'#666', fontStyle:'italic', marginTop:'2px'}}>{p.is_bar ? '🍹 Bar' : (p.is_pizzeria ? '🍕 Pizzeria' : '👨‍🍳 Cucina')} • {Number(p.prezzo).toFixed(2)}€</div>
-                                {p.stato === 'servito' && (
-                                    <div style={{color: '#27ae60', fontSize: '11px', fontWeight: 'bold', marginTop: '4px', background: '#eafaf1', display: 'inline-block', padding: '2px 6px', borderRadius: '4px'}}>
-                                        ✅ SERVITO ALLE {p.ora_servizio || "--:--"}
-                                    </div>
-                                )}
-                            </div>
-                            <div style={{display:'flex', gap:5}}>
-                                <button onClick={() => modificaStatoProdotto(ord, p.originalIdx)} style={{background: p.stato==='servito'?'#27ae60':'#f39c12', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:11, fontWeight:'bold'}}>{p.stato === 'servito' ? 'FATTO' : 'ATTESA'}</button>
-                                <button onClick={() => eliminaProdotto(ord, p.originalIdx)} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:12}}>🗑️</button>
-                            </div>
-                        </div>
-                    ))}
-                </div>
+    return prods.map((p, idx) => (
+        <div key={idx} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px dashed #ddd'}}>
+            <div style={{flex:1}}>
+                <div style={{fontWeight: p.stato === 'servito'?'normal':'bold', textDecoration: p.stato==='servito'?'line-through':'none', color: p.stato==='servito'?'#aaa':'#000', fontSize:14}}>{p.nome}</div>
+                {p.varianti_scelte && (<div style={{marginTop:'2px', display:'flex', flexWrap:'wrap', gap:'4px'}}>{p.varianti_scelte.rimozioni?.map((ing, i)=><span key={i} style={{background:'#fceaea', color:'#c0392b', fontSize:'10px', padding:'1px 5px', borderRadius:'3px'}}>NO {ing}</span>)}{p.varianti_scelte.aggiunte?.map((ing, i)=><span key={i} style={{background:'#e8f5e9', color:'#27ae60', fontSize:'10px', padding:'1px 5px', borderRadius:'3px'}}>+ {ing.nome}</span>)}</div>)}
+                <div style={{fontSize:'0.75rem', color:'#666', fontStyle:'italic', marginTop:'2px'}}>{p.is_bar ? '🍹 Bar' : (p.is_pizzeria ? '🍕 Pizzeria' : '👨‍🍳 Cucina')} • {Number(p.prezzo).toFixed(2)}€</div>
+                {p.stato === 'servito' && (
+                    <div style={{color: '#27ae60', fontSize: '11px', fontWeight: 'bold', marginTop: '4px', background: '#eafaf1', display: 'inline-block', padding: '2px 6px', borderRadius: '4px'}}>
+                        ✅ SERVITO ALLE {p.ora_servizio || "--:--"}
+                    </div>
+                )}
             </div>
-        );
-    });
+            <div style={{display:'flex', gap:5}}>
+                <button onClick={() => modificaStatoProdotto(ord, p.originalIdx)} style={{background: p.stato==='servito'?'#27ae60':'#f39c12', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:11, fontWeight:'bold'}}>{p.stato === 'servito' ? 'FATTO' : 'ATTESA'}</button>
+                <button onClick={() => eliminaProdotto(ord, p.originalIdx)} style={{background:'#e74c3c', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:12}}>🗑️</button>
+            </div>
+        </div>
+    ));
 };
 
 export default Cassa;

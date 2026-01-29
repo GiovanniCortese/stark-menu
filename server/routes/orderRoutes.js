@@ -1,7 +1,35 @@
+// server/routes/orderRoutes.js - VERSIONE V85 (PIN SECURITY SYSTEM) 🛡️
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
 const { getNowItaly, getTimeItaly } = require('../utils/time');
+
+// --- 0. DB AUTO-FIX PER I PIN ---
+(async function ensurePinColumns() {
+  try {
+    // 1. Creiamo la tabella tavoli se non esiste
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS tavoli (
+        id SERIAL PRIMARY KEY,
+        ristorante_id INTEGER,
+        numero VARCHAR(50),
+        active_pin VARCHAR(10),
+        stato VARCHAR(20) DEFAULT 'libero', -- libero, occupato
+        last_update TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    
+    // 2. Indice univoco per evitare duplicati tavolo nello stesso ristorante
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_tavoli_rist_num ON tavoli (ristorante_id, numero);`);
+    
+    // 3. Colonna pin_tavolo anche negli ordini (per storico)
+    await pool.query(`ALTER TABLE ordini ADD COLUMN IF NOT EXISTS pin_tavolo VARCHAR(10);`);
+
+    console.log("✅ DB Ordini: Tabella 'tavoli' e PIN Mode pronti.");
+  } catch (e) {
+    console.error("❌ DB Error Pin:", e.message);
+  }
+})();
 
 const notifyUpdate = (req, ristorante_id) => {
     const io = req.app.get('io');
@@ -14,21 +42,86 @@ const notifyUpdate = (req, ristorante_id) => {
     }
 };
 
-// Crea Ordine (Update per coperti)
+// --- 1. API PER LA CASSA: APRI TAVOLO & GENERA PIN ---
+router.post('/api/cassa/tavolo/open', async (req, res) => {
+    try {
+        const { ristorante_id, tavolo } = req.body;
+        
+        // Genera PIN a 4 cifre casuale
+        const newPin = Math.floor(1000 + Math.random() * 9000).toString();
+
+        // Upsert: Se il tavolo esiste aggiorna il PIN, altrimenti crealo
+        const query = `
+            INSERT INTO tavoli (ristorante_id, numero, active_pin, stato, last_update)
+            VALUES ($1, $2, $3, 'occupato', NOW())
+            ON CONFLICT (ristorante_id, numero) 
+            DO UPDATE SET active_pin = $3, stato = 'occupato', last_update = NOW()
+            RETURNING active_pin;
+        `;
+        
+        const result = await pool.query(query, [ristorante_id, tavolo, newPin]);
+        
+        // Notifica Socket alla stanza (opzionale, per aggiornare le UI)
+        const io = req.app.get('io');
+        if(io) io.to(String(ristorante_id)).emit('refresh_tavoli');
+
+        res.json({ success: true, pin: result.rows[0].active_pin });
+    } catch (e) {
+        console.error("Errore generazione PIN:", e);
+        res.status(500).json({ error: "Errore server" });
+    }
+});
+
+// --- 2. API PER LA CASSA: LEGGI STATO TAVOLI (PIN ATTIVI) ---
+router.get('/api/cassa/tavoli/status/:ristorante_id', async (req, res) => {
+    try {
+        const r = await pool.query("SELECT numero, active_pin, stato FROM tavoli WHERE ristorante_id = $1", [req.params.ristorante_id]);
+        res.json(r.rows);
+    } catch (e) {
+        res.status(500).json({ error: "Errore loading tavoli" });
+    }
+});
+
+// Crea Ordine (Update per coperti e PIN)
 router.post('/api/ordine', async (req, res) => {
     try {
-        const { ristorante_id, tavolo, prodotti, totale, cliente, cameriere, utente_id, coperti } = req.body; // AGGIUNTO coperti
-        const dataOrdineLeggibile = getNowItaly(); 
+        const { ristorante_id, tavolo, prodotti, totale, cliente, cameriere, utente_id, coperti, pin_tavolo } = req.body; 
+        
+        // --- CONTROLLO PIN MODE ---
+        const conf = await pool.query("SELECT pin_mode FROM ristoranti WHERE id = $1", [ristorante_id]);
+        const pinModeActive = conf.rows[0]?.pin_mode;
         const isStaff = (cameriere && typeof cameriere === 'string' && cameriere.trim().length > 0 && cameriere !== "null");
+
+        // Se PIN MODE è attivo e NON è staff, verifica il codice
+        if (pinModeActive && !isStaff) {
+            if (!pin_tavolo) {
+                return res.status(403).json({ success: false, error: "Inserisci il PIN del tavolo." });
+            }
+
+            const checkPin = await pool.query(
+                "SELECT active_pin FROM tavoli WHERE ristorante_id = $1 AND numero = $2", 
+                [ristorante_id, tavolo]
+            );
+
+            const realPin = checkPin.rows[0]?.active_pin;
+
+            if (!realPin) {
+                return res.status(403).json({ success: false, error: "Tavolo non attivo. Chiedi al personale." });
+            }
+
+            if (realPin !== pin_tavolo) {
+                return res.status(403).json({ success: false, error: "PIN Errato! Controlla lo scontrino." });
+            }
+        }
+
+        // --- PROCEDURA ORDINE STANDARD ---
+        const dataOrdineLeggibile = getNowItaly(); 
         const statoIniziale = isStaff ? 'in_attesa' : 'in_arrivo';
 
         const nomeClienteDisplay = cliente || "Ospite";
         let logIniziale = `[${dataOrdineLeggibile}] 🆕 ORDINE DA: ${isStaff ? cameriere : nomeClienteDisplay}\n`;
         
-        // Log Coperti
-        if(coperti && coperti > 0) {
-            logIniziale += `👥 COPERTI: ${coperti}\n`;
-        }
+        if(coperti && coperti > 0) logIniziale += `👥 COPERTI: ${coperti}\n`;
 
         if (Array.isArray(prodotti)) {
             prodotti.forEach(p => {
@@ -43,14 +136,32 @@ router.post('/api/ordine', async (req, res) => {
         }
         logIniziale += `TOTALE PARZIALE: ${Number(totale).toFixed(2)}€\n----------------------------------\n`;
 
+        // Inserimento con colonna PIN
         await pool.query(
-            `INSERT INTO ordini (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id, data_ora, coperti) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9)`,
-            [ristorante_id, String(tavolo), JSON.stringify(prodotti), totale, statoIniziale, logIniziale, isStaff ? cameriere : null, utente_id || null, coperti || 0]
+            `INSERT INTO ordini (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id, data_ora, coperti, pin_tavolo) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10)`,
+            [ristorante_id, String(tavolo), JSON.stringify(prodotti), totale, statoIniziale, logIniziale, isStaff ? cameriere : null, utente_id || null, coperti || 0, pin_tavolo || null]
         );
 
         notifyUpdate(req, ristorante_id);
+        
+        // Notifiche Reparti
+        const io = req.app.get('io');
+        if (io) {
+            const room = String(ristorante_id);
+            const hasBar = prodotti.some(p => p.is_bar);
+            const hasCucina = prodotti.some(p => !p.is_bar && !p.is_pizzeria);
+            const hasPizzeria = prodotti.some(p => p.is_pizzeria);
+
+            if(hasBar) io.to(room).emit('suona_bar');
+            if(hasCucina) io.to(room).emit('suona_cucina');
+            if(hasPizzeria) io.to(room).emit('suona_pizzeria');
+        }
+
         res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: "Errore inserimento ordine: " + e.message }); }
+    } catch (e) { 
+        console.error("Errore Ordine:", e);
+        res.status(500).json({ error: "Errore inserimento ordine: " + e.message }); 
+    }
 });
 
 // Patch Singolo Prodotto
@@ -140,12 +251,19 @@ router.post('/api/cassa/paga-tavolo', async (req, res) => {
         await c.query('BEGIN'); 
         const { ristorante_id, tavolo } = req.body; 
         
+        // Chiudi ordini
         const r = await c.query("SELECT * FROM ordini WHERE ristorante_id=$1 AND tavolo=$2 AND stato!='pagato'", [ristorante_id, String(tavolo)]); 
         if(r.rows.length===0){await c.query('ROLLBACK');return res.json({success:true});} 
         let tot=0, prod=[], log=""; 
         r.rows.forEach(o=>{ tot+=Number(o.totale||0); let p=[]; try{p=JSON.parse(o.prodotti)}catch(e){} prod=[...prod, ...p]; if(o.dettagli) log+=`\nORDINE #${o.id}\n${o.dettagli}`; }); log+=`\n[${getNowItaly()}] 💰 CHIUSO E PAGATO: ${tot.toFixed(2)}€`; 
         await c.query("UPDATE ordini SET stato='pagato', prodotti=$1, totale=$2, dettagli=$3 WHERE id=$4", [JSON.stringify(prod), tot, log, r.rows[0].id]); 
         if(r.rows.length>1) await c.query("DELETE FROM ordini WHERE id = ANY($1::int[])", [r.rows.slice(1).map(o=>o.id)]); 
+        
+        // Libera il tavolo (stato PIN)
+        // Opzionale: Se vuoi che il PIN scada, scommenta questa riga. 
+        // Se invece vuoi che il PIN resti valido per tutta la serata, lasciala commentata.
+        // await c.query("UPDATE tavoli SET stato='libero' WHERE ristorante_id=$1 AND numero=$2", [ristorante_id, String(tavolo)]);
+
         await c.query('COMMIT'); 
         notifyUpdate(req, ristorante_id);
         res.json({success:true}); 
