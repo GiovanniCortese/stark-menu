@@ -1,4 +1,4 @@
-// client/src/components/menu/MenuPage.jsx - VERSIONE V84 (FIX FLAG CUCINA + PIN) 🛠️
+// client/src/components/menu/MenuPage.jsx - VERSIONE V84 (FIX LOGICA ORDINI RETRO-COMPATIBILE) 🛠️
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { dictionary, getContent, flags } from "../../translations";
@@ -29,8 +29,7 @@ export default function MenuPage() {
   
   // --- STATI PIN & SICUREZZA ---
   const [pinMode, setPinMode] = useState(false); // Se true, chiede il PIN
-  const [pinTavolo, setPinTavolo] = useState(""); // Il PIN digitato
-
+  
   const [lang, setLang] = useState("it");
   const t = dictionary[lang] || dictionary["it"];
   const [showLangMenu, setShowLangMenu] = useState(false);
@@ -75,33 +74,34 @@ export default function MenuPage() {
         setMenu(data.menu || []);
         setStyle(data.style || {});
 
-        // 1. Controllo Modulo SuperAdmin
+        // 1. Controllo Modulo SuperAdmin (SaaS)
         if (data.subscription_active === false) setIsSuspended(true);
         if (data.moduli && data.moduli.menu_digitale === false) setIsMenuDisabled(true);
 
-        // 2. Impostazioni PIN
+        // 2. Impostazioni PIN (Se attivo nel DB)
         if (data.pin_mode === true) {
             setPinMode(true);
-            console.log("🛡️ PIN MODE ATTIVO");
         }
 
-        // 3. --- FIX LOGICA ORDINI ---
-        // Il modulo deve essere attivo
+        // 3. --- FIX CRITICO LOGICA ORDINI ---
+        // Il modulo SaaS deve essere attivo
         const moduloSaaSAttivo = data.moduli ? (data.moduli.ordini_clienti !== false) : true;
         
-        // Controllo switch locale (Supporta sia il vecchio 'cucina_super_active' che il nuovo 'ordini_abilitati')
-        // Se ordini_abilitati è null/undefined, usa cucina_super_active.
-        const switchLocaleAttivo = (data.ordini_abilitati !== null && data.ordini_abilitati !== undefined)
-            ? data.ordini_abilitati
-            : (data.cucina_super_active !== false);
+        // Controllo switch locale: 
+        // Se 'ordini_abilitati' esiste usalo, ALTRIMENTI usa 'cucina_super_active' (fallback)
+        let switchLocaleAttivo = data.ordini_abilitati;
+        if (switchLocaleAttivo === null || switchLocaleAttivo === undefined) {
+            switchLocaleAttivo = (data.cucina_super_active !== false);
+        }
 
         console.log(`🔍 DEBUG PERMESSI ORDINE:
           - Modulo SaaS: ${moduloSaaSAttivo}
-          - Switch Ordini (New): ${data.ordini_abilitati}
-          - Switch Cucina (Old): ${data.cucina_super_active}
-          - FALLBACK USATO: ${switchLocaleAttivo}
+          - Ordini Abilitati (New): ${data.ordini_abilitati}
+          - Cucina Active (Old): ${data.cucina_super_active}
+          - FALLBACK CALCOLATO: ${switchLocaleAttivo}
         `);
 
+        // Se entrambi sono ok, abilita il tasto ORDINA. Altrimenti WISHLIST.
         setCanOrder(moduloSaaSAttivo && switchLocaleAttivo);
         
         setActiveCategory(null);
@@ -159,7 +159,12 @@ export default function MenuPage() {
   };
 
   const inviaOrdine = async () => {
-    if (!canOrder && !isStaff) { alert("Gli ordini sono disabilitati. Mostra questa lista al cameriere."); return; }
+    // Check finale: se l'ordine è disabilitato e NON sei staff, blocca.
+    if (!canOrder && !isStaff) { 
+        alert("Gli ordini sono disabilitati. Mostra questa lista al cameriere."); 
+        return; 
+    }
+    
     if (carrello.length === 0) return;
 
     let tavoloFinale = numeroTavolo;
@@ -218,7 +223,7 @@ export default function MenuPage() {
           setCarrello([]); setShowCheckout(false); 
       } 
       else { 
-          // Gestione Errori (es. PIN Errato)
+          // Gestione Errori (es. PIN Errato o Tavolo non valido)
           alert("❌ ERRORE: " + (risp.error || "Impossibile inviare ordine.")); 
       }
     } catch (e) { alert("Errore connessione server."); }
