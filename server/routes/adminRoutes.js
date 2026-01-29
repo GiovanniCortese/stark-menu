@@ -1,4 +1,4 @@
-// server/routes/adminRoutes.js
+// server/routes/adminRoutes.js - VERSIONE V96 (PRENOTAZIONI MODULE) 📅
 const express = require("express");
 const router = express.Router();
 const pool = require("../config/db");
@@ -31,11 +31,74 @@ const { getNowItaly } = require("../utils/time");
     // pin_mode: se TRUE, richiede il PIN per ordinare (Sicurezza Ristorante)
     await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS pin_mode BOOLEAN DEFAULT FALSE`);
 
-    console.log(`✅ [${getNowItaly()}] DB Admin Aggiornato (Layout & Business Type OK).`);
+    // 4. TABELLA PRENOTAZIONI (NUOVA PER MODULO BOOKING)
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS prenotazioni (
+            id SERIAL PRIMARY KEY,
+            ristorante_id INTEGER,
+            cliente_nome VARCHAR(100),
+            cliente_telefono VARCHAR(50),
+            data_prenotazione DATE,
+            ora_prenotazione VARCHAR(10),
+            persone INTEGER,
+            tavolo_id VARCHAR(50), 
+            status VARCHAR(20) DEFAULT 'attiva', -- attiva, cancellata, arrivati
+            note TEXT,
+            created_at TIMESTAMP DEFAULT NOW()
+        );
+    `);
+
+    console.log(`✅ [${getNowItaly()}] DB Admin Aggiornato (Layout & Prenotazioni OK).`);
   } catch (e) {
     console.error(`❌ DB Error:`, e.message);
   }
 })();
+
+// ==========================================
+// 0. API PRENOTAZIONI (NUOVE)
+// ==========================================
+
+// 1. GET PRENOTAZIONI (Per Data)
+router.get('/api/prenotazioni/:ristorante_id', async (req, res) => {
+    try {
+        const { date } = req.query; // Formato YYYY-MM-DD
+        const r = await pool.query(
+            "SELECT * FROM prenotazioni WHERE ristorante_id = $1 AND data_prenotazione = $2 AND status != 'cancellata' ORDER BY ora_prenotazione ASC", 
+            [req.params.ristorante_id, date]
+        );
+        res.json(r.rows);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// 2. CREA PRENOTAZIONE
+router.post('/api/prenotazioni', async (req, res) => {
+    try {
+        const { ristorante_id, cliente_nome, cliente_telefono, data_prenotazione, ora_prenotazione, persone, tavolo_id, note } = req.body;
+        
+        const r = await pool.query(
+            `INSERT INTO prenotazioni (ristorante_id, cliente_nome, cliente_telefono, data_prenotazione, ora_prenotazione, persone, tavolo_id, note)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+            [ristorante_id, cliente_nome, cliente_telefono, data_prenotazione, ora_prenotazione, persone, tavolo_id, note]
+        );
+        res.json({ success: true, prenotazione: r.rows[0] });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// 3. MODIFICA / CANCELLA (Status)
+router.put('/api/prenotazioni/:id', async (req, res) => {
+    try {
+        const { status } = req.body; // 'cancellata', 'arrivati'
+        await pool.query("UPDATE prenotazioni SET status = $1 WHERE id = $2", [status, req.params.id]);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 
 // ==========================================
 // 1. GESTIONE RISTORANTE (CONFIG & STYLE)

@@ -1,4 +1,4 @@
-// client/src/Admin.jsx - VERSIONE V53 (MAPPA SALA INTEGRATA) 🛠️
+// client/src/Admin.jsx - VERSIONE V96 (PRENOTAZIONI ACTIVE) 📅
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -9,7 +9,8 @@ import AdminGrafica from './components_admin/AdminGrafica';
 import AdminUsers from './components_admin/AdminUsers';
 import AdminSicurezza from './components_admin/AdminSicurezza';
 import AdminDashboard from './components_admin/AdminDashboard';
-import AdminSala from './components_admin/AdminSala'; // <--- NUOVO COMPONENTE
+import AdminSala from './components_admin/AdminSala';
+import AdminPrenotazioni from './components_admin/AdminPrenotazioni'; // <--- NUOVO IMPORT STEP 3
 
 function Admin() {
   const { slug } = useParams(); 
@@ -21,7 +22,7 @@ function Admin() {
   // --- STATI GLOBALI ---
   const [user, setUser] = useState(null); 
   const [loading, setLoading] = useState(true); 
-  const [tab, setTab] = useState('dashboard'); // DEFAULT: SEMPRE DASHBOARD
+  const [tab, setTab] = useState('dashboard'); // DEFAULT: DASHBOARD
   
   // Dati condivisi
   const [menu, setMenu] = useState([]); 
@@ -49,7 +50,8 @@ function Admin() {
 
       // NUOVI CAMPI
       tipo_business: 'ristorante',
-      pin_mode: false
+      pin_mode: false,
+      layout_sala: []
   });
 
   const API_URL = "https://stark-backend-gg17.onrender.com";
@@ -104,7 +106,8 @@ function Admin() {
                     nome: data.ristorante, 
                     slug: slug, 
                     ruolo: data.ruolo || 'admin',
-                    layout_sala: data.layout_sala // Assicuriamoci che arrivi anche questo se presente
+                    // Importante: passiamo il layout sala anche nello user object per i sotto-componenti
+                    layout_sala: data.layout_sala 
                 });
                 setMenu(data.menu || []);
                 
@@ -132,7 +135,8 @@ function Admin() {
                     
                     // NUOVI
                     tipo_business: data.tipo_business || 'ristorante',
-                    pin_mode: data.pin_mode || false
+                    pin_mode: data.pin_mode || false,
+                    layout_sala: data.layout_sala // Assicura che arrivi
                 }));
                 
                 caricaConfigurazioniExtra(data.id);
@@ -155,7 +159,7 @@ function Admin() {
         .then(r=>r.json())
         .then(d => {
             setConfig(prev => ({...prev, ...d}));
-            // Aggiorniamo anche lo user locale con il layout sala se presente nel config fetch
+            // Sync layout nello user object se aggiornato
             if(d.layout_sala) setUser(u => ({...u, layout_sala: d.layout_sala}));
         }); 
     
@@ -263,11 +267,19 @@ function Admin() {
             </button>
         )}
 
+        {/* --- NUOVO TAB PRENOTAZIONI --- */}
+        {user.ruolo !== 'editor' && (
+            <button onClick={() => setTab('prenotazioni')} className="nav-btn" 
+                style={{background: tab==='prenotazioni'?'#8e44ad':'white', color: tab==='prenotazioni'?'white':'#444'}}>
+                📅 Prenotazioni
+            </button>
+        )}
+
         {showMenu && <button onClick={() => setTab('menu')} className="nav-btn" style={{background: tab==='menu'?'#333':'white', color: tab==='menu'?'white':'#444'}}>🍔 Menu</button>}
         {showMenu && <button onClick={() => setTab('categorie')} className="nav-btn" style={{background: tab==='categorie'?'#333':'white', color: tab==='categorie'?'white':'#444'}}>📂 Categorie</button>}
         {showMenu && <button onClick={() => setTab('style')} className="nav-btn" style={{background: tab==='style'?'#9b59b6':'white', color: tab==='style'?'white':'#444'}}>🎨 Grafica</button>}
         
-        {/* --- NUOVO TAB SALA --- */}
+        {/* TAB SALA */}
         {user.ruolo !== 'editor' && (
             <button onClick={() => setTab('sala')} className="nav-btn" style={{background: tab==='sala'?'#c0392b':'white', color: tab==='sala'?'white':'#444'}}>
                 📐 Sala & Mappa
@@ -290,11 +302,14 @@ function Admin() {
             <AdminDashboard user={user} API_URL={API_URL} config={config} setConfig={setConfig} />
         )}
 
+        {/* --- COMPONENTE PRENOTAZIONI --- */}
+        {tab === 'prenotazioni' && <AdminPrenotazioni user={user} config={config} API_URL={API_URL} />}
+
         {tab === 'menu' && showMenu && <AdminMenu user={user} menu={menu} setMenu={setMenu} categorie={categorie} config={config} setConfig={setConfig} API_URL={API_URL} ricaricaDati={ricaricaDati} />}
         {tab === 'categorie' && showMenu && <AdminCategorie user={user} categorie={categorie} setCategorie={setCategorie} API_URL={API_URL} ricaricaDati={ricaricaDati} />}
         {tab === 'style' && showMenu && <AdminGrafica user={user} config={config} setConfig={setConfig} API_URL={API_URL} />}
         
-        {/* --- NUOVO RENDER SALA --- */}
+        {/* COMPONENTE SALA */}
         {tab === 'sala' && <AdminSala user={user} API_URL={API_URL} />}
         
         {tab === 'users' && showUtenti && <AdminUsers API_URL={API_URL} user={user} />}
