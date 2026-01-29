@@ -1,4 +1,4 @@
-// client/src/components/menu/MenuPage.jsx - VERSIONE V91 (PIN MATCH & SESSION FIX) 🚀
+// client/src/components/menu/MenuPage.jsx - VERSIONE V92 (SILENT CHECK & AUTO-CLEAN) 🧹
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { dictionary, flags } from "../../translations";
@@ -23,7 +23,7 @@ const PinLoginModal = ({ show, onClose, onVerify, errorMsg }) => {
             <div style={{background:'white', padding:30, borderRadius:15, width:'100%', maxWidth:350, textAlign:'center', boxShadow:'0 10px 40px rgba(0,0,0,0.5)'}}>
                 <div style={{fontSize:40, marginBottom:10}}>🔒</div>
                 <h2 style={{margin:0, color:'#2c3e50'}}>Sblocco Tavolo</h2>
-                <p style={{color:'#7f8c8d', fontSize:14, marginBottom:20}}>Inserisci il codice PIN fornito dal cameriere per confermare l'ordine.</p>
+                <p style={{color:'#7f8c8d', fontSize:14, marginBottom:20}}>Inserisci il codice PIN fornito dal cameriere per ordinare.</p>
                 
                 <input 
                     type="tel" 
@@ -48,12 +48,6 @@ const PinLoginModal = ({ show, onClose, onVerify, errorMsg }) => {
                 >
                     SBLOCCA E INVIA 🚀
                 </button>
-                <button 
-                    onClick={onClose}
-                    style={{marginTop:20, background:'transparent', border:'none', color:'#999', textDecoration:'underline', cursor:'pointer', fontSize:12}}
-                >
-                    Annulla
-                </button>
             </div>
         </div>
     );
@@ -77,7 +71,6 @@ export default function MenuPage() {
   // --- STATI PIN & SICUREZZA ---
   const [pinMode, setPinMode] = useState(false);
   
-  // Sessione specifica per questo ristorante (slug)
   const [activeTableSession, setActiveTableSession] = useState(null); // ID o Numero Tavolo
   const [activePinSession, setActivePinSession] = useState(null);     // PIN usato
   const [showPinModal, setShowPinModal] = useState(false);
@@ -111,7 +104,7 @@ export default function MenuPage() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [authData, setAuthData] = useState({ nome: "", email: "", password: "", telefono: "", indirizzo: "" });
 
-  // 1. CARICAMENTO UTENTE E SESSIONE AL MOUNT
+  // 1. CARICAMENTO UTENTE E SESSIONE AL MOUNT (CON SILENT CHECK)
   useEffect(() => {
     const savedUser = localStorage.getItem("stark_user");
     if (savedUser) setUser(JSON.parse(savedUser));
@@ -122,14 +115,18 @@ export default function MenuPage() {
         try {
             const parsed = JSON.parse(savedSession);
             if(parsed.tavolo && parsed.pin) {
+                // Impostiamo temporaneamente, poi il fetchMenu verificherà se è valido
                 setActiveTableSession(parsed.tavolo);
                 setActivePinSession(parsed.pin);
             }
-        } catch(e) { console.error("Errore parsing sessione", e); }
+        } catch(e) { 
+            // Se corrotta, pulisci
+            localStorage.removeItem(`session_${currentSlug}`); 
+        }
     }
   }, [currentSlug]);
 
-  // 2. FETCH DATI RISTORANTE
+  // 2. FETCH DATI RISTORANTE E VALIDAZIONE SESSIONE SILENZIOSA
   useEffect(() => {
     fetch(`${API_URL}/api/menu/${currentSlug}`)
       .then((res) => { if (!res.ok) throw new Error("Errore caricamento"); return res.json(); })
@@ -142,7 +139,34 @@ export default function MenuPage() {
         if (data.subscription_active === false) setIsSuspended(true);
         if (data.moduli && data.moduli.menu_digitale === false) setIsMenuDisabled(true);
 
-        if (data.pin_mode === true) setPinMode(true);
+        if (data.pin_mode === true) {
+            setPinMode(true);
+            
+            // --- SILENT CHECK SESSIONE ---
+            const savedSession = localStorage.getItem(`session_${currentSlug}`);
+            if (savedSession) {
+                const parsed = JSON.parse(savedSession);
+                // Verifichiamo silenziosamente se il PIN è ancora valido nel DB
+                fetch(`${API_URL}/api/menu/verify-pin`, {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ ristorante_id: data.id, pin: parsed.pin })
+                })
+                .then(r => r.json())
+                .then(check => {
+                    if (!check.success) {
+                        console.log("Sessione scaduta o non valida. Pulizia automatica.");
+                        localStorage.removeItem(`session_${currentSlug}`);
+                        setActiveTableSession(null);
+                        setActivePinSession(null);
+                    } else {
+                        console.log("Sessione recuperata e valida.");
+                    }
+                })
+                .catch(() => {
+                    // Se errore server, nel dubbio non cancellare, lascia riprovare l'utente
+                });
+            }
+        }
 
         const moduloSaaSAttivo = data.moduli ? (data.moduli.ordini_clienti !== false) : true;
         let switchLocaleAttivo = data.ordini_abilitati;
@@ -272,12 +296,12 @@ export default function MenuPage() {
           
           if (data.success) {
               // PIN CORRETTO!
-              const tavoloInfo = data.tavolo.numero; // Assumiamo che il backend ritorni { tavolo: { numero: '5', ... } }
+              const tavoloInfo = data.tavolo.numero; 
               
               setActiveTableSession(tavoloInfo);
               setActivePinSession(inputPin);
               
-              // SALVA SESSIONE LOCALE (Slug-scoped per sicurezza)
+              // SALVA SESSIONE LOCALE
               localStorage.setItem(`session_${currentSlug}`, JSON.stringify({
                   tavolo: tavoloInfo,
                   pin: inputPin,
