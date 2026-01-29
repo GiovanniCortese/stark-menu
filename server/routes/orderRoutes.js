@@ -1,4 +1,4 @@
-// server/routes/orderRoutes.js - VERSIONE V89 (PIN CHECKER FIXED) 🛡️
+// server/routes/orderRoutes.js - VERSIONE V90 (PIN SYSTEM FINAL) 🛡️
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
@@ -15,6 +15,7 @@ const { getNowItaly, getTimeItaly } = require('../utils/time');
         numero VARCHAR(50),
         active_pin VARCHAR(10),
         stato VARCHAR(20) DEFAULT 'libero', -- libero, occupato
+        coperti INTEGER DEFAULT 0,          -- <--- NUOVO CAMPO COPERTI
         last_update TIMESTAMP DEFAULT NOW()
       );
     `);
@@ -24,8 +25,11 @@ const { getNowItaly, getTimeItaly } = require('../utils/time');
     
     // 3. Colonna pin_tavolo anche negli ordini (per storico)
     await pool.query(`ALTER TABLE ordini ADD COLUMN IF NOT EXISTS pin_tavolo VARCHAR(10);`);
+    
+    // 4. Assicuriamoci che esista la colonna coperti (per aggiornamenti su DB esistenti)
+    await pool.query(`ALTER TABLE tavoli ADD COLUMN IF NOT EXISTS coperti INTEGER DEFAULT 0;`);
 
-    console.log("✅ DB Ordini: Tabelle PIN pronte.");
+    console.log("✅ DB Ordini: Tabelle PIN & Coperti pronte.");
   } catch (e) {
     console.error("❌ DB Error Pin:", e.message);
   }
@@ -36,70 +40,90 @@ const notifyUpdate = (req, ristorante_id) => {
     if (io && ristorante_id) {
         const room = String(ristorante_id);
         io.to(room).emit('refresh_ordini'); 
-    } else {
-        // console.error("⚠️ Impossibile inviare notifica Socket");
+        io.to(room).emit('refresh_tavoli'); // Notifica anche cambio stato tavoli
     }
 };
 
-// --- 1. [NUOVO] API CLIENTE: VERIFICA PIN E RECUPERA TAVOLO ---
-// QUESTA È LA PARTE CHE MANCAVA E CAUSAVA "ERRORE DI CONNESSIONE"
-router.post('/api/tavolo/check-pin', async (req, res) => {
+// --- 1. API CLIENTE: VERIFICA PIN (Chiamata da MenuPage.jsx) ---
+router.post('/api/menu/verify-pin', async (req, res) => {
     try {
         const { ristorante_id, pin } = req.body;
-        console.log(`🔍 CHECK PIN RICHIESTO: Rist ID ${ristorante_id}, PIN ${pin}`);
-
+        
+        // Cerca tavolo attivo con questo PIN
         const check = await pool.query(
-            "SELECT numero FROM tavoli WHERE ristorante_id = $1 AND active_pin = $2", 
+            "SELECT * FROM tavoli WHERE ristorante_id = $1 AND active_pin = $2 AND stato = 'occupato'", 
             [ristorante_id, String(pin)]
         );
 
         if (check.rows.length > 0) {
-            console.log("✅ PIN TROVATO! Tavolo:", check.rows[0].numero);
-            res.json({ success: true, tavolo: check.rows[0].numero });
+            const t = check.rows[0];
+            res.json({ 
+                success: true, 
+                tavolo: {
+                    id: t.id,
+                    numero: t.numero,
+                    coperti: t.coperti
+                }
+            });
         } else {
-            console.warn("❌ PIN NON TROVATO");
             res.json({ success: false, error: "PIN non valido o scaduto." });
         }
     } catch (e) {
-        console.error("Errore check-pin:", e);
+        console.error("Errore verify-pin:", e);
         res.status(500).json({ error: "Errore server verifica PIN" });
     }
 });
 
-// --- 2. API CASSA: APRI TAVOLO & GENERA PIN ---
-router.post('/api/cassa/tavolo/open', async (req, res) => {
+// --- 2. API CASSA: APRI/CHIUDI TAVOLO (Chiamata da Cassa.jsx) ---
+router.post('/api/cassa/tavolo/status', async (req, res) => {
     try {
-        const { ristorante_id, tavolo } = req.body;
+        const { id, ristorante_id, numero, stato, coperti } = req.body;
         
-        // Genera PIN a 4 cifre casuale
-        const newPin = Math.floor(1000 + Math.random() * 9000).toString();
+        let active_pin = null;
+        let query = "";
+        let params = [];
 
-        // Upsert: Se il tavolo esiste aggiorna il PIN, altrimenti crealo
-        const query = `
-            INSERT INTO tavoli (ristorante_id, numero, active_pin, stato, last_update)
-            VALUES ($1, $2, $3, 'occupato', NOW())
-            ON CONFLICT (ristorante_id, numero) 
-            DO UPDATE SET active_pin = $3, stato = 'occupato', last_update = NOW()
-            RETURNING active_pin;
-        `;
+        if (stato === 'occupato') {
+            // Genera PIN se apriamo
+            active_pin = Math.floor(1000 + Math.random() * 9000).toString();
+            
+            // UPSERT: Se esiste aggiorna, se no crea
+            query = `
+                INSERT INTO tavoli (ristorante_id, numero, active_pin, stato, coperti, last_update)
+                VALUES ($1, $2, $3, 'occupato', $4, NOW())
+                ON CONFLICT (ristorante_id, numero) 
+                DO UPDATE SET active_pin = $3, stato = 'occupato', coperti = $4, last_update = NOW()
+                RETURNING *;
+            `;
+            params = [ristorante_id, numero, active_pin, coperti || 0];
+        } else {
+            // Chiudi tavolo (libera)
+            query = `
+                UPDATE tavoli 
+                SET stato = 'libero', active_pin = NULL, coperti = 0, last_update = NOW()
+                WHERE ristorante_id = $1 AND numero = $2
+                RETURNING *;
+            `;
+            params = [ristorante_id, numero];
+        }
         
-        const result = await pool.query(query, [ristorante_id, tavolo, newPin]);
+        const result = await pool.query(query, params);
         
-        // Notifica Socket alla stanza (opzionale, per aggiornare le UI)
+        // Notifica Socket
         const io = req.app.get('io');
         if(io) io.to(String(ristorante_id)).emit('refresh_tavoli');
 
-        res.json({ success: true, pin: result.rows[0].active_pin });
+        res.json({ success: true, tavolo: result.rows[0] });
     } catch (e) {
-        console.error("Errore generazione PIN:", e);
+        console.error("Errore stato tavolo:", e);
         res.status(500).json({ error: "Errore server" });
     }
 });
 
-// --- 3. API PER LA CASSA: LEGGI STATO TAVOLI (PIN ATTIVI) ---
+// --- 3. API CASSA: LEGGI STATO TAVOLI ---
 router.get('/api/cassa/tavoli/status/:ristorante_id', async (req, res) => {
     try {
-        const r = await pool.query("SELECT numero, active_pin, stato FROM tavoli WHERE ristorante_id = $1", [req.params.ristorante_id]);
+        const r = await pool.query("SELECT id, numero, active_pin, stato, coperti FROM tavoli WHERE ristorante_id = $1 ORDER BY numero ASC", [req.params.ristorante_id]);
         res.json(r.rows);
     } catch (e) {
         res.status(500).json({ error: "Errore loading tavoli" });
@@ -118,7 +142,6 @@ router.post('/api/ordine', async (req, res) => {
 
         // Se PIN MODE è attivo e NON è staff, verifica il codice
         if (pinModeActive && !isStaff) {
-            // Se manca il PIN nel body
             if (!pin_tavolo) {
                 return res.status(403).json({ success: false, error: "Inserisci il PIN del tavolo." });
             }
@@ -131,7 +154,7 @@ router.post('/api/ordine', async (req, res) => {
             const realPin = checkPin.rows[0]?.active_pin;
 
             if (!realPin) {
-                return res.status(403).json({ success: false, error: "Tavolo non attivo. Chiedi al personale." });
+                return res.status(403).json({ success: false, error: "Tavolo non attivo. Chiedi al cameriere." });
             }
 
             if (String(realPin) !== String(pin_tavolo)) {
@@ -146,7 +169,14 @@ router.post('/api/ordine', async (req, res) => {
         const nomeClienteDisplay = cliente || "Ospite";
         let logIniziale = `[${dataOrdineLeggibile}] 🆕 ORDINE DA: ${isStaff ? cameriere : nomeClienteDisplay}\n`;
         
-        if(coperti && coperti > 0) logIniziale += `👥 COPERTI: ${coperti}\n`;
+        // Se i coperti arrivano dal frontend usiamo quelli, altrimenti cerchiamo nel tavolo
+        let copertiFinali = coperti || 0;
+        if (copertiFinali === 0) {
+             const tInfo = await pool.query("SELECT coperti FROM tavoli WHERE ristorante_id=$1 AND numero=$2", [ristorante_id, tavolo]);
+             if(tInfo.rows.length > 0) copertiFinali = tInfo.rows[0].coperti;
+        }
+
+        if(copertiFinali > 0) logIniziale += `👥 COPERTI: ${copertiFinali}\n`;
 
         if (Array.isArray(prodotti)) {
             prodotti.forEach(p => {
@@ -164,7 +194,7 @@ router.post('/api/ordine', async (req, res) => {
         // Inserimento con colonna PIN
         await pool.query(
             `INSERT INTO ordini (ristorante_id, tavolo, prodotti, totale, stato, dettagli, cameriere, utente_id, data_ora, coperti, pin_tavolo) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11)`,
-            [ristorante_id, String(tavolo), JSON.stringify(prodotti), totale, statoIniziale, logIniziale, isStaff ? cameriere : null, utente_id || null, coperti || 0, pin_tavolo || null]
+            [ristorante_id, String(tavolo), JSON.stringify(prodotti), totale, statoIniziale, logIniziale, isStaff ? cameriere : null, utente_id || null, copertiFinali, pin_tavolo || null]
         );
 
         notifyUpdate(req, ristorante_id);
@@ -277,7 +307,12 @@ router.post('/api/cassa/paga-tavolo', async (req, res) => {
         
         // Chiudi ordini
         const r = await c.query("SELECT * FROM ordini WHERE ristorante_id=$1 AND tavolo=$2 AND stato!='pagato'", [ristorante_id, String(tavolo)]); 
-        if(r.rows.length===0){await c.query('ROLLBACK');return res.json({success:true});} 
+        
+        // Pulisci anche la tabella TAVOLI (Resetta PIN e stato)
+        await c.query("UPDATE tavoli SET stato='libero', active_pin=NULL, coperti=0 WHERE ristorante_id=$1 AND numero=$2", [ristorante_id, String(tavolo)]);
+        
+        if(r.rows.length===0){await c.query('COMMIT'); notifyUpdate(req, ristorante_id); return res.json({success:true});} 
+        
         let tot=0, prod=[], log=""; 
         r.rows.forEach(o=>{ tot+=Number(o.totale||0); let p=[]; try{p=JSON.parse(o.prodotti)}catch(e){} prod=[...prod, ...p]; if(o.dettagli) log+=`\nORDINE #${o.id}\n${o.dettagli}`; }); log+=`\n[${getNowItaly()}] 💰 CHIUSO E PAGATO: ${tot.toFixed(2)}€`; 
         await c.query("UPDATE ordini SET stato='pagato', prodotti=$1, totale=$2, dettagli=$3 WHERE id=$4", [JSON.stringify(prod), tot, log, r.rows[0].id]); 

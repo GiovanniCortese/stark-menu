@@ -1,4 +1,4 @@
-// client/src/Cassa.jsx - VERSIONE V50 (PIN MANAGER INTEGRATED) 💶
+// client/src/Cassa.jsx - VERSIONE V91 (PIN SYSTEM & COPERTI) 💶
 import { io } from "socket.io-client";
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -11,15 +11,16 @@ function Cassa() {
   const [loadingUser, setLoadingUser] = useState(false);
   
   // STATI DATI
-  const [tab, setTab] = useState('attivi'); // 'attivi', 'storico', 'pin' <--- NUOVO TAB
+  const [tab, setTab] = useState('attivi'); // 'attivi', 'storico', 'pin'
   const [tavoliAttivi, setTavoliAttivi] = useState([]); 
   const [storico, setStorico] = useState([]);
   const [infoRistorante, setInfoRistorante] = useState(null);
   const [selectedLog, setSelectedLog] = useState(null); 
   
   // STATI PIN & SALA
-  const [layoutSala, setLayoutSala] = useState([]); // Tavoli disegnati
+  const [layoutSala, setLayoutSala] = useState([]); // Tavoli disegnati dall'Admin
   const [tavoliStatus, setTavoliStatus] = useState([]); // PIN attivi dal DB
+  const [showPinModal, setShowPinModal] = useState(null); // { numero: 'T1', pin: '1234' }
 
   // STATI AUTH
   const [isAuthorized, setIsAuthorized] = useState(false);
@@ -30,6 +31,7 @@ function Cassa() {
 
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
+  // 1. CARICAMENTO INIZIALE
   useEffect(() => {
     fetch(`${API_URL}/api/menu/${slug}`)
       .then(res => res.json())
@@ -52,34 +54,35 @@ function Cassa() {
     if (localStorage.getItem(sessionKey)) setIsAuthorized(true);
   }, [slug]);
 
-  // POLLING DATI (Ogni 5 sec)
+  // 2. POLLING DATI (Ogni 5 sec + Socket)
   useEffect(() => {
     if (!isAuthorized || !infoRistorante) return;
     
     const fetchData = () => {
-        // Ordini
+        // Ordini Attivi
         fetch(`${API_URL}/api/ordini/${infoRistorante.id}`)
             .then(r => r.json())
             .then(data => {
                 const grouped = {};
                 data.forEach(o => {
-                    if (!grouped[o.tavolo_numero]) grouped[o.tavolo_numero] = { 
-                        tavolo: o.tavolo_numero, 
+                    const tKey = o.tavolo_numero;
+                    if (!grouped[tKey]) grouped[tKey] = { 
+                        tavolo: tKey, 
                         ordini: [], 
                         totale: 0, 
-                        coperti: 0,
+                        coperti: o.coperti || 0, // Prende i coperti dall'ordine
                         fullLog: "",
                         orarioMin: o.data_ora
                     };
-                    grouped[o.tavolo_numero].ordini.push(o);
-                    grouped[o.tavolo_numero].totale += parseFloat(o.totale);
-                    if(o.coperti > grouped[o.tavolo_numero].coperti) grouped[o.tavolo_numero].coperti = o.coperti; 
+                    grouped[tKey].ordini.push(o);
+                    grouped[tKey].totale += parseFloat(o.totale);
+                    // Aggiorna coperti se trovi un valore più alto
+                    if(o.coperti > grouped[tKey].coperti) grouped[tKey].coperti = o.coperti; 
                 });
                 
-                // Ordina per orario
                 const lista = Object.values(grouped).sort((a,b) => new Date(a.orarioMin) - new Date(b.orarioMin));
                 
-                // Crea Log
+                // Genera Log testuale
                 lista.forEach(t => {
                     t.fullLog = t.ordini.map(o => (o.dettagli || "").trim()).filter(d=>d).join("\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n");
                 });
@@ -87,10 +90,10 @@ function Cassa() {
                 setTavoliAttivi(lista);
             });
 
-        // Stato PIN (Nuovo)
+        // Stato Tavoli (PIN & Coperti nel DB tavoli)
         fetch(`${API_URL}/api/cassa/tavoli/status/${infoRistorante.id}`)
             .then(r => r.json())
-            .then(data => setTavoliStatus(data)); // Array [{numero: 'T-1', active_pin: '1234', ...}]
+            .then(data => setTavoliStatus(data)); 
     };
 
     fetchData();
@@ -98,7 +101,7 @@ function Cassa() {
     const socket = io(API_URL);
     socket.emit('join_room', String(infoRistorante.id));
     socket.on('refresh_ordini', fetchData);
-    socket.on('refresh_tavoli', fetchData); // Ascolta cambi PIN
+    socket.on('refresh_tavoli', fetchData); // Ascolta generazione PIN o chiusura
 
     return () => { clearInterval(interval); socket.disconnect(); };
   }, [isAuthorized, infoRistorante]);
@@ -122,45 +125,73 @@ function Cassa() {
     finally { setLoadingLogin(false); }
   };
 
-  // --- AZIONE: GENERA PIN ---
-  const generaPinTavolo = async (tavoloNome) => {
-      if(!confirm(`Generare NUOVO PIN per ${tavoloNome}?`)) return;
+  // --- 🔥 NUOVA LOGICA: GESTIONE APERTURA TAVOLO ---
+  const handleTavoloClick = async (tavoloNome) => {
+      // 1. Cerca se il tavolo è già attivo (ha un PIN)
+      const statoTavolo = tavoliStatus.find(t => t.numero === tavoloNome && t.stato === 'occupato');
+      
+      if (statoTavolo) {
+          // SE È GIÀ APERTO: Mostra solo il PIN (utile se il cliente l'ha perso) o vai all'ordine
+          if(confirm(`Tavolo ${tavoloNome} già aperto (PIN: ${statoTavolo.active_pin}).\nVuoi chiuderlo o vedere l'ordine?`)) {
+               // Qui potresti reindirizzare alla tab ordini
+               setTab('attivi');
+          }
+          return;
+      }
+
+      // 2. SE È LIBERO: Apri procedura
+      const copertiInput = prompt(`🍽️ Apertura ${tavoloNome}\nInserisci numero coperti:`, "2");
+      if (copertiInput === null) return; // Annullato
+
       try {
-          const res = await fetch(`${API_URL}/api/cassa/tavolo/open`, {
-              method: 'POST', headers: {'Content-Type': 'application/json'},
-              body: JSON.stringify({ ristorante_id: infoRistorante.id, tavolo: tavoloNome })
+          // Chiamata alla nuova API che salva coperti e genera PIN
+          const res = await fetch(`${API_URL}/api/cassa/tavolo/status`, {
+              method: 'POST', 
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ 
+                  id: getTableIdByName(tavoloNome), // Se non abbiamo ID, il backend dovrebbe gestire lookup per numero o crearlo
+                  ristorante_id: infoRistorante.id, // Fallback se ID mancante
+                  numero: tavoloNome,              // Fallback se ID mancante
+                  stato: 'occupato',
+                  coperti: parseInt(copertiInput) 
+              })
           });
+          
           const data = await res.json();
+
           if(data.success) {
-              alert(`✅ PIN GENERATO: ${data.pin}`);
-              // Refresh immediato stato locale
+              // 3. MOSTRA IL PIN GIGANTE
+              setShowPinModal({
+                  numero: tavoloNome,
+                  pin: data.tavolo.active_pin
+              });
+              
+              // Refresh locale rapido
               setTavoliStatus(prev => {
                   const exists = prev.find(p => p.numero === tavoloNome);
-                  if(exists) return prev.map(p => p.numero === tavoloNome ? {...p, active_pin: data.pin} : p);
-                  return [...prev, { numero: tavoloNome, active_pin: data.pin }];
+                  if(exists) return prev.map(p => p.numero === tavoloNome ? {...p, active_pin: data.tavolo.active_pin, stato: 'occupato'} : p);
+                  return [...prev, data.tavolo];
               });
+          } else {
+              alert("Errore apertura: " + data.error);
           }
-      } catch(e) { alert("Errore generazione"); }
+      } catch(e) { 
+          console.error(e);
+          alert("Errore di connessione."); 
+      }
   };
 
-  const getLivello = (n) => {
-      const num = parseInt(n || 0);
-      if (num >= 100) return { label: "Legend 💎", color: "#3498db", bg: "#eafaf1" };
-      if (num >= 30) return { label: "VIP 🥇", color: "#f1c40f", bg: "#fef9e7" };
-      if (num >= 15) return { label: "Cliente Top 🥈", color: "#7f8c8d", bg: "#f4f6f7" };
-      if (num >= 5) return { label: "Buongustaio 🥉", color: "#cd7f32", bg: "#fdf2e9" };
-      return { label: "Novizio 🌱", color: "#27ae60", bg: "#e8f8f5" };
+  // Helper per trovare l'ID del tavolo dal layout o dallo status
+  const getTableIdByName = (nome) => {
+      const tStatus = tavoliStatus.find(t => t.numero === nome);
+      if(tStatus) return tStatus.id;
+      // Se non esiste ancora nel DB (nuovo layout), mandiamo null, il backend dovrà gestirlo
+      return null;
   };
 
-  const apriDettagliUtente = async (id) => {
-    if(!id) return;
-    setLoadingUser(true);
-    setSelectedUserData(null);
-    try {
-        const res = await fetch(`${API_URL}/api/cliente/stats/${id}`);
-        const data = await res.json();
-        setSelectedUserData(data);
-    } catch(e) { alert("Errore caricamento dati utente"); } finally { setLoadingUser(false); }
+  const getPinForTable = (nomeTavolo) => {
+      const found = tavoliStatus.find(t => t.numero === nomeTavolo && t.stato === 'occupato');
+      return found ? found.active_pin : null;
   };
 
   const inviaInProduzione = async (ordiniDaInviare) => {
@@ -168,16 +199,13 @@ function Cassa() {
       try {
           await Promise.all(ordiniDaInviare.map(ord => 
               fetch(`${API_URL}/api/ordine/invia-produzione`, {
-                  method: 'POST',
-                  headers: {'Content-Type': 'application/json'},
+                  method: 'POST', headers: {'Content-Type': 'application/json'},
                   body: JSON.stringify({ id_ordine: ord.id })
               })
           ));
-          // Refresh gestito dal socket
       } catch(e) { alert("Errore invio ordine"); }
   };
 
-  // --- AZIONI SUI PRODOTTI ---
   const modificaStatoProdotto = async (ord, indexDaModificare) => {
     const nuoviProdotti = [...ord.prodotti];
     const item = nuoviProdotti[indexDaModificare];
@@ -204,12 +232,6 @@ function Cassa() {
       await fetch(`${API_URL}/api/cassa/paga-tavolo`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ ristorante_id: infoRistorante.id, tavolo: t }) });
   };
 
-  // HELPER PIN
-  const getPinForTable = (nomeTavolo) => {
-      const found = tavoliStatus.find(t => t.numero === nomeTavolo);
-      return found ? found.active_pin : null;
-  };
-
   if (isModuleDisabled) return <div style={{padding:50, textAlign:'center'}}><h1>⛔ MODULO CASSA NON ATTIVO</h1></div>;
 
   if (!isAuthorized) {
@@ -230,12 +252,39 @@ function Cassa() {
 
   return (
     <div style={{minHeight:'100vh', background:'#ecf0f1', display:'flex', flexDirection:'column'}}>
+      
+      {/* --- MODALE PIN GIGANTE --- */}
+      {showPinModal && (
+          <div style={{
+              position:'fixed', top:0, left:0, right:0, bottom:0, 
+              background:'rgba(0,0,0,0.95)', zIndex:99999, 
+              display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', color:'white'
+          }}>
+              <h2 style={{fontSize:'3rem', margin:0}}>TAVOLO {showPinModal.numero} APERTO!</h2>
+              <div style={{fontSize:'1.5rem', marginTop:20, color:'#bbb'}}>COMUNICA AL CLIENTE:</div>
+              <div style={{
+                  fontSize:'8rem', fontWeight:'bold', color:'#f1c40f', 
+                  border:'5px dashed #f1c40f', padding:'20px 60px', margin:'30px 0', 
+                  borderRadius:30, letterSpacing: 15, background:'rgba(255,255,255,0.1)'
+              }}>
+                  {showPinModal.pin}
+              </div>
+              <p style={{fontSize:'1.2rem'}}>Coperti registrati. Il tavolo è sbloccato.</p>
+              <button 
+                  onClick={() => setShowPinModal(null)}
+                  style={{marginTop:30, padding:'20px 60px', fontSize:'2rem', background:'white', color:'black', border:'none', borderRadius:15, cursor:'pointer', fontWeight:'bold'}}
+              >
+                  OK, FATTO 👍
+              </button>
+          </div>
+      )}
+
       {/* HEADER */}
       <div style={{background:'#34495e', padding:'10px 20px', color:'white', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
           <h2 style={{margin:0}}>💰 Cassa: {infoRistorante?.ristorante}</h2>
           <div>
               <button onClick={()=>setTab('attivi')} style={{marginRight:10, padding:'8px 15px', background: tab==='attivi'?'#f1c40f':'#2c3e50', color: tab==='attivi'?'black':'white', border:'1px solid #fff', borderRadius:5}}>In Corso</button>
-              <button onClick={()=>setTab('pin')} style={{marginRight:10, padding:'8px 15px', background: tab==='pin'?'#e67e22':'#2c3e50', color: 'white', border:'1px solid #fff', borderRadius:5}}>🔑 Gestione PIN</button>
+              <button onClick={()=>setTab('pin')} style={{marginRight:10, padding:'8px 15px', background: tab==='pin'?'#e67e22':'#2c3e50', color: 'white', border:'1px solid #fff', borderRadius:5}}>🔑 Sala & PIN</button>
               <button onClick={()=>setTab('storico')} style={{marginRight:10, padding:'8px 15px', background: tab==='storico'?'#2980b9':'#2c3e50', color: 'white', border:'1px solid #fff', borderRadius:5}}>Storico</button>
               <button onClick={()=>{localStorage.removeItem(`cassa_session_${slug}`); setIsAuthorized(false);}} style={{padding:'8px 15px', background:'#c0392b', color:'white', border:'none', borderRadius:5}}>Esci</button>
           </div>
@@ -254,6 +303,7 @@ function Cassa() {
                       const ordiniDaInviare = info.ordini.filter(o => o.stato === 'in_arrivo');
                       const richiedeApprovazione = ordiniDaInviare.length > 0;
                       const borderColor = richiedeApprovazione ? '#e67e22' : 'transparent';
+                      const currentPin = getPinForTable(tavolo);
 
                       return (
                       <div key={i} style={{background:'white', borderRadius:10, padding:15, boxShadow:'0 2px 5px rgba(0,0,0,0.1)', border: `4px solid ${borderColor}`}}>
@@ -272,7 +322,6 @@ function Cassa() {
                               </div>
                           </div>
                           
-                          {/* LISTA PRODOTTI VELOCE */}
                           <div style={{maxHeight:250, overflowY:'auto', fontSize:13, marginBottom:15}}>
                               {info.ordini.map(ord => renderProdotti(ord, modificaStatoProdotto, eliminaProdotto))}
                           </div>
@@ -280,7 +329,7 @@ function Cassa() {
                           <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', background:'#f9f9f9', padding:10, borderRadius:5}}>
                               <div>
                                   <span style={{fontSize:10, color:'#999'}}>PIN ATTUALE:</span><br/>
-                                  <strong style={{fontSize:16, color:'#e67e22'}}>{getPinForTable(tavolo) || "---"}</strong>
+                                  <strong style={{fontSize:16, color:'#e67e22'}}>{currentPin || "---"}</strong>
                               </div>
                               <button onClick={() => setSelectedLog({ id: `Tavolo ${tavolo} (LIVE)`, dettagli: info.fullLog })} style={{background:'#3498db', color:'white', border:'none', padding:'5px 10px', borderRadius:5, cursor:'pointer', fontSize:11, fontWeight:'bold', marginRight:5}}>LOG</button>
                               <button onClick={()=>chiudiTavolo(tavolo)} style={{background:'#2c3e50', color:'white', border:'none', padding:'8px 15px', borderRadius:5, cursor:'pointer'}}>Chiudi & Paga</button>
@@ -293,44 +342,54 @@ function Cassa() {
           {/* VISTA 2: GESTIONE PIN & SALA */}
           {tab === 'pin' && (
               <div>
-                  <h3 style={{color:'#34495e'}}>Generazione Codici Tavolo</h3>
-                  <p>Clicca su un tavolo per generare un nuovo codice univoco.</p>
+                  <h3 style={{color:'#34495e'}}>Mappa Sala & Codici Accesso</h3>
+                  <p>Clicca su un tavolo GRIGIO per <strong>APRIRLO</strong> (Inserire Coperti + Generare PIN). Clicca su un tavolo VERDE per dettagli.</p>
                   
                   <div style={{display:'flex', flexWrap:'wrap', gap:15}}>
-                      {/* Se abbiamo il layout grafico, usiamo i nomi da lì. Altrimenti una lista standard o vuota */}
+                      {/* LOGICA: Se abbiamo il layout grafico, usiamo quello. Altrimenti lista standard o bottoni manuali */}
                       {(layoutSala.length > 0 ? layoutSala : tavoliStatus).map((t, i) => {
-                          const nome = t.label || t.numero; // label da layout, numero da status
+                          const nome = t.label || t.numero; // label da layout admin, numero da status DB
                           const currentPin = getPinForTable(nome);
+                          const isOccupied = !!currentPin;
                           
                           return (
-                              <div key={i} onClick={()=>generaPinTavolo(nome)} 
+                              <div key={i} onClick={()=>handleTavoloClick(nome)} 
                                    style={{
                                        width:120, height:120, 
-                                       background: currentPin ? '#2ecc71' : '#ecf0f1', 
+                                       background: isOccupied ? '#2ecc71' : '#ecf0f1', 
+                                       color: isOccupied ? 'white' : '#7f8c8d',
                                        borderRadius:10, 
                                        display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                                       cursor:'pointer', border:'2px solid #bdc3c7',
-                                       boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                                       cursor:'pointer', border: isOccupied ? '2px solid #27ae60' : '2px solid #bdc3c7',
+                                       boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                                       transition: 'transform 0.1s'
                                    }}>
                                   <div style={{fontWeight:'bold', fontSize:18, marginBottom:5}}>{nome}</div>
-                                  {currentPin ? (
-                                      <div style={{background:'white', padding:'2px 8px', borderRadius:4, fontWeight:'bold', fontSize:20, color:'#27ae60'}}>
-                                          {currentPin}
-                                      </div>
+                                  
+                                  {isOccupied ? (
+                                      <>
+                                        <div style={{background:'rgba(0,0,0,0.2)', padding:'2px 8px', borderRadius:4, fontWeight:'bold', fontSize:20}}>
+                                            {currentPin}
+                                        </div>
+                                        <div style={{fontSize:10, marginTop:5}}>OCCUPATO</div>
+                                      </>
                                   ) : (
-                                      <div style={{fontSize:10, color:'#7f8c8d'}}>Nessun PIN</div>
+                                      <>
+                                        <div style={{fontSize:30, opacity:0.3}}>🍽️</div>
+                                        <div style={{fontSize:10, marginTop:5}}>LIBERO</div>
+                                      </>
                                   )}
-                                  <div style={{fontSize:10, marginTop:5, color:'#555'}}>Genera Nuovo ↻</div>
                               </div>
                           );
                       })}
 
-                      {/* Tasto per generare tavolo manuale (se non c'è layout) */}
+                      {/* Tasto per tavolo manuale (se layout admin non configurato) */}
                       <div onClick={() => {
-                          const nome = prompt("Nome Tavolo (es. T-99):");
-                          if(nome) generaPinTavolo(nome);
-                      }} style={{width:120, height:120, border:'2px dashed #95a5a6', borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:'#7f8c8d'}}>
-                          + Manuale
+                          const nome = prompt("Nome Tavolo Manuale (es. T-99):");
+                          if(nome) handleTavoloClick(nome);
+                      }} style={{width:120, height:120, border:'2px dashed #95a5a6', borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:'#7f8c8d', flexDirection:'column'}}>
+                          <span style={{fontSize:30}}>+</span>
+                          <span>Manuale</span>
                       </div>
                   </div>
               </div>
@@ -358,7 +417,6 @@ function Cassa() {
                   </table>
               </div>
           )}
-
       </div>
 
       {selectedLog && (
@@ -371,23 +429,6 @@ function Cassa() {
                 <button onClick={() => setSelectedLog(null)} style={{width:'100%', marginTop:25, padding:'15px', background:'#2c3e50', color:'white', border:'none', borderRadius:8, fontWeight:'bold', cursor:'pointer', fontSize:'16px'}}>CHIUDI SCHERMATA</button>
             </div>
         </div>
-      )}
-
-      {selectedUserData && (
-          <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.8)', zIndex:10000, display:'flex', alignItems:'center', justifyContent:'center'}} onClick={() => setSelectedUserData(null)}>
-              <div style={{background:'white', padding:30, borderRadius:15, width:'90%', maxWidth:400, textAlign:'center', position:'relative'}} onClick={e=>e.stopPropagation()}>
-                  <button onClick={() => setSelectedUserData(null)} style={{position:'absolute', top:10, right:10, border:'none', background:'transparent', fontSize:20, cursor:'pointer'}}>✕</button>
-                  <div style={{width:80, height:80, background: selectedUserData.livello.colore, borderRadius:'50%', margin:'0 auto 15px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:30, color:'white', boxShadow:`0 5px 15px ${selectedUserData.livello.colore}66`}}>{selectedUserData.livello.nome.split(' ')[1] || '👤'}</div>
-                  <h2 style={{margin:0, color:'#2c3e50'}}>{selectedUserData.nome}</h2>
-                  <div style={{background: selectedUserData.livello.bg, color: selectedUserData.livello.colore, padding:'5px 10px', borderRadius:20, display:'inline-block', fontWeight:'bold', marginTop:5, border:`1px solid ${selectedUserData.livello.colore}`}}>{selectedUserData.livello.nome} • Affidabilità: {selectedUserData.livello.affidabilita}</div>
-                  <div style={{marginTop:25, textAlign:'left', background:'#f8f9fa', padding:15, borderRadius:10}}>
-                      <p style={{margin:'5px 0'}}><strong>📧 Email:</strong> {selectedUserData.email}</p>
-                      <p style={{margin:'5px 0'}}><strong>📞 Telefono:</strong> {selectedUserData.telefono || 'Non inserito'}</p>
-                      <p style={{margin:'5px 0'}}><strong>📍 Indirizzo:</strong> {selectedUserData.indirizzo || 'Non inserito'}</p>
-                      <p style={{margin:'5px 0'}}><strong>📊 Ordini Totali:</strong> {selectedUserData.num_ordini}</p>
-                  </div>
-              </div>
-          </div>
       )}
     </div>
   );
