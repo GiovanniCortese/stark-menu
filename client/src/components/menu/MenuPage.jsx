@@ -1,4 +1,4 @@
-// client/src/components/menu/MenuPage.jsx - VERSIONE V87 (FLUSSO PIN FLUIDO) 🌊
+// client/src/components/menu/MenuPage.jsx - VERSIONE V88 (PIN FLOW PERFECT) 💎
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { dictionary, getContent, flags } from "../../translations";
@@ -204,14 +204,16 @@ export default function MenuPage() {
           const data = await res.json();
           
           if (data.success) {
+              // PIN CORRETTO! SALVA SESSIONE
               setActiveTableSession(data.tavolo);
               setActivePinSession(inputPin);
               localStorage.setItem("session_table", data.tavolo);
               localStorage.setItem("session_pin", inputPin);
+              
               setShowPinModal(false);
-              alert(`✅ Tavolo ${data.tavolo} Sbloccato! Premi di nuovo "Conferma" per inviare l'ordine.`);
+              alert(`✅ Tavolo ${data.tavolo} Sbloccato! Ora puoi confermare l'ordine.`);
           } else {
-              setPinError("PIN non valido o scaduto.");
+              setPinError(data.error || "Codice errato o scaduto.");
           }
       } catch (e) {
           setPinError("Errore connessione.");
@@ -327,7 +329,7 @@ export default function MenuPage() {
     <div style={{ minHeight: "100vh", background: bg, color: text, fontFamily: font, paddingBottom: 80 }}>
       <style>{`:root { color-scheme: light; } * { box-sizing: border-box; margin: 0; padding: 0; } body, html { background-color: ${bg} !important; color: ${text} !important; overflow-x: hidden; width: 100%; top: 0 !important; }`}</style>
 
-      {/* MODALE PIN (Sempre in primo piano se showPinModal è true) */}
+      {/* --- PIN MODAL --- */}
       <PinLoginModal show={showPinModal} onClose={()=>setShowPinModal(false)} onVerify={handleVerifyPin} errorMsg={pinError} />
 
       <MenuHeaderCover showCheckout={showCheckout} style={style} ristorante={ristorante} numeroTavolo={activeTableSession || numeroTavoloUrl} user={user} navigateToDashboard={() => navigate("/dashboard")} onShowAuth={() => setShowAuthModal(true)} lang={lang} t={t} priceColor={priceColor} tavoloBg={tavoloBg} tavoloText={tavoloText} showLangMenu={showLangMenu} setShowLangMenu={setShowLangMenu} availableLangs={availableLangs} cambiaLingua={cambiaLingua} flags={flags} dictionary={dictionary} />
