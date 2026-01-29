@@ -1,4 +1,4 @@
-// client/src/components/menu/MenuPage.jsx - VERSIONE V84 (FIX LOGICA ORDINI RETRO-COMPATIBILE) 🛠️
+// client/src/components/menu/MenuPage.jsx - VERSIONE V86 (SINGLE QR & PIN LOGIN) 🔑
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { dictionary, getContent, flags } from "../../translations";
@@ -13,12 +13,60 @@ import DishModal from "./DishModal";
 import CartBar from "./CartBar";
 import Checkout from "./Checkout";
 
+// --- COMPONENTE INTERNO: MODALE PIN ---
+const PinLoginModal = ({ show, onClose, onVerify, errorMsg }) => {
+    const [code, setCode] = useState("");
+    if (!show) return null;
+
+    return (
+        <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.9)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', padding:20}}>
+            <div style={{background:'white', padding:30, borderRadius:15, width:'100%', maxWidth:350, textAlign:'center', boxShadow:'0 10px 40px rgba(0,0,0,0.5)'}}>
+                <div style={{fontSize:40, marginBottom:10}}>🔐</div>
+                <h2 style={{margin:0, color:'#2c3e50'}}>Codice Tavolo</h2>
+                <p style={{color:'#7f8c8d', fontSize:14, marginBottom:20}}>Inserisci il codice che ti ha fornito lo staff per sbloccare l'ordine.</p>
+                
+                <input 
+                    type="tel" 
+                    maxLength="4"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    placeholder="____"
+                    style={{
+                        fontSize: '30px', letterSpacing: '10px', textAlign: 'center', 
+                        width: '100%', padding: '10px', borderRadius: '8px', 
+                        border: '2px solid #3498db', marginBottom: '20px', fontWeight:'bold'
+                    }}
+                    autoFocus
+                />
+                
+                {errorMsg && <p style={{color:'#e74c3c', fontWeight:'bold', marginTop:-10, marginBottom:15}}>⚠️ {errorMsg}</p>}
+
+                <button 
+                    onClick={() => onVerify(code)}
+                    style={{width:'100%', padding:15, background:'#27ae60', color:'white', border:'none', borderRadius:8, fontSize:16, fontWeight:'bold', cursor:'pointer'}}
+                >
+                    SBLOCCA TAVOLO 🔓
+                </button>
+                <button 
+                    onClick={onClose}
+                    style={{marginTop:15, background:'transparent', border:'none', color:'#999', textDecoration:'underline', cursor:'pointer'}}
+                >
+                    Chiudi e guarda solo il menu
+                </button>
+            </div>
+        </div>
+    );
+};
+
 export default function MenuPage() {
   const navigate = useNavigate();
   const { slug } = useParams();
   const currentSlug = slug || "pizzeria-stark";
   const [searchParams] = useSearchParams();
-  const numeroTavolo = searchParams.get("tavolo");
+  
+  // Tavolo URL (Opzionale se usiamo Single QR)
+  const numeroTavoloUrl = searchParams.get("tavolo"); 
+
   const API_URL = "https://stark-backend-gg17.onrender.com";
 
   const [menu, setMenu] = useState([]);
@@ -28,8 +76,12 @@ export default function MenuPage() {
   const [tavoloStaff, setTavoloStaff] = useState("");
   
   // --- STATI PIN & SICUREZZA ---
-  const [pinMode, setPinMode] = useState(false); // Se true, chiede il PIN
-  
+  const [pinMode, setPinMode] = useState(false);
+  const [activeTableSession, setActiveTableSession] = useState(null); // Tavolo sbloccato col PIN
+  const [activePinSession, setActivePinSession] = useState(null);     // PIN sbloccato
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pinError, setPinError] = useState("");
+
   const [lang, setLang] = useState("it");
   const t = dictionary[lang] || dictionary["it"];
   const [showLangMenu, setShowLangMenu] = useState(false);
@@ -63,6 +115,14 @@ export default function MenuPage() {
   useEffect(() => {
     const savedUser = localStorage.getItem("stark_user");
     if (savedUser) setUser(JSON.parse(savedUser));
+    
+    // Recupera sessione tavolo salvata (Se l'utente ricarica la pagina)
+    const savedTable = localStorage.getItem("session_table");
+    const savedPin = localStorage.getItem("session_pin");
+    if(savedTable && savedPin) {
+        setActiveTableSession(savedTable);
+        setActivePinSession(savedPin);
+    }
   }, []);
 
   useEffect(() => {
@@ -74,43 +134,23 @@ export default function MenuPage() {
         setMenu(data.menu || []);
         setStyle(data.style || {});
 
-        // 1. Controllo Modulo SuperAdmin (SaaS)
         if (data.subscription_active === false) setIsSuspended(true);
         if (data.moduli && data.moduli.menu_digitale === false) setIsMenuDisabled(true);
 
-        // 2. Impostazioni PIN (Se attivo nel DB)
-        if (data.pin_mode === true) {
-            setPinMode(true);
-        }
+        // 2. Impostazioni PIN
+        if (data.pin_mode === true) setPinMode(true);
 
-        // 3. --- FIX CRITICO LOGICA ORDINI ---
-        // Il modulo SaaS deve essere attivo
+        // 3. Permessi Ordine
         const moduloSaaSAttivo = data.moduli ? (data.moduli.ordini_clienti !== false) : true;
-        
-        // Controllo switch locale: 
-        // Se 'ordini_abilitati' esiste usalo, ALTRIMENTI usa 'cucina_super_active' (fallback)
         let switchLocaleAttivo = data.ordini_abilitati;
-        if (switchLocaleAttivo === null || switchLocaleAttivo === undefined) {
-            switchLocaleAttivo = (data.cucina_super_active !== false);
-        }
-
-        console.log(`🔍 DEBUG PERMESSI ORDINE:
-          - Modulo SaaS: ${moduloSaaSAttivo}
-          - Ordini Abilitati (New): ${data.ordini_abilitati}
-          - Cucina Active (Old): ${data.cucina_super_active}
-          - FALLBACK CALCOLATO: ${switchLocaleAttivo}
-        `);
-
-        // Se entrambi sono ok, abilita il tasto ORDINA. Altrimenti WISHLIST.
+        if (switchLocaleAttivo === null || switchLocaleAttivo === undefined) switchLocaleAttivo = (data.cucina_super_active !== false);
         setCanOrder(moduloSaaSAttivo && switchLocaleAttivo);
         
         setActiveCategory(null);
         
-        // SEO
         const pageTitle = `${data.ristorante} | Menu Digitale`;
         updateMetaTags(pageTitle, data?.style?.logo || "", "Menu Digitale");
 
-        // Lingue
         const foundLangs = new Set(["it"]);
         if (data.menu && data.menu.length > 0) {
           data.menu.forEach((p) => {
@@ -158,30 +198,65 @@ export default function MenuPage() {
     );
   };
 
+  // --- FUNZIONE DI VERIFICA PIN ---
+  const handleVerifyPin = async (inputPin) => {
+      setPinError("");
+      try {
+          const res = await fetch(`${API_URL}/api/tavolo/check-pin`, {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ ristorante_id: ristoranteId, pin: inputPin })
+          });
+          const data = await res.json();
+          
+          if (data.success) {
+              // PIN CORRETTO! SALVA SESSIONE
+              setActiveTableSession(data.tavolo);
+              setActivePinSession(inputPin);
+              
+              localStorage.setItem("session_table", data.tavolo);
+              localStorage.setItem("session_pin", inputPin);
+              
+              setShowPinModal(false);
+              alert(`✅ Benvenuto al Tavolo ${data.tavolo}! Ora puoi ordinare.`);
+          } else {
+              setPinError(data.error || "Codice non valido.");
+          }
+      } catch (e) {
+          setPinError("Errore di connessione.");
+      }
+  };
+
   const inviaOrdine = async () => {
-    // Check finale: se l'ordine è disabilitato e NON sei staff, blocca.
-    if (!canOrder && !isStaff) { 
-        alert("Gli ordini sono disabilitati. Mostra questa lista al cameriere."); 
-        return; 
-    }
-    
+    if (!canOrder && !isStaff) { alert("Gli ordini sono disabilitati. Mostra questa lista al cameriere."); return; }
     if (carrello.length === 0) return;
 
-    let tavoloFinale = numeroTavolo;
-    if (isStaff) {
-      const tPrompt = prompt("Inserisci il numero del tavolo:", tavoloStaff || numeroTavolo || "");
-      if (!tPrompt) return;
-      tavoloFinale = tPrompt;
-      setTavoloStaff(tPrompt);
-    }
-    if (!tavoloFinale && !isStaff) tavoloFinale = "Banco/Asporto";
+    // --- LOGICA GESTIONE TAVOLO ---
+    // 1. Se Staff: Chiede sempre o usa staff table
+    // 2. Se Cliente + PinMode: Usa activeTableSession
+    // 3. Se Cliente + URL: Usa numeroTavoloUrl
+    
+    let tavoloFinale = null;
+    let pinFinale = null;
 
-    // --- CONTROLLO PIN (Nuova Logica) ---
-    // Se PinMode è attivo E non sono staff, chiedo il PIN.
-    let codicePinInserito = null;
-    if (pinMode && !isStaff) {
-        codicePinInserito = prompt("🔒 SICUREZZA: Inserisci il PIN del tavolo presente sullo scontrino/bigliettino:");
-        if (!codicePinInserito) return; // Annulla se non inserisce nulla
+    if (isStaff) {
+        const tPrompt = prompt("Inserisci il numero del tavolo:", tavoloStaff || numeroTavoloUrl || "");
+        if (!tPrompt) return;
+        tavoloFinale = tPrompt;
+        setTavoloStaff(tPrompt);
+    } 
+    else if (pinMode) {
+        // Se siamo in PIN MODE, dobbiamo avere una sessione attiva
+        if (!activeTableSession) {
+            setShowPinModal(true); // Apri modale e FERMATI
+            return;
+        }
+        tavoloFinale = activeTableSession;
+        pinFinale = activePinSession;
+    } 
+    else {
+        // Modo Classico (QR univoco)
+        tavoloFinale = numeroTavoloUrl || "Banco/Asporto";
     }
 
     const totaleProdotti = carrello.reduce((a, b) => a + Number(b.prezzo) * (b.qty || 1), 0);
@@ -211,7 +286,7 @@ export default function MenuPage() {
       prodotti: prodottiNormalizzati, 
       totale: totaleOrdine, 
       coperti: numCoperti,
-      pin_tavolo: codicePinInserito // Invio PIN al backend
+      pin_tavolo: pinFinale 
     };
 
     try {
@@ -223,7 +298,14 @@ export default function MenuPage() {
           setCarrello([]); setShowCheckout(false); 
       } 
       else { 
-          // Gestione Errori (es. PIN Errato o Tavolo non valido)
+          // Se l'errore è "PIN Scaduto", resettiamo la sessione
+          if (risp.error && risp.error.includes("PIN")) {
+              setActiveTableSession(null);
+              setActivePinSession(null);
+              localStorage.removeItem("session_table");
+              localStorage.removeItem("session_pin");
+              setShowPinModal(true); // Riapri modale
+          }
           alert("❌ ERRORE: " + (risp.error || "Impossibile inviare ordine.")); 
       }
     } catch (e) { alert("Errore connessione server."); }
@@ -253,8 +335,20 @@ export default function MenuPage() {
     <div style={{ minHeight: "100vh", background: bg, color: text, fontFamily: font, paddingBottom: 80 }}>
       <style>{`:root { color-scheme: light; } * { box-sizing: border-box; margin: 0; padding: 0; } body, html { background-color: ${bg} !important; color: ${text} !important; overflow-x: hidden; width: 100%; top: 0 !important; }`}</style>
 
-      <MenuHeaderCover showCheckout={showCheckout} style={style} ristorante={ristorante} numeroTavolo={numeroTavolo} user={user} navigateToDashboard={() => navigate("/dashboard")} onShowAuth={() => setShowAuthModal(true)} lang={lang} t={t} priceColor={priceColor} tavoloBg={tavoloBg} tavoloText={tavoloText} showLangMenu={showLangMenu} setShowLangMenu={setShowLangMenu} availableLangs={availableLangs} cambiaLingua={cambiaLingua} flags={flags} dictionary={dictionary} />
+      {/* --- PIN MODAL --- */}
+      <PinLoginModal show={showPinModal} onClose={()=>setShowPinModal(false)} onVerify={handleVerifyPin} errorMsg={pinError} />
+
+      <MenuHeaderCover showCheckout={showCheckout} style={style} ristorante={ristorante} numeroTavolo={activeTableSession || numeroTavoloUrl} user={user} navigateToDashboard={() => navigate("/dashboard")} onShowAuth={() => setShowAuthModal(true)} lang={lang} t={t} priceColor={priceColor} tavoloBg={tavoloBg} tavoloText={tavoloText} showLangMenu={showLangMenu} setShowLangMenu={setShowLangMenu} availableLangs={availableLangs} cambiaLingua={cambiaLingua} flags={flags} dictionary={dictionary} />
       
+      {/* BOTTONE MANUALE PIN (Se siamo in pin mode ma non loggati) */}
+      {pinMode && !activeTableSession && !showCheckout && (
+          <div style={{textAlign:'center', marginBottom:10}}>
+              <button onClick={()=>setShowPinModal(true)} style={{background:'#3498db', color:'white', border:'none', padding:'10px 20px', borderRadius:20, fontWeight:'bold', cursor:'pointer', boxShadow:'0 4px 10px rgba(0,0,0,0.2)'}}>
+                  🔑 INSERISCI CODICE TAVOLO
+              </button>
+          </div>
+      )}
+
       <MenuAccordion menu={menu} lang={lang} t={t} style={style} activeCategory={activeCategory} setActiveCategory={setActiveCategory} activeSubCategory={activeSubCategory} setActiveSubCategory={setActiveSubCategory} onOpenDishModal={(p) => setSelectedPiatto(p)} onAddToCart={(p) => aggiungiAlCarrello(p)} titleColor={titleColor} priceColor={priceColor} cardBg={cardBg} cardBorder={cardBorder} btnBg={btnBg} btnText={btnText} canOrder={canOrder} />
       
       <MenuFooter style={style} footerBtnStyle={footerBtnStyle} setUrlFileAttivo={setUrlFileAttivo} setTitoloFile={setTitoloFile} setShowFileModal={setShowFileModal} />
