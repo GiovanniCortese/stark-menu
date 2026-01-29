@@ -1,4 +1,4 @@
-// client/src/components/menu/MenuPage.jsx - VERSIONE V92 (SILENT CHECK & AUTO-CLEAN) 🧹
+// client/src/components/menu/MenuPage.jsx - VERSIONE V94 (RACE CONDITION FIX) 🛡️
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { dictionary, flags } from "../../translations";
@@ -23,7 +23,7 @@ const PinLoginModal = ({ show, onClose, onVerify, errorMsg }) => {
             <div style={{background:'white', padding:30, borderRadius:15, width:'100%', maxWidth:350, textAlign:'center', boxShadow:'0 10px 40px rgba(0,0,0,0.5)'}}>
                 <div style={{fontSize:40, marginBottom:10}}>🔒</div>
                 <h2 style={{margin:0, color:'#2c3e50'}}>Sblocco Tavolo</h2>
-                <p style={{color:'#7f8c8d', fontSize:14, marginBottom:20}}>Inserisci il codice PIN fornito dal cameriere per ordinare.</p>
+                <p style={{color:'#7f8c8d', fontSize:14, marginBottom:20}}>Inserisci il codice PIN fornito dal cameriere.</p>
                 
                 <input 
                     type="tel" 
@@ -70,9 +70,8 @@ export default function MenuPage() {
   
   // --- STATI PIN & SICUREZZA ---
   const [pinMode, setPinMode] = useState(false);
-  
-  const [activeTableSession, setActiveTableSession] = useState(null); // ID o Numero Tavolo
-  const [activePinSession, setActivePinSession] = useState(null);     // PIN usato
+  const [activeTableSession, setActiveTableSession] = useState(null); 
+  const [activePinSession, setActivePinSession] = useState(null);     
   const [showPinModal, setShowPinModal] = useState(false);
   const [pinError, setPinError] = useState("");
 
@@ -97,41 +96,19 @@ export default function MenuPage() {
   const [numCoperti, setNumCoperti] = useState(1);
 
   const [user, setUser] = useState(null);
-  const isStaffQui = user && ["cameriere","admin","editor"].includes(user.ruolo) && parseInt(user.ristorante_id) === parseInt(ristoranteId);
-  const isStaff = isStaffQui;
-
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [authData, setAuthData] = useState({ nome: "", email: "", password: "", telefono: "", indirizzo: "" });
 
-  // 1. CARICAMENTO UTENTE E SESSIONE AL MOUNT (CON SILENT CHECK)
-  useEffect(() => {
-    const savedUser = localStorage.getItem("stark_user");
-    if (savedUser) setUser(JSON.parse(savedUser));
-    
-    // Ripristina sessione SPECIFICA per questo slug
-    const savedSession = localStorage.getItem(`session_${currentSlug}`);
-    if (savedSession) {
-        try {
-            const parsed = JSON.parse(savedSession);
-            if(parsed.tavolo && parsed.pin) {
-                // Impostiamo temporaneamente, poi il fetchMenu verificherà se è valido
-                setActiveTableSession(parsed.tavolo);
-                setActivePinSession(parsed.pin);
-            }
-        } catch(e) { 
-            // Se corrotta, pulisci
-            localStorage.removeItem(`session_${currentSlug}`); 
-        }
-    }
-  }, [currentSlug]);
+  const isStaffQui = user && ["cameriere","admin","editor"].includes(user?.ruolo) && parseInt(user?.ristorante_id) === parseInt(ristoranteId);
+  const isStaff = isStaffQui;
 
-  // 2. FETCH DATI RISTORANTE E VALIDAZIONE SESSIONE SILENZIOSA
+  // 1. CARICAMENTO DATI RISTORANTE (Fetch menu)
   useEffect(() => {
     fetch(`${API_URL}/api/menu/${currentSlug}`)
       .then((res) => { if (!res.ok) throw new Error("Errore caricamento"); return res.json(); })
       .then((data) => {
-        setRistoranteId(data.id);
+        setRistoranteId(data.id); // <--- FONDAMENTALE: Setta l'ID
         setRistorante(data.ristorante);
         setMenu(data.menu || []);
         setStyle(data.style || {});
@@ -139,33 +116,9 @@ export default function MenuPage() {
         if (data.subscription_active === false) setIsSuspended(true);
         if (data.moduli && data.moduli.menu_digitale === false) setIsMenuDisabled(true);
 
+        // Attiva Pin Mode ma NON controlla ancora la sessione (lo fa il useEffect sotto)
         if (data.pin_mode === true) {
             setPinMode(true);
-            
-            // --- SILENT CHECK SESSIONE ---
-            const savedSession = localStorage.getItem(`session_${currentSlug}`);
-            if (savedSession) {
-                const parsed = JSON.parse(savedSession);
-                // Verifichiamo silenziosamente se il PIN è ancora valido nel DB
-                fetch(`${API_URL}/api/menu/verify-pin`, {
-                    method: 'POST', headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ ristorante_id: data.id, pin: parsed.pin })
-                })
-                .then(r => r.json())
-                .then(check => {
-                    if (!check.success) {
-                        console.log("Sessione scaduta o non valida. Pulizia automatica.");
-                        localStorage.removeItem(`session_${currentSlug}`);
-                        setActiveTableSession(null);
-                        setActivePinSession(null);
-                    } else {
-                        console.log("Sessione recuperata e valida.");
-                    }
-                })
-                .catch(() => {
-                    // Se errore server, nel dubbio non cancellare, lascia riprovare l'utente
-                });
-            }
         }
 
         const moduloSaaSAttivo = data.moduli ? (data.moduli.ordini_clienti !== false) : true;
@@ -189,8 +142,50 @@ export default function MenuPage() {
         setAvailableLangs(Array.from(foundLangs));
       })
       .catch((err) => { console.error("Errore Menu:", err); setError(true); });
+    
+    const savedUser = localStorage.getItem("stark_user");
+    if (savedUser) setUser(JSON.parse(savedUser));
   }, [currentSlug]);
 
+  // 2. CHECK SESSIONE SICURO (ASPETTA RISTORANTE_ID)
+  // Questo useEffect parte solo quando ristoranteId è valorizzato, evitando l'errore "PIN Scaduto" prematuro.
+  useEffect(() => {
+      // Se non abbiamo ancora l'ID o il pin mode non è attivo, fermati.
+      if (!ristoranteId || !pinMode) return;
+
+      const savedSession = localStorage.getItem(`session_${currentSlug}`);
+      if (savedSession) {
+          try {
+              const parsed = JSON.parse(savedSession);
+              // Verifica PIN col backend
+              fetch(`${API_URL}/api/menu/verify-pin`, {
+                  method: 'POST', headers: {'Content-Type': 'application/json'},
+                  body: JSON.stringify({ ristorante_id: ristoranteId, pin: parsed.pin })
+              })
+              .then(r => r.json())
+              .then(check => {
+                  if (check.success) {
+                      // Sessione Valida
+                      console.log("Sessione OK:", check.tavolo);
+                      setActiveTableSession(check.tavolo.numero);
+                      setActivePinSession(parsed.pin);
+                      setNumCoperti(check.tavolo.coperti || 1);
+                  } else {
+                      // Sessione Scaduta -> Pulizia silenziosa
+                      console.log("Sessione scaduta, reset.");
+                      localStorage.removeItem(`session_${currentSlug}`);
+                      setActiveTableSession(null);
+                      setActivePinSession(null);
+                  }
+              })
+              .catch(e => console.error("Errore check sessione", e));
+          } catch(e) {
+              localStorage.removeItem(`session_${currentSlug}`);
+          }
+      }
+  }, [ristoranteId, pinMode, currentSlug]); // Dipendenze critiche
+
+  // --- FUNZIONI UTILS ---
   const cambiaLingua = (l) => { setLang(l); setShowLangMenu(false); };
   const getDefaultCourse = (p) => (p.categoria_is_bar ? 0 : 1);
 
@@ -223,20 +218,13 @@ export default function MenuPage() {
     );
   };
 
-  // ============================================================
-  // 🔥 CORE LOGIC: INVIO ORDINE CENTRALIZZATO
-  // ============================================================
-  
   const eseguiInvioOrdine = async (tavoloDest, pinUsato) => {
-      // 1. Validazione base
       if (carrello.length === 0) return;
 
-      // 2. Calcoli
       const totaleProdotti = carrello.reduce((a, b) => a + Number(b.prezzo) * (b.qty || 1), 0);
       const costoCoperto = (style.prezzo_coperto || 0) * numCoperti;
       const totaleOrdine = totaleProdotti + costoCoperto;
 
-      // 3. Normalizzazione
       const stepPresenti = [...new Set(carrello.filter((c) => !c.categoria_is_bar).map((c) => c.course))].sort((a, b) => a - b);
       const mapNuoviCorsi = {};
       stepPresenti.forEach((vecchioCorso, index) => { mapNuoviCorsi[vecchioCorso] = index + 1; });
@@ -270,8 +258,7 @@ export default function MenuPage() {
               setCarrello([]); setShowCheckout(false); 
           } 
           else { 
-              if (risp.error && (risp.error.includes("PIN") || risp.error.includes("Scaduto") || risp.error.includes("Errato"))) {
-                  // Se errore PIN, resetta sessione e riapri modale
+              if (risp.error && (risp.error.includes("PIN") || risp.error.includes("Scaduto"))) {
                   setActiveTableSession(null); setActivePinSession(null);
                   localStorage.removeItem(`session_${currentSlug}`);
                   setPinError("Sessione scaduta. Reinserisci il PIN.");
@@ -283,11 +270,9 @@ export default function MenuPage() {
       } catch (e) { alert("Errore connessione server."); }
   };
 
-  // --- FUNZIONE DI VERIFICA PIN + INVIO AUTOMATICO ---
   const handleVerifyPin = async (inputPin) => {
       setPinError("");
       try {
-          // NOTA: Usa la rotta corretta definita nel Backend
           const res = await fetch(`${API_URL}/api/menu/verify-pin`, {
               method: 'POST', headers: {'Content-Type': 'application/json'},
               body: JSON.stringify({ ristorante_id: ristoranteId, pin: inputPin })
@@ -295,15 +280,14 @@ export default function MenuPage() {
           const data = await res.json();
           
           if (data.success) {
-              // PIN CORRETTO!
-              const tavoloInfo = data.tavolo.numero; 
+              const tInfo = data.tavolo; // Oggetto {id, numero, coperti}
               
-              setActiveTableSession(tavoloInfo);
+              setActiveTableSession(tInfo.numero);
               setActivePinSession(inputPin);
+              setNumCoperti(tInfo.coperti || 1);
               
-              // SALVA SESSIONE LOCALE
               localStorage.setItem(`session_${currentSlug}`, JSON.stringify({
-                  tavolo: tavoloInfo,
+                  tavolo: tInfo.numero,
                   pin: inputPin,
                   timestamp: Date.now()
               }));
@@ -311,22 +295,19 @@ export default function MenuPage() {
               setShowPinModal(false);
               
               // 🚀 INVIO IMMEDIATO
-              eseguiInvioOrdine(tavoloInfo, inputPin);
+              eseguiInvioOrdine(tInfo.numero, inputPin);
           } else {
               setPinError(data.error || "Codice errato.");
           }
       } catch (e) { setPinError("Errore connessione."); }
   };
 
-  // --- PULSANTE PRINCIPALE "INVIA ORDINE" ---
   const handleCheckoutClick = () => {
       if (!canOrder && !isStaff) { alert("Gli ordini sono disabilitati."); return; }
       if (carrello.length === 0) return;
 
-      // 1. Chiedi conferma GENERICA PRIMA di tutto
       if (!confirm(`${t?.confirm || "CONFERMA E INVIA"}?`)) return;
 
-      // 2. Controllo Staff (Override PIN)
       if (isStaff) {
           const tPrompt = prompt("Inserisci il numero del tavolo:", tavoloStaff || numeroTavoloUrl || "");
           if (!tPrompt) return;
@@ -335,19 +316,15 @@ export default function MenuPage() {
           return;
       }
 
-      // 3. Controllo PIN MODE
       if (pinMode) {
-          // Se ho già una sessione attiva, invio diretto
           if (activeTableSession && activePinSession) {
               eseguiInvioOrdine(activeTableSession, activePinSession);
           } else {
-              // Se non ho sessione, apro la modale (che poi invierà da sola)
               setShowPinModal(true);
           }
           return;
       }
 
-      // 4. Controllo Standard (No PIN)
       eseguiInvioOrdine(numeroTavoloUrl || "Banco/Asporto", null);
   };
 
