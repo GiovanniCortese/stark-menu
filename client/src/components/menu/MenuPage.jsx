@@ -1,4 +1,4 @@
-// client/src/components/menu/MenuPage.jsx - VERSIONE V88 (PIN FLOW PERFECT) 💎
+// client/src/components/menu/MenuPage.jsx - VERSIONE V90 (DIRECT SEND AFTER PIN) 🚀
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { dictionary, getContent, flags } from "../../translations";
@@ -23,7 +23,7 @@ const PinLoginModal = ({ show, onClose, onVerify, errorMsg }) => {
             <div style={{background:'white', padding:30, borderRadius:15, width:'100%', maxWidth:350, textAlign:'center', boxShadow:'0 10px 40px rgba(0,0,0,0.5)'}}>
                 <div style={{fontSize:40, marginBottom:10}}>🔒</div>
                 <h2 style={{margin:0, color:'#2c3e50'}}>Sblocco Tavolo</h2>
-                <p style={{color:'#7f8c8d', fontSize:14, marginBottom:20}}>Inserisci il codice PIN del tavolo per confermare l'ordine.</p>
+                <p style={{color:'#7f8c8d', fontSize:14, marginBottom:20}}>Inserisci il codice PIN per confermare e inviare l'ordine immediatamente.</p>
                 
                 <input 
                     type="tel" 
@@ -46,7 +46,7 @@ const PinLoginModal = ({ show, onClose, onVerify, errorMsg }) => {
                     onClick={() => onVerify(code)}
                     style={{width:'100%', padding:15, background:'#27ae60', color:'white', border:'none', borderRadius:10, fontSize:16, fontWeight:'bold', cursor:'pointer', boxShadow:'0 4px 10px rgba(39, 174, 96, 0.3)'}}
                 >
-                    SBLOCCA E CONTINUA 🔓
+                    SBLOCCA E INVIA 🚀
                 </button>
                 <button 
                     onClick={onClose}
@@ -134,7 +134,6 @@ export default function MenuPage() {
         if (data.subscription_active === false) setIsSuspended(true);
         if (data.moduli && data.moduli.menu_digitale === false) setIsMenuDisabled(true);
 
-        // Attiva modalità PIN
         if (data.pin_mode === true) setPinMode(true);
 
         const moduloSaaSAttivo = data.moduli ? (data.moduli.ordini_clienti !== false) : true;
@@ -192,117 +191,123 @@ export default function MenuPage() {
     );
   };
 
-  // --- VERIFICA PIN ---
+  // ============================================================
+  // 🔥 CORE LOGIC: INVIO ORDINE CENTRALIZZATO
+  // ============================================================
+  
+  const eseguiInvioOrdine = async (tavoloDest, pinUsato) => {
+      // 1. Validazione base
+      if (carrello.length === 0) return;
+
+      // 2. Calcoli
+      const totaleProdotti = carrello.reduce((a, b) => a + Number(b.prezzo) * (b.qty || 1), 0);
+      const costoCoperto = (style.prezzo_coperto || 0) * numCoperti;
+      const totaleOrdine = totaleProdotti + costoCoperto;
+
+      // 3. Normalizzazione
+      const stepPresenti = [...new Set(carrello.filter((c) => !c.categoria_is_bar).map((c) => c.course))].sort((a, b) => a - b);
+      const mapNuoviCorsi = {};
+      stepPresenti.forEach((vecchioCorso, index) => { mapNuoviCorsi[vecchioCorso] = index + 1; });
+
+      const prodottiNormalizzati = carrello.map((p) => ({
+          id: p.id, nome: p.qty > 1 ? `${p.nome} (x${p.qty}${p.unita_misura})` : p.nome,
+          prezzo: Number(p.prezzo) * (p.qty || 1),
+          course: !p.categoria_is_bar ? mapNuoviCorsi[p.course] || 1 : p.course,
+          is_bar: p.categoria_is_bar, is_pizzeria: p.categoria_is_pizzeria,
+          stato: "in_attesa", varianti_scelte: p.varianti_scelte, unita_misura: p.unita_misura, qty_originale: p.qty,
+      }));
+
+      const payload = {
+          ristorante_id: ristoranteId, 
+          tavolo: tavoloDest, 
+          utente_id: user?.id || null,
+          cliente: user ? user.nome : "Ospite", 
+          cameriere: isStaff ? user.nome : null,
+          prodotti: prodottiNormalizzati, 
+          totale: totaleOrdine, 
+          coperti: numCoperti,
+          pin_tavolo: pinUsato 
+      };
+
+      try {
+          const res = await fetch(`${API_URL}/api/ordine`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+          const risp = await res.json();
+
+          if (res.ok && risp.success) { 
+              alert(isStaff ? `✅ Ordine inviato (Tavolo ${tavoloDest})` : "✅ Ordine Inviato! 🚀"); 
+              setCarrello([]); setShowCheckout(false); 
+          } 
+          else { 
+              if (risp.error && (risp.error.includes("PIN") || risp.error.includes("Scaduto") || risp.error.includes("Errato"))) {
+                  // Se errore PIN, resetta sessione e riapri modale
+                  setActiveTableSession(null); setActivePinSession(null);
+                  localStorage.removeItem("session_table"); localStorage.removeItem("session_pin");
+                  setPinError("Sessione scaduta. Reinserisci il PIN.");
+                  setShowPinModal(true); 
+              } else {
+                  alert("❌ ERRORE: " + (risp.error || "Impossibile inviare ordine."));
+              }
+          }
+      } catch (e) { alert("Errore connessione server."); }
+  };
+
+  // --- FUNZIONE DI VERIFICA PIN + INVIO AUTOMATICO ---
   const handleVerifyPin = async (inputPin) => {
       setPinError("");
       try {
           const res = await fetch(`${API_URL}/api/tavolo/check-pin`, {
-              method: 'POST',
-              headers: {'Content-Type': 'application/json'},
+              method: 'POST', headers: {'Content-Type': 'application/json'},
               body: JSON.stringify({ ristorante_id: ristoranteId, pin: inputPin })
           });
           const data = await res.json();
           
           if (data.success) {
-              // PIN CORRETTO! SALVA SESSIONE
+              // PIN CORRETTO!
               setActiveTableSession(data.tavolo);
               setActivePinSession(inputPin);
               localStorage.setItem("session_table", data.tavolo);
               localStorage.setItem("session_pin", inputPin);
-              
               setShowPinModal(false);
-              alert(`✅ Tavolo ${data.tavolo} Sbloccato! Ora puoi confermare l'ordine.`);
+              
+              // 🚀 INVIO IMMEDIATO (Senza chiedere conferma di nuovo)
+              eseguiInvioOrdine(data.tavolo, inputPin);
           } else {
-              setPinError(data.error || "Codice errato o scaduto.");
+              setPinError(data.error || "Codice errato.");
           }
-      } catch (e) {
-          setPinError("Errore connessione.");
-      }
+      } catch (e) { setPinError("Errore connessione."); }
   };
 
-  const inviaOrdine = async () => {
-    if (!canOrder && !isStaff) { alert("Gli ordini sono disabilitati."); return; }
-    if (carrello.length === 0) return;
+  // --- PULSANTE PRINCIPALE "INVIA ORDINE" ---
+  const handleCheckoutClick = () => {
+      if (!canOrder && !isStaff) { alert("Gli ordini sono disabilitati."); return; }
+      if (carrello.length === 0) return;
 
-    let tavoloFinale = null;
-    let pinFinale = null;
+      // 1. Chiedi conferma GENERICA PRIMA di tutto
+      if (!confirm(`${t?.confirm || "CONFERMA E INVIA"}?`)) return;
 
-    if (isStaff) {
-        const tPrompt = prompt("Inserisci il numero del tavolo:", tavoloStaff || numeroTavoloUrl || "");
-        if (!tPrompt) return;
-        tavoloFinale = tPrompt;
-        setTavoloStaff(tPrompt);
-    } 
-    else if (pinMode) {
-        // --- BLOCCO PIN: SE MANCA, APRI MODALE E STOP ---
-        if (!activeTableSession || !activePinSession) {
-            setShowPinModal(true); // Apre la modale
-            return; // Ferma tutto qui! Niente alert di errore.
-        }
-        tavoloFinale = activeTableSession;
-        pinFinale = activePinSession;
-    } 
-    else {
-        tavoloFinale = numeroTavoloUrl || "Banco/Asporto";
-    }
-
-    const totaleProdotti = carrello.reduce((a, b) => a + Number(b.prezzo) * (b.qty || 1), 0);
-    const costoCoperto = (style.prezzo_coperto || 0) * numCoperti;
-    const totaleOrdine = totaleProdotti + costoCoperto;
-
-    if (!confirm(`${t?.confirm || "CONFERMA E INVIA"}?`)) return;
-
-    const stepPresenti = [...new Set(carrello.filter((c) => !c.categoria_is_bar).map((c) => c.course))].sort((a, b) => a - b);
-    const mapNuoviCorsi = {};
-    stepPresenti.forEach((vecchioCorso, index) => { mapNuoviCorsi[vecchioCorso] = index + 1; });
-
-    const prodottiNormalizzati = carrello.map((p) => ({
-      id: p.id, nome: p.qty > 1 ? `${p.nome} (x${p.qty}${p.unita_misura})` : p.nome,
-      prezzo: Number(p.prezzo) * (p.qty || 1),
-      course: !p.categoria_is_bar ? mapNuoviCorsi[p.course] || 1 : p.course,
-      is_bar: p.categoria_is_bar, is_pizzeria: p.categoria_is_pizzeria,
-      stato: "in_attesa", varianti_scelte: p.varianti_scelte, unita_misura: p.unita_misura, qty_originale: p.qty,
-    }));
-
-    const payload = {
-      ristorante_id: ristoranteId, 
-      tavolo: tavoloFinale, 
-      utente_id: user?.id || null,
-      cliente: user ? user.nome : "Ospite", 
-      cameriere: isStaff ? user.nome : null,
-      prodotti: prodottiNormalizzati, 
-      totale: totaleOrdine, 
-      coperti: numCoperti,
-      pin_tavolo: pinFinale 
-    };
-
-    try {
-      const res = await fetch(`${API_URL}/api/ordine`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      const risp = await res.json();
-
-      if (res.ok && risp.success) { 
-          alert(isStaff ? `✅ Ordine inviato (Tavolo ${tavoloFinale})` : "✅ Ordine Inviato! 🚀"); 
-          setCarrello([]); setShowCheckout(false); 
-      } 
-      else { 
-          // --- GESTIONE ERRORE BACKEND ---
-          // Se il backend risponde che il PIN è errato/scaduto (es. cambiato nel frattempo)
-          if (risp.error && (risp.error.includes("PIN") || risp.error.includes("Scaduto") || risp.error.includes("Errato"))) {
-              // Resetta sessione
-              setActiveTableSession(null);
-              setActivePinSession(null);
-              localStorage.removeItem("session_table");
-              localStorage.removeItem("session_pin");
-              
-              // RIAPRI MODALE (Senza alert fastidiosi prima)
-              setPinError("Il PIN sembra scaduto o errato. Reinseriscilo.");
-              setShowPinModal(true); 
-          } else {
-              // Errore generico (es. Database down)
-              alert("❌ ERRORE: " + (risp.error || "Impossibile inviare ordine."));
-          }
+      // 2. Controllo Staff
+      if (isStaff) {
+          const tPrompt = prompt("Inserisci il numero del tavolo:", tavoloStaff || numeroTavoloUrl || "");
+          if (!tPrompt) return;
+          setTavoloStaff(tPrompt);
+          eseguiInvioOrdine(tPrompt, null);
+          return;
       }
-    } catch (e) { alert("Errore connessione server."); }
+
+      // 3. Controllo PIN MODE
+      if (pinMode) {
+          // Se ho già una sessione attiva, invio diretto
+          if (activeTableSession && activePinSession) {
+              eseguiInvioOrdine(activeTableSession, activePinSession);
+          } else {
+              // Se non ho sessione, apro la modale (che poi invierà da sola)
+              setShowPinModal(true);
+          }
+          return;
+      }
+
+      // 4. Controllo Standard (No PIN)
+      eseguiInvioOrdine(numeroTavoloUrl || "Banco/Asporto", null);
   };
 
   const bg = style.bg || "#222";
@@ -351,7 +356,25 @@ export default function MenuPage() {
       <DishModal piatto={selectedPiatto} lang={lang} t={t} style={style} canOrder={canOrder} onClose={() => setSelectedPiatto(null)} onAddToCart={(piatto, override) => aggiungiAlCarrello(piatto, override)} />
       
       <CartBar visible={carrello.length > 0 && !showCheckout && !selectedPiatto} style={style} carrelloCount={carrello.length} canOrder={canOrder} t={t} onOpenCheckout={() => setShowCheckout(true)} />
-      <Checkout open={showCheckout} onClose={() => setShowCheckout(false)} carrello={carrello} style={style} t={t} lang={lang} titleColor={titleColor} priceColor={priceColor} canOrder={canOrder} isStaffQui={isStaffQui} numCoperti={numCoperti} setNumCoperti={setNumCoperti} onChangeCourse={cambiaUscita} onRemoveItem={rimuoviDalCarrello} onSendOrder={inviaOrdine} />
+      
+      {/* NOTA: Qui passiamo handleCheckoutClick invece di inviaOrdine diretto */}
+      <Checkout 
+          open={showCheckout} 
+          onClose={() => setShowCheckout(false)} 
+          carrello={carrello} 
+          style={style} 
+          t={t} 
+          lang={lang} 
+          titleColor={titleColor} 
+          priceColor={priceColor} 
+          canOrder={canOrder} 
+          isStaffQui={isStaffQui} 
+          numCoperti={numCoperti} 
+          setNumCoperti={setNumCoperti} 
+          onChangeCourse={cambiaUscita} 
+          onRemoveItem={rimuoviDalCarrello} 
+          onSendOrder={handleCheckoutClick} 
+      />
     </div>
   );
 }
