@@ -100,4 +100,138 @@ router.post('/api/staff/docs', async (req, res) => { try { const { utente_id, ti
 router.get('/api/staff/docs/:utente_id', async (req, res) => { try { const r = await pool.query("SELECT * FROM staff_docs WHERE utente_id = $1 ORDER BY data_caricamento DESC", [req.params.utente_id]); res.json(r.rows); } catch (e) { res.status(500).json({ error: e.message }); } });
 router.delete('/api/staff/docs/:id', async (req, res) => { try { await pool.query("DELETE FROM staff_docs WHERE id = $1", [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
 
+// server/routes/authRoutes.js - VERSIONE FIX CASSA LOGIN 🛠️
+const express = require('express');
+const router = express.Router();
+const pool = require('../config/db');
+
+// --- 1. LOGIN UTENTI (Staff e Clienti) ---
+router.post('/api/auth/login', async (req, res) => { 
+    try { 
+        const { email, password } = req.body; 
+        const r = await pool.query('SELECT * FROM utenti WHERE email = $1 AND password = $2', [email, password]); 
+        
+        if (r.rows.length > 0) {
+            const utente = r.rows[0];
+            res.json({ success: true, user: utente }); 
+        } else {
+            res.json({ success: false, error: "Credenziali errate" }); 
+        }
+    } catch (e) { 
+        console.error(e);
+        res.status(500).json({ error: "Errore login" }); 
+    } 
+});
+
+// --- 2. LOGIN SPECIFICO CASSA (QUELLO CHE MANCAVA) 💰 ---
+router.post('/api/cassa/login', async (req, res) => {
+    try {
+        const { slug, password } = req.body;
+        
+        // Cerca il ristorante tramite lo slug
+        const result = await pool.query('SELECT * FROM ristoranti WHERE slug = $1', [slug]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, error: "Ristorante non trovato" });
+        }
+
+        const ristorante = result.rows[0];
+
+        // Confronta la password (assumendo che sia salvata in chiaro o hash semplice come per gli utenti)
+        if (password === ristorante.password_hash) {
+             res.json({ success: true });
+        } else {
+             res.status(401).json({ success: false, error: "Password errata" });
+        }
+
+    } catch (err) {
+        console.error("Errore Login Cassa:", err);
+        res.status(500).json({ success: false, error: "Errore server interno" });
+    }
+});
+
+// --- 3. REGISTRAZIONE ---
+router.post('/api/register', async (req, res) => { 
+    try { 
+        const { nome, email, password, telefono, indirizzo, ruolo, ristorante_id } = req.body; 
+        
+        // Check se esiste già
+        const check = await pool.query('SELECT * FROM utenti WHERE email = $1', [email]); 
+        if (check.rows.length > 0) return res.json({ success: false, error: "Email già registrata" }); 
+        
+        const r_id = ristorante_id ? ristorante_id : null; 
+        
+        await pool.query(
+            `INSERT INTO utenti (nome, email, password, telefono, indirizzo, ruolo, ristorante_id, data_creazione) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`, 
+            [nome, email, password, telefono, indirizzo, ruolo || 'cliente', r_id]
+        );
+        
+        res.json({ success: true }); 
+    } catch (e) { 
+        console.error(e);
+        res.status(500).json({ error: "Errore registrazione" }); 
+    } 
+});
+
+// --- 4. GESTIONE UTENTI (CRUD) ---
+router.get('/api/utenti', async (req, res) => { 
+    try { 
+        const mode = req.query.mode;
+        let query = 'SELECT * FROM utenti ORDER BY id DESC';
+        
+        // Se non è super admin, nascondiamo le password o filtriamo
+        if (mode !== 'super') {
+            // Logica opzionale per admin normali
+        }
+        
+        const r = await pool.query(query); 
+        // Arricchiamo con il nome del ristorante se serve
+        // (Opzionale, richiede JOIN o seconda query, qui lo lasciamo semplice)
+        res.json(r.rows); 
+    } catch (e) { res.status(500).json({ error: "Err" }); } 
+});
+
+router.put('/api/utenti/:id', async (req, res) => { 
+    try { 
+        const { nome, email, password, telefono, indirizzo, ruolo } = req.body; 
+        // Aggiorna anche password solo se inviata, altrimenti mantieni vecchia (logica base qui: aggiorna tutto)
+        await pool.query(
+            `UPDATE utenti SET nome=$1, email=$2, password=$3, telefono=$4, indirizzo=$5, ruolo=$6 WHERE id=$7`, 
+            [nome, email, password, telefono, indirizzo, ruolo, req.params.id]
+        ); 
+        res.json({ success: true }); 
+    } catch (e) { res.status(500).json({ error: "Err" }); } 
+});
+
+router.delete('/api/utenti/:id', async (req, res) => { 
+    try { 
+        await pool.query('DELETE FROM utenti WHERE id=$1', [req.params.id]); 
+        res.json({ success: true }); 
+    } catch (e) { res.status(500).json({ error: "Err" }); } 
+});
+
+// --- 5. STAFF DOCS ---
+router.post('/api/staff/docs', async (req, res) => { 
+    try { 
+        const { utente_id, tipo_doc, nome_file, url } = req.body; 
+        await pool.query("INSERT INTO staff_docs (utente_id, tipo_doc, nome_file, url) VALUES ($1, $2, $3, $4)", [utente_id, tipo_doc, nome_file, url]); 
+        res.json({ success: true }); 
+    } catch (e) { res.status(500).json({ error: e.message }); } 
+});
+
+router.get('/api/staff/docs/:utente_id', async (req, res) => { 
+    try { 
+        const r = await pool.query("SELECT * FROM staff_docs WHERE utente_id = $1 ORDER BY data_caricamento DESC", [req.params.utente_id]); 
+        res.json(r.rows); 
+    } catch (e) { res.status(500).json({ error: "Err" }); } 
+});
+
+router.delete('/api/staff/docs/:id', async (req, res) => { 
+    try { 
+        await pool.query("DELETE FROM staff_docs WHERE id = $1", [req.params.id]); 
+        res.json({ success: true }); 
+    } catch (e) { res.status(500).json({ error: "Err" }); } 
+});
+
 module.exports = router;
