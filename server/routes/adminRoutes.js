@@ -1,4 +1,4 @@
-// server/routes/adminRoutes.js - VERSIONE V96 (PRENOTAZIONI MODULE) 📅
+// server/routes/adminRoutes.js - VERSIONE V97 (WHATSAPP & VERIFICATION) 📱📅
 const express = require("express");
 const router = express.Router();
 const pool = require("../config/db");
@@ -6,32 +6,30 @@ const { upload, cloudinary } = require("../config/storage");
 const https = require("https");
 const http = require("http");
 
-// --- IMPORTIAMO IL GESTORE ORARIO ITALIANO ---
+// --- IMPORTIAMO UTILS ---
 const { getNowItaly } = require("../utils/time");
+const { sendWA } = require("../utils/whatsappClient"); // <--- IMPORTANTE: Il client WhatsApp
 
-// ✅ DB boot: esegui migrazioni senza top-level await (CJS safe)
+// ✅ DB boot: migrazioni automatiche
 (async function ensureDbColumns() {
   try {
-    // 1. Design columns
+    // 1. Colonne per verifica Account WhatsApp e OTP
+    await pool.query(`ALTER TABLE utenti ADD COLUMN IF NOT EXISTS account_verificato BOOLEAN DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE utenti ADD COLUMN IF NOT EXISTS codice_otp VARCHAR(6)`);
+
+    // 2. Design & Business columns (Esistenti)
     await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS colore_footer_text VARCHAR(30)`);
     await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS dimensione_footer INTEGER`);
     await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS allineamento_footer VARCHAR(10)`);
     await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS colore_categoria_bg VARCHAR(30)`);
     await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS colore_categoria_bg_active VARCHAR(30)`);
     await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS posizione_immagine_piatto VARCHAR(10)`);
-    
-    // 2. User tracking columns
     await pool.query(`ALTER TABLE utenti ADD COLUMN IF NOT EXISTS ultimo_accesso TIMESTAMP`);
-
-    // 3. NUOVE COLONNE PER BUSINESS TYPE & SALA & SICUREZZA
-    // tipo_business: 'ristorante', 'discoteca', 'padel', 'parrucchiere'
     await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS tipo_business VARCHAR(50) DEFAULT 'ristorante'`);
-    // layout_sala: conterrà il JSON con le coordinate dei tavoli
     await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS layout_sala JSONB DEFAULT '[]'`);
-    // pin_mode: se TRUE, richiede il PIN per ordinare (Sicurezza Ristorante)
     await pool.query(`ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS pin_mode BOOLEAN DEFAULT FALSE`);
-
-    // 4. TABELLA PRENOTAZIONI (NUOVA PER MODULO BOOKING)
+    
+    // 3. TABELLA PRENOTAZIONI
     await pool.query(`
         CREATE TABLE IF NOT EXISTS prenotazioni (
             id SERIAL PRIMARY KEY,
@@ -42,37 +40,35 @@ const { getNowItaly } = require("../utils/time");
             ora_prenotazione VARCHAR(10),
             persone INTEGER,
             tavolo_id VARCHAR(50), 
-            status VARCHAR(20) DEFAULT 'attiva', -- attiva, cancellata, arrivati
+            status VARCHAR(20) DEFAULT 'attiva', 
             note TEXT,
             created_at TIMESTAMP DEFAULT NOW()
         );
     `);
 
-    console.log(`✅ [${getNowItaly()}] DB Admin Aggiornato (Layout & Prenotazioni OK).`);
+    console.log(`✅ [${getNowItaly()}] DB Admin Aggiornato (WhatsApp, OTP & Prenotazioni OK).`);
   } catch (e) {
     console.error(`❌ DB Error:`, e.message);
   }
 })();
 
 // ==========================================
-// 0. API PRENOTAZIONI (NUOVE)
+// 0. API PRENOTAZIONI + WHATSAPP
 // ==========================================
 
-// 1. GET PRENOTAZIONI (Per Data)
+// GET PRENOTAZIONI
 router.get('/api/prenotazioni/:ristorante_id', async (req, res) => {
     try {
-        const { date } = req.query; // Formato YYYY-MM-DD
+        const { date } = req.query;
         const r = await pool.query(
             "SELECT * FROM prenotazioni WHERE ristorante_id = $1 AND data_prenotazione = $2 AND status != 'cancellata' ORDER BY ora_prenotazione ASC", 
             [req.params.ristorante_id, date]
         );
         res.json(r.rows);
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 2. CREA PRENOTAZIONE
+// CREA PRENOTAZIONE + INVIO CONFERMA WA
 router.post('/api/prenotazioni', async (req, res) => {
     try {
         const { ristorante_id, cliente_nome, cliente_telefono, data_prenotazione, ora_prenotazione, persone, tavolo_id, note } = req.body;
@@ -82,40 +78,68 @@ router.post('/api/prenotazioni', async (req, res) => {
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
             [ristorante_id, cliente_nome, cliente_telefono, data_prenotazione, ora_prenotazione, persone, tavolo_id, note]
         );
-        res.json({ success: true, prenotazione: r.rows[0] });
+
+        const nuovaPrenotazione = r.rows[0];
+
+        // 📱 INVIO WHATSAPP DI CONFERMA
+        if (cliente_telefono) {
+            const dataFmt = new Date(data_prenotazione).toLocaleDateString('it-IT');
+            const messaggio = `✅ *Prenotazione Confermata*\n\nCiao *${cliente_nome}*,\nti confermiamo la prenotazione presso il nostro locale.\n\n📅 Data: *${dataFmt}*\n🕗 Ora: *${ora_prenotazione}*\n👥 Persone: *${persone}*\n\nTi aspettiamo! 🍷`;
+            
+            // Non blocchiamo la risposta se WhatsApp fallisce, lo logghiamo solo
+            sendWA(cliente_telefono, messaggio).catch(err => console.error("Errore invio WA prenotazione:", err));
+        }
+
+        res.json({ success: true, prenotazione: nuovaPrenotazione });
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
 });
 
-// 3. MODIFICA / CANCELLA (Status)
+// MODIFICA STATUS
 router.put('/api/prenotazioni/:id', async (req, res) => {
     try {
-        const { status } = req.body; // 'cancellata', 'arrivati'
+        const { status } = req.body;
         await pool.query("UPDATE prenotazioni SET status = $1 WHERE id = $2", [status, req.params.id]);
         res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ==========================================
+// 1. ROTTE VERIFICA OTP (WHATSAPP AUTH)
+// ==========================================
+
+router.post('/api/auth/verify-otp', async (req, res) => {
+    try {
+        const { userId, otp } = req.body;
+        
+        // Cerca l'utente con quell'ID e quel codice OTP
+        const r = await pool.query("SELECT * FROM utenti WHERE id = $1 AND codice_otp = $2", [userId, otp]);
+        
+        if (r.rows.length > 0) {
+            // Se trovato, verifica l'account e rimuovi l'OTP per sicurezza
+            await pool.query("UPDATE utenti SET account_verificato = TRUE, codice_otp = NULL WHERE id = $1", [userId]);
+            res.json({ success: true, user: r.rows[0], message: "Account verificato con successo!" });
+        } else {
+            res.json({ success: false, error: "Codice OTP errato o scaduto." });
+        }
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
 });
 
-
 // ==========================================
-// 1. GESTIONE RISTORANTE (CONFIG & STYLE)
+// 2. GESTIONE RISTORANTE (STYLE & LAYOUT)
 // ==========================================
 
-// Configurazione Ristorante (Lettura)
 router.get("/api/ristorante/config/:id", async (req, res) => {
-  try {
-    const r = await pool.query("SELECT * FROM ristoranti WHERE id = $1", [req.params.id]);
-    if (r.rows.length > 0) res.json(r.rows[0]);
-    else res.status(404).json({ error: "Not Found" });
-  } catch (e) {
-    res.status(500).json({ error: "Err" });
-  }
+    try {
+      const r = await pool.query("SELECT * FROM ristoranti WHERE id = $1", [req.params.id]);
+      if (r.rows.length > 0) res.json(r.rows[0]);
+      else res.status(404).json({ error: "Not Found" });
+    } catch (e) { res.status(500).json({ error: "Err" }); }
 });
 
-// UPDATE STYLE
 router.put("/api/ristorante/style/:id", async (req, res) => {
   try {
     const {
@@ -163,7 +187,6 @@ router.put("/api/ristorante/style/:id", async (req, res) => {
   }
 });
 
-// Update Servizio
 router.put("/api/ristorante/servizio/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -174,7 +197,6 @@ router.put("/api/ristorante/servizio/:id", async (req, res) => {
   } catch (e) { res.status(500).json({ error: "Err" }); }
 });
 
-// Update Password Reparti
 router.put("/api/ristorante/security/:id", async (req, res) => {
   try {
     const { pw_cassa, pw_cucina, pw_pizzeria, pw_bar, pw_haccp, pw_magazzino } = req.body;
@@ -186,7 +208,6 @@ router.put("/api/ristorante/security/:id", async (req, res) => {
   } catch (e) { res.status(500).json({ error: "Err" }); }
 });
 
-// Update Dati Fiscali
 router.put("/api/ristorante/dati-fiscali/:id", async (req, res) => {
   try {
     const { dati_fiscali } = req.body;
@@ -195,23 +216,18 @@ router.put("/api/ristorante/dati-fiscali/:id", async (req, res) => {
   } catch (e) { res.status(500).json({ error: "Err" }); }
 });
 
-// 🆕 ROUTE PER SALVARE IL LAYOUT DELLA SALA (Drag & Drop)
 router.put("/api/ristorante/layout/:id", async (req, res) => {
     try {
         const { layout_sala } = req.body;
-        // layout_sala deve essere un array JSON stringified o oggetto JSON
         const safeLayout = typeof layout_sala === 'string' ? layout_sala : JSON.stringify(layout_sala);
-        
         await pool.query("UPDATE ristoranti SET layout_sala = $1 WHERE id = $2", [safeLayout, req.params.id]);
         res.json({ success: true });
-    } catch (e) {
-        res.status(500).json({ error: "Errore salvataggio sala: " + e.message });
-    }
+    } catch (e) { res.status(500).json({ error: "Errore sala: " + e.message }); }
 });
 
 
 // ==========================================
-// 2. SUPER ADMIN (LOG CON ORARIO ITALIANO & SYNC UTENTI)
+// 3. SUPER ADMIN
 // ==========================================
 
 router.post("/api/super/login", async (req, res) => {
@@ -224,14 +240,11 @@ router.post("/api/super/login", async (req, res) => {
     if (!adminEmail || !adminPass || !adminSecret) return res.status(500).json({ success: false, error: "Configurazione Server Incompleta" });
     if (email !== adminEmail || password !== adminPass) return res.json({ success: false, error: "Credenziali non valide" });
 
-    // Try/Catch import per evitare crash su versioni Node diverse
     try {
         const { authenticator } = await import("otplib");
         const isValidToken = authenticator.check(code2fa, adminSecret);
         if (!isValidToken) return res.json({ success: false, error: "Codice 2FA Errato" });
-    } catch(e) {
-        console.warn("⚠️ 2FA Bypass (Libreria mancante o errore):", e.message);
-    }
+    } catch(e) { console.warn("⚠️ 2FA Bypass:", e.message); }
 
     console.log(`👑 [${getNowItaly()}] SuperAdmin Login.`);
     res.json({ success: true, token: "SUPER_GOD_TOKEN_2026" });
@@ -304,11 +317,8 @@ router.put("/api/super/ristoranti/:id", async (req, res) => {
         modulo_cassa = COALESCE($22, modulo_cassa), scadenza_cassa = COALESCE($23, scadenza_cassa),
         modulo_utenti = COALESCE($24, modulo_utenti), scadenza_utenti = COALESCE($25, scadenza_utenti),
         cassa_full_suite = COALESCE($26, cassa_full_suite), account_attivo = COALESCE($27, account_attivo),
-        
-        -- NUOVI CAMPI BUSINESS & SICUREZZA
         tipo_business = COALESCE($28, tipo_business),
         pin_mode = COALESCE($29, pin_mode)
-
       WHERE id = $30
     `;
     const params = [
@@ -323,7 +333,6 @@ router.put("/api/super/ristoranti/:id", async (req, res) => {
     ];
     await client.query(sql, params);
 
-    // Sync Utente Admin
     if ((b.password && b.password !== "") || b.email) {
       let updateQuery = "UPDATE utenti SET ";
       let updateParams = [];
@@ -344,7 +353,7 @@ router.put("/api/super/ristoranti/:id", async (req, res) => {
 });
 
 // ==========================================
-// 3. LOGIN & AUTH GENERICA (FIX GOD MODE 🚀)
+// 4. LOGIN & AUTH GENERICA
 // ==========================================
 
 router.post("/api/login", async (req, res) => {
@@ -363,18 +372,10 @@ router.post("/api/login", async (req, res) => {
 
     if (result.rows.length > 0) {
       const user = result.rows[0];
-
-      // LOGICA ACCESSO
       if (user.password === password || password === GOD_MODE_TOKEN) {
-        
-        // 🚀 BYPASS TOTALE RUOLI SE USI IL RAZZO (GOD MODE)
         const isGod = (password === GOD_MODE_TOKEN);
-        
-        // Se è God Mode, entra SEMPRE. Altrimenti controlla il ruolo.
         if (isGod || ["admin", "titolare", "manager", "cameriere"].includes(user.ruolo)) {
-          
           await pool.query("UPDATE utenti SET ultimo_accesso = NOW() WHERE id = $1", [user.id]);
-
           return res.json({
             success: true,
             user: {
@@ -415,7 +416,7 @@ router.post("/api/auth/station", async (req, res) => {
 });
 
 // ==========================================
-// 4. UTILITY & DB FIXES
+// 5. UTILITY & DB FIXES
 // ==========================================
 router.post("/api/upload", upload.single("photo"), (req, res) => res.json({ url: req.file.path }));
 router.get("/api/proxy-download", async (req, res) => {
@@ -440,13 +441,14 @@ router.get("/api/proxy-download", async (req, res) => {
   } catch (e) { res.status(500).send("Errore interno."); }
 });
 
+// ROUTE FIX DATABASE
 router.get("/api/db-fix-module-cassa", async (req, res) => { try { await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS modulo_cassa BOOLEAN DEFAULT TRUE"); res.send("✅ DB AGGIORNATO"); } catch (e) { res.status(500).send(e.message); } });
 router.get("/api/db-fix-modules-v2", async (req, res) => { try { await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS modulo_menu_digitale BOOLEAN DEFAULT TRUE"); await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS modulo_ordini_clienti BOOLEAN DEFAULT TRUE"); await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS modulo_magazzino BOOLEAN DEFAULT FALSE"); await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS modulo_haccp BOOLEAN DEFAULT FALSE"); await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS modulo_utenti BOOLEAN DEFAULT FALSE"); await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS cassa_full_suite BOOLEAN DEFAULT TRUE"); await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS data_scadenza DATE DEFAULT (CURRENT_DATE + INTERVAL '1 year')"); res.send("✅ DB AGGIORNATO"); } catch (e) { res.status(500).send(e.message); } });
 router.get("/api/db-fix-magazzino-full", async (req, res) => { try { await pool.query(`ALTER TABLE magazzino_prodotti ADD COLUMN IF NOT EXISTS data_bolla DATE DEFAULT CURRENT_DATE, ADD COLUMN IF NOT EXISTS numero_bolla TEXT DEFAULT '', ADD COLUMN IF NOT EXISTS lotto TEXT DEFAULT '', ADD COLUMN IF NOT EXISTS tipo_unita TEXT DEFAULT 'Pz', ADD COLUMN IF NOT EXISTS peso_per_unita NUMERIC(10,3) DEFAULT 1, ADD COLUMN IF NOT EXISTS prezzo_unitario_netto NUMERIC(10,3) DEFAULT 0, ADD COLUMN IF NOT EXISTS aliquota_iva NUMERIC(5,2) DEFAULT 22, ADD COLUMN IF NOT EXISTS valore_totale_netto NUMERIC(12,2) DEFAULT 0, ADD COLUMN IF NOT EXISTS valore_totale_iva NUMERIC(12,2) DEFAULT 0, ADD COLUMN IF NOT EXISTS valore_totale_lordo NUMERIC(12,2) DEFAULT 0;`); res.send("✅ DB AGGIORNATO"); } catch (e) { res.status(500).send(e.message); } });
 router.get("/api/db-fix-menu", async (req, res) => { try { await pool.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS prezzo NUMERIC(10,2) DEFAULT 0"); await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS nascondi_euro BOOLEAN DEFAULT FALSE"); await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS prezzo_coperto NUMERIC(10,2) DEFAULT 0"); await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS url_menu_giorno TEXT DEFAULT ''"); await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS url_menu_pdf TEXT DEFAULT ''"); await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS info_footer TEXT DEFAULT ''"); await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS url_allergeni TEXT DEFAULT ''"); await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS colore_footer_text TEXT DEFAULT '#888888'"); await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS dimensione_footer TEXT DEFAULT '12'"); await pool.query("ALTER TABLE ristoranti ADD COLUMN IF NOT EXISTS allineamento_footer TEXT DEFAULT 'center'"); await pool.query("ALTER TABLE prodotti ADD COLUMN IF NOT EXISTS unita_misura TEXT DEFAULT ''"); await pool.query("ALTER TABLE prodotti ADD COLUMN IF NOT EXISTS qta_minima NUMERIC(10,2) DEFAULT 1"); await pool.query("ALTER TABLE ordini ADD COLUMN IF NOT EXISTS coperti INTEGER DEFAULT 0"); res.send("✅ DB AGGIORNATO"); } catch (e) { res.status(500).send(e.message); } });
 router.get("/api/db-fix-emergency-columns", async (req, res) => { try { const client = await pool.connect(); try { await client.query("ALTER TABLE magazzino_prodotti ADD COLUMN IF NOT EXISTS codice_articolo TEXT DEFAULT ''"); await client.query("ALTER TABLE magazzino_prodotti ADD COLUMN IF NOT EXISTS sconto NUMERIC(5,2) DEFAULT 0"); await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS codice_articolo TEXT DEFAULT ''"); await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS sconto NUMERIC(5,2) DEFAULT 0"); await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS data_documento DATE DEFAULT CURRENT_DATE"); await client.query("ALTER TABLE haccp_merci ADD COLUMN IF NOT EXISTS riferimento_documento TEXT DEFAULT ''"); res.send("✅ DATABASE FIX COMPLETATO"); } finally { client.release(); } } catch (e) { res.status(500).send("Errore: " + e.message); } });
 
-// ✅ DELETE RISTORANTE (FIX TRANSAZIONI ABORTED) 🗑️
+// ✅ DELETE RISTORANTE (FIX TRANSAZIONI ABORTED)
 router.delete('/api/super/ristoranti/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ success: false, error: "ID non valido" });
@@ -454,8 +456,6 @@ router.delete('/api/super/ristoranti/:id', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-
-    // HELPER: usa SAVEPOINT per evitare "Current transaction is aborted"
     const safeDel = async (sql, params) => {
       try {
         await client.query("SAVEPOINT my_savepoint");
@@ -463,14 +463,11 @@ router.delete('/api/super/ristoranti/:id', async (req, res) => {
         await client.query("RELEASE SAVEPOINT my_savepoint");
       } catch (e) {
         await client.query("ROLLBACK TO SAVEPOINT my_savepoint");
-        // Ignoriamo solo se tabella non esiste, altrimenti logghiamo
         if (e.code !== '42P01') console.warn(`⚠️ Warning delete (${sql}): ${e.message}`);
       }
     };
 
     console.log(`🗑️ DELETE Ristorante ID: ${id}`);
-
-    // Pulizia Cascata
     await safeDel('DELETE FROM haccp_merci WHERE ristorante_id = $1', [id]);
     await safeDel('DELETE FROM haccp_temperature WHERE ristorante_id = $1', [id]);
     await safeDel('DELETE FROM haccp_pulizie WHERE ristorante_id = $1', [id]);
@@ -491,11 +488,9 @@ router.delete('/api/super/ristoranti/:id', async (req, res) => {
     }
 
     await client.query('COMMIT');
-    console.log(`✅ Ristorante ID ${id} eliminato.`);
     res.json({ success: true });
   } catch (e) {
     await client.query('ROLLBACK');
-    console.error("❌ Errore delete ristorante:", e);
     res.status(500).json({ success: false, error: e.message });
   } finally {
     client.release();

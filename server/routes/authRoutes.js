@@ -62,6 +62,31 @@ router.get('/api/utenti', async (req, res) => {
     } 
 });
 
+const { sendWA } = require('../utils/whatsappClient');
+
+router.post('/api/register', async (req, res) => {
+    try {
+        const { nome, email, password, telefono, ristorante_id } = req.body;
+        
+        // 1. Genera OTP a 6 cifre
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+        // 2. Inserimento nel DB come NON verificato
+        const r = await pool.query(
+            "INSERT INTO utenti (nome, email, password, telefono, ristorante_id, codice_otp, account_verificato) VALUES ($1, $2, $3, $4, $5, $6, FALSE) RETURNING id",
+            [nome, email, password, telefono, ristorante_id, otp]
+        );
+
+        // 3. Invio WhatsApp
+        const msg = `Ciao ${nome}! Benvenuto su JARVIS. Il tuo codice di verifica è: *${otp}*`;
+        await sendWA(telefono, msg);
+
+        res.json({ success: true, userId: r.rows[0].id, message: "Codice inviato su WhatsApp" });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 // Import Utenti Excel
 router.post('/api/utenti/import/excel', uploadFile.single('file'), async (req, res) => { try { if (!req.file) return res.status(400).json({ error: "File mancante" }); const workbook = xlsx.read(req.file.buffer, { type: 'buffer' }); const sheetName = workbook.SheetNames[0]; const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]); for (const row of data) { const ruolo = row.ruolo || 'cliente'; if(!row.email) continue; const check = await pool.query("SELECT id FROM utenti WHERE email = $1", [row.email]); if (check.rows.length > 0) { await pool.query("UPDATE utenti SET nome=$1, password=$2, telefono=$3, indirizzo=$4, ruolo=$5 WHERE email=$6", [row.nome, row.password, row.telefono, row.indirizzo, ruolo, row.email]); } else { await pool.query("INSERT INTO utenti (nome, email, password, telefono, indirizzo, ruolo) VALUES ($1, $2, $3, $4, $5, $6)", [row.nome, row.email, row.password, row.telefono, row.indirizzo, ruolo]); } } res.json({ success: true, message: "Importazione completata" }); } catch (e) { console.error(e); res.status(500).json({ error: "Errore Import" }); } });
 
