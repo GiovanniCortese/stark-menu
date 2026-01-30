@@ -5,10 +5,10 @@ const pool = require("../config/db");
 const { upload, cloudinary } = require("../config/storage");
 const https = require("https");
 const http = require("http");
+const { sendWA } = require("../utils/whatsappClient");
 
 // --- IMPORTIAMO UTILS ---
 const { getNowItaly } = require("../utils/time");
-const { sendWA } = require("../utils/whatsappClient"); // <--- IMPORTANTE: Il client WhatsApp
 
 // ✅ DB boot: migrazioni automatiche
 (async function ensureDbColumns() {
