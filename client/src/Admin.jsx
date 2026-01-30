@@ -1,4 +1,4 @@
-// client/src/Admin.jsx - VERSIONE V100 (NEW UI: SIDEBAR & DASHBOARD) 🚀
+// client/src/Admin.jsx - VERSIONE V101 (MONITOR SEPARATI: CUCINA, PIZZERIA, BAR) 🚀
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -275,17 +275,20 @@ function Admin() {
         {user.ruolo !== 'editor' && showUtenti && <NavItem id="users" icon="👥" label="Staff" />}
         {user.ruolo !== 'editor' && <NavItem id="security" icon="⚙️" label="Impostazioni" />}
 
-        {/* APPS ESTERNE */}
+        {/* APPS ESTERNE (AGGIORNATO CON MONITOR CUCINA, PIZZERIA, BAR) */}
         <div style={styles.appSection}>
             <div style={styles.appLabel}>Applicazioni</div>
             {showMenu && <AppItem link={`/${slug}`} icon="👁️" label="Visualizza Menu" color="#3498db" />}
             {showCassa && <AppItem link={`/cassa/${slug}`} icon="💰" label="Cassa Smart" color="#9b59b6" />}
+            
             {showFullSuite && (
                 <>
-                    <AppItem link={`/cucina/${slug}`} icon="👨‍🍳" label="KDS Cucina" color="#e67e22" />
+                    <AppItem link={`/cucina/${slug}`} icon="👨‍🍳" label="Monitor Cucina" color="#e67e22" />
+                    <AppItem link={`/pizzeria/${slug}`} icon="🍕" label="Monitor Pizzeria" color="#e74c3c" />
                     <AppItem link={`/bar/${slug}`} icon="🍹" label="Monitor Bar" color="#1abc9c" />
                 </>
             )}
+            
             {showMagazzino && <AppItem link={`/magazzino/${slug}`} icon="📦" label="Magazzino" color="#8e44ad" />}
             {showHaccp && <AppItem link={`/haccp/${slug}`} icon="🛡️" label="HACCP" color="#95a5a6" />}
         </div>
