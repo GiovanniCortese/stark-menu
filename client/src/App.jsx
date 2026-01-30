@@ -1,4 +1,4 @@
-// client/src/App.jsx - VERSIONE V35 (HARD REDIRECT & MODULES) ☢️
+// client/src/App.jsx - VERSIONE V100 (ROUTING COMPLETO & PRENOTAZIONI) 🚦
 import { useEffect, useState } from 'react'; 
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 
@@ -14,6 +14,7 @@ import Menu from './Menu';
 import Dashboard from './Dashboard';
 import Haccp from './Haccp';
 import Magazzino from './Magazzino';
+import BookingPage from './BookingPage'; // <--- NUOVO IMPORT PRENOTAZIONI
 
 // Stili Globali
 import './App.css';
@@ -50,6 +51,9 @@ function App() {
         <Route path="/haccp/:slug" element={<Haccp />} />
         <Route path="/haccp/:slug/scan/:scanId" element={<Haccp />} />
         <Route path="/magazzino/:slug" element={<Magazzino />} />
+
+        {/* --- NUOVA ROTTA PRENOTAZIONI PUBBLICHE --- */}
+        <Route path="/prenota/:slug" element={<BookingPage />} />
 
         {/* --- ROTTA MENU DIGITALE (Public Client) --- */}
         {/* Importante: Questa rotta prende tutto ciò che non è sopra (es. /pizzeria-da-mario) */}
