@@ -7,7 +7,7 @@ import Cucina from './Cucina';
 import Bar from './Bar'; 
 import Pizzeria from './Pizzeria';
 import Cassa from './Cassa'; 
-import Login from './Login';
+import Login from './features/auth/Login'; // <--- AGGIUNGI QUESTO
 import Admin from './Admin';
 import SuperAdmin from './SuperAdmin'; 
 import Menu from './Menu'; 
