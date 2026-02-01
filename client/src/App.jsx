@@ -8,8 +8,8 @@ import Bar from './features/production/Bar';         // <--- NUOVO PERCORSO
 import Pizzeria from './features/production/Pizzeria'; // <--- NUOVO PERCORSO
 import Cassa from './features/pos/Cassa'; // <--- AGGIORNATO ✅ (Era ./Cassa)
 import Login from './features/auth/Login'; // <--- AGGIUNGI QUESTO
-import Admin from './Admin';
-import SuperAdmin from './SuperAdmin'; 
+import Admin from './features/admin/Admin';           // <--- NUOVO
+import SuperAdmin from './features/admin/SuperAdmin'; // <--- NUOVO
 import MenuPage from './features/public-menu/MenuPage'; 
 import BookingPage from './features/public-menu/BookingPage';
 import Dashboard from './Dashboard';
@@ -40,7 +40,7 @@ function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/login" element={<Login />} />
         <Route path="/admin/:slug" element={<Admin />} />
-        <Route path="/super-admin" element={<SuperAdmin />} />
+        <Route path="/super-admin" element={<SuperAdmin />} />    
         
         {/* --- ROTTE OPERATIVE STAFF (KDS & POS) --- */}
         <Route path="/cucina/:slug" element={<Cucina />} />

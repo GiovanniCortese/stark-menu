@@ -1,16 +1,17 @@
-// client/src/Admin.jsx - VERSIONE V101 (MONITOR SEPARATI: CUCINA, PIZZERIA, BAR) 🚀
+// client/src/features/admin/Admin.jsx - VERSIONE V101 (MONITOR SEPARATI: CUCINA, PIZZERIA, BAR) 🚀
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import API_URL from '../../config'; // Import corretto da src/config.js
 
-// *** IMPORTIAMO I SOTTO-COMPONENTI ***
-import AdminMenu from './components_admin/AdminMenu';
-import AdminCategorie from './components_admin/AdminCategorie';
-import AdminGrafica from './components_admin/AdminGrafica';
-import AdminUsers from './components_admin/AdminUsers';
-import AdminSicurezza from './components_admin/AdminSicurezza';
-import AdminDashboard from './components_admin/AdminDashboard';
-import AdminSala from './components_admin/AdminSala';
-import AdminPrenotazioni from './components_admin/AdminPrenotazioni';
+// *** IMPORTIAMO I SOTTO-COMPONENTI (Dalla cartella ./components) ***
+import AdminMenu from './components/AdminMenu';
+import AdminCategorie from './components/AdminCategorie';
+import AdminGrafica from './components/AdminGrafica';
+import AdminUsers from './components/AdminUsers';
+import AdminSicurezza from './components/AdminSicurezza';
+import AdminDashboard from './components/AdminDashboard';
+import AdminSala from './components/AdminSala';
+import AdminPrenotazioni from './components/AdminPrenotazioni';
 
 function Admin() {
   const { slug } = useParams(); 
@@ -54,8 +55,6 @@ function Admin() {
       layout_sala: []
   });
 
-  const API_URL = "https://stark-backend-gg17.onrender.com";
-
   // --- INIZIALIZZAZIONE E CHECK AUTH ---
   useEffect(() => {
     if (!slug) return;
@@ -66,15 +65,17 @@ function Admin() {
         // 1. CHECK SESSIONE E USER
         const sessionKey = `stark_admin_session_${slug}`;
         const hasSession = localStorage.getItem(sessionKey); 
-        const storedUser = localStorage.getItem("user");
+        const storedUser = localStorage.getItem("stark_user"); // Nota: Usiamo "stark_user" come nel Login
         
         let authorized = false;
+        let userData = null;
         
         // Logica di validazione automatica (Local Storage)
         if (storedUser) {
             try {
-                const u = JSON.parse(storedUser);
-                if (u.slug === slug || u.is_god_mode) {
+                userData = JSON.parse(storedUser);
+                // Verifica basica: se l'utente ha ruolo admin/editor/superadmin
+                if (['admin', 'editor', 'superadmin'].includes(userData.ruolo)) {
                     authorized = true;
                     localStorage.setItem(sessionKey, "true");
                 }
@@ -82,8 +83,6 @@ function Admin() {
                 console.error("Errore parsing user localStorage", e);
             }
         }
-
-        if (hasSession === "true") authorized = true;
 
         if (!authorized) {
             navigate('/login');
@@ -93,17 +92,25 @@ function Admin() {
 
         setIsAuthorized(true);
 
-        // Se autorizzato, carichiamo i dati
+        // Se autorizzato, carichiamo i dati freschi dal server
         try {
             const res = await fetch(`${API_URL}/api/menu/${slug}`);
             const data = await res.json();
 
             if (data && data.id) {
+                // Se l'utente nel localStorage non matcha il ristorante corrente (es. Admin di un altro locale)
+                // e non è superadmin, lo buttiamo fuori
+                if (userData.ruolo !== 'superadmin' && parseInt(userData.ristorante_id) !== parseInt(data.id)) {
+                    alert("Non hai i permessi per questo ristorante.");
+                    navigate('/login');
+                    return;
+                }
+
                 setUser({ 
+                    ...userData,
                     id: data.id, 
-                    nome: data.ristorante, 
+                    nome_ristorante: data.ristorante,
                     slug: slug, 
-                    ruolo: data.ruolo || 'admin',
                     layout_sala: data.layout_sala 
                 });
                 setMenu(data.menu || []);
@@ -112,14 +119,17 @@ function Admin() {
                 
                 setConfig(prev => ({
                     ...prev, 
-                    ...data.style,
-                    data_scadenza: data.data_scadenza,
+                    ...data.style, // Unisce stili
+                    ...data,       // Unisce config base
+                    
+                    // Normalizzazione Moduli
                     modulo_cassa: nuoviModuli.cassa ?? data.modulo_cassa ?? true,
                     modulo_menu_digitale: nuoviModuli.menu_digitale ?? data.modulo_menu_digitale ?? true,
                     modulo_ordini_clienti: nuoviModuli.ordini_clienti ?? data.modulo_ordini_clienti ?? true,
                     modulo_magazzino: nuoviModuli.magazzino ?? data.modulo_magazzino,
                     modulo_haccp: nuoviModuli.haccp ?? data.modulo_haccp,
                     modulo_utenti: nuoviModuli.utenti ?? data.modulo_utenti,
+                    
                     cucina_super_active: data.cucina_super_active, 
                     cassa_full_suite: data.cassa_full_suite ?? data.cucina_super_active ?? true, 
                     ordini_abilitati: data.ordini_abilitati,
@@ -145,6 +155,7 @@ function Admin() {
   }, [slug, navigate]);
 
   const caricaConfigurazioniExtra = (id) => {
+    // 1. Configurazione Dettagliata
     fetch(`${API_URL}/api/ristorante/config/${id}`)
         .then(r=>r.json())
         .then(d => {
@@ -152,31 +163,34 @@ function Admin() {
             if(d.layout_sala) setUser(u => ({...u, layout_sala: d.layout_sala}));
         }); 
     
+    // 2. Categorie
     fetch(`${API_URL}/api/categorie/${id}`)
         .then(res => res.json())
         .then(data => {
-            const sorted = data.sort((a,b) => (a.posizione || 0) - (b.posizione || 0));
+            const sorted = Array.isArray(data) ? data.sort((a,b) => (a.ordine_visualizzazione || 0) - (b.ordine_visualizzazione || 0)) : [];
             setCategorie(sorted);
         });
   };
 
   const ricaricaDati = () => {
       if(!user) return;
+      // Ricarica Menu
       fetch(`${API_URL}/api/menu/${slug}`).then(r=>r.json()).then(d=>{if(d.menu) setMenu(d.menu)});
+      // Ricarica Categorie
       fetch(`${API_URL}/api/categorie/${user.id}`).then(r=>r.json()).then(data => {
-          const sorted = data.sort((a,b) => (a.posizione || 0) - (b.posizione || 0));
+          const sorted = Array.isArray(data) ? data.sort((a,b) => (a.ordine_visualizzazione || 0) - (b.ordine_visualizzazione || 0)) : [];
           setCategorie(sorted);
       });
+      // Ricarica Config
       fetch(`${API_URL}/api/ristorante/config/${user.id}`).then(r=>r.json()).then(d => {
         if(d) setConfig(prev => ({...prev, ...d}));
       });
   };
 
   const handleLogout = () => { 
-      if(confirm("Uscire dal pannello?")) { 
+      if(window.confirm("Uscire dal pannello?")) { 
           localStorage.removeItem(`stark_admin_session_${slug}`); 
-          localStorage.removeItem("user");
-          localStorage.removeItem("admin_token");
+          localStorage.removeItem("stark_user");
           navigate('/login'); 
       } 
   };
@@ -185,13 +199,16 @@ function Admin() {
 
   // --- LOADER & CHECKS ---
   if (loading) return <div style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', fontSize:'1.2rem', color:'#666'}}>🔄 Caricamento Admin...</div>;
+  
   if (!isAuthorized) return null;
+  
   if (config.account_attivo === false) {
       return (
           <div style={{display:'flex', justifyContent:'center', alignItems:'center', minHeight:'100vh', flexDirection:'column', padding:'20px', textAlign:'center'}}>
               <h1 style={{fontSize:'4rem', margin:0}}>⛔</h1>
               <h2 style={{color:'#e74c3c'}}>Abbonamento Sospeso</h2>
-              <button onClick={handleLogout} style={{marginTop:20, padding:'10px 20px'}}>Esci</button>
+              <p>Contatta l'amministrazione per riattivare il servizio.</p>
+              <button onClick={handleLogout} style={{marginTop:20, padding:'10px 20px', background:'#333', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>Esci</button>
           </div>
       );
   }
@@ -199,7 +216,7 @@ function Admin() {
   // --- VARIABILI VISIBILITÀ ---
   const showCassa = config.modulo_cassa === true; 
   const showMenu = config.modulo_menu_digitale !== false;
-  const showUtenti = config.modulo_utenti === true;
+  const showUtenti = config.modulo_utenti === true || user.ruolo === 'superadmin';
   const showMagazzino = config.modulo_magazzino === true;
   const showHaccp = config.modulo_haccp === true;
   const showFullSuite = config.cassa_full_suite === true; 
@@ -219,7 +236,7 @@ function Admin() {
       }
   };
 
-  // --- STILI INTERNI (FALLBACK SE NON HAI APP.CSS) ---
+  // --- STILI INTERNI (FALLBACK) ---
   const styles = {
       container: { display: 'flex', height: '100vh', width: '100vw', background: '#f3f4f6', overflow: 'hidden' },
       sidebar: { width: '260px', background: '#1e293b', color: 'white', display: 'flex', flexDirection: 'column', padding: '20px', boxShadow: '4px 0 10px rgba(0,0,0,0.1)', overflowY: 'auto' },
@@ -255,7 +272,7 @@ function Admin() {
       {/* 1. SIDEBAR NAVIGATION */}
       <div style={styles.sidebar}>
         <div style={styles.logo}>
-            ⚡ {user.nome}
+            ⚡ {user?.nome_ristorante || "Admin"}
         </div>
 
         {/* GESTIONE */}
@@ -272,10 +289,14 @@ function Admin() {
 
         {user.ruolo !== 'editor' && <NavItem id="sala" icon="📐" label="Sala & Mappa" />}
         
-        {user.ruolo !== 'editor' && showUtenti && <NavItem id="users" icon="👥" label="Staff" />}
+        {/* Mostra gestione utenti se modulo attivo o se l'utente è admin/superadmin */}
+        {(showUtenti || user.ruolo === 'admin' || user.ruolo === 'superadmin') && user.ruolo !== 'editor' && (
+            <NavItem id="users" icon="👥" label="Staff" />
+        )}
+        
         {user.ruolo !== 'editor' && <NavItem id="security" icon="⚙️" label="Impostazioni" />}
 
-        {/* APPS ESTERNE (AGGIORNATO CON MONITOR CUCINA, PIZZERIA, BAR) */}
+        {/* APPS ESTERNE (KDS SEPARATI) */}
         <div style={styles.appSection}>
             <div style={styles.appLabel}>Applicazioni</div>
             {showMenu && <AppItem link={`/${slug}`} icon="👁️" label="Visualizza Menu" color="#3498db" />}
@@ -294,7 +315,10 @@ function Admin() {
         </div>
 
         <div style={{marginTop:'auto', paddingTop: 20}}>
-             <button onClick={handleLogout} style={{width:'100%', background:'#c0392b', color:'white', border:'none', padding:10, borderRadius:6}}>
+             <div style={{fontSize:12, color:'#64748b', marginBottom:10}}>
+                 Loggato come: <b>{user.nome || "Utente"}</b>
+             </div>
+             <button onClick={handleLogout} style={{width:'100%', background:'#c0392b', color:'white', border:'none', padding:10, borderRadius:6, cursor:'pointer'}}>
                  🚪 Logout
              </button>
         </div>
@@ -309,10 +333,10 @@ function Admin() {
               <div style={{display:'flex', alignItems:'center', gap:15}}>
                   <div style={{textAlign:'right'}}>
                       <div style={{fontWeight:'bold', color:'#333'}}>{user.nome}</div>
-                      <div style={{fontSize:'0.8rem', color:'#888'}}>{user.ruolo === 'admin' ? 'Amministratore' : 'Editor'}</div>
+                      <div style={{fontSize:'0.8rem', color:'#888', textTransform:'capitalize'}}>{user.ruolo}</div>
                   </div>
                   <div style={{width:40, height:40, borderRadius:'50%', background:'#ff9f43', color:'white', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:'bold', fontSize:'1.2rem'}}>
-                      {user.nome.charAt(0)}
+                      {user.nome ? user.nome.charAt(0).toUpperCase() : "U"}
                   </div>
               </div>
           </header>
@@ -320,7 +344,7 @@ function Admin() {
           {/* DYNAMIC CONTENT AREA */}
           <div style={styles.content}>
             
-            {/* WRAPPER BIANCO PER IL CONTENUTO */}
+            {/* CONTENITORE COMPONENTI */}
             <div style={{background:'white', borderRadius:'12px', padding:'25px', boxShadow:'0 2px 10px rgba(0,0,0,0.03)', minHeight:'100%'}}>
                 
                 {tab === 'dashboard' && user.ruolo !== 'editor' && (
@@ -329,15 +353,21 @@ function Admin() {
 
                 {tab === 'prenotazioni' && <AdminPrenotazioni user={user} config={config} API_URL={API_URL} />}
 
-                {tab === 'menu' && showMenu && <AdminMenu user={user} menu={menu} setMenu={setMenu} categorie={categorie} config={config} setConfig={setConfig} API_URL={API_URL} ricaricaDati={ricaricaDati} />}
+                {tab === 'menu' && showMenu && (
+                    <AdminMenu user={user} menu={menu} setMenu={setMenu} categorie={categorie} config={config} setConfig={setConfig} API_URL={API_URL} ricaricaDati={ricaricaDati} />
+                )}
                 
-                {tab === 'categorie' && showMenu && <AdminCategorie user={user} categorie={categorie} setCategorie={setCategorie} API_URL={API_URL} ricaricaDati={ricaricaDati} />}
+                {tab === 'categorie' && showMenu && (
+                    <AdminCategorie user={user} categorie={categorie} setCategorie={setCategorie} API_URL={API_URL} ricaricaDati={ricaricaDati} />
+                )}
                 
-                {tab === 'style' && showMenu && <AdminGrafica user={user} config={config} setConfig={setConfig} API_URL={API_URL} />}
+                {tab === 'style' && showMenu && (
+                    <AdminGrafica user={user} config={config} setConfig={setConfig} API_URL={API_URL} />
+                )}
                 
                 {tab === 'sala' && <AdminSala user={user} API_URL={API_URL} />}
                 
-                {tab === 'users' && showUtenti && <AdminUsers API_URL={API_URL} user={user} />}
+                {tab === 'users' && <AdminUsers API_URL={API_URL} user={user} />}
                 
                 {tab === 'security' && <AdminSicurezza user={user} API_URL={API_URL} />}
             </div>

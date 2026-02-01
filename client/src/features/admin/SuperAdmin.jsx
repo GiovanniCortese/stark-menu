@@ -1,11 +1,11 @@
-// client/src/SuperAdmin.jsx - VERSIONE V100 (NEW UI + LIDI & PIN MODE) 🚀
+// client/src/features/admin/SuperAdmin.jsx - VERSIONE V100 (NEW UI + LIDI & PIN MODE) 🚀
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
+import API_URL from '../../config'; // Import centralizzato
 
 function SuperAdmin() {
   const navigate = useNavigate();
-  const API_URL = "https://stark-backend-gg17.onrender.com";
 
   // --- STATI DI NAVIGAZIONE & UI ---
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'ristoranti', 'utenti'
@@ -115,7 +115,7 @@ function SuperAdmin() {
   };
 
   const logout = () => { 
-      if (confirm("Uscire dal J.A.R.V.I.S.?")) { localStorage.removeItem("super_admin_token"); setAuthorized(false); } 
+      if (window.confirm("Uscire dal J.A.R.V.I.S.?")) { localStorage.removeItem("super_admin_token"); setAuthorized(false); } 
   };
 
   // --- LOGICA RISTORANTI ---
@@ -152,7 +152,7 @@ function SuperAdmin() {
   };
 
   const handleElimina = async (id, nome) => { 
-      if(!confirm(`⚠️ ATTENZIONE: Eliminare definitivamente "${nome}" e tutti i suoi dati?`)) return; 
+      if(!window.confirm(`⚠️ ATTENZIONE: Eliminare definitivamente "${nome}" e tutti i suoi dati?`)) return; 
       try { await fetch(`${API_URL}/api/super/ristoranti/${id}`, { method: 'DELETE' }); caricaDati(); } catch(err) { alert("Errore cancellazione"); } 
   };
 
@@ -161,8 +161,8 @@ function SuperAdmin() {
       localStorage.setItem("superadmin_target_id", String(r.id));
       localStorage.setItem("superadmin_target_slug", r.slug);
       localStorage.setItem("superadmin_target_nome", r.nome);
-      localStorage.setItem("user", JSON.stringify({
-          id: r.id, nome: r.nome, slug: r.slug, email: r.email, ruolo: 'admin', is_god_mode: true
+      localStorage.setItem("stark_user", JSON.stringify({
+          id: r.id, nome: r.nome, slug: r.slug, email: r.email, ruolo: 'admin', is_god_mode: true, ristorante_id: r.id
       }));
       window.open(`/login`, "_blank");
   };
@@ -243,7 +243,7 @@ function SuperAdmin() {
       } catch (err) { alert("Errore connessione"); }
   };
 
-  const handleDeleteUser = async (id, nome) => { if (!confirm(`Eliminare "${nome}"?`)) return; try { await fetch(`${API_URL}/api/utenti/${id}`, { method: 'DELETE' }); caricaDati(); } catch (err) { alert("Errore"); } };
+  const handleDeleteUser = async (id, nome) => { if (!window.confirm(`Eliminare "${nome}"?`)) return; try { await fetch(`${API_URL}/api/utenti/${id}`, { method: 'DELETE' }); caricaDati(); } catch (err) { alert("Errore"); } };
   
   // EXPORT / IMPORT
   const exportExcel = () => {
