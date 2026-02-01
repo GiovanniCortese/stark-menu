@@ -26,7 +26,7 @@ app.use('/', require('./modules/auth/auth.routes'));
 app.use('/', require('./modules/auth/auth.routes'));
 app.use('/', require('./modules/menu/menu.routes'));
 app.use('/', require('./modules/orders/orders.routes')); // <--- NUOVO MODULO ATTIVATO ✅
-app.use('/', require('./routes/haccpRoutes'));
+app.use('/', require('./modules/haccp/haccp.routes')); // <--- NUOVO MODULO ATTIVATO ✅
 app.use('/', require('./routes/adminRoutes'));
 
 // --- START ---
