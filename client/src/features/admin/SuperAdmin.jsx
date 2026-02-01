@@ -1,11 +1,13 @@
-// client/src/features/admin/SuperAdmin.jsx - VERSIONE V101 (MODULAR & CONFIG FIX) 🚀
+// client/src/features/admin/SuperAdmin.jsx - VERSIONE V102 (STABLE & SYNCED) 🚀
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
-import API_URL from '../../config'; // Import corretto da src/config.js
 
 function SuperAdmin() {
   const navigate = useNavigate();
+  
+  // Definiamo URL qui per coerenza con Admin.jsx e per evitare errori di import mancanti
+  const API_URL = "https://stark-backend-gg17.onrender.com"; 
 
   // --- STATI DI NAVIGAZIONE & UI ---
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'ristoranti', 'utenti'
@@ -161,9 +163,12 @@ function SuperAdmin() {
       localStorage.setItem("superadmin_target_id", String(r.id));
       localStorage.setItem("superadmin_target_slug", r.slug);
       localStorage.setItem("superadmin_target_nome", r.nome);
-      localStorage.setItem("stark_user", JSON.stringify({
+      
+      // FIX CRITICO: Usiamo "user" invece di "stark_user" perché Admin.jsx legge "user"
+      localStorage.setItem("user", JSON.stringify({
           id: r.id, nome: r.nome, slug: r.slug, email: r.email, ruolo: 'admin', is_god_mode: true, ristorante_id: r.id
       }));
+      
       window.open(`/login`, "_blank");
   };
 
