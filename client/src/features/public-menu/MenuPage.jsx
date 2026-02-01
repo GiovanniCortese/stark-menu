@@ -1,17 +1,19 @@
-// client/src/components/menu/MenuPage.jsx - VERSIONE V94 (RACE CONDITION FIX) 🛡️
+// client/src/features/public-menu/MenuPage.jsx - VERSIONE V94 (RACE CONDITION FIX & PIN MODE) 🛡️
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { dictionary, flags } from "../../translations";
-import { updateMetaTags } from "./menuUtils";
+import { dictionary, flags } from "../../translations"; // Percorso corretto
+import API_URL from '../../config'; // Percorso corretto
 
-import MenuHeaderCover from "./MenuHeaderCover";
-import MenuAccordion from "./MenuAccordion";
-import MenuFooter from "./MenuFooter";
-import FileModal from "./FileModal";
-import AuthModal from "./AuthModal";
-import DishModal from "./DishModal";
-import CartBar from "./CartBar";
-import Checkout from "./Checkout";
+// Import Componenti dalla sottocartella components
+import { updateMetaTags } from "./components/menuUtils";
+import MenuHeaderCover from "./components/MenuHeaderCover";
+import MenuAccordion from "./components/MenuAccordion";
+import MenuFooter from "./components/MenuFooter";
+import FileModal from "./components/FileModal";
+import AuthModal from "./components/AuthModal";
+import DishModal from "./components/DishModal";
+import CartBar from "./components/CartBar";
+import Checkout from "./components/Checkout";
 
 // --- COMPONENTE INTERNO: MODALE PIN ---
 const PinLoginModal = ({ show, onClose, onVerify, errorMsg }) => {
@@ -60,8 +62,6 @@ export default function MenuPage() {
   const [searchParams] = useSearchParams();
   const numeroTavoloUrl = searchParams.get("tavolo"); 
 
-  const API_URL = "https://stark-backend-gg17.onrender.com";
-
   const [menu, setMenu] = useState([]);
   const [ristorante, setRistorante] = useState("");
   const [ristoranteId, setRistoranteId] = useState(null);
@@ -108,7 +108,7 @@ export default function MenuPage() {
     fetch(`${API_URL}/api/menu/${currentSlug}`)
       .then((res) => { if (!res.ok) throw new Error("Errore caricamento"); return res.json(); })
       .then((data) => {
-        setRistoranteId(data.id); // <--- FONDAMENTALE: Setta l'ID
+        setRistoranteId(data.id); 
         setRistorante(data.ristorante);
         setMenu(data.menu || []);
         setStyle(data.style || {});
@@ -116,7 +116,7 @@ export default function MenuPage() {
         if (data.subscription_active === false) setIsSuspended(true);
         if (data.moduli && data.moduli.menu_digitale === false) setIsMenuDisabled(true);
 
-        // Attiva Pin Mode ma NON controlla ancora la sessione (lo fa il useEffect sotto)
+        // Attiva Pin Mode ma NON controlla ancora la sessione
         if (data.pin_mode === true) {
             setPinMode(true);
         }
@@ -148,9 +148,7 @@ export default function MenuPage() {
   }, [currentSlug]);
 
   // 2. CHECK SESSIONE SICURO (ASPETTA RISTORANTE_ID)
-  // Questo useEffect parte solo quando ristoranteId è valorizzato, evitando l'errore "PIN Scaduto" prematuro.
   useEffect(() => {
-      // Se non abbiamo ancora l'ID o il pin mode non è attivo, fermati.
       if (!ristoranteId || !pinMode) return;
 
       const savedSession = localStorage.getItem(`session_${currentSlug}`);
@@ -171,7 +169,7 @@ export default function MenuPage() {
                       setActivePinSession(parsed.pin);
                       setNumCoperti(check.tavolo.coperti || 1);
                   } else {
-                      // Sessione Scaduta -> Pulizia silenziosa
+                      // Sessione Scaduta -> Pulizia
                       console.log("Sessione scaduta, reset.");
                       localStorage.removeItem(`session_${currentSlug}`);
                       setActiveTableSession(null);
@@ -183,7 +181,7 @@ export default function MenuPage() {
               localStorage.removeItem(`session_${currentSlug}`);
           }
       }
-  }, [ristoranteId, pinMode, currentSlug]); // Dipendenze critiche
+  }, [ristoranteId, pinMode, currentSlug]);
 
   // --- FUNZIONI UTILS ---
   const cambiaLingua = (l) => { setLang(l); setShowLangMenu(false); };

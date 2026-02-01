@@ -6,15 +6,16 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Cucina from './features/production/Cucina';   // <--- NUOVO PERCORSO
 import Bar from './features/production/Bar';         // <--- NUOVO PERCORSO
 import Pizzeria from './features/production/Pizzeria'; // <--- NUOVO PERCORSO
-import Cassa from './Cassa'; 
+import Cassa from './features/pos/Cassa'; // <--- AGGIORNATO ✅ (Era ./Cassa)
 import Login from './features/auth/Login'; // <--- AGGIUNGI QUESTO
 import Admin from './Admin';
 import SuperAdmin from './SuperAdmin'; 
-import Menu from './Menu'; 
+import MenuPage from './features/public-menu/MenuPage'; 
+import BookingPage from './features/public-menu/BookingPage';
 import Dashboard from './Dashboard';
 import Haccp from './Haccp';
 import Magazzino from './Magazzino';
-import BookingPage from './BookingPage'; // <--- NUOVO IMPORT PRENOTAZIONI
+
 
 // Stili Globali
 import './App.css';
@@ -57,7 +58,7 @@ function App() {
 
         {/* --- ROTTA MENU DIGITALE (Public Client) --- */}
         {/* Importante: Questa rotta prende tutto ciò che non è sopra (es. /pizzeria-da-mario) */}
-        <Route path="/:slug" element={<Menu />} />
+        <Route path="/:slug" element={<MenuPage />} />
       </Routes>
     </BrowserRouter>
   );
