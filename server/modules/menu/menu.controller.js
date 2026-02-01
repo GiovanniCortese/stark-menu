@@ -2,16 +2,15 @@
 const pool = require('../../config/db');
 const { analyzeImageWithGemini, generateTextWithGemini } = require('../../utils/ai');
 
-// --- 1. MENU PUBBLICO (Quello che vede il cliente) ---
+// --- 1. MENU PUBBLICO (Vista Cliente) ---
 exports.getMenuBySlug = async (req, res) => {
     try {
-        // Recupera info ristorante
         const rist = await pool.query('SELECT * FROM ristoranti WHERE slug = $1', [req.params.slug]);
         if (rist.rows.length === 0) return res.status(404).json({ error: "Ristorante non trovato" });
         
         let data = rist.rows[0];
 
-        // LOGICA SCADENZA (Importante!)
+        // LOGICA SCADENZA
         if (data.data_scadenza) {
             const oggi = new Date();
             const scadenza = new Date(data.data_scadenza);
@@ -27,7 +26,6 @@ exports.getMenuBySlug = async (req, res) => {
 
         if (!data.account_attivo) return res.status(403).json({ error: "Menu disattivato o scaduto" });
 
-        // Recupera Menu Completo (Categorie + Prodotti)
         const menuQuery = `
             SELECT p.*, c.nome as categoria_nome, c.ordine_visualizzazione, c.is_bar, c.is_pizzeria
             FROM prodotti p
@@ -37,14 +35,35 @@ exports.getMenuBySlug = async (req, res) => {
         `;
         const menu = await pool.query(menuQuery, [data.id]);
 
-        // Unisce tutto in un oggetto
-        res.json({
-            ...data,
-            menu: menu.rows
-        });
+        res.json({ ...data, menu: menu.rows });
     } catch (e) {
         console.error(e);
         res.status(500).json({ error: "Errore server" });
+    }
+};
+
+// --- 1.5 MENU ADMIN (Dashboard Gestione) ---
+// Questa funzione recupera TUTTO (anche i prodotti non visibili) per l'editing
+exports.getAdminMenu = async (req, res) => {
+    try {
+        const { ristorante_id } = req.query; // Il frontend deve passare ?ristorante_id=123
+        
+        if (!ristorante_id) return res.status(400).json({ error: "ID Ristorante mancante" });
+
+        // Recuperiamo prodotti e categorie per la gestione
+        const menuQuery = `
+            SELECT p.*, c.nome as categoria_nome, c.ordine_visualizzazione
+            FROM prodotti p
+            LEFT JOIN categorie c ON p.categoria_id = c.id
+            WHERE p.ristorante_id = $1
+            ORDER BY c.ordine_visualizzazione ASC, p.id ASC
+        `;
+        const menu = await pool.query(menuQuery, [ristorante_id]);
+        
+        res.json(menu.rows);
+    } catch (e) {
+        console.error("Errore Admin Menu:", e);
+        res.status(500).json({ error: e.message });
     }
 };
 
@@ -59,18 +78,14 @@ exports.getCategorie = async (req, res) => {
 exports.saveCategoria = async (req, res) => {
     try {
         const { id, ristorante_id, nome, descrizione, is_bar, is_pizzeria, varianti_default } = req.body;
-        
-        // Converti varianti in JSON string se è un oggetto
         const variantiStr = typeof varianti_default === 'object' ? JSON.stringify(varianti_default) : varianti_default;
 
         if (id) {
-            // UPDATE
             await pool.query(
                 "UPDATE categorie SET nome=$1, descrizione=$2, is_bar=$3, is_pizzeria=$4, varianti_default=$5 WHERE id=$6",
                 [nome, descrizione, is_bar, is_pizzeria, variantiStr, id]
             );
         } else {
-            // INSERT
             await pool.query(
                 "INSERT INTO categorie (ristorante_id, nome, descrizione, is_bar, is_pizzeria, varianti_default) VALUES ($1, $2, $3, $4, $5, $6)",
                 [ristorante_id, nome, descrizione, is_bar, is_pizzeria, variantiStr]
@@ -104,7 +119,6 @@ exports.saveProdotto = async (req, res) => {
         const { id, ristorante_id, categoria_id, nome, descrizione, prezzo, varianti, allergeni } = req.body;
         const foto_url = req.file ? req.file.path : req.body.foto_url;
 
-        // Parsing sicuro JSON
         const varJson = typeof varianti === 'object' ? JSON.stringify(varianti) : varianti;
         const allJson = typeof allergeni === 'object' ? JSON.stringify(allergeni) : allergeni;
 
@@ -142,10 +156,8 @@ exports.translateMenu = async (req, res) => {
 
     const client = await pool.connect();
     try {
-        // Recupera tutto il menu
         const menu = await client.query("SELECT id, nome, descrizione, ingredienti_base FROM prodotti WHERE ristorante_id = $1", [ristorante_id]);
         
-        // Prepara Prompt per Gemini
         const itemsToTranslate = menu.rows.map(p => ({
             id: p.id,
             nome: p.nome,
@@ -158,14 +170,11 @@ exports.translateMenu = async (req, res) => {
         Mantieni i nomi propri italiani se intraducibili.
         Ecco i dati: ${JSON.stringify(itemsToTranslate)}`;
 
-        // Chiama AI
         const translatedText = await generateTextWithGemini(prompt);
         
-        // Pulizia risposta AI (toglie markdown ```json)
         const cleanJson = translatedText.replace(/```json/g, '').replace(/```/g, '').trim();
         const translations = JSON.parse(cleanJson);
 
-        // Aggiorna DB
         await client.query('BEGIN');
         for (const t of translations) {
             await client.query(
@@ -173,7 +182,6 @@ exports.translateMenu = async (req, res) => {
                 [JSON.stringify(t), t.id]
             );
         }
-        // Aggiorna anche l'array 'lingue_disponibili' nel ristorante se vuoi, o lo deduci dal frontend
         
         await client.query('COMMIT');
         res.json({ success: true, count: translations.length });

@@ -2,9 +2,11 @@
 const express = require('express');
 const router = express.Router();
 const menuController = require('./menu.controller');
-const { upload } = require('../../config/storage'); // Assicurati che config/storage esista (Cloudinary/Multer)
+const { upload } = require('../../config/storage'); 
 
-// --- PUBLIC MENU ---
+// --- PUBLIC MENU & ADMIN FETCH ---
+// ⚠️ IMPORTANTE: La rotta 'admin' DEVE stare prima di ':slug'
+router.get('/api/menu/admin', menuController.getAdminMenu); 
 router.get('/api/menu/:slug', menuController.getMenuBySlug);
 
 // --- CATEGORIE ---
@@ -14,7 +16,6 @@ router.delete('/api/categorie/:id', menuController.deleteCategoria);
 router.post('/api/categorie/reorder', menuController.reorderCategorie);
 
 // --- PRODOTTI ---
-// Nota: 'photo' è il nome del campo nel form-data del frontend
 router.post('/api/prodotti', upload.single('photo'), menuController.saveProdotto);
 router.delete('/api/prodotti/:id', menuController.deleteProdotto);
 
