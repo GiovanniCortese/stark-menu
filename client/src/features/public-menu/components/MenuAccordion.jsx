@@ -1,7 +1,7 @@
 // client/src/components/menu/MenuAccordion.jsx
 import React from "react";
 import ProductCard from "./ProductCard";
-import { getContent } from "../../translations";
+import { getContent } from "../../../translations";
 
 export default function MenuAccordion({
   menu,

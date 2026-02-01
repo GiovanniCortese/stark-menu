@@ -1,7 +1,7 @@
 // client/src/components/menu/ProductCard.jsx
 import React from "react";
 import { getSafeVariants, getSafeAllergeni, getSafeCatVariants } from "./menuUtils";
-import { getContent } from "../../translations";
+import { getContent } from "../../../translations";
 
 export default function ProductCard({
   prodotto,
