@@ -1,7 +1,7 @@
 // client/src/features/auth/Login.jsx
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import API_URL from "../../../config"; // Nota: siamo scesi di 3 livelli
+import API_URL from "../../config";
 
 function Login() {
   const [email, setEmail] = useState("");
