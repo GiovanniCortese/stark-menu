@@ -3,9 +3,9 @@ import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 
 // Importazione Componenti Pagine
-import Cucina from './Cucina';
-import Bar from './Bar'; 
-import Pizzeria from './Pizzeria';
+import Cucina from './features/production/Cucina';   // <--- NUOVO PERCORSO
+import Bar from './features/production/Bar';         // <--- NUOVO PERCORSO
+import Pizzeria from './features/production/Pizzeria'; // <--- NUOVO PERCORSO
 import Cassa from './Cassa'; 
 import Login from './features/auth/Login'; // <--- AGGIUNGI QUESTO
 import Admin from './Admin';
