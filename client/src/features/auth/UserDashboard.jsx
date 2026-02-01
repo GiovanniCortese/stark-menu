@@ -1,12 +1,14 @@
-// client/src/features/public-menu/UserDashboard.jsx - VERSIONE V109 (CLIENTE + SOCKET) 👤
+// client/src/features/auth/UserDashboard.jsx - VERSIONE V110 (FIX PATHS & AUTH KEY) 🔧
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useSocket } from '../../context/SocketContext'; // <--- USIAMO I SOCKET
-import API_URL from '../../config';
+import { useSocket } from '../../context/SocketContext'; 
 
 function UserDashboard() {
   const navigate = useNavigate();
   const { socket } = useSocket();
+
+  // DEFINIZIONE URL DIRETTA (Per evitare errori di import)
+  const API_URL = "https://stark-backend-gg17.onrender.com";
 
   // --- STATI ---
   const [user, setUser] = useState(null);
@@ -18,30 +20,41 @@ function UserDashboard() {
 
   // 1. INIT & AUTH CHECK
   useEffect(() => {
-    const saved = localStorage.getItem('user'); // Nota: Standardizziamo su 'user'
-    if (!saved) { navigate('/login'); return; }
+    // FIX: Controlla sia 'stark_user' (vecchio) che 'user' (nuovo)
+    const saved = localStorage.getItem('stark_user') || localStorage.getItem('user');
     
-    const u = JSON.parse(saved);
-    setUser(u);
-    setFormProfile({ nome: u.nome, email: u.email, telefono: u.telefono, indirizzo: u.indirizzo, password: '' });
+    if (!saved) { 
+        navigate('/login'); 
+        return; 
+    }
     
-    // Carica dati iniziali
-    fetchStats(u.id);
-    fetchOrders(u.id);
-    setLoading(false);
+    try {
+        const u = JSON.parse(saved);
+        setUser(u);
+        setFormProfile({ nome: u.nome || '', email: u.email || '', telefono: u.telefono || '', indirizzo: u.indirizzo || '', password: '' });
+        
+        // Carica dati iniziali
+        fetchStats(u.id);
+        fetchOrders(u.id);
+    } catch (e) {
+        console.error("Errore parsing utente", e);
+        navigate('/login');
+    } finally {
+        setLoading(false);
+    }
   }, []);
 
-  // 2. SOCKET LISTENER (Sostituisce il polling)
+  // 2. SOCKET LISTENER
   useEffect(() => {
     if (!socket || !user) return;
 
     const handleUpdate = () => {
-        console.log("👤 DASHBOARD CLIENTE: Aggiornamento ordine ricevuto");
-        fetchOrders(user.id); // Ricarica solo gli ordini quando serve
+        console.log("👤 DASHBOARD: Aggiornamento ordine ricevuto");
+        fetchOrders(user.id); 
     };
 
     socket.on('refresh_ordini', handleUpdate);
-    socket.on('nuovo_ordine', handleUpdate); // Ascolta anche nuovi ordini del tavolo
+    socket.on('nuovo_ordine', handleUpdate);
 
     return () => {
         socket.off('refresh_ordini', handleUpdate);
@@ -59,7 +72,7 @@ function UserDashboard() {
   };
 
   const fetchOrders = async (id) => {
-      const savedTavolo = localStorage.getItem('last_tavolo'); // Se il cliente è seduto
+      const savedTavolo = localStorage.getItem('last_tavolo');
       try {
         const res = await fetch(`${API_URL}/api/cliente/ordini/${id}?tavolo=${savedTavolo || ''}`);
         const data = await res.json();
@@ -78,7 +91,9 @@ function UserDashboard() {
           });
           if(res.ok) {
               const updated = await res.json();
+              // Aggiorna sia user che stark_user per coerenza
               localStorage.setItem('user', JSON.stringify(updated));
+              localStorage.setItem('stark_user', JSON.stringify(updated));
               setUser(updated);
               alert("✅ Profilo aggiornato!");
           } else {
@@ -89,6 +104,7 @@ function UserDashboard() {
 
   const logout = () => {
       localStorage.removeItem('user');
+      localStorage.removeItem('stark_user');
       localStorage.removeItem('token');
       navigate('/');
   };
@@ -111,7 +127,7 @@ function UserDashboard() {
       ));
   };
 
-  if(loading) return <div style={{color:'white', padding:20}}>Caricamento profilo...</div>;
+  if(loading) return <div style={{color:'white', padding:20, background:'#0f1011', minHeight:'100vh'}}>Caricamento...</div>;
 
   return (
     <div style={{minHeight:'100vh', background:'#0f1011', color:'white', fontFamily:'sans-serif', paddingBottom:80}}>
@@ -183,17 +199,14 @@ function UserDashboard() {
   );
 }
 
-// Sotto-componente per visualizzare i prodotti raggruppati (preso dalla logica Dashboard originale)
+// Sotto-componente Helper
 function OrderItems({ products, isHistory }) {
-    // Logica per raggruppare i prodotti per portata
     const courseOrder = { antipasti: 1, primi: 2, secondi: 3, pizze: 4, contorni: 5, dessert: 6, bevande: 7 };
     const courseLabels = { antipasti: 'Antipasti', primi: 'Primi', secondi: 'Secondi', pizze: 'Pizze', contorni: 'Contorni', dessert: 'Dessert', bevande: 'Bar / Bevande' };
     
-    // Raggruppa
     const grouped = {};
     products.forEach(p => {
         let c = (p.categoria || 'altro').toLowerCase();
-        // Semplice normalizzazione
         if(c.includes('antipast')) c='antipasti';
         else if(c.includes('prim')) c='primi';
         else if(c.includes('second')) c='secondi';
@@ -204,7 +217,6 @@ function OrderItems({ products, isHistory }) {
         grouped[c].push(p);
     });
 
-    // Ordina chiavi
     const sortedKeys = Object.keys(grouped).sort((a,b) => (courseOrder[a]||99) - (courseOrder[b]||99));
 
     return (
@@ -234,7 +246,6 @@ function OrderItems({ products, isHistory }) {
     );
 }
 
-// Styles
 const tabStyle = { flex:1, padding:15, background:'transparent', border:'none', cursor:'pointer', fontSize:14, fontWeight:'bold' };
 const inputStyle = { width:'100%', padding:12, borderRadius:8, background:'#333', border:'1px solid #444', color:'white', boxSizing:'border-box' };
 
