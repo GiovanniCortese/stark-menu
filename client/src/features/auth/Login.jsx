@@ -1,7 +1,6 @@
-// client/src/features/auth/Login.jsx - VERSIONE V103 (STILE MODERNO & GOD MODE FIX) 🔐
+// client/src/features/auth/Login.jsx - VERSIONE V103 (STILE MODERNO & COMPATIBILE) 🔐
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import API_URL from "../../config"; // Import centralizzato corretto
 
 function Login() {
   const [email, setEmail] = useState("");
@@ -9,6 +8,9 @@ function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  // URL del Backend Cloud (Definito localmente per sicurezza)
+  const API_URL = "https://stark-backend-gg17.onrender.com";
 
   // 🚀 GOD MODE CHECK: Controllo Automatico all'avvio
   useEffect(() => {
@@ -22,8 +24,8 @@ function Login() {
         // Recuperiamo i dati target salvati dal Razzo
         const targetSlug = localStorage.getItem("superadmin_target_slug");
         
-        // Recuperiamo l'email simulata salvata dal SuperAdmin
-        const storedUser = localStorage.getItem("stark_user");
+        // Recuperiamo l'email simulata salvata dal SuperAdmin (chiave "user" per compatibilità Admin)
+        const storedUser = localStorage.getItem("user");
         const targetEmail = storedUser ? JSON.parse(storedUser).email : "";
 
         if (targetEmail) {
@@ -55,8 +57,8 @@ function Login() {
              localStorage.removeItem("admin_token"); 
         }
 
-        // 1. Salviamo l'utente nel formato standard
-        localStorage.setItem("stark_user", JSON.stringify(data.user));
+        // 1. Salviamo l'utente nel formato standard (chiave "user" per compatibilità)
+        localStorage.setItem("user", JSON.stringify(data.user));
 
         // 2. Determiniamo la destinazione
         const finalSlug = data.user.slug || redirectSlug;
