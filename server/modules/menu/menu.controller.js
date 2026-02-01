@@ -7,8 +7,13 @@ exports.getMenuBySlug = async (req, res) => {
     try {
         const rist = await pool.query('SELECT * FROM ristoranti WHERE slug = $1', [req.params.slug]);
         if (rist.rows.length === 0) return res.status(404).json({ error: "Ristorante non trovato" });
-        
+
         let data = rist.rows[0];
+
+        // ✅ compatibilità: alcuni DB usano subscription_active, altri account_attivo
+        if (data.account_attivo === undefined || data.account_attivo === null) {
+            data.account_attivo = data.subscription_active !== undefined ? data.subscription_active : true;
+        }
 
         // LOGICA SCADENZA
         if (data.data_scadenza) {
@@ -18,7 +23,9 @@ exports.getMenuBySlug = async (req, res) => {
             scadenza.setHours(0,0,0,0);
 
             if (scadenza < oggi && data.account_attivo) {
-                console.log(`⏳ LICENZA SCADUTA PER: ${data.nome}. Disattivazione.`);
+                const nomeLog = data.nome || data.ristorante || data.slug || 'ristorante';
+                console.log(`⏳ LICENZA SCADUTA PER: ${nomeLog}. Disattivazione.`);
+                // se la colonna account_attivo non esiste, questo update darebbe errore SOLO in caso di scadenza
                 await pool.query("UPDATE ristoranti SET account_attivo = FALSE WHERE id = $1", [data.id]);
                 data.account_attivo = false;
             }
@@ -26,8 +33,14 @@ exports.getMenuBySlug = async (req, res) => {
 
         if (!data.account_attivo) return res.status(403).json({ error: "Menu disattivato o scaduto" });
 
+        /**
+         * ✅ FIX 500:
+         * alcune installazioni non hanno colonne categorie.is_bar / categorie.is_pizzeria
+         * (o le hanno con nome diverso). Se le selezioni e non esistono -> Postgres lancia errore -> 500.
+         * Qui usiamo una query compatibile.
+         */
         const menuQuery = `
-            SELECT p.*, c.nome as categoria_nome, c.ordine_visualizzazione, c.is_bar, c.is_pizzeria
+            SELECT p.*, c.nome as categoria_nome, c.ordine_visualizzazione
             FROM prodotti p
             JOIN categorie c ON p.categoria_id = c.id
             WHERE p.ristorante_id = $1 AND p.visibile = TRUE
@@ -37,20 +50,17 @@ exports.getMenuBySlug = async (req, res) => {
 
         res.json({ ...data, menu: menu.rows });
     } catch (e) {
-        console.error(e);
+        console.error("getMenuBySlug error:", e);
         res.status(500).json({ error: "Errore server" });
     }
 };
 
 // --- 1.5 MENU ADMIN (Dashboard Gestione) ---
-// Questa funzione recupera TUTTO (anche i prodotti non visibili) per l'editing
 exports.getAdminMenu = async (req, res) => {
     try {
-        const { ristorante_id } = req.query; // Il frontend deve passare ?ristorante_id=123
-        
+        const { ristorante_id } = req.query;
         if (!ristorante_id) return res.status(400).json({ error: "ID Ristorante mancante" });
 
-        // Recuperiamo prodotti e categorie per la gestione
         const menuQuery = `
             SELECT p.*, c.nome as categoria_nome, c.ordine_visualizzazione
             FROM prodotti p
@@ -59,7 +69,7 @@ exports.getAdminMenu = async (req, res) => {
             ORDER BY c.ordine_visualizzazione ASC, p.id ASC
         `;
         const menu = await pool.query(menuQuery, [ristorante_id]);
-        
+
         res.json(menu.rows);
     } catch (e) {
         console.error("Errore Admin Menu:", e);
@@ -157,7 +167,7 @@ exports.translateMenu = async (req, res) => {
     const client = await pool.connect();
     try {
         const menu = await client.query("SELECT id, nome, descrizione, ingredienti_base FROM prodotti WHERE ristorante_id = $1", [ristorante_id]);
-        
+
         const itemsToTranslate = menu.rows.map(p => ({
             id: p.id,
             nome: p.nome,
@@ -171,7 +181,7 @@ exports.translateMenu = async (req, res) => {
         Ecco i dati: ${JSON.stringify(itemsToTranslate)}`;
 
         const translatedText = await generateTextWithGemini(prompt);
-        
+
         const cleanJson = translatedText.replace(/```json/g, '').replace(/```/g, '').trim();
         const translations = JSON.parse(cleanJson);
 
@@ -182,7 +192,7 @@ exports.translateMenu = async (req, res) => {
                 [JSON.stringify(t), t.id]
             );
         }
-        
+
         await client.query('COMMIT');
         res.json({ success: true, count: translations.length });
 
