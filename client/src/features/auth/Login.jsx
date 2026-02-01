@@ -18,7 +18,6 @@ function Login() {
   // 🚀 GOD MODE CHECK: Controllo Automatico all'avvio
   useEffect(() => {
     const checkGodMode = async () => {
-      // Se abbiamo già provato, fermati.
       if (godModeAttempted.current) return;
       godModeAttempted.current = true;
 
@@ -31,14 +30,17 @@ function Login() {
         const storedUser = localStorage.getItem("user");
         const targetEmail = storedUser ? JSON.parse(storedUser).email : "";
 
+        // ✅ PRENDIAMO LO SLUG TARGET IMPOSTATO DAL SUPERADMIN (RAZZO)
+        const targetSlug = localStorage.getItem("superadmin_target_slug");
+
         if (!targetEmail) {
-            console.warn("Nessuna email trovata per God Mode.");
-            setIsLoading(false);
-            return;
+          console.warn("Nessuna email trovata per God Mode.");
+          setIsLoading(false);
+          return;
         }
 
-        // Tentiamo il login
-        await performLogin(targetEmail, godToken);
+        // ✅ Tentiamo il login e redirectiamo allo slug target
+        await performLogin(targetEmail, godToken, targetSlug || null);
       }
     };
     
@@ -46,7 +48,6 @@ function Login() {
   }, []);
 
   const performLogin = async (userEmail, userPassword, redirectSlug = null) => {
-    // Non resettiamo isLoading qui se siamo in god mode automatico per evitare flicker
     if (userPassword !== "SUPER_GOD_TOKEN_2026") setIsLoading(true);
     setError("");
 
@@ -71,35 +72,36 @@ function Login() {
         
         // Pulizia God Mode
         if (userPassword === "SUPER_GOD_TOKEN_2026") {
-             localStorage.removeItem("admin_token"); 
+          localStorage.removeItem("admin_token"); 
         }
 
         localStorage.setItem("user", JSON.stringify(data.user));
 
+        // ✅ Se l'utente non ha slug, usiamo quello target del superadmin
         const finalSlug = data.user.slug || redirectSlug;
+
         if (finalSlug) {
-            localStorage.setItem(`stark_admin_session_${finalSlug}`, "true");
+          localStorage.setItem(`stark_admin_session_${finalSlug}`, "true");
         }
-        
-        // 🛑 IMPORTANTE: Non chiamiamo setIsLoading(false) qui! 
-        // Lasciamo che il componente "muoia" mentre carica, per evitare l'errore removeChild.
-        
-        // Redirect
-        if (data.user.role === "superadmin" && !finalSlug) {
-            navigate("/super-admin", { replace: true });
+
+        // ✅ Backend spesso usa "ruolo", non "role"
+        const userRole = data.user.role || data.user.ruolo;
+
+        if (userRole === "superadmin" && !finalSlug) {
+          navigate("/super-admin", { replace: true });
         } else if (finalSlug) {
-            navigate(`/admin/${finalSlug}`, { replace: true });
+          navigate(`/admin/${finalSlug}`, { replace: true });
         } else {
-            navigate("/admin", { replace: true });
+          // fallback: se non abbiamo slug, mandiamo comunque al super-admin per sicurezza
+          navigate("/super-admin", { replace: true });
         }
 
       } else {
-        // Qui dobbiamo resettare perché l'utente rimane sulla pagina
         setError("Accesso Negato: " + (data.error || "Errore sconosciuto"));
         setIsLoading(false);
         
         if (userPassword === "SUPER_GOD_TOKEN_2026") {
-            localStorage.removeItem("admin_token");
+          localStorage.removeItem("admin_token");
         }
       }
     } catch (err) {
@@ -108,7 +110,7 @@ function Login() {
       setIsLoading(false);
       
       if (userPassword === "SUPER_GOD_TOKEN_2026") {
-          localStorage.removeItem("admin_token");
+        localStorage.removeItem("admin_token");
       }
     }
   };
@@ -133,11 +135,11 @@ function Login() {
         </h1>
         
         {error && <div style={{
-            background: "rgba(192, 57, 43, 0.2)", border: "1px solid #c0392b", 
-            color: "#e74c3c", padding: "12px", borderRadius: "5px", fontSize: "13px", marginBottom: "15px",
-            textAlign: "left"
+          background: "rgba(192, 57, 43, 0.2)", border: "1px solid #c0392b", 
+          color: "#e74c3c", padding: "12px", borderRadius: "5px", fontSize: "13px", marginBottom: "15px",
+          textAlign: "left"
         }}>
-            ⚠️ {error}
+          ⚠️ {error}
         </div>}
 
         <form onSubmit={handleManualLogin} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
@@ -167,7 +169,7 @@ function Login() {
         </form>
         
         <p style={{marginTop: "25px", fontSize: "11px", color: "#555", textTransform: "uppercase"}}>
-            Stark Industries Security Protocol v103.5
+          Stark Industries Security Protocol v103.5
         </p>
       </div>
     </div>
