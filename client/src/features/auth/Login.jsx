@@ -1,13 +1,16 @@
 // client/src/Login.jsx
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 
 function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(false); // Feedback visivo
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  
+  // Usiamo un ref per impedire la doppia esecuzione in React Strict Mode
+  const godModeAttempted = useRef(false);
 
   // URL del Backend Cloud
   const API_URL = "https://stark-backend-gg17.onrender.com";
@@ -15,28 +18,27 @@ function Login() {
   // 🚀 GOD MODE CHECK: Controllo Automatico all'avvio
   useEffect(() => {
     const checkGodMode = async () => {
+      // Se abbiamo già provato, fermati.
+      if (godModeAttempted.current) return;
+      godModeAttempted.current = true;
+
       const godToken = localStorage.getItem("admin_token");
       
-      // Se troviamo il token speciale salvato
       if (godToken === "SUPER_GOD_TOKEN_2026") {
-        console.log("🚀 God Mode Rilevato. Tentativo accesso automatico...");
+        console.log("🚀 God Mode Rilevato. Avvio procedura...");
         setIsLoading(true);
         
-        // Recuperiamo l'email target (necessaria per il backend)
         const storedUser = localStorage.getItem("user");
         const targetEmail = storedUser ? JSON.parse(storedUser).email : "";
 
-        // Se non c'è email salvata, il God Mode non sa chi loggare
         if (!targetEmail) {
-            console.warn("God Mode presente ma nessuna email trovata nel localStorage.");
+            console.warn("Nessuna email trovata per God Mode.");
             setIsLoading(false);
             return;
         }
 
-        if (targetEmail) {
-            // Tentiamo il login automatico
-            await performLogin(targetEmail, godToken);
-        }
+        // Tentiamo il login
+        await performLogin(targetEmail, godToken);
       }
     };
     
@@ -44,14 +46,12 @@ function Login() {
   }, []);
 
   const performLogin = async (userEmail, userPassword, redirectSlug = null) => {
-    setIsLoading(true);
-    setError(""); // Resetta errori precedenti
+    // Non resettiamo isLoading qui se siamo in god mode automatico per evitare flicker
+    if (userPassword !== "SUPER_GOD_TOKEN_2026") setIsLoading(true);
+    setError("");
 
     try {
-      // ✅ CORREZIONE: L'URL ora corrisponde a auth.routes.js (/api/auth/login)
       const endpoint = `${API_URL}/api/auth/login`;
-      
-      console.log(`Tentativo login verso: ${endpoint}`);
       
       const res = await fetch(endpoint, {
         method: "POST",
@@ -59,59 +59,54 @@ function Login() {
         body: JSON.stringify({ email: userEmail, password: userPassword }),
       });
 
-      // Gestione errori HTTP (404, 500, ecc.) prima del parsing JSON
       if (!res.ok) {
         const errorText = await res.text();
-        // Tagliamo l'errore se è troppo lungo (es. pagina HTML intera)
-        throw new Error(`Errore Server (${res.status}): ${errorText.slice(0, 100)}`); 
+        throw new Error(`Errore Server (${res.status}): ${errorText.slice(0, 50)}`);
       }
       
       const data = await res.json();
 
       if (data.success) {
-        console.log("Login riuscito!");
+        console.log("Login riuscito! Reindirizzamento in corso...");
         
-        // 🧹 Pulizia God Mode: Rimuoviamo il token per sicurezza dopo l'uso
+        // Pulizia God Mode
         if (userPassword === "SUPER_GOD_TOKEN_2026") {
              localStorage.removeItem("admin_token"); 
         }
 
-        // 1. Salviamo i dati utente
         localStorage.setItem("user", JSON.stringify(data.user));
 
-        // ⚡ FIX PASSAPORTO: Creiamo la chiave di sessione per Admin.jsx
         const finalSlug = data.user.slug || redirectSlug;
         if (finalSlug) {
             localStorage.setItem(`stark_admin_session_${finalSlug}`, "true");
         }
         
-        // 3. Redirect Intelligente in base al ruolo
-        setIsLoading(false);
+        // 🛑 IMPORTANTE: Non chiamiamo setIsLoading(false) qui! 
+        // Lasciamo che il componente "muoia" mentre carica, per evitare l'errore removeChild.
+        
+        // Redirect
         if (data.user.role === "superadmin" && !finalSlug) {
-            navigate("/super-admin");
+            navigate("/super-admin", { replace: true });
         } else if (finalSlug) {
-            navigate(`/admin/${finalSlug}`);
+            navigate(`/admin/${finalSlug}`, { replace: true });
         } else {
-            navigate("/admin");
+            navigate("/admin", { replace: true });
         }
 
       } else {
-        // Errore logico (es. credenziali errate)
+        // Qui dobbiamo resettare perché l'utente rimane sulla pagina
         setError("Accesso Negato: " + (data.error || "Errore sconosciuto"));
         setIsLoading(false);
         
-        // Se fallisce il God Mode, lo disattiviamo per non bloccare l'app
         if (userPassword === "SUPER_GOD_TOKEN_2026") {
-            console.error("God Mode fallito. Rimozione token.");
             localStorage.removeItem("admin_token");
         }
       }
     } catch (err) {
-      console.error("Errore Fetch:", err);
-      setError(err.message || "Errore di connessione al server.");
+      console.error("Errore Login:", err);
+      setError(err.message || "Errore di connessione.");
       setIsLoading(false);
       
-      // Pulizia in caso di crash di rete durante il God Mode
       if (userPassword === "SUPER_GOD_TOKEN_2026") {
           localStorage.removeItem("admin_token");
       }
@@ -172,7 +167,7 @@ function Login() {
         </form>
         
         <p style={{marginTop: "25px", fontSize: "11px", color: "#555", textTransform: "uppercase"}}>
-            Stark Industries Security Protocol v103.4
+            Stark Industries Security Protocol v103.5
         </p>
       </div>
     </div>
