@@ -1,7 +1,7 @@
 // client/src/components/menu/Checkout.jsx
 import React from "react";
 import { getSafeAllergeni } from "./menuUtils";
-import { getContent } from "../../translations";
+import { getContent } from "../../../translations";
 
 export default function Checkout({
   open,

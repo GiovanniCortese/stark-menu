@@ -1,7 +1,7 @@
 // client/src/components/menu/DishModal.jsx
 import React, { useMemo, useState } from "react";
 import { getSafeVariants, getSafeAllergeni, getSafeCatVariants } from "./menuUtils";
-import { getContent } from "../../translations";
+import { getContent } from "../../../translations";
 
 export default function DishModal({ piatto, lang, t, style, canOrder, onClose, onAddToCart }) {
   const [tempVarianti, setTempVarianti] = useState({ rimozioni: [], aggiunte: [] });
