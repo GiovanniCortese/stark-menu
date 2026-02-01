@@ -24,8 +24,8 @@ app.use('/', require('./modules/auth/auth.routes'));
 // --- ROTTE VECCHIE (TEMP: Le teniamo finché non migriamo gli altri moduli) ---
 // app.use('/', require('./routes/authRoutes'));  <-- RIMOSSO (Sostituito dal modulo sopra)
 app.use('/', require('./modules/auth/auth.routes'));
-app.use('/', require('./modules/menu/menu.routes')); // <--- NUOVO MODULO ATTIVATO ✅
-app.use('/', require('./routes/orderRoutes'));
+app.use('/', require('./modules/menu/menu.routes'));
+app.use('/', require('./modules/orders/orders.routes')); // <--- NUOVO MODULO ATTIVATO ✅
 app.use('/', require('./routes/haccpRoutes'));
 app.use('/', require('./routes/adminRoutes'));
 
