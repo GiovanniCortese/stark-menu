@@ -14,7 +14,7 @@ import MenuPage from './features/public-menu/MenuPage';
 import BookingPage from './features/public-menu/BookingPage';
 import Dashboard from './Dashboard';
 import Haccp from './features/haccp/Haccp'; // <--- AGGIUNGI
-import Magazzino from './Magazzino';
+import Magazzino from './features/warehouse/Magazzino'; // <--- AGGIUNGI
 
 
 // Stili Globali
