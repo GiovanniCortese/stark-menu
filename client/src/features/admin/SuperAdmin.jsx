@@ -1,8 +1,8 @@
-// client/src/features/admin/SuperAdmin.jsx - VERSIONE V100 (NEW UI + LIDI & PIN MODE) 🚀
+// client/src/features/admin/SuperAdmin.jsx - VERSIONE V101 (MODULAR & CONFIG FIX) 🚀
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
-import API_URL from '../../config'; // Import centralizzato
+import API_URL from '../../config'; // Import corretto da src/config.js
 
 function SuperAdmin() {
   const navigate = useNavigate();
