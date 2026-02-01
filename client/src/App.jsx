@@ -1,66 +1,69 @@
-// client/src/App.jsx - VERSIONE V100 (ROUTING COMPLETO & PRENOTAZIONI) 🚦
-import { useEffect, useState } from 'react'; 
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+// client/src/App.jsx
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 
-// Importazione Componenti Pagine
-import Cucina from './features/production/Cucina';   // <--- NUOVO PERCORSO
-import Bar from './features/production/Bar';         // <--- NUOVO PERCORSO
-import Pizzeria from './features/production/Pizzeria'; // <--- NUOVO PERCORSO
-import Cassa from './features/pos/Cassa'; // <--- AGGIORNATO ✅ (Era ./Cassa)
-import Login from './features/auth/Login'; // <--- AGGIUNGI QUESTO
-import Admin from './features/admin/Admin';           // <--- NUOVO
-import SuperAdmin from './features/admin/SuperAdmin'; // <--- NUOVO
-import MenuPage from './features/public-menu/MenuPage'; 
+// --- CONTEXT GLOBALE ---
+import { SocketProvider } from './context/SocketContext';
+
+// --- FEATURE: AUTH ---
+import Login from './features/auth/Login';
+
+// --- FEATURE: ADMIN & SUPERADMIN ---
+import SuperAdmin from './features/admin/SuperAdmin';
+import Admin from './features/admin/Admin';
+
+// --- FEATURE: POS (CASSA) ---
+import Cassa from './features/pos/Cassa';
+
+// --- FEATURE: PRODUCTION (KDS) ---
+import Cucina from './features/production/Cucina';
+import Pizzeria from './features/production/Pizzeria';
+import Bar from './features/production/Bar';
+
+// --- FEATURE: WAREHOUSE (MAGAZZINO) ---
+import Magazzino from './features/warehouse/Magazzino';
+
+// --- FEATURE: HACCP ---
+import Haccp from './features/haccp/Haccp';
+
+// --- FEATURE: PUBLIC MENU & BOOKING ---
+import MenuPage from './features/public-menu/MenuPage';
 import BookingPage from './features/public-menu/BookingPage';
-import Dashboard from './Dashboard';
-import Haccp from './features/haccp/Haccp'; // <--- AGGIUNGI
-import Magazzino from './features/warehouse/Magazzino'; // <--- AGGIUNGI
-
-
-// Stili Globali
-import './App.css';
 
 function App() {
-  // --- CONTROLLO NUCLEARE ---
-  // Questo codice viene eseguito PRIMA di disegnare qualsiasi cosa.
-  // Se siamo sulla Home (/) e NON siamo in localhost, reindirizza subito alla landing page.
-  const path = window.location.pathname;
-  const isLocal = window.location.hostname.includes("localhost");
-  
-  if ((path === "/" || path === "") && !isLocal) {
-      window.location.replace("https://www.cosaedovemangiare.it");
-      return null; // Non renderizza nulla, schermata bianca istantanea per redirect
-  }
-  // --------------------------
-
   return (
-    <BrowserRouter>
-      <Routes>
-        {/* --- ROTTE AMMINISTRAZIONE & GENERALI --- */}
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/admin/:slug" element={<Admin />} />
-        <Route path="/super-admin" element={<SuperAdmin />} />    
-        
-        {/* --- ROTTE OPERATIVE STAFF (KDS & POS) --- */}
-        <Route path="/cucina/:slug" element={<Cucina />} />
-        <Route path="/bar/:slug" element={<Bar />} />
-        <Route path="/pizzeria/:slug" element={<Pizzeria />} />
-        <Route path="/cassa/:slug" element={<Cassa />} />
-        
-        {/* --- ROTTE MODULI AVANZATI (Protette internamente dal check abbonamento) --- */}
-        <Route path="/haccp/:slug" element={<Haccp />} />
-        <Route path="/haccp/:slug/scan/:scanId" element={<Haccp />} />
-        <Route path="/magazzino/:slug" element={<Magazzino />} />
+    <SocketProvider>
+      <Router>
+        <Routes>
+          {/* --- 1. AUTHENTICATION --- */}
+          <Route path="/login" element={<Login />} />
+          
+          {/* --- 2. AMMINISTRAZIONE --- */}
+          <Route path="/super-admin" element={<SuperAdmin />} />
+          <Route path="/admin/:slug" element={<Admin />} />
 
-        {/* --- NUOVA ROTTA PRENOTAZIONI PUBBLICHE --- */}
-        <Route path="/prenota/:slug" element={<BookingPage />} />
+          {/* --- 3. OPERATIVITA' (POS & KDS) --- */}
+          <Route path="/cassa/:slug" element={<Cassa />} />
+          <Route path="/cucina/:slug" element={<Cucina />} />
+          <Route path="/pizzeria/:slug" element={<Pizzeria />} />
+          <Route path="/bar/:slug" element={<Bar />} />
+          
+          {/* --- 4. MODULI SPECIALI --- */}
+          <Route path="/magazzino/:slug" element={<Magazzino />} />
+          <Route path="/haccp/:slug" element={<Haccp />} />
+          <Route path="/haccp/:slug/scan/:scanId" element={<Haccp />} />
 
-        {/* --- ROTTA MENU DIGITALE (Public Client) --- */}
-        {/* Importante: Questa rotta prende tutto ciò che non è sopra (es. /pizzeria-da-mario) */}
-        <Route path="/:slug" element={<MenuPage />} />
-      </Routes>
-    </BrowserRouter>
+          {/* --- 5. LATO CLIENTE (PUBBLICO) --- */}
+          <Route path="/prenota/:slug" element={<BookingPage />} />
+          
+          {/* Il Menu è la rotta dinamica principale */}
+          <Route path="/:slug" element={<MenuPage />} />
+          
+          {/* --- 6. DEFAULT / FALLBACK --- */}
+          <Route path="/" element={<Login />} />
+        </Routes>
+      </Router>
+    </SocketProvider>
   );
 }
 

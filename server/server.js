@@ -25,6 +25,7 @@ app.use('/', require('./modules/orders/orders.routes'));   // Ordini & KDS
 app.use('/', require('./modules/haccp/haccp.routes'));     // Temperature & Etichette
 app.use('/', require('./modules/warehouse/warehouse.routes')); // Magazzino & Bolle
 app.use('/', require('./modules/admin/admin.routes'));     // Config, Sala, Stats
+app.use('/', require('./modules/super/super.routes'));
 
 // --- ERROR HANDLING BASE ---
 app.use((err, req, res, next) => {
