@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 // IMPORTIAMO IL COMPONENTE DI STAGING DEL MAGAZZINO
 // Assicurati che questo percorso sia corretto nella tua struttura
-import MagazzinoStaging from '../magazzino/MagazzinoStaging'; 
+import MagazzinoStaging from '../../magazzino/MagazzinoStaging';
 
 const MerciManager = (props) => {
     // 1. ESTRAPOLIAMO LE PROPS
